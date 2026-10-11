@@ -44,9 +44,13 @@ import com.nuvio.app.features.trakt.TraktConnectionMode
 import com.nuvio.app.features.trakt.TraktContinueWatchingDaysOptions
 import com.nuvio.app.features.trakt.normalizeTraktContinueWatchingDaysCap
 import com.nuvio.app.features.watchprogress.WatchProgressSourceCoordinator
+import com.nuvio.app.features.wetrakr.WeTrakrTracker
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.tracking_source_mdblist
+import nuvio.composeapp.generated.resources.tracking_source_wetrakr
+import nuvio.composeapp.generated.resources.settings_wetrakr_library_description
+import nuvio.composeapp.generated.resources.settings_wetrakr_progress_description
 import nuvio.composeapp.generated.resources.settings_mdblist_library_description
 import nuvio.composeapp.generated.resources.settings_mdblist_progress_description
 import nuvio.composeapp.generated.resources.action_retry
@@ -225,10 +229,12 @@ private fun TrackingDataSources(
         WatchProgressSourceCoordinator.uiState
     }.collectAsStateWithLifecycle()
     val mdblistConnected by remember { MdbListTracker.ensureLoaded(); MdbListTracker.isAuthenticated }.collectAsStateWithLifecycle()
+    val wetrakrConnected by remember { WeTrakrTracker.ensureLoaded(); WeTrakrTracker.isAuthenticated }.collectAsStateWithLifecycle()
     val connectedProviders = buildSet {
         if (traktConnected) add(TrackingProviderId.TRAKT)
         if (simklConnected) add(TrackingProviderId.SIMKL)
         if (mdblistConnected) add(TrackingProviderId.MDBLIST)
+        if (wetrakrConnected) add(TrackingProviderId.WETRAKR)
     }
     val effectiveLibrarySource = effectiveLibrarySourceMode(settingsUiState.librarySourceMode) { provider ->
         provider in connectedProviders
@@ -352,7 +358,6 @@ private fun TrackingDataSources(
             title = stringResource(Res.string.trakt_library_source_dialog_title),
             subtitle = stringResource(Res.string.trakt_library_source_dialog_subtitle),
             selectedValue = effectiveLibrarySource,
-            options = librarySourceOptions(traktConnected, simklConnected, mdblistConnected),
             onSelected = TrackingSettingsRepository::setLibrarySourceMode,
             onDismiss = { activePickerName = null },
         )
@@ -361,7 +366,6 @@ private fun TrackingDataSources(
             title = stringResource(Res.string.trakt_watch_progress_dialog_title),
             subtitle = stringResource(Res.string.tracking_watch_progress_dialog_subtitle),
             selectedValue = effectiveProgressSource,
-            options = watchProgressSourceOptions(traktConnected, simklConnected, mdblistConnected),
             onSelected = { source ->
                 scope.launch {
                     WatchProgressSourceCoordinator.selectSource(
@@ -552,6 +556,7 @@ private fun librarySourceOptions(
     traktConnected: Boolean,
     simklConnected: Boolean,
     mdblistConnected: Boolean,
+    wetrakrConnected: Boolean,
 ): List<TrackingPickerOption<LibrarySourceMode>> {
     val traktAvailable = isTrackingBrandAvailable(TrackingBrand.TRAKT, traktConnected, simklConnected)
     val simklAvailable = isTrackingBrandAvailable(TrackingBrand.SIMKL, traktConnected, simklConnected)
@@ -582,6 +587,15 @@ private fun librarySourceOptions(
             enabled = mdblistConnected,
             unavailableReason = trackingUnavailableReason(TrackingBrand.MDBLIST, mdblistConnected),
         ),
+        TrackingPickerOption(
+        ),
+        TrackingPickerOption(
+            value = LibrarySourceMode.WETRAKR,
+            title = stringResource(Res.string.tracking_source_wetrakr),
+            description = stringResource(Res.string.settings_wetrakr_library_description),
+            enabled = wetrakrConnected,
+            unavailableReason = trackingUnavailableReason(TrackingBrand.WETRAKR, wetrakrConnected),
+        ),
     )
 }
 
@@ -590,6 +604,7 @@ private fun watchProgressSourceOptions(
     traktConnected: Boolean,
     simklConnected: Boolean,
     mdblistConnected: Boolean,
+    wetrakrConnected: Boolean,
 ): List<TrackingPickerOption<WatchProgressSource>> {
     val traktAvailable = isTrackingBrandAvailable(TrackingBrand.TRAKT, traktConnected, simklConnected)
     val simklAvailable = isTrackingBrandAvailable(TrackingBrand.SIMKL, traktConnected, simklConnected)
@@ -619,6 +634,15 @@ private fun watchProgressSourceOptions(
             description = stringResource(Res.string.settings_mdblist_progress_description),
             enabled = mdblistConnected,
             unavailableReason = trackingUnavailableReason(TrackingBrand.MDBLIST, mdblistConnected),
+        ),
+        TrackingPickerOption(
+        ),
+        TrackingPickerOption(
+            value = WatchProgressSource.WETRAKR,
+            title = stringResource(Res.string.tracking_source_wetrakr),
+            description = stringResource(Res.string.settings_wetrakr_progress_description),
+            enabled = wetrakrConnected,
+            unavailableReason = trackingUnavailableReason(TrackingBrand.WETRAKR, wetrakrConnected),
         ),
     )
 }
@@ -711,6 +735,7 @@ private fun librarySourceModeLabel(source: LibrarySourceMode): String = when (so
     LibrarySourceMode.LOCAL -> stringResource(Res.string.trakt_library_source_nuvio)
     LibrarySourceMode.SIMKL -> stringResource(Res.string.tracking_source_simkl)
     LibrarySourceMode.MDBLIST -> stringResource(Res.string.tracking_source_mdblist)
+    LibrarySourceMode.WETRAKR -> stringResource(Res.string.tracking_source_wetrakr)
 }
 
 @Composable
@@ -719,6 +744,7 @@ private fun watchProgressSourceLabel(source: WatchProgressSource): String = when
     WatchProgressSource.NUVIO_SYNC -> stringResource(Res.string.trakt_watch_progress_source_nuvio)
     WatchProgressSource.SIMKL -> stringResource(Res.string.tracking_source_simkl)
     WatchProgressSource.MDBLIST -> stringResource(Res.string.tracking_source_mdblist)
+    WatchProgressSource.WETRAKR -> stringResource(Res.string.tracking_source_wetrakr)
 }
 
 @Composable

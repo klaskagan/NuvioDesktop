@@ -57,6 +57,8 @@ import com.nuvio.app.features.trakt.TraktSettingsStorage
 import com.nuvio.app.features.mdblist.PlatformMdbListAuthPersistence
 import com.nuvio.app.features.mdblist.PlatformMdbListSyncStorage
 import com.nuvio.app.features.servers.ServerStorage
+import com.nuvio.app.features.wetrakr.PlatformWeTrakrAuthPersistence
+import com.nuvio.app.features.wetrakr.PlatformWeTrakrSyncStorage
 import com.nuvio.app.features.simkl.SimklAuthStorage
 import com.nuvio.app.features.simkl.SimklSyncStorage
 import com.nuvio.app.features.tmdb.TmdbSettingsStorage
@@ -127,6 +129,8 @@ open class MainActivity : AppCompatActivity() {
         PlatformMdbListAuthPersistence.initialize(applicationContext)
         ServerStorage.initialize(applicationContext)
         PlatformMdbListSyncStorage.initialize(applicationContext)
+        PlatformWeTrakrAuthPersistence.initialize(applicationContext)
+        PlatformWeTrakrSyncStorage.initialize(applicationContext)
         SimklAuthStorage.initialize(applicationContext)
         SimklSyncStorage.initialize(applicationContext)
         LibraryDisplaySettingsStorage.initialize(applicationContext)

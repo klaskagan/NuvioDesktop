@@ -1304,6 +1304,7 @@ internal fun MainAppContent(
             LibrarySourceMode.TRAKT -> stringResource(Res.string.compose_catalog_subtitle_trakt_library)
             LibrarySourceMode.SIMKL -> stringResource(Res.string.compose_catalog_subtitle_simkl_library)
                                     LibrarySourceMode.MDBLIST -> stringResource(Res.string.library_mdblist_title)
+            LibrarySourceMode.WETRAKR -> stringResource(Res.string.library_wetrakr_title)
         }
 
         val resolveLibrarySectionTitle = rememberLibrarySectionTitleResolver()

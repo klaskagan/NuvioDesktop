@@ -18,6 +18,8 @@ enum class TrackingProviderId(
     val displayName: String,
 ) {
     TRAKT("trakt", "Trakt"),
+    // WeTrakr is listed ahead of Simkl wherever trackers are listed (the user's preference).
+    WETRAKR("wetrakr", "WeTrakr"),
     SIMKL("simkl", "Simkl"),
     MDBLIST("mdblist", "MDBList");
 

@@ -75,6 +75,8 @@ import com.nuvio.app.features.trakt.TraktConnectionMode
 import com.nuvio.app.features.trakt.traktBrandPainter
 import com.nuvio.app.features.watchprogress.WatchProgressSourceCoordinator
 import kotlinx.coroutines.launch
+import nuvio.composeapp.generated.resources.settings_wetrakr_disconnect_description
+import nuvio.composeapp.generated.resources.wetrakr_logo
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.action_cancel
 import nuvio.composeapp.generated.resources.settings_simkl_authorization_expired
@@ -126,6 +128,7 @@ internal enum class TrackingBrand(val displayName: String) {
     SIMKL("Simkl"),
     MDBLIST("MDBList"),
     TMDB("TMDB"),
+    WETRAKR("WeTrakr"),
 }
 
 internal enum class TrackingConnectionCardMode {
@@ -139,6 +142,7 @@ internal fun isTrackingBrandAvailable(
     traktConnected: Boolean,
     simklConnected: Boolean,
     mdblistConnected: Boolean = false,
+    wetrakrConnected: Boolean = false,
 ): Boolean = when (brand) {
     TrackingBrand.NUVIO,
     TrackingBrand.TMDB,
@@ -146,6 +150,7 @@ internal fun isTrackingBrandAvailable(
     TrackingBrand.TRAKT -> traktConnected
     TrackingBrand.SIMKL -> simklConnected
     TrackingBrand.MDBLIST -> mdblistConnected
+    TrackingBrand.WETRAKR -> wetrakrConnected
 }
 
 internal fun TraktConnectionMode.toTrackingConnectionCardMode(): TrackingConnectionCardMode = when (this) {
@@ -192,6 +197,8 @@ internal fun TrackingProviderCards(
             uiState = traktUiState,
             modifier = Modifier.fillMaxWidth(),
         )
+        // WeTrakr is offered ahead of Simkl (the user's preference; WeTrakr's terms ask that it be offered).
+        WeTrakrProviderCard(Modifier.fillMaxWidth())
         SimklProviderCard(
             uiState = simklUiState,
             isSyncing = syncState.isLoading,
@@ -727,6 +734,7 @@ private fun TrackingDisconnectDialog(
                 TrackingBrand.SIMKL ->
                     stringResource(Res.string.settings_simkl_disconnect_description)
                 TrackingBrand.MDBLIST -> stringResource(Res.string.settings_mdblist_disconnect_description)
+                TrackingBrand.WETRAKR -> stringResource(Res.string.settings_wetrakr_disconnect_description)
                 TrackingBrand.NUVIO,
                 TrackingBrand.TMDB,
                 -> stringResource(
@@ -782,6 +790,16 @@ internal fun TrackingBrandGlyph(
             modifier = modifier,
             contentScale = ContentScale.Fit,
         )
+            contentDescription = contentDescription,
+            modifier = modifier,
+            contentScale = ContentScale.Fit,
+        )
+        TrackingBrand.WETRAKR -> Image(
+            painter = painterResource(Res.drawable.wetrakr_logo),
+            contentDescription = contentDescription,
+            modifier = modifier,
+            contentScale = ContentScale.Fit,
+        )
         TrackingBrand.NUVIO -> Icon(
             imageVector = Icons.Rounded.Sync,
             contentDescription = contentDescription,
@@ -800,9 +818,17 @@ private fun TrackingBrandWordmark(
         TrackingBrand.TRAKT -> traktBrandPainter(TraktBrandAsset.Wordmark)
         TrackingBrand.SIMKL -> simklBrandPainter(SimklBrandAsset.Wordmark)
         TrackingBrand.MDBLIST -> integrationLogoPainter(IntegrationLogo.MdbList)
+        TrackingBrand.WETRAKR -> painterResource(Res.drawable.wetrakr_logo)
         TrackingBrand.NUVIO,
         TrackingBrand.TMDB,
         -> return
+    }
+    if (brand == TrackingBrand.WETRAKR) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Image(painter, contentDescription = null, modifier = Modifier.size(32.dp))
+            Text(contentDescription, style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        }
+        return
     }
     Image(
         painter = painter,
@@ -814,7 +840,9 @@ private fun TrackingBrandWordmark(
             TrackingBrand.SIMKL -> Modifier
                 .width(124.dp)
                 .height(30.dp)
-            TrackingBrand.MDBLIST -> Modifier.width(130.dp).height(32.dp)
+            TrackingBrand.MDBLIST,
+            TrackingBrand.WETRAKR,
+            -> Modifier.width(130.dp).height(32.dp)
             TrackingBrand.NUVIO,
             TrackingBrand.TMDB,
             -> Modifier
@@ -833,6 +861,9 @@ private fun TrackingBrand.cardBrush(): Brush = when (this) {
     )
     TrackingBrand.MDBLIST -> Brush.linearGradient(
         colors = listOf(Color(0xFF173D69), Color(0xFF225C97), Color(0xFF16385D)),
+    )
+    TrackingBrand.WETRAKR -> Brush.linearGradient(
+        colors = listOf(Color(0xFF0A0A0C), Color(0xFF1F1C0A), Color(0xFF0A0A0C)),
     )
     TrackingBrand.NUVIO,
     TrackingBrand.TMDB,
