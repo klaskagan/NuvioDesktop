@@ -39,7 +39,8 @@ import org.jetbrains.compose.resources.getString
 
 object TraktAuthRepository : TrackingAuthProvider {
     private const val BASE_URL = "https://api.trakt.tv"
-    private const val AUTHORIZE_URL = "https://trakt.tv/oauth/authorize"
+    private const val OAUTH_BASE_URL = "https://auth.trakt.tv"
+    private const val AUTHORIZE_URL = "$OAUTH_BASE_URL/oauth/authorize"
     private const val DEVICE_ACTIVATE_URL = "https://trakt.tv/activate"
     private const val API_VERSION = "2"
 
@@ -122,7 +123,7 @@ object TraktAuthRepository : TrackingAuthProvider {
     }
 
     fun hasRequiredCredentials(): Boolean =
-        TraktConfig.CLIENT_ID.isNotBlank() && TraktConfig.CLIENT_SECRET.isNotBlank()
+        traktCredentialsConfigured(TraktConfig.CLIENT_ID, TraktConfig.CLIENT_SECRET, isDesktop)
 
     fun onConnectRequested(profileId: Int = ProfileRepository.activeProfileId): String? {
         ensureLoaded(profileId)
@@ -284,7 +285,7 @@ object TraktAuthRepository : TrackingAuthProvider {
         )
         val response = runCatching {
             postTraktJson<TraktDeviceCodeResponse>(
-                url = "$BASE_URL/oauth/device/code",
+                url = "$OAUTH_BASE_URL/oauth/device/code",
                 body = body,
             )
         }.onFailure { error ->
@@ -454,11 +455,10 @@ object TraktAuthRepository : TrackingAuthProvider {
             TraktDeviceTokenRequest(
                 code = deviceCode,
                 clientId = TraktConfig.CLIENT_ID,
-                clientSecret = TraktConfig.CLIENT_SECRET,
             ),
         )
         val response = postTraktJson<TraktTokenResponse>(
-            url = "$BASE_URL/oauth/device/token",
+            url = "$OAUTH_BASE_URL/oauth/device/token",
             body = body,
         )
         response.body?.takeIf { response.isSuccessful }?.let { token ->
@@ -556,7 +556,7 @@ object TraktAuthRepository : TrackingAuthProvider {
 
         val response = runCatching {
             httpPostJsonWithHeaders(
-                url = "$BASE_URL/oauth/token",
+                url = "$OAUTH_BASE_URL/oauth/token",
                 body = body,
                 headers = emptyMap(),
             )
@@ -618,12 +618,12 @@ object TraktAuthRepository : TrackingAuthProvider {
                 TraktRevokeRequest(
                     token = token,
                     clientId = TraktConfig.CLIENT_ID,
-                    clientSecret = TraktConfig.CLIENT_SECRET,
+                    clientSecret = traktOAuthClientSecret(TraktConfig.CLIENT_SECRET, isDesktop),
                 ),
             )
             runCatching {
                 httpPostJsonWithHeaders(
-                    url = "$BASE_URL/oauth/revoke",
+                    url = "$OAUTH_BASE_URL/oauth/revoke",
                     body = body,
                     headers = emptyMap(),
                 )
@@ -658,7 +658,7 @@ object TraktAuthRepository : TrackingAuthProvider {
             TraktRefreshTokenRequest(
                 refreshToken = refreshToken,
                 clientId = TraktConfig.CLIENT_ID,
-                clientSecret = TraktConfig.CLIENT_SECRET,
+                clientSecret = traktOAuthClientSecret(TraktConfig.CLIENT_SECRET, isDesktop),
                 redirectUri = TraktConfig.REDIRECT_URI,
             ),
         )
@@ -666,7 +666,7 @@ object TraktAuthRepository : TrackingAuthProvider {
         val response = runCatching {
             httpRequestRaw(
                 method = "POST",
-                url = "$BASE_URL/oauth/token",
+                url = "$OAUTH_BASE_URL/oauth/token",
                 body = body,
                 headers = mapOf(
                     "Accept" to "application/json",
@@ -910,10 +910,10 @@ private data class TraktDeviceCodeResponse(
 )
 
 @Serializable
-private data class TraktDeviceTokenRequest(
+internal data class TraktDeviceTokenRequest(
     val code: String,
     @SerialName("client_id") val clientId: String,
-    @SerialName("client_secret") val clientSecret: String,
+
 )
 
 @Serializable
@@ -922,20 +922,24 @@ private data class TraktOAuthErrorResponse(
     @SerialName("error_description") val errorDescription: String? = null,
 )
 
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 @Serializable
-private data class TraktRefreshTokenRequest(
+internal data class TraktRefreshTokenRequest(
     @SerialName("refresh_token") val refreshToken: String,
     @SerialName("client_id") val clientId: String,
-    @SerialName("client_secret") val clientSecret: String,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    @SerialName("client_secret") val clientSecret: String? = null,
     @SerialName("redirect_uri") val redirectUri: String,
     @SerialName("grant_type") val grantType: String = "refresh_token",
 )
 
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 @Serializable
-private data class TraktRevokeRequest(
+internal data class TraktRevokeRequest(
     @SerialName("token") val token: String,
     @SerialName("client_id") val clientId: String,
-    @SerialName("client_secret") val clientSecret: String,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    @SerialName("client_secret") val clientSecret: String? = null,
 )
 
 @Serializable
@@ -963,3 +967,11 @@ private data class TraktUserIdsDto(
     val slug: String? = null,
 )
     private fun localizedString(resource: StringResource): String = runBlocking { getString(resource) }
+
+// Desktop uses Trakt's public-client device flow; the legacy mobile code flow
+// still needs its configured secret until it is migrated to PKCE.
+internal fun traktCredentialsConfigured(clientId: String, clientSecret: String, desktop: Boolean): Boolean =
+    clientId.isNotBlank() && (desktop || clientSecret.isNotBlank())
+
+internal fun traktOAuthClientSecret(clientSecret: String, desktop: Boolean): String? =
+    clientSecret.takeIf { !desktop && it.isNotBlank() }
