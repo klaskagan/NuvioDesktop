@@ -6,6 +6,21 @@ import kotlin.test.assertEquals
 
 class MdbListRatingsDecoderTest {
     @Test
+    fun voteCountsSurviveSingleAndBatchResponsesAndInvalidCountsAreHidden() {
+        val payload = """{"imdb_id":"tt1","ratings":[
+            {"source":"imdb","value":7.9,"votes":657000},
+            {"source":"tmdb","value":84,"votes":6900},
+            {"source":"tomatoes","value":85,"votes":null},
+            {"source":"popcorn","value":90,"votes":0},
+            {"source":"metacritic","value":66,"votes":-1},
+            {"source":"trakt","value":80}
+        ]}"""
+        val single = parseMdbListRatings(payload)
+        assertEquals(listOf(657000L, 6900L, null, null, null, null), single.map { it.votes })
+        assertEquals(single, parseMdbListRatingsBatch("[$payload]").getValue("tt1"))
+    }
+
+    @Test
     fun invalidValuesAndUnknownSourcesAreSkippedWhileZeroAndNativeScalesArePreserved() {
         val ratings = parseMdbListRatings(
             """{"ratings":[

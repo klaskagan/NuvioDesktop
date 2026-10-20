@@ -64,6 +64,7 @@ private data class MediaRatings(
             MetaExternalRating(
                 source = source,
                 value = value,
+                votes = rating.votes?.takeIf { it > 0 },
                 isCertified = when (source) {
                     PROVIDER_TOMATOES -> "certified-fresh" in keywordNames
                     PROVIDER_AUDIENCE -> "certified-hot" in keywordNames
@@ -79,4 +80,5 @@ private data class SourceRating(
     val source: String,
     val value: Double? = null,
     val score: Double? = null,
+    val votes: Long? = null,
 )
