@@ -46,6 +46,36 @@ object TmdbMetadataService {
     private val backdropCacheMutex = Mutex()
     private val backdropRequests = Semaphore(4)
 
+    private val landscapeArtworkCache = linkedMapOf<String, TmdbLandscapeArtwork>()
+
+    internal suspend fun fetchLandscapeArtwork(id: String, type: String, language: String): TmdbLandscapeArtwork? =
+        withContext(Dispatchers.Default) {
+            val mediaType = TmdbService.normalizeMediaType(type)
+            if (mediaType != "movie" && mediaType != "tv") return@withContext null
+            val normalized = normalizeTmdbLanguage(language)
+            backdropRequests.withPermit {
+                val tmdbId = TmdbService.ensureTmdbId(id, mediaType) ?: return@withPermit null
+                val key = "$tmdbId:$mediaType:$normalized:${TmdbSettingsRepository.effectiveApiKey()}"
+                backdropCacheMutex.withLock {
+                    landscapeArtworkCache[key]?.let { return@withPermit it }
+                }
+                val images = fetch<TmdbImagesResponse>(
+                    endpoint = "$mediaType/$tmdbId/images",
+                    query = mapOf("include_image_language" to tmdbImageLanguages(normalized)),
+                ) ?: return@withPermit null
+                val paths = images.selectLandscapeImagePaths(normalized)
+                val artwork = TmdbLandscapeArtwork(
+                    backdrop = buildImageUrl(paths.backdrop, "w1280"),
+                    logo = buildImageUrl(paths.logo, "w500"),
+                )
+                backdropCacheMutex.withLock {
+                    landscapeArtworkCache[key] = artwork
+                    if (landscapeArtworkCache.size > 256) landscapeArtworkCache.remove(landscapeArtworkCache.keys.first())
+                }
+                artwork
+            }
+        }
+
     suspend fun fetchLocalizedBackdrop(id: String, type: String, language: String): String? =
         withContext(Dispatchers.Default) {
             val mediaType = TmdbService.normalizeMediaType(type)
@@ -1189,6 +1219,7 @@ object TmdbMetadataService {
         return runCatching {
             json.decodeFromString<T>(httpGetText(url))
         }.onFailure { error ->
+            if (error is kotlinx.coroutines.CancellationException) throw error
             log.w { "TMDB request failed for $endpoint: ${error.message}" }
         }.getOrNull()
     }
@@ -2236,3 +2267,5 @@ internal data class TmdbDiscoverResult(
     @SerialName("vote_average") val voteAverage: Double? = null,
     @SerialName("vote_count") val voteCount: Int? = null,
 )
+
+internal data class TmdbLandscapeArtwork(val backdrop: String?, val logo: String?)

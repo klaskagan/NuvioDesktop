@@ -22,6 +22,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import nuvio.composeapp.generated.resources.seasonal_spotlight_label
+import nuvio.composeapp.generated.resources.seasonal_spotlight_setting
+import nuvio.composeapp.generated.resources.seasonal_spotlight_setting_description
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -117,6 +121,23 @@ internal fun LazyListScope.homescreenSettingsContent(
                     checked = hideUnreleasedContent,
                     isTablet = isTablet,
                     onCheckedChange = HomeCatalogSettingsRepository::setHideUnreleasedContent,
+                )
+            }
+        }
+    }
+    item {
+        val homeSettings by HomeCatalogSettingsRepository.uiState.collectAsStateWithLifecycle()
+        SettingsSection(
+            title = stringResource(Res.string.seasonal_spotlight_label),
+            isTablet = isTablet,
+        ) {
+            SettingsGroup(isTablet = isTablet) {
+                SettingsSwitchRow(
+                    title = stringResource(Res.string.seasonal_spotlight_setting),
+                    description = stringResource(Res.string.seasonal_spotlight_setting_description),
+                    checked = homeSettings.seasonalCollectionsEnabled,
+                    isTablet = isTablet,
+                    onCheckedChange = HomeCatalogSettingsRepository::setSeasonalCollectionsEnabled,
                 )
             }
         }

@@ -39,4 +39,21 @@ internal data class TmdbImage(
     @SerialName("file_path") val filePath: String? = null,
     @SerialName("iso_639_1") val iso6391: String? = null,
     @SerialName("iso_3166_1") val iso31661: String? = null,
+    @SerialName("aspect_ratio") val aspectRatio: Double? = null,
 )
+
+/** TMDB supplies separate backdrops and title logos, not a guaranteed branded-landscape category. */
+internal data class TmdbLandscapeImagePaths(val backdrop: String?, val logo: String?)
+
+internal fun TmdbImagesResponse.selectLandscapeImagePaths(language: String): TmdbLandscapeImagePaths {
+    val normalized = normalizeTmdbLanguage(language)
+    val supportedLanguages = setOf(normalized.substringBefore("-"), "en", null)
+    val logo = logos.filter { it.iso6391 in supportedLanguages }.selectBestLocalizedImagePath(normalized)
+    val landscape = backdrops.filter { image ->
+        image.aspectRatio?.let { it >= 1.4 } ?: true
+    }
+    // A textless backdrop plus a localized official logo avoids duplicated/foreign-language titles.
+    val cleanBackdrop = if (logo != null) landscape.filter { it.iso6391 == null }
+        .selectBestLocalizedImagePath(normalized) else null
+    return TmdbLandscapeImagePaths(cleanBackdrop ?: landscape.selectBestLocalizedImagePath(normalized), logo)
+}

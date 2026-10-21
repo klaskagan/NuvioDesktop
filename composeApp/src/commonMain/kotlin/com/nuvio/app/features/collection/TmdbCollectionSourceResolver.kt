@@ -8,6 +8,7 @@ import com.nuvio.app.features.home.PosterShape
 import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 import com.nuvio.app.features.tmdb.buildTmdbUrl
 import com.nuvio.app.features.tmdb.normalizeTmdbLanguage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -46,6 +47,19 @@ object TmdbCollectionSourceResolver {
             TmdbCollectionSourceType.COMPANY,
             TmdbCollectionSourceType.NETWORK,
             TmdbCollectionSourceType.DISCOVER -> resolveDiscover(source, apiKey, language, page)
+        }
+    }
+
+    /** Small editorial seed sets use the same database metadata and artwork as discovery. */
+    suspend fun resolveMovieSeeds(ids: List<Int>): List<MetaPreview> = withContext(Dispatchers.Default) {
+        val apiKey = TmdbSettingsRepository.effectiveApiKey()
+        val language = normalizeTmdbLanguage(TmdbSettingsRepository.snapshot().language)
+        ids.mapNotNull { id ->
+            fetch<TmdbListItem>(
+                endpoint = "movie/$id",
+                apiKey = apiKey,
+                query = mapOf("language" to language),
+            )?.toPreview(TmdbCollectionMediaType.MOVIE)
         }
     }
 
@@ -365,6 +379,7 @@ object TmdbCollectionSourceResolver {
         return runCatching {
             json.decodeFromString<T>(httpGetText(url))
         }.onFailure { error ->
+            if (error is CancellationException) throw error
             log.w(error) { "TMDB source request failed for $endpoint" }
         }.getOrNull()
     }
