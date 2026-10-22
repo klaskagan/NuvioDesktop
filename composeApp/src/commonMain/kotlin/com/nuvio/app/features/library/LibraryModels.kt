@@ -26,6 +26,7 @@ data class LibraryItem(
     val imdbId: String? = null,
     val tmdbId: Int? = null,
     val traktId: Int? = null,
+    val traktVotes: Int? = null,
     /** Original media category from the tracking provider (e.g. "anime").
      *  Used for UI filtering while [type] stays as "movie"/"series" for meta addon compatibility. */
     val mediaCategory: String? = null,

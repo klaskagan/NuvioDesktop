@@ -200,7 +200,7 @@ object TraktLibraryRepository {
             ensureFresh()
         }
         val itemMembership = _uiState.value.membershipByContent[contentKey(item.id, item.type)].orEmpty()
-        val map = _uiState.value.listTabs.associate { tab ->
+        val map = _uiState.value.listTabs.filter { it.isWritable }.associate { tab ->
             tab.key to itemMembership.contains(tab.key)
         }
         return TraktMembershipSnapshot(listMembership = map)
@@ -212,7 +212,8 @@ object TraktLibraryRepository {
         ensureFresh()
 
         val current = getMembershipSnapshot(item).listMembership
-        val desired = changes.desiredMembership
+        val writableKeys = _uiState.value.listTabs.filter { it.isWritable }.map { it.key }.toSet()
+        val desired = changes.desiredMembership.filterKeys { it in writableKeys }
         val keys = (current.keys + desired.keys).distinct()
         val previousState = _uiState.value
 
@@ -312,7 +313,8 @@ object TraktLibraryRepository {
         }
 
         val membershipByContent = mutableMapOf<String, MutableSet<String>>()
-        normalizedEntriesByList.forEach { (listKey, entries) ->
+        val writableKeys = listTabs.filter { it.isWritable }.map { it.key }.toSet()
+        normalizedEntriesByList.filterKeys { it in writableKeys }.forEach { (listKey, entries) ->
             entries.forEach { entry ->
                 allContentKeys(entry).forEach { key ->
                     membershipByContent
@@ -442,7 +444,9 @@ object TraktLibraryRepository {
                 sortHow = "asc",
             ),
         )
-        return watchlistTabs + fetchPersonalLists(headers)
+        return watchlistTabs + fetchTraktLibraryListTabs(
+            request = { url -> getJsonResponse(headers = headers, url = url) },
+        )
     }
 
     private suspend fun fetchEntriesByList(
@@ -455,21 +459,21 @@ object TraktLibraryRepository {
             entriesByList[tab.key] = emptyList()
         }
         val listSemaphore = Semaphore(LIST_FETCH_CONCURRENCY)
-        val personalTabs = allTabs.filter { it.type == TraktListType.PERSONAL }
+        val contentTabs = allTabs.filter { it.type != TraktListType.WATCHLIST }
 
         val watchlistDeferred = async {
             listSemaphore.withPermit {
                 fetchWatchlistItems(headers)
             }
         }
-        val personalEntries = personalTabs.associate { tab ->
+        val listEntries = contentTabs.associate { tab ->
             tab.key to async {
                 val listId = tab.traktListId?.toString() ?: tab.slug.orEmpty()
                 if (listId.isBlank()) {
                     emptyList()
                 } else {
                     listSemaphore.withPermit {
-                        fetchPersonalListItems(headers, tab)
+                        fetchListItems(headers, tab)
                     }
                 }
             }
@@ -478,7 +482,7 @@ object TraktLibraryRepository {
         entriesByList[WATCHLIST_KEY] = watchlistDeferred.await()
         onProgress?.invoke(entriesByList.toMap())
 
-        val pendingEntries = personalEntries.toMutableMap()
+        val pendingEntries = listEntries.toMutableMap()
         while (pendingEntries.isNotEmpty()) {
             val (listKey, listItems) = select<Pair<String, List<LibraryItem>>> {
                 pendingEntries.forEach { (key, deferred) ->
@@ -491,30 +495,6 @@ object TraktLibraryRepository {
         }
 
         entriesByList.toMap()
-    }
-
-    private suspend fun fetchPersonalLists(headers: Map<String, String>): List<TraktListTab> {
-        val payload = getJson(headers = headers, url = "$BASE_URL/users/me/lists")
-        val lists = json.decodeFromString<List<TraktListSummaryDto>>(payload)
-        return lists
-            .filter { it.type.equals("personal", ignoreCase = true) }
-            .mapNotNull { list ->
-                val traktId = list.ids?.trakt
-                val listIdPath = traktId?.toString() ?: list.ids?.slug ?: return@mapNotNull null
-                val fallbackTitle = traktId?.let { getString(Res.string.trakt_list_fallback_title, it) }
-                    ?: "List $listIdPath"
-                TraktListTab(
-                    key = "$PERSONAL_LIST_PREFIX$listIdPath",
-                    title = list.name?.ifBlank { null } ?: fallbackTitle,
-                    type = TraktListType.PERSONAL,
-                    traktListId = traktId,
-                    slug = list.ids?.slug,
-                    description = list.description,
-                    privacy = TraktListPrivacy.fromApi(list.privacy),
-                    sortBy = list.sortBy,
-                    sortHow = list.sortHow,
-                )
-            }
     }
 
     private suspend fun fetchWatchlistItems(headers: Map<String, String>): List<LibraryItem> {
@@ -542,20 +522,26 @@ object TraktLibraryRepository {
             .sortedByDescending { it.savedAtEpochMs }
     }
 
-    private suspend fun fetchPersonalListItems(
+    private suspend fun fetchListItems(
         headers: Map<String, String>,
         tab: TraktListTab,
     ): List<LibraryItem> {
         val listId = tab.traktListId?.toString() ?: tab.slug.orEmpty()
         if (listId.isBlank()) return emptyList()
 
+        val itemsBase = traktLibraryListItemsUrl(tab)
+        if (tab.type == TraktListType.SMART) {
+            return fetchPagedListItems(headers) { page ->
+                "$itemsBase?extended=full,images&page=$page&limit=$TRAKT_PAGE_LIMIT"
+            }.mapNotNull(::mapToLibraryItem)
+        }
         val sortQuery = buildSortQuery(tab.sortBy, tab.sortHow)
         val (movieItems, showItems) = coroutineScope {
             val moviesDeferred = async {
                 fetchPagedListItems(
                     headers = headers,
                     urlForPage = { page ->
-                        "$BASE_URL/users/me/lists/$listId/items/movie?extended=full,images&page=$page&limit=$TRAKT_PAGE_LIMIT$sortQuery"
+                        "$itemsBase/movie?extended=full,images&page=$page&limit=$TRAKT_PAGE_LIMIT$sortQuery"
                     },
                 )
             }
@@ -563,7 +549,7 @@ object TraktLibraryRepository {
                 fetchPagedListItems(
                     headers = headers,
                     urlForPage = { page ->
-                        "$BASE_URL/users/me/lists/$listId/items/show?extended=full,images&page=$page&limit=$TRAKT_PAGE_LIMIT$sortQuery"
+                        "$itemsBase/show?extended=full,images&page=$page&limit=$TRAKT_PAGE_LIMIT$sortQuery"
                     },
                 )
             }
@@ -587,9 +573,6 @@ object TraktLibraryRepository {
             decodeItems = { body -> json.decodeFromString<List<TraktListItemDto>>(body) },
         )
     }
-
-    private suspend fun getJson(headers: Map<String, String>, url: String): String =
-        getJsonResponse(headers, url).body
 
     private suspend fun getJsonResponse(
         headers: Map<String, String>,
@@ -766,6 +749,7 @@ object TraktLibraryRepository {
             description = media.overview,
             releaseInfo = media.year?.toString(),
             imdbRating = media.rating?.toString(),
+            traktVotes = media.votes,
             genres = media.genres.orEmpty(),
             traktRank = item.rank,
             imdbId = ids?.imdb?.takeIf { it.isNotBlank() },
@@ -847,23 +831,6 @@ private data class StoredTraktLibraryPayload(
 )
 
 @Serializable
-private data class TraktListSummaryDto(
-    val name: String? = null,
-    val description: String? = null,
-    val privacy: String? = null,
-    val type: String? = null,
-    @SerialName("sort_by") val sortBy: String? = null,
-    @SerialName("sort_how") val sortHow: String? = null,
-    val ids: TraktListIdsDto? = null,
-)
-
-@Serializable
-private data class TraktListIdsDto(
-    val trakt: Long? = null,
-    val slug: String? = null,
-)
-
-@Serializable
 private data class TraktListItemDto(
     val rank: Int? = null,
     val id: Long? = null,
@@ -880,6 +847,7 @@ private data class TraktMediaDto(
     val ids: TraktIdsDto? = null,
     val overview: String? = null,
     val rating: Double? = null,
+    val votes: Int? = null,
     val genres: List<String>? = null,
     val images: TraktImagesDto? = null,
 )

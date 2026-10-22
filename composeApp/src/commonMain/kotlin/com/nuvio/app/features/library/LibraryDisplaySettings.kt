@@ -22,6 +22,8 @@ enum class LibrarySortOption {
     RELEASED_ASC,
     TITLE_ASC,
     TITLE_DESC,
+    RATING_DESC,
+    RATING_ASC,
 }
 
 data class LibraryDisplaySettingsUiState(
@@ -88,11 +90,16 @@ internal data class LibraryVerticalProjection(
 
 private val ReleaseSortOptions = setOf(LibrarySortOption.RELEASED_DESC, LibrarySortOption.RELEASED_ASC)
 
+private val RatingSortOptions = setOf(LibrarySortOption.RATING_DESC, LibrarySortOption.RATING_ASC)
+
 internal fun availableLibrarySortOptions(sourceMode: LibrarySourceMode): List<LibrarySortOption> =
-    when {
-        sourceMode == LibrarySourceMode.MDBLIST -> LibrarySortOption.entries
-        sourceMode.isRemoteTrackingSource -> LibrarySortOption.entries.filterNot { it in ReleaseSortOptions }
-        else -> LibrarySortOption.entries.filterNot { it == LibrarySortOption.DEFAULT || it in ReleaseSortOptions }
+    LibrarySortOption.entries.filter { option ->
+        when {
+            option in RatingSortOptions -> sourceMode == LibrarySourceMode.TRAKT
+            option in ReleaseSortOptions -> sourceMode == LibrarySourceMode.MDBLIST
+            option == LibrarySortOption.DEFAULT -> sourceMode.isRemoteTrackingSource
+            else -> true
+        }
     }
 
 // The sort option is shared by all sources, so one a source does not offer falls back to its default.
@@ -140,6 +147,18 @@ internal fun sortLibraryItems(
                 ?: compareBy<LibraryItem, Int?>(nullsLast()) { libraryReleaseYear(it) }
                     .thenBy { libraryTitleTieBreakKey(it) }
                     .thenBy { it.id },
+        )
+        LibrarySortOption.RATING_DESC -> items.sortedWith(
+            compareBy<LibraryItem> { libraryRatingConfidenceGroup(it) }
+                .thenBy(nullsLast(reverseOrder<Double>())) { libraryRating(it) }
+                .thenBy { libraryTitleTieBreakKey(it) }
+                .thenBy { it.id },
+        )
+        LibrarySortOption.RATING_ASC -> items.sortedWith(
+            compareBy<LibraryItem> { libraryRatingConfidenceGroup(it) }
+                .thenBy(nullsLast<Double>()) { libraryRating(it) }
+                .thenBy { libraryTitleTieBreakKey(it) }
+                .thenBy { it.id },
         )
         LibrarySortOption.TITLE_ASC -> items.sortedWith(
             compareBy<LibraryItem> { libraryTitleSortKey(it) }
@@ -282,3 +301,14 @@ private data class StoredLibraryDisplaySettings(
 
 private fun libraryProviderOrderComparator(ranks: Map<String, Int>): Comparator<LibraryItem> =
     compareBy<LibraryItem> { ranks[libraryDisplayItemKey(it)] ?: Int.MAX_VALUE }.thenBy { it.id }
+
+// Trakt's community rating is already stored in this shared display field.
+private fun libraryRating(item: LibraryItem): Double? =
+    item.imdbRating?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 && it <= 10.0 }
+
+// Keep small samples visible, but below ratings backed by at least 100 Trakt votes.
+private fun libraryRatingConfidenceGroup(item: LibraryItem): Int = when {
+    libraryRating(item) == null -> 2
+    (item.traktVotes ?: 0) >= 100 -> 0
+    else -> 1
+}
