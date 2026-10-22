@@ -6,6 +6,51 @@ import kotlin.test.assertEquals
 class LibraryDisplaySettingsTest {
 
     @Test
+    fun `tiny vote samples cannot outrank established Trakt ratings`() {
+        val input = listOf(
+            item("single-perfect").copy(imdbRating = "10", traktVotes = 1),
+            item("single-nine").copy(imdbRating = "9", traktVotes = 1),
+            item("established-high").copy(imdbRating = "8.6", traktVotes = 50000),
+            item("established-low").copy(imdbRating = "6", traktVotes = 100),
+            item("below-threshold").copy(imdbRating = "9.5", traktVotes = 99),
+            item("unknown-votes").copy(imdbRating = "8"),
+            item("unrated").copy(traktVotes = 1000),
+        )
+        assertEquals(
+            listOf("established-high", "established-low", "single-perfect", "below-threshold", "single-nine", "unknown-votes", "unrated"),
+            sortLibraryItems(input, LibrarySortOption.RATING_DESC, LibrarySourceMode.TRAKT).map { it.id },
+        )
+        assertEquals(
+            listOf("established-low", "established-high", "unknown-votes", "single-nine", "below-threshold", "single-perfect", "unrated"),
+            sortLibraryItems(input, LibrarySortOption.RATING_ASC, LibrarySourceMode.TRAKT).map { it.id },
+        )
+    }
+
+    @Test
+    fun `Trakt rating sorts cover every list and keep unrated titles last`() {
+        val input = listOf(
+            item("unknown"),
+            item("low").copy(imdbRating = "7.2"),
+            item("high").copy(imdbRating = "9.1"),
+            item("zero").copy(imdbRating = "0"),
+            item("invalid").copy(imdbRating = "NaN"),
+        )
+        for (key in listOf("trakt:watchlist", "trakt:list:1", "trakt:smart:2", "trakt:liked:3")) {
+            assertEquals(listOf("high", "low", "invalid", "unknown", "zero"),
+                sortLibraryItems(input, LibrarySortOption.RATING_DESC, LibrarySourceMode.TRAKT, key).map { it.id })
+            assertEquals(listOf("low", "high", "invalid", "unknown", "zero"),
+                sortLibraryItems(input, LibrarySortOption.RATING_ASC, LibrarySourceMode.TRAKT, key).map { it.id })
+        }
+        val sorts = setOf(LibrarySortOption.RATING_DESC, LibrarySortOption.RATING_ASC)
+        assertEquals(sorts, availableLibrarySortOptions(LibrarySourceMode.TRAKT).toSet() intersect sorts)
+        for (source in LibrarySourceMode.entries.filter { it != LibrarySourceMode.TRAKT }) {
+            assertEquals(emptySet(), availableLibrarySortOptions(source).toSet() intersect sorts)
+        }
+        val settings = LibraryDisplaySettingsUiState(sortOption = LibrarySortOption.RATING_DESC)
+        assertEquals(settings, decodeLibraryDisplaySettings(encodeLibraryDisplaySettings(settings)))
+    }
+
+    @Test
     fun `local default resolves to recently added while remote trackers preserve provider order`() {
         assertEquals(
             LibrarySortOption.ADDED_DESC,
@@ -57,7 +102,7 @@ class LibraryDisplaySettingsTest {
             LibrarySortOption.TITLE_ASC to listOf("alpha", "bravo", "zulu"),
             LibrarySortOption.TITLE_DESC to listOf("zulu", "bravo", "alpha"),
         )
-        assertEquals(LibrarySortOption.entries.toSet(), expected.keys)
+        assertEquals(availableLibrarySortOptions(LibrarySourceMode.MDBLIST).toSet(), expected.keys)
         for ((option, ids) in expected) {
             assertEquals(ids, sortLibraryItems(items, option, LibrarySourceMode.MDBLIST, listKey).map { it.id }, option.name)
         }

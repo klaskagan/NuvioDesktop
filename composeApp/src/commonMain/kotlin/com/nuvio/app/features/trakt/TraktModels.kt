@@ -58,6 +58,8 @@ enum class TraktBrandAsset {
 enum class TraktListType {
     WATCHLIST,
     PERSONAL,
+    SMART,
+    LIKED,
 }
 
 @Serializable
@@ -85,6 +87,9 @@ data class TraktListTab(
     val sortBy: String? = null,
     val sortHow: String? = null,
 )
+
+internal val TraktListTab.isWritable: Boolean
+    get() = type == TraktListType.WATCHLIST || type == TraktListType.PERSONAL
 
 data class TraktMembershipSnapshot(
     val listMembership: Map<String, Boolean> = emptyMap(),

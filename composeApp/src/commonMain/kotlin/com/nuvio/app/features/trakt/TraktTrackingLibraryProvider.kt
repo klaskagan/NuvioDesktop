@@ -36,17 +36,12 @@ object TraktTrackingLibraryProvider : TrackingLibraryProvider {
         val state = TraktLibraryRepository.uiState.value
         return TrackingLibrarySnapshot(
             items = state.allItems,
-            sections = state.listTabs.mapNotNull { tab ->
-                state.entriesByList[tab.key]
-                    .orEmpty()
-                    .takeIf(List<LibraryItem>::isNotEmpty)
-                    ?.let { items ->
-                        LibrarySection(
-                            type = tab.key,
-                            displayTitle = tab.title,
-                            items = items,
-                        )
-                    }
+            sections = state.listTabs.map { tab ->
+                LibrarySection(
+                    type = tab.key,
+                    displayTitle = tab.title,
+                    items = state.entriesByList[tab.key].orEmpty(),
+                )
             },
             tabs = state.listTabs.map(TraktListTab::toTrackingLibraryTab),
             hasLoaded = state.hasLoaded,
@@ -98,13 +93,15 @@ internal fun toggledTraktWatchlistMembership(
     this[watchlistKey] = currentMembership[watchlistKey] != true
 }
 
-private fun TraktListTab.toTrackingLibraryTab(): TrackingLibraryTab =
+internal fun TraktListTab.toTrackingLibraryTab(): TrackingLibraryTab =
     TrackingLibraryTab(
         key = key,
         title = title,
         providerId = TrackingProviderId.TRAKT,
+        isMembershipDestination = isWritable,
         kind = when (type) {
             TraktListType.WATCHLIST -> TrackingLibraryTabKind.WATCHLIST
             TraktListType.PERSONAL -> TrackingLibraryTabKind.PERSONAL
+            TraktListType.SMART, TraktListType.LIKED -> TrackingLibraryTabKind.EXTERNAL
         },
     )
