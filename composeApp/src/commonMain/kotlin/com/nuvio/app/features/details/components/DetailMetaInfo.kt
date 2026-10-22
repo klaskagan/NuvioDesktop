@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
@@ -41,6 +42,7 @@ import com.nuvio.app.core.ui.nuvioHorizontalScrollBleed
 import com.nuvio.app.isDesktop
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.MetaExternalRating
+import com.nuvio.app.features.details.formatRatingVotes
 import com.nuvio.app.features.details.formatRuntimeForDisplay
 import com.nuvio.app.features.details.formatMetaReleaseLineForDetails
 import com.nuvio.app.features.mdblist.MdbListMetadataService.PROVIDER_AUDIENCE
@@ -190,6 +192,10 @@ internal fun DetailRatingsRow(
 
     if (orderedRatings.isEmpty()) return
     val scrollState = rememberScrollState()
+    val scoreRowMinHeight = if (orderedRatings.any { (_, rating) ->
+        rating.rottenTomatoesStatus == RottenTomatoesStatus.CERTIFIED_FRESH ||
+            rating.rottenTomatoesStatus == RottenTomatoesStatus.VERIFIED_HOT
+    }) 24.dp else 20.dp
 
     Row(
         modifier = modifier
@@ -198,7 +204,7 @@ internal fun DetailRatingsRow(
             .nuvioDesktopDragScroll(scrollState)
             .horizontalScroll(scrollState)
             .padding(horizontal = horizontalScrollPadding),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         orderedRatings.forEach { (visuals, rating) ->
@@ -206,31 +212,50 @@ internal fun DetailRatingsRow(
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.sp,
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                if (visuals.source == PROVIDER_IMDB && !AppFeaturePolicy.imdbRatingLogoEnabled) {
-                    ImdbRatingSourceLabel(
-                        storeTextStyle = ratingTextStyle,
-                        storeTextColor = visuals.valueColor,
-                    )
-                } else {
-                    val logoHeight = when (rating.rottenTomatoesStatus) {
-                        RottenTomatoesStatus.CERTIFIED_FRESH, RottenTomatoesStatus.VERIFIED_HOT -> 24.dp
-                        else -> 16.dp
+                Row(
+                    modifier = Modifier.heightIn(min = scoreRowMinHeight),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (visuals.source == PROVIDER_IMDB && !AppFeaturePolicy.imdbRatingLogoEnabled) {
+                        ImdbRatingSourceLabel(
+                            storeTextStyle = ratingTextStyle,
+                            storeTextColor = visuals.valueColor,
+                        )
+                    } else {
+                        val logoHeight = when (rating.rottenTomatoesStatus) {
+                            RottenTomatoesStatus.CERTIFIED_FRESH, RottenTomatoesStatus.VERIFIED_HOT -> 24.dp
+                            else -> 16.dp
+                        }
+                        Image(
+                            painter = painterResource(visuals.logoFor(rating)),
+                            contentDescription = visuals.displayName,
+                            modifier = Modifier.size(width = maxOf(visuals.logoWidth, logoHeight), height = logoHeight),
+                        )
                     }
-                    Image(
-                        painter = painterResource(visuals.logoFor(rating)),
-                        contentDescription = visuals.displayName,
-                        modifier = Modifier.size(width = maxOf(visuals.logoWidth, logoHeight), height = logoHeight),
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = visuals.format(rating.value),
+                        style = ratingTextStyle,
+                        color = visuals.valueColor,
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = visuals.format(rating.value),
-                    style = ratingTextStyle,
-                    color = visuals.valueColor,
-                )
+                formatRatingVotes(rating.votes)?.let { votes ->
+                    Text(
+                        text = votes,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            lineHeight = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.sp,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }

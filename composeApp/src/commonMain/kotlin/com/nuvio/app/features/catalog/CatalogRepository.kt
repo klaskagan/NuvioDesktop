@@ -156,6 +156,11 @@ object CatalogRepository {
                         page = requestedSkip.takeIf { it > 0 } ?: 1,
                     )
 
+                    is CatalogTarget.Seasonal -> com.nuvio.app.features.home.SeasonalSpotlightRepository.page(
+                        themeId = target.themeId,
+                        page = requestedSkip.takeIf { it > 0 } ?: 1,
+                    )
+
                     is CatalogTarget.Server -> ServerCatalog.page(target, skip = requestedSkip)
 
                     is CatalogTarget.Library -> error(getString(Res.string.catalog_load_failed))

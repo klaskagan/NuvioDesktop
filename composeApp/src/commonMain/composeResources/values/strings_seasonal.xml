@@ -1,0 +1,25 @@
+<resources>
+    <string name="seasonal_spotlight_label">Seasonal Spotlight</string>
+    <string name="seasonal_spotlight_setting">Show seasonal collections</string>
+    <string name="seasonal_spotlight_setting_description">Automatically discover a new movie collection throughout the year.</string>
+    <string name="seasonal_explore">Explore collection</string>
+    <string name="seasonal_fresh_start">A Fresh Start</string>
+    <string name="seasonal_fresh_start_description">Uplifting stories, new beginnings, and a world of possibilities.</string>
+    <string name="seasonal_love">Love on Screen</string>
+    <string name="seasonal_love_description">Big feelings, unexpected connections, and unforgettable love stories.</string>
+    <string name="seasonal_worlds">Worlds Beyond</string>
+    <string name="seasonal_worlds_description">Other worlds, extraordinary lives, and journeys beyond imagination.</string>
+    <string name="seasonal_family">Family Movie Nights</string>
+    <string name="seasonal_family_description">Share a little wonder with animated favourites and family adventures.</string>
+    <string name="seasonal_adventure">Adventure Awaits</string>
+    <string name="seasonal_adventure_description">Epic quests, hidden treasures, and the thrill of discovery.</string>
+    <string name="seasonal_summer">Summer Escape</string>
+    <string name="seasonal_summer_description">Open roads, sunlit days, and adventures worth getting lost in.</string>
+    <string name="seasonal_school">Back to School</string>
+    <string name="seasonal_school_description">New friendships, first loves, and the stories that shape us.</string>
+    <string name="seasonal_halloween">Halloween Nights</string>
+    <string name="seasonal_halloween_description">Dark mysteries, haunted houses, and one more scare.</string>
+    <string name="seasonal_christmas">Christmas Together</string>
+    <string name="seasonal_christmas_description">Festive favourites for a little holiday magic.</string>
+    <string name="seasonal_next_movies">Next movies</string>
+</resources>

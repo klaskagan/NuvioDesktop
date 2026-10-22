@@ -146,7 +146,16 @@ object TraktLibraryRepository {
 
             val headers = TraktAuthRepository.authorizedHeaders()
             if (headers == null) {
-                _uiState.value = TraktLibraryUiState()
+                _uiState.value = TraktLibraryUiState(
+                    hasLoaded = true,
+                    errorMessage = localizedString(
+                        if (!TraktAuthRepository.hasRequiredCredentials()) {
+                            Res.string.trakt_missing_credentials
+                        } else {
+                            Res.string.trakt_authorization_expired_reconnect
+                        },
+                    ),
+                )
                 lastRefreshAtMs = 0L
                 lastListTabsRefreshAtMs = 0L
                 return
@@ -573,20 +582,10 @@ object TraktLibraryRepository {
         headers: Map<String, String>,
         urlForPage: (Int) -> String,
     ): List<TraktListItemDto> {
-        val items = mutableListOf<TraktListItemDto>()
-        var page = 1
-
-        while (true) {
-            val response = getJsonResponse(headers = headers, url = urlForPage(page))
-            val pageItems = json.decodeFromString<List<TraktListItemDto>>(response.body)
-            items.addAll(pageItems)
-
-            val pageCount = response.headerInt("x-pagination-page-count") ?: page
-            if (page >= pageCount || pageItems.size < TRAKT_PAGE_LIMIT) break
-            page += 1
-        }
-
-        return items
+        return fetchTraktLibraryPages(
+            fetchPage = { page -> getJsonResponse(headers = headers, url = urlForPage(page)) },
+            decodeItems = { body -> json.decodeFromString<List<TraktListItemDto>>(body) },
+        )
     }
 
     private suspend fun getJson(headers: Map<String, String>, url: String): String =
@@ -632,13 +631,6 @@ object TraktLibraryRepository {
         }
         return response
     }
-
-    private fun RawHttpResponse.headerInt(name: String): Int? =
-        headers.entries.firstOrNull { (key, _) -> key.equals(name, ignoreCase = true) }
-            ?.value
-            ?.substringBefore(',')
-            ?.trim()
-            ?.toIntOrNull()
 
     private fun buildSortQuery(sortBy: String?, sortHow: String?): String = buildString {
         sortBy?.takeIf { it.isNotBlank() }?.let { append("&sort_by=").append(it) }
