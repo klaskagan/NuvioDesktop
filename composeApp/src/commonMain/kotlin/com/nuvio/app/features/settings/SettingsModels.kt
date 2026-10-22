@@ -35,6 +35,7 @@ import nuvio.composeapp.generated.resources.compose_settings_page_supporters_con
 import nuvio.composeapp.generated.resources.compose_settings_page_tmdb_enrichment
 import nuvio.composeapp.generated.resources.compose_settings_page_trakt
 import nuvio.composeapp.generated.resources.compose_settings_page_tracking
+import nuvio.composeapp.generated.resources.settings_detail_navigation
 import nuvio.composeapp.generated.resources.settings_account
 import org.jetbrains.compose.resources.StringResource
 
@@ -82,6 +83,11 @@ internal enum class SettingsPage(
         titleRes = Res.string.compose_settings_page_appearance,
         category = SettingsCategory.General,
         parentPage = Root,
+    ),
+    DetailNavigation(
+        titleRes = Res.string.settings_detail_navigation,
+        category = SettingsCategory.General,
+        parentPage = Appearance,
     ),
     HoverPreview(
         titleRes = Res.string.compose_settings_page_hover_preview,

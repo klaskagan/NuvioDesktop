@@ -40,6 +40,17 @@ class DesktopNavigationBarTest {
         assertEquals(1f, labels(style = NavBarStyle.EXPANDED, hero = true, scrolled = true))
     }
 
+    @Test
+    fun adaptiveDetailsCollapseRegardlessOfTheUnderlyingTab() {
+        for (home in listOf(true, false)) {
+            assertEquals(0f, labels(home = home, detail = true))
+            assertEquals(1f, labels(home = home, detail = true, hovered = true))
+            assertEquals(1f, labels(home = home, detail = true, popup = true))
+        }
+        assertEquals(1f, labels(style = NavBarStyle.EXPANDED, detail = true))
+        assertEquals(0f, labels(style = NavBarStyle.COMPACT, detail = true, hovered = true))
+    }
+
     private fun labels(
         style: NavBarStyle = NavBarStyle.ADAPTIVE,
         home: Boolean = true,
@@ -47,5 +58,6 @@ class DesktopNavigationBarTest {
         hovered: Boolean = false,
         popup: Boolean = false,
         scrolled: Boolean = false,
-    ): Float = desktopNavigationLabelFraction(style, home, hero, hovered, popup, scrolled)
+        detail: Boolean = false,
+    ): Float = desktopNavigationLabelFraction(style, home, hero, hovered, popup, scrolled, detail)
 }

@@ -40,6 +40,7 @@ import com.nuvio.app.core.ui.LocalNuvioBottomNavigationOverlayPadding
 import com.nuvio.app.core.ui.LocalNuvioNavBarScrollState
 import com.nuvio.app.core.ui.NuvioNavBarScrollState
 import com.nuvio.app.core.ui.NuvioClassicNavigationBar
+import com.nuvio.app.core.ui.desktopNavigationContentPadding
 import com.nuvio.app.core.ui.DesktopNavigationBar
 import com.nuvio.app.core.ui.FloatingNavigationBar
 import com.nuvio.app.core.ui.FloatingNavigationItem
@@ -304,10 +305,7 @@ internal fun MainTabsDestination(
                     DesktopNavigationBar(
                         items = floatingNavigationItems,
                         modifier = Modifier.align(Alignment.TopCenter),
-                        contentPadding = PaddingValues(
-                            top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 10.dp,
-                            bottom = 8.dp,
-                        ),
+                        contentPadding = desktopNavigationContentPadding(),
                         scrollState = navBarScrollState,
                         hazeState = navBarHazeState,
                         navBarStyle = navBarStyleSetting,

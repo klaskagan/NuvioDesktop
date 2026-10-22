@@ -1,5 +1,6 @@
 package com.nuvio.app.navigation
 
+import androidx.compose.runtime.mutableStateListOf
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import kotlin.reflect.KClass
@@ -12,6 +13,19 @@ internal class NuvioNavigator(
     private val onLocalNavigate: ((AppRoute?, AppRoute) -> Unit)? = null,
     private val onLocalPop: (() -> Unit)? = null,
 ) {
+    private val forwardHistory = mutableStateListOf<AppRoute>()
+    val canGoForward: Boolean get() = onExternalNavigate == null && forwardHistory.isNotEmpty()
+
+    fun clearForwardHistory() = forwardHistory.clear()
+
+    fun goForward(): Boolean {
+        if (onExternalNavigate != null || forwardHistory.isEmpty()) return false
+        val route = forwardHistory.removeAt(forwardHistory.lastIndex)
+        onLocalNavigate?.invoke(currentRoute, route)
+        backStack.add(route)
+        return true
+    }
+
     val currentRoute: AppRoute?
         get() = backStack.lastOrNull() as? AppRoute
 
@@ -22,6 +36,7 @@ internal class NuvioNavigator(
         val resolvedOptions = NuvioNavigateOptions().apply(options)
 
         if (resolvedOptions.launchSingleTop && currentRoute == route) return
+        clearForwardHistory()
 
         val popUpToRoute = resolvedOptions.popUpToRoute
         if (popUpToRoute != null) {
@@ -61,6 +76,10 @@ internal class NuvioNavigator(
         if (expectedRoute != null && currentRoute != expectedRoute) return false
         if (backStack.size > 1) {
             onLocalPop?.invoke()
+            val popped = currentRoute
+            // Never restart playback through browser-style forward navigation.
+            if (popped is PlayerRoute) clearForwardHistory()
+            else if (popped != null) forwardHistory.add(popped)
             backStack.removeAt(backStack.lastIndex)
             return true
         }

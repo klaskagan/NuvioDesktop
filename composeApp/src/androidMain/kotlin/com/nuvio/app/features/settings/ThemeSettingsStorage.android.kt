@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import com.nuvio.app.core.sync.decodeSyncInt
+import com.nuvio.app.core.sync.encodeSyncInt
 import com.nuvio.app.core.sync.decodeSyncBoolean
 import com.nuvio.app.core.sync.decodeSyncString
 import com.nuvio.app.core.sync.encodeSyncBoolean
@@ -23,11 +25,17 @@ actual object ThemeSettingsStorage {
     private const val selectedAppLanguageKey = "selected_app_language"
     private const val NAV_BAR_STYLE_KEY = "nav_bar_style"
     private const val navBarGlowEnabledKey = "nav_bar_glow_enabled"
+    private const val detailNavigationEnabledKey = "detail_navigation_enabled"
+    private const val detailNavigationHideDelayKey = "detail_navigation_hide_delay_seconds"
+    private const val detailNavigationAutoHideKey = "detail_navigation_auto_hide"
     private val profileScopedSyncKeys = listOf(
         selectedThemeKey,
         customThemeColorsKey,
         amoledEnabledKey,
         navBarGlowEnabledKey,
+        detailNavigationEnabledKey,
+        detailNavigationAutoHideKey,
+        detailNavigationHideDelayKey,
         liquidGlassNativeTabBarEnabledKey,
         desktopNavigationLayoutKey,
         NAV_BAR_STYLE_KEY,
@@ -79,10 +87,36 @@ actual object ThemeSettingsStorage {
             if (prefs.contains(key)) prefs.getBoolean(key, false) else null
         }
 
+    actual fun loadDetailNavigationEnabled(): Boolean? =
+        preferences?.let { prefs ->
+            val key = ProfileScopedKey.of(detailNavigationEnabledKey)
+            if (prefs.contains(key)) prefs.getBoolean(key, false) else null
+        }
+
+    actual fun loadDetailNavigationAutoHide(): Boolean? =
+        preferences?.let { prefs ->
+            val key = ProfileScopedKey.of(detailNavigationAutoHideKey)
+            if (prefs.contains(key)) prefs.getBoolean(key, false) else null
+        }
+
     actual fun saveNavBarGlowEnabled(enabled: Boolean) {
         preferences
             ?.edit()
             ?.putBoolean(ProfileScopedKey.of(navBarGlowEnabledKey), enabled)
+            ?.apply()
+    }
+
+    actual fun saveDetailNavigationEnabled(enabled: Boolean) {
+        preferences
+            ?.edit()
+            ?.putBoolean(ProfileScopedKey.of(detailNavigationEnabledKey), enabled)
+            ?.apply()
+    }
+
+    actual fun saveDetailNavigationAutoHide(enabled: Boolean) {
+        preferences
+            ?.edit()
+            ?.putBoolean(ProfileScopedKey.of(detailNavigationAutoHideKey), enabled)
             ?.apply()
     }
 
@@ -144,10 +178,22 @@ actual object ThemeSettingsStorage {
             ?.apply()
     }
 
+    actual fun loadDetailNavigationHideDelaySeconds(): Int? = preferences?.let { prefs ->
+        val key = ProfileScopedKey.of(detailNavigationHideDelayKey)
+        if (prefs.contains(key)) prefs.getInt(key, 3) else null
+    }
+
+    actual fun saveDetailNavigationHideDelaySeconds(seconds: Int) {
+        preferences?.edit()?.putInt(ProfileScopedKey.of(detailNavigationHideDelayKey), seconds)?.apply()
+    }
+
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
         loadSelectedTheme()?.let { put(selectedThemeKey, encodeSyncString(it)) }
         loadCustomThemeColors()?.let { put(customThemeColorsKey, encodeSyncString(it)) }
         loadNavBarGlowEnabled()?.let { put(navBarGlowEnabledKey, encodeSyncBoolean(it)) }
+        loadDetailNavigationEnabled()?.let { put(detailNavigationEnabledKey, encodeSyncBoolean(it)) }
+        loadDetailNavigationAutoHide()?.let { put(detailNavigationAutoHideKey, encodeSyncBoolean(it)) }
+        loadDetailNavigationHideDelaySeconds()?.let { put(detailNavigationHideDelayKey, encodeSyncInt(it)) }
         loadAmoledEnabled()?.let { put(amoledEnabledKey, encodeSyncBoolean(it)) }
         loadLiquidGlassNativeTabBarEnabled()?.let { put(liquidGlassNativeTabBarEnabledKey, encodeSyncBoolean(it)) }
         loadDesktopNavigationLayout()?.let { put(desktopNavigationLayoutKey, encodeSyncString(it)) }
@@ -162,6 +208,9 @@ actual object ThemeSettingsStorage {
         payload.decodeSyncString(selectedThemeKey)?.let(::saveSelectedTheme)
         payload.decodeSyncString(customThemeColorsKey)?.let(::saveCustomThemeColors)
         payload.decodeSyncBoolean(navBarGlowEnabledKey)?.let(::saveNavBarGlowEnabled)
+        payload.decodeSyncBoolean(detailNavigationEnabledKey)?.let(::saveDetailNavigationEnabled)
+        payload.decodeSyncBoolean(detailNavigationAutoHideKey)?.let(::saveDetailNavigationAutoHide)
+        payload.decodeSyncInt(detailNavigationHideDelayKey)?.let(::saveDetailNavigationHideDelaySeconds)
         payload.decodeSyncBoolean(amoledEnabledKey)?.let(::saveAmoledEnabled)
         payload.decodeSyncBoolean(liquidGlassNativeTabBarEnabledKey)?.let(::saveLiquidGlassNativeTabBarEnabled)
         payload.decodeSyncString(desktopNavigationLayoutKey)?.let(::saveDesktopNavigationLayout)

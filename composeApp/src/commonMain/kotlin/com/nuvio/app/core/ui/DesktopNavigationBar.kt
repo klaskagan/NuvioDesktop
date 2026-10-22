@@ -10,6 +10,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,6 +35,12 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 
 @Composable
+internal fun desktopNavigationContentPadding(): PaddingValues = PaddingValues(
+    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 10.dp,
+    bottom = 8.dp,
+)
+
+@Composable
 internal fun DesktopNavigationBar(
     items: List<FloatingNavigationItem>,
     modifier: Modifier = Modifier,
@@ -43,6 +52,7 @@ internal fun DesktopNavigationBar(
     profileSwitcherOpen: Boolean = false,
     windowWidth: Dp? = null,
     glowEnabled: Boolean = true,
+    isDetailScreen: Boolean = false,
 ) {
     if (items.isEmpty()) return
     val interactionSource = remember { MutableInteractionSource() }
@@ -54,7 +64,7 @@ internal fun DesktopNavigationBar(
     val isFrosted = isHovered || profileSwitcherOpen ||
         ((isHomeSelected || isSettingsSelected) && isScrolledAwayFromTop)
     val labelFraction by animateFloatAsState(
-        targetValue = desktopNavigationLabelFraction(navBarStyle, isHomeSelected, isHeroEnabled, isHovered, profileSwitcherOpen, isScrolledAwayFromTop),
+        targetValue = desktopNavigationLabelFraction(navBarStyle, isHomeSelected, isHeroEnabled, isHovered, profileSwitcherOpen, isScrolledAwayFromTop, isDetailScreen),
         animationSpec = tween(320, easing = FastOutSlowInEasing),
         label = "desktop_nav_labels",
     )
@@ -124,11 +134,13 @@ internal fun desktopNavigationLabelFraction(
     isHovered: Boolean,
     profileSwitcherOpen: Boolean,
     isScrolledAwayFromTop: Boolean,
+    isDetailScreen: Boolean = false,
 ): Float = when (style) {
     NavBarStyle.EXPANDED -> 1f
     NavBarStyle.COMPACT -> 0f
     else -> when {
         isHovered || profileSwitcherOpen -> 1f
+        isDetailScreen -> 0f
         isHomeSelected && isHeroEnabled -> 0f
         isHomeSelected && isScrolledAwayFromTop -> 0f
         else -> 1f

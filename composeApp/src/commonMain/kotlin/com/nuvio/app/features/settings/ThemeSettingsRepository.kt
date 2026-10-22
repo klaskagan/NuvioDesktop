@@ -46,6 +46,37 @@ object ThemeSettingsRepository {
     private val _navBarGlowEnabled = MutableStateFlow(true)
     val navBarGlowEnabled: StateFlow<Boolean> = _navBarGlowEnabled.asStateFlow()
 
+    private val _detailNavigationEnabled = MutableStateFlow(true)
+    val detailNavigationEnabled: StateFlow<Boolean> = _detailNavigationEnabled.asStateFlow()
+
+    fun setDetailNavigationEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (_detailNavigationEnabled.value == enabled) return
+        _detailNavigationEnabled.value = enabled
+        ThemeSettingsStorage.saveDetailNavigationEnabled(enabled)
+    }
+
+    private val _detailNavigationAutoHide = MutableStateFlow(true)
+    val detailNavigationAutoHide: StateFlow<Boolean> = _detailNavigationAutoHide.asStateFlow()
+
+    fun setDetailNavigationAutoHide(enabled: Boolean) {
+        ensureLoaded()
+        if (_detailNavigationAutoHide.value == enabled) return
+        _detailNavigationAutoHide.value = enabled
+        ThemeSettingsStorage.saveDetailNavigationAutoHide(enabled)
+    }
+
+    private val _detailNavigationHideDelaySeconds = MutableStateFlow(DefaultDetailNavigationHideDelaySeconds)
+    val detailNavigationHideDelaySeconds: StateFlow<Int> = _detailNavigationHideDelaySeconds.asStateFlow()
+
+    fun setDetailNavigationHideDelaySeconds(seconds: Int) {
+        ensureLoaded()
+        val normalized = seconds.coerceIn(MinDetailNavigationHideDelaySeconds, MaxDetailNavigationHideDelaySeconds)
+        if (_detailNavigationHideDelaySeconds.value == normalized) return
+        _detailNavigationHideDelaySeconds.value = normalized
+        ThemeSettingsStorage.saveDetailNavigationHideDelaySeconds(normalized)
+    }
+
     private var hasLoaded = false
     private var observesMembership = false
 
@@ -71,6 +102,9 @@ object ThemeSettingsRepository {
         NativeTabBridge.publishAccentColor(ThemeColors.White.nativeAccentHex)
         NativeTabBridge.publishLiquidGlassEnabled(false)
         _selectedAppLanguage.value = AppLanguage.DEVICE
+        _detailNavigationHideDelaySeconds.value = DefaultDetailNavigationHideDelaySeconds
+        _detailNavigationAutoHide.value = true
+        _detailNavigationEnabled.value = true
         _navBarGlowEnabled.value = true
         _navBarStyle.value = NavBarStyle.ADAPTIVE
     }
@@ -101,6 +135,10 @@ object ThemeSettingsRepository {
         ThemeSettingsStorage.applySelectedAppLanguage(appLanguage.code)
         _selectedAppLanguage.value = appLanguage
         _navBarGlowEnabled.value = ThemeSettingsStorage.loadNavBarGlowEnabled() ?: true
+        _detailNavigationHideDelaySeconds.value = (ThemeSettingsStorage.loadDetailNavigationHideDelaySeconds()
+            ?: DefaultDetailNavigationHideDelaySeconds).coerceIn(MinDetailNavigationHideDelaySeconds, MaxDetailNavigationHideDelaySeconds)
+        _detailNavigationAutoHide.value = ThemeSettingsStorage.loadDetailNavigationAutoHide() ?: true
+        _detailNavigationEnabled.value = ThemeSettingsStorage.loadDetailNavigationEnabled() ?: true
         _navBarStyle.value = NavBarStyle.fromKey(ThemeSettingsStorage.loadNavBarStyle())
     }
 

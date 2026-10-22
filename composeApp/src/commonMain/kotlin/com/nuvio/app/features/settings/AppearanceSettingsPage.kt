@@ -36,6 +36,8 @@ import com.nuvio.app.core.ui.NuvioStatusModal
 import com.nuvio.app.core.ui.dismissNuvioBottomSheet
 import com.nuvio.app.core.ui.labelRes
 import kotlinx.coroutines.launch
+import nuvio.composeapp.generated.resources.settings_detail_navigation
+import nuvio.composeapp.generated.resources.settings_detail_navigation_description
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.cd_selected
 import nuvio.composeapp.generated.resources.collections_header
@@ -106,6 +108,7 @@ internal fun LazyListScope.appearanceSettingsContent(
     onContinueWatchingClick: () -> Unit,
     onPosterCustomizationClick: () -> Unit,
     onHoverPreviewClick: () -> Unit,
+    onDetailNavigationClick: () -> Unit,
 ) {
     item {
         SettingsSection(
@@ -173,6 +176,15 @@ internal fun LazyListScope.appearanceSettingsContent(
                                 showDesktopNavigationSheet = true
                             }
                         },
+                    )
+                }
+                if (isDesktop) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_detail_navigation),
+                        description = stringResource(Res.string.settings_detail_navigation_description),
+                        isTablet = isTablet,
+                        onClick = onDetailNavigationClick,
                     )
                 }
                 if (!isIos) {

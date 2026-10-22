@@ -605,6 +605,28 @@ if (isMacHost && isMacosDmgBuildRequested && macosPlayerBridgeArch != macosHostJ
     )
 }
 val macosPlayerBridgeOutput = layout.buildDirectory.file("native/macos/$macosPlayerBridgeArch/libplayer_bridge.dylib")
+// Trackpad contact phases are kept separate from the media-player bridge.
+val historyGestureResourceRoot = layout.buildDirectory.dir("generated/history-gesture-resources")
+val historyGestureLibrary = historyGestureResourceRoot.map {
+    it.file("nuvio/native/macos/$macosPlayerBridgeArch/libhistory_gestures.dylib")
+}
+val buildMacosHistoryGestures = tasks.register<Exec>("buildMacosHistoryGestures") {
+    val runOnMac = isMacHost
+    val outputFile = historyGestureLibrary.get().asFile
+    onlyIf { runOnMac }
+    val source = layout.projectDirectory.file("src/desktopMain/native/macos/history_gestures.mm")
+    val javaHome = providers.systemProperty("java.home").get()
+    inputs.file(source)
+    inputs.property("arch", macosPlayerBridgeArch)
+    outputs.file(historyGestureLibrary)
+    doFirst { outputFile.parentFile.mkdirs() }
+    commandLine(
+        "xcrun", "clang++", "-std=c++17", "-dynamiclib", "-fobjc-arc",
+        "-arch", macosPlayerBridgeArch, "-mmacosx-version-min=11.0",
+        "-I$javaHome/include", "-I$javaHome/include/darwin", "-framework", "Cocoa",
+        source.asFile.absolutePath, "-o", historyGestureLibrary.get().asFile.absolutePath,
+    )
+}
 val macosPlayerRuntimeOutput = layout.buildDirectory.dir("native/macos-runtime/$macosPlayerBridgeArch")
 val macosPlayerAppResourcesRoot = layout.buildDirectory.dir("generated/macos-player-app-resources")
 val macosDmgArchName = macosPlayerBridgeArch
@@ -1173,6 +1195,7 @@ kotlin {
                 },
             )
             resources.srcDir(desktopSentryResourceDir)
+            resources.srcDir(historyGestureResourceRoot)
             dependencies {
                 implementation(compose.desktop.currentOs)
                 if (!isWindowsHost) {
@@ -1253,9 +1276,10 @@ kotlin {
 }
 
 tasks.matching {
-    it.name == "desktopProcessResources" || it.name == "processDesktopMainResources"
+    it.name == "desktopProcessResources" || it.name == "processDesktopMainResources" ||
+        it.name == "assembleDesktopMainResources"
 }.configureEach {
-    dependsOn(":desktopSentry:generateSentryDebugMetaPropertiesjava")
+    dependsOn(":desktopSentry:generateSentryDebugMetaPropertiesjava", buildMacosHistoryGestures)
 }
 
 compose.desktop {
