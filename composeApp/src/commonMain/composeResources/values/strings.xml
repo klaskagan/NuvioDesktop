@@ -2538,4 +2538,12 @@
     <string name="stream_info_subtitle_source_embedded">Embedded</string>
     <string name="stream_info_player_engine">Player Engine</string>
     <string name="stream_info_server">Server</string>
+    <string name="settings_detail_navigation">Navigation on detail screens</string>
+    <string name="settings_detail_navigation_description">Keep navigation within reach on movie and actor screens. The sidebar always stays visible.</string>
+    <string name="settings_detail_navigation_auto_hide">Auto-hide detail top bar</string>
+    <string name="settings_detail_navigation_auto_hide_description">Hide the top bar after the selected delay without mouse movement. Turn off to keep it always visible.</string>
+    <string name="settings_detail_navigation_behavior">Behavior</string>
+    <string name="settings_detail_navigation_hide_delay">Hide Delay</string>
+    <string name="settings_detail_navigation_hide_delay_description">How long the top bar stays visible after the last mouse movement. Default: 3 seconds.</string>
+    <string name="settings_detail_navigation_hide_delay_value">%1$d s</string>
 </resources>

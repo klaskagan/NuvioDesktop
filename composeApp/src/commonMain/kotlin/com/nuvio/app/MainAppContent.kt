@@ -235,14 +235,23 @@ internal fun MainAppContent(
                 if (key is AppRoute) disposeRoute(key)
             }
         }
-        val navController = remember(navBackStack, onNavigate, onGoBack, onReplace, posterNavigationEnabled) {
+        // Keep route history stable even when callbacks or transition preferences change.
+        val externalNavigate = rememberUpdatedState(onNavigate)
+        val externalBack = rememberUpdatedState(onGoBack)
+        val externalReplace = rememberUpdatedState(onReplace)
+        val usePosterNavigation = rememberUpdatedState(posterNavigationEnabled)
+        val navController = remember(navBackStack, onNavigate != null, onGoBack != null, onReplace != null) {
             NuvioNavigator(
                 backStack = navBackStack,
-                onExternalNavigate = onNavigate,
-                onExternalBack = onGoBack,
-                onExternalReplace = onReplace,
-                onLocalNavigate = if (posterNavigationEnabled) posterNavigation::navigate else null,
-                onLocalPop = if (posterNavigationEnabled) posterNavigation::clear else null,
+                onExternalNavigate = if (onNavigate != null) { route, singleTop ->
+                    externalNavigate.value?.invoke(route, singleTop)
+                } else null,
+                onExternalBack = if (onGoBack != null) { { externalBack.value?.invoke(); Unit } } else null,
+                onExternalReplace = if (onReplace != null) { { route -> externalReplace.value?.invoke(route); Unit } } else null,
+                onLocalNavigate = { previous, next ->
+                    if (usePosterNavigation.value) posterNavigation.navigate(previous, next)
+                },
+                onLocalPop = { if (usePosterNavigation.value) posterNavigation.clear() },
             )
         }
         val appUpdaterController = rememberAppUpdaterController()
@@ -420,6 +429,7 @@ internal fun MainAppContent(
     }
 
     fun handleRootTabClick(tab: AppScreenTab) {
+        navController.clearForwardHistory()
         if (selectedTab != tab) {
             activateTab(tab)
             return
@@ -1298,6 +1308,37 @@ internal fun MainAppContent(
             selectedContinueWatchingForActions = item
         }
 
+        fun selectDetailNavigationTab(tab: AppScreenTab) {
+            navController.navigate(TabsRoute) {
+                popUpTo<TabsRoute>()
+                launchSingleTop = true
+            }
+            handleRootTabClick(tab)
+        }
+
+        val selectNavigationProfile: (com.nuvio.app.features.profiles.NuvioProfile) -> Unit = { profile ->
+            navController.clearForwardHistory()
+            profileSwitchLoading = true
+            NativeTabBridge.publishTabBarVisible(false)
+            if (isDesktop && currentRoute !is TabsRoute) {
+                selectDetailNavigationTab(AppScreenTab.Home)
+            } else {
+                activateTab(AppScreenTab.Home)
+            }
+            coroutineScope.launch {
+                try {
+                    ProfileRepository.switchToProfile(profile.profileIndex)
+                    warmProfileBoundRepositories()
+                    withContext(Dispatchers.Default) {
+                        SyncManager.pullAllForProfile(profile.profileIndex)
+                    }
+                    delay(300)
+                } finally {
+                    profileSwitchLoading = false
+                }
+            }
+        }
+
         // Desktop has no system back, so mouse Back joins Esc in Compose's window back
         // dispatcher; open dialogs then take it before screen-level handlers.
         val mouseBackInput = remember { DirectNavigationEventInput() }
@@ -1313,6 +1354,13 @@ internal fun MainAppContent(
             controller = appUpdaterController,
             modifier = Modifier.fillMaxSize(),
         ) {
+            DesktopHistoryNavigationHost(
+                enabled = currentRoute !is PlayerRoute && selectedPosterActionTarget == null,
+                canGoBack = navController.canPopBackStack(),
+                canGoForward = navController.canGoForward,
+                onBack = { navController.popBackStack() },
+                onForward = { navController.goForward() },
+            ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1535,46 +1583,54 @@ internal fun MainAppContent(
                             }
                         },
                         onTabSelected = ::handleRootTabClick,
-                        onProfileSelected = { profile ->
-                            profileSwitchLoading = true
-                            NativeTabBridge.publishTabBarVisible(false)
-                            activateTab(AppScreenTab.Home)
-                            coroutineScope.launch {
-                                try {
-                                    ProfileRepository.switchToProfile(profile.profileIndex)
-                                    warmProfileBoundRepositories()
-                                    withContext(Dispatchers.Default) {
-                                        SyncManager.pullAllForProfile(profile.profileIndex)
-                                    }
-                                    delay(300)
-                                } finally {
-                                    profileSwitchLoading = false
-                                }
-                            }
-                        },
+                        onProfileSelected = selectNavigationProfile,
                         onAddProfileRequested = onSwitchProfile,
                     )
                 }
                 entry<DetailRoute> { route ->
-                    DetailsDestination(
+                    DetailNavigationFrame(
                         route = route,
-                        navController = navController,
-                        onPlay = onPlay,
-                        onPlayManually = onPlayManually,
-                        sharedTransitionScope = this@SharedTransitionLayout,
-                        animatedVisibilityScope = LocalNavAnimatedContentScope.current,
-                    )
+                        selectedTab = selectedTab,
+                        onTabSelected = ::selectDetailNavigationTab,
+                        onProfileSelected = selectNavigationProfile,
+                        onAddProfileRequested = onSwitchProfile,
+                    ) {
+                        DetailsDestination(
+                            route = route,
+                            navController = navController,
+                            onPlay = onPlay,
+                            onPlayManually = onPlayManually,
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedVisibilityScope = LocalNavAnimatedContentScope.current,
+                        )
+                    }
                 }
                 entry<PersonDetailRoute> { route ->
-                    PersonDestination(
+                    DetailNavigationFrame(
                         route = route,
-                        navController = navController,
-                        sharedTransitionScope = this@SharedTransitionLayout,
-                        animatedVisibilityScope = LocalNavAnimatedContentScope.current,
-                    )
+                        selectedTab = selectedTab,
+                        onTabSelected = ::selectDetailNavigationTab,
+                        onProfileSelected = selectNavigationProfile,
+                        onAddProfileRequested = onSwitchProfile,
+                    ) {
+                        PersonDestination(
+                            route = route,
+                            navController = navController,
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedVisibilityScope = LocalNavAnimatedContentScope.current,
+                        )
+                    }
                 }
                 entry<EntityBrowseRoute> { route ->
-                    EntityDestination(route = route, navController = navController)
+                    DetailNavigationFrame(
+                        route = route,
+                        selectedTab = selectedTab,
+                        onTabSelected = ::selectDetailNavigationTab,
+                        onProfileSelected = selectNavigationProfile,
+                        onAddProfileRequested = onSwitchProfile,
+                    ) {
+                        EntityDestination(route = route, navController = navController)
+                    }
                 }
                 entry<StreamRoute>(
                     metadata = if (isDesktop) {
@@ -1589,16 +1645,24 @@ internal fun MainAppContent(
                         emptyMap()
                     },
                 ) { route ->
-                    StreamDestination(
+                    DetailNavigationFrame(
                         route = route,
-                        onLandscapeLoadingChanged = { visible ->
-                            if (currentRoute == route) streamLandscapeLoadingVisible = visible
-                        },
-                        navController = navController,
-                        p2pEnabled = p2pSettingsUiState.p2pEnabled,
-                        openExternalPlayback = ::openExternalPlayback,
-                        openExternalStreamUrl = ::openExternalStreamUrl,
-                    )
+                        selectedTab = selectedTab,
+                        onTabSelected = ::selectDetailNavigationTab,
+                        onProfileSelected = selectNavigationProfile,
+                        onAddProfileRequested = onSwitchProfile,
+                    ) {
+                        StreamDestination(
+                            route = route,
+                            onLandscapeLoadingChanged = { visible ->
+                                if (currentRoute == route) streamLandscapeLoadingVisible = visible
+                            },
+                            navController = navController,
+                            p2pEnabled = p2pSettingsUiState.p2pEnabled,
+                            openExternalPlayback = ::openExternalPlayback,
+                            openExternalStreamUrl = ::openExternalStreamUrl,
+                        )
+                    }
                 }
                 entry<PlayerRoute>(
                     metadata = if (isIos) {
@@ -2158,6 +2222,7 @@ internal fun MainAppContent(
                     .zIndex(20f),
             )
 
+            }
             }
         }
 }

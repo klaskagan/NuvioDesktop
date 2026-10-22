@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.nuvio.app.navigation.excludeFromHistoryGestures
 import com.nuvio.app.isDesktop
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.home_view_all
@@ -100,7 +101,7 @@ fun <T> NuvioShelfSection(
         if (!active) state.stopScroll()
     }
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().excludeFromHistoryGestures(),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap + NuvioTokens.Space.s2),
     ) {
         if (title.isNotBlank()) {
@@ -151,7 +152,7 @@ internal fun Modifier.nuvioDesktopDragScroll(
 ): Modifier {
     if (!isDesktop) return this
 
-    return pointerInput(state) {
+    return excludeFromHistoryGestures().pointerInput(state) {
         awaitEachGesture {
             val down = awaitFirstDown(pass = PointerEventPass.Initial)
             var totalDx = 0f
