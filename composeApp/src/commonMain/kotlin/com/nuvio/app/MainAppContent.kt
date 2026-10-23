@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -278,7 +279,11 @@ internal fun MainAppContent(
         val uriHandler = LocalUriHandler.current
         val coroutineScope = rememberCoroutineScope()
         var mobileSelectedTab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
-        val selectedTab = desktopHistory?.current?.tab ?: mobileSelectedTab
+        // Keep a State delegate: remembered callbacks and snapshotFlow must read the
+        // latest selection, rather than capture a composition-time enum value.
+        val selectedTab by remember(desktopHistory, initialTab) {
+            derivedStateOf { desktopHistory?.current?.tab ?: mobileSelectedTab }
+        }
         var searchFocusRequestCount by remember { mutableStateOf(0) }
         val homeScrollToTopRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
         val searchScrollToTopRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }

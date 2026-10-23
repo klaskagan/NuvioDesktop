@@ -1,5 +1,9 @@
 package com.nuvio.app.navigation
 
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -11,7 +15,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -29,23 +32,40 @@ internal enum class HistorySwipe { Back, Forward }
 internal data class HistorySwipePreview(val direction: HistorySwipe, val progress: Float)
 
 internal class HistoryGestureExclusions {
-    private val regions = mutableMapOf<Any, Rect>()
-    fun update(key: Any, bounds: Rect) { regions[key] = bounds }
+    private val regions = mutableMapOf<Any, (Offset) -> Boolean>()
+    fun update(key: Any, hitTest: (Offset) -> Boolean) { regions[key] = hitTest }
     fun remove(key: Any) { regions.remove(key) }
-    fun contains(position: Offset) = regions.values.any { it.contains(position) }
+    fun contains(position: Offset) = regions.values.any { it(position) }
 }
 
 internal val LocalHistoryGestureExclusions = staticCompositionLocalOf<HistoryGestureExclusions?> { null }
 
-/** Own the entire collection area, including its scroll boundaries and header. */
-internal fun Modifier.excludeFromHistoryGestures(): Modifier = if (!isDesktop) this else composed {
+/** Exclude occupied row content, including gaps between items, rather than its empty tail. */
+internal fun Modifier.excludeFromHistoryGestures(state: LazyListState? = null): Modifier = if (!isDesktop) this else composed {
     val exclusions = LocalHistoryGestureExclusions.current
     val active = LocalScreenActive.current
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val key = remember { Any() }
-    DisposableEffect(exclusions, key, active) {
-        if (!active) exclusions?.remove(key)
-        onDispose { exclusions?.remove(key) } }
-    this.onGloballyPositioned { if (active) exclusions?.update(key, it.boundsInRoot()) }
+    DisposableEffect(exclusions, key, active, state, rtl) {
+        onDispose { exclusions?.remove(key) }
+    }
+    this.onGloballyPositioned { coordinates ->
+        if (active) exclusions?.update(key) { position ->
+            if (!coordinates.isAttached || !coordinates.boundsInRoot().contains(position)) false
+            else if (state == null) true
+            else {
+                // Read live layout information: scrolling and changing entries can move the
+                // occupied area without changing the full-width row's measured bounds.
+                val info = state.layoutInfo
+                val items = info.visibleItemsInfo
+                val start = items.minOfOrNull { it.offset }?.minus(info.viewportStartOffset)
+                val end = items.maxOfOrNull { it.offset + it.size }?.minus(info.viewportStartOffset)
+                val local = coordinates.localPositionOf(coordinates.findRootCoordinates(), position)
+                val x = if (rtl) coordinates.size.width - local.x else local.x
+                start != null && end != null && x >= start && x < end
+            }
+        }
+    }
 }
 
 /** Wheel ticks are platform units, not pixels. Latch the whole burst, including inertia. */

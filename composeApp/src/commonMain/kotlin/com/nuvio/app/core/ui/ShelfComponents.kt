@@ -101,7 +101,7 @@ fun <T> NuvioShelfSection(
         if (!active) state.stopScroll()
     }
     Column(
-        modifier = modifier.fillMaxWidth().excludeFromHistoryGestures(),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap + NuvioTokens.Space.s2),
     ) {
         if (title.isNotBlank()) {
@@ -152,7 +152,7 @@ internal fun Modifier.nuvioDesktopDragScroll(
 ): Modifier {
     if (!isDesktop) return this
 
-    return excludeFromHistoryGestures().pointerInput(state) {
+    return excludeFromHistoryGestures(state).pointerInput(state) {
         awaitEachGesture {
             val down = awaitFirstDown(pass = PointerEventPass.Initial)
             var totalDx = 0f
