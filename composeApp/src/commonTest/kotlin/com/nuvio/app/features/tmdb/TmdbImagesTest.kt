@@ -63,4 +63,38 @@ class TmdbImagesTest {
         assertEquals("es,es-MX,en,null", tmdbImageLanguages("es-419"))
         assertEquals("en,null", tmdbImageLanguages("en"))
     }
+    @Test
+    fun landscapeWithLogoPrefersTextlessArtworkAndConfiguredLanguageLogo() {
+        val images = TmdbImagesResponse(
+            backdrops = listOf(TmdbImage("/english-branded.jpg", "en"), TmdbImage("/clean.jpg")),
+            logos = listOf(TmdbImage("/english.png", "en"), TmdbImage("/french.png", "fr")),
+        )
+        val artwork = images.selectLandscapeImagePaths("fr")
+        assertEquals("/clean.jpg", artwork.backdrop)
+        assertEquals("/french.png", artwork.logo)
+    }
+
+    @Test
+    fun missingLogoKeepsLocalizedLandscapeForTextTitleFallback() {
+        val artwork = TmdbImagesResponse(
+            backdrops = listOf(TmdbImage("/clean.jpg"), TmdbImage("/english.jpg", "en")),
+            logos = listOf(TmdbImage("/japanese.png", "ja")),
+        ).selectLandscapeImagePaths("en")
+        assertEquals("/english.jpg", artwork.backdrop)
+        assertNull(artwork.logo)
+    }
+
+    @Test
+    fun portraitImagesAreNeverSelectedAsLandscapeBackdrops() {
+        val artwork = TmdbImagesResponse(
+            backdrops = listOf(
+                TmdbImage("/portrait.jpg", "en", aspectRatio = 0.67),
+                TmdbImage("/wide.jpg", aspectRatio = 1.78),
+            ),
+        ).selectLandscapeImagePaths("en")
+        assertEquals("/wide.jpg", artwork.backdrop)
+        assertNull(artwork.logo)
+        assertNull(TmdbImagesResponse().selectLandscapeImagePaths("en").backdrop)
+    }
+
 }

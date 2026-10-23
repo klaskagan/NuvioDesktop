@@ -42,6 +42,7 @@ data class HomeCatalogSettingsItem(
 
 data class HomeCatalogSettingsUiState(
     val heroEnabled: Boolean = true,
+    val seasonalCollectionsEnabled: Boolean = true,
     val showCatalogType: Boolean = true,
     val hideUnreleasedContent: Boolean = false,
     val items: List<HomeCatalogSettingsItem> = emptyList(),
@@ -88,6 +89,7 @@ private data class StoredHomeCatalogPreference(
 @Serializable
 private data class StoredHomeCatalogSettingsPayload(
     val heroEnabled: Boolean = true,
+    val seasonalCollectionsEnabled: Boolean = true,
     val showCatalogType: Boolean = true,
     val hideUnreleasedContent: Boolean = false,
     val items: List<StoredHomeCatalogPreference> = emptyList(),
@@ -124,6 +126,7 @@ object HomeCatalogSettingsRepository {
         set(value) {
             preferencesRef.value = value
         }
+    private var seasonalCollectionsEnabled = true
     private var heroEnabled = true
     private var showCatalogType = true
     private var hideUnreleasedContent = false
@@ -131,6 +134,7 @@ object HomeCatalogSettingsRepository {
     fun onProfileChanged() {
         hasLoaded = false
         preferences = emptyMap()
+        seasonalCollectionsEnabled = true
         heroEnabled = true
         showCatalogType = true
         hideUnreleasedContent = false
@@ -150,6 +154,7 @@ object HomeCatalogSettingsRepository {
         lastCatalogSync = null
         lastCollectionSync = null
         preferences = emptyMap()
+        seasonalCollectionsEnabled = true
         heroEnabled = true
         showCatalogType = true
         hideUnreleasedContent = false
@@ -219,6 +224,14 @@ object HomeCatalogSettingsRepository {
         return snapshotRef.value
     }
 
+    fun setSeasonalCollectionsEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (seasonalCollectionsEnabled == enabled) return
+        seasonalCollectionsEnabled = enabled
+        publish()
+        persist()
+    }
+
     fun setHeroEnabled(enabled: Boolean) {
         ensureLoaded()
         if (heroEnabled == enabled) return
@@ -274,6 +287,7 @@ object HomeCatalogSettingsRepository {
 
     fun resetToDefaults() {
         ensureLoaded()
+        seasonalCollectionsEnabled = true
         heroEnabled = true
         showCatalogType = true
         hideUnreleasedContent = false
@@ -326,6 +340,7 @@ object HomeCatalogSettingsRepository {
 
         if (parsedPayload != null) {
             lastPersistedPayload = payload
+            seasonalCollectionsEnabled = parsedPayload.seasonalCollectionsEnabled
             heroEnabled = parsedPayload.heroEnabled
             showCatalogType = parsedPayload.showCatalogType
             hideUnreleasedContent = parsedPayload.hideUnreleasedContent
@@ -438,6 +453,7 @@ object HomeCatalogSettingsRepository {
             .sortedBy { it.order }
 
         val nextState = HomeCatalogSettingsUiState(
+            seasonalCollectionsEnabled = seasonalCollectionsEnabled,
             heroEnabled = heroEnabled,
             showCatalogType = showCatalogType,
             hideUnreleasedContent = hideUnreleasedContent,
@@ -449,6 +465,7 @@ object HomeCatalogSettingsRepository {
     private fun persist() {
         val payload = json.encodeToString(
             StoredHomeCatalogSettingsPayload(
+                seasonalCollectionsEnabled = seasonalCollectionsEnabled,
                 heroEnabled = heroEnabled,
                 showCatalogType = showCatalogType,
                 hideUnreleasedContent = hideUnreleasedContent,

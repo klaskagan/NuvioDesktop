@@ -19,19 +19,24 @@ fun HomePosterCard(
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     showLandscapeOverlay: Boolean = true,
+    allowPortraitFallback: Boolean = true,
+    alwaysShowLandscapeTitle: Boolean = false,
+    showTitleBelow: Boolean = true,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
     val isLandscapeMode = useLandscapeBackdropMode || posterCardStyle.catalogLandscapeModeEnabled
-    val effectiveLandscapePoster = if (posterCardStyle.alwaysShowLandscapeClearlogo) null else item.landscapePoster
+    val effectiveLandscapePoster = if (posterCardStyle.alwaysShowLandscapeClearlogo || alwaysShowLandscapeTitle) null else item.landscapePoster
     val imageUrl = if (isLandscapeMode) {
-        effectiveLandscapePoster ?: item.banner ?: item.poster
+        effectiveLandscapePoster ?: item.banner ?: item.poster.takeIf { allowPortraitFallback }
     } else item.poster
     val fallbackImageUrl = if (isLandscapeMode && !effectiveLandscapePoster.isNullOrBlank()) {
         // Landscape custom poster -> fall back to original backdrop, then portrait
-        item.banner ?: item.rawPosterUrl
+        item.banner ?: item.rawPosterUrl.takeIf { allowPortraitFallback }
     } else {
-        item.rawPosterUrl
+        item.rawPosterUrl.takeIf { !isLandscapeMode || allowPortraitFallback }
     }
+
+    val drawLandscapeTitle = isLandscapeMode && showLandscapeOverlay && effectiveLandscapePoster.isNullOrBlank() && imageUrl != null
 
     HomePosterHoverPreview(
         item = item,
@@ -47,9 +52,9 @@ fun HomePosterCard(
             basePosterWidthDp = desktopCatalogShelfPosterBaseWidthDp(posterCardStyle.widthDp),
             shape = if (isLandscapeMode) NuvioPosterShape.Landscape else item.posterShape.toNuvioPosterShape(),
             detailLine = if (isLandscapeMode || posterCardStyle.hideLabelsEnabled) null else item.releaseInfo?.let { formatReleaseDateForDisplay(it) },
-            showTitleBelow = !posterCardStyle.hideLabelsEnabled,
-            bottomLeftLogoUrl = if (isLandscapeMode && showLandscapeOverlay && effectiveLandscapePoster.isNullOrBlank()) item.logo else null,
-            bottomLeftText = if (isLandscapeMode && showLandscapeOverlay && effectiveLandscapePoster.isNullOrBlank() && item.logo.isNullOrBlank() && !posterCardStyle.hideLabelsEnabled) item.name else null,
+            showTitleBelow = showTitleBelow && !posterCardStyle.hideLabelsEnabled,
+            bottomLeftLogoUrl = if (drawLandscapeTitle) item.logo else null,
+            bottomLeftText = if (drawLandscapeTitle && item.logo.isNullOrBlank() && (alwaysShowLandscapeTitle || !posterCardStyle.hideLabelsEnabled)) item.name else null,
             isWatched = isWatched,
             onClick = onClick,
             onLongClick = onLongClick,

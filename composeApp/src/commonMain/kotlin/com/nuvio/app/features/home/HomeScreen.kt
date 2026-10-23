@@ -51,6 +51,8 @@ import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.details.SeriesPrimaryAction
 import com.nuvio.app.features.details.seriesPrimaryAction
+import com.nuvio.app.features.tmdb.TmdbSettingsRepository
+import com.nuvio.app.features.home.components.SeasonalSpotlightSection
 import com.nuvio.app.features.home.components.HomeCatalogRowSection
 import com.nuvio.app.features.home.components.HomeContinueWatchingSection
 import com.nuvio.app.features.home.components.HomeEmptyStateCard
@@ -850,6 +852,32 @@ fun HomeScreen(
         }
     }
 
+    val seasonalTmdbSettings by TmdbSettingsRepository.uiState.collectAsStateWithLifecycle()
+    var seasonalTheme by remember { mutableStateOf(SeasonalTheme.forDate(CurrentDateProvider.todayIsoDate())) }
+    var seasonalSection by remember(activeProfileId, seasonalTmdbSettings.language, seasonalTmdbSettings.apiKey) {
+        mutableStateOf<HomeCatalogSection?>(null)
+    }
+    ScreenActivityEffect(homeSettingsUiState.seasonalCollectionsEnabled, activeProfileId, seasonalTmdbSettings, networkStatusUiState.condition) { active ->
+        if (!active || !homeSettingsUiState.seasonalCollectionsEnabled) return@ScreenActivityEffect
+        TmdbSettingsRepository.ensureLoaded()
+        while (true) {
+            val currentTheme = SeasonalTheme.forDate(CurrentDateProvider.todayIsoDate())
+            if (seasonalTheme != currentTheme) {
+                seasonalSection = null
+                seasonalTheme = currentTheme
+            }
+            try {
+                seasonalSection = SeasonalSpotlightRepository.section(currentTheme)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // Seasonal discovery must never block the rest of Home; retry while active.
+            }
+            delay(60_000)
+        }
+    }
+    val visibleSeasonalSection = seasonalSection.takeIf { homeSettingsUiState.seasonalCollectionsEnabled }
+
     val hasActiveAddons = enabledAddons.any { it.manifest != null }
     val serversUiState by remember {
         ServerRepository.ensureLoaded()
@@ -909,12 +937,12 @@ fun HomeScreen(
             item.isCollection && collectionsMap[item.key] != null
         }
     }
-    val hasRenderableHomeRows = homeUiState.sections.isNotEmpty() || hasRenderableCollectionRows
+    val hasRenderableHomeRows = homeUiState.sections.isNotEmpty() || hasRenderableCollectionRows || visibleSeasonalSection != null
     val showHeroSlot = shouldShowHomeHeroSlot(
         heroEnabled = homeSettingsUiState.heroEnabled,
         hasHeroItems = homeUiState.heroItems.isNotEmpty(),
         isResolvingHeroSources = isResolvingHeroSources,
-        hasRenderableHomeRows = hasRenderableHomeRows,
+        hasRenderableHomeRows = homeUiState.sections.isNotEmpty() || hasRenderableCollectionRows,
     )
     MaintainHomeScrollPosition(
         listState = homeListState,
@@ -1055,7 +1083,7 @@ fun HomeScreen(
                     }
                 }
 
-                !hasActiveAddons && !hasServerLibraries && !hasRenderableCollectionRows -> {
+                !hasActiveAddons && !hasServerLibraries && !hasRenderableCollectionRows && visibleSeasonalSection == null -> {
                     homeContinueWatchingSections(
                         preferences = continueWatchingPreferences,
                         continueWatchingItems = continueWatchingItems,
@@ -1114,7 +1142,7 @@ fun HomeScreen(
 
                 homeUiState.sections.isEmpty() && homeUiState.heroItems.isEmpty() &&
                     (!continueWatchingPreferences.isVisible || !hasContinueWatchingRows) &&
-                    !hasRenderableCollectionRows -> {
+                    !hasRenderableCollectionRows && visibleSeasonalSection == null -> {
                     item(key = "home_empty", contentType = "empty") {
                         val loadFailed = !homeUiState.errorMessage.isNullOrBlank()
                         if (networkStatusUiState.isOfflineLike && loadFailed) {
@@ -1170,6 +1198,22 @@ fun HomeScreen(
                         onItemLongPress = onContinueWatchingLongPress,
                         disintegrationRequest = continueWatchingDisintegrationRequest,
                     )
+
+                    visibleSeasonalSection?.let { section ->
+                        item(key = "seasonal_spotlight_${seasonalTheme.id}", contentType = "seasonal") {
+                            SeasonalSpotlightSection(
+                                theme = seasonalTheme,
+                                section = section,
+                                sectionPadding = homeSectionPadding,
+                                modifier = Modifier.padding(top = 12.dp, bottom = 24.dp),
+                                watchedKeys = watchedUiState.watchedKeys,
+                                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                                onExplore = onCatalogClick?.let { { it(section) } },
+                                onPosterClick = onPosterClick,
+                                onPosterLongClick = onPosterLongClick,
+                            )
+                        }
+                    }
 
                     keyedEnabledHomeItems.forEach { keyedSettingsItem ->
                         val settingsItem = keyedSettingsItem.value

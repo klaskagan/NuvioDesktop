@@ -32,6 +32,11 @@ sealed interface CatalogTarget {
         override val supportsPagination: Boolean = true
     }
 
+    data class Seasonal(val themeId: String) : CatalogTarget {
+        override val contentType: String = "movie"
+        override val supportsPagination: Boolean = true
+    }
+
     data class CollectionSource(
         val collectionId: String,
         val folderId: String,
