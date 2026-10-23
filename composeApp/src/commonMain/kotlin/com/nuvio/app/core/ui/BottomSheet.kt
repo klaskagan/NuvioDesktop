@@ -46,6 +46,7 @@ fun NuvioModalBottomSheet(
     fullHeight: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    com.nuvio.app.navigation.BlockDesktopHistoryGestures()
     if (usesNativeNuvioBottomSheet) {
         NuvioNativeModalBottomSheet(
             onDismissRequest = onDismissRequest,

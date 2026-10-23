@@ -272,6 +272,7 @@ fun ProfileSwitcherTab(
 
         // Floating profile popup (stays composed during exit animation)
         if (popupVisible && profiles.isNotEmpty()) {
+            com.nuvio.app.navigation.BlockDesktopHistoryGestures()
             var opensBelow by remember { mutableStateOf(popupBelowAnchor) }
             var availableHeight by remember { mutableStateOf<Dp?>(null) }
             val dismissPopup = { if (pinProfile != null) pinProfile = null else showPopup = false }
@@ -827,6 +828,7 @@ fun NativeProfileSwitcherPopup(
                 .width(anchorWidth),
         ) {
             if (popupVisible && profiles.isNotEmpty() && !isSwitchingProfile) {
+                com.nuvio.app.navigation.BlockDesktopHistoryGestures()
                 Popup(
                     alignment = Alignment.BottomCenter,
                     offset = IntOffset(0, with(density) { -NuvioTokens.Space.s64.roundToPx() }),

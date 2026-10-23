@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +51,7 @@ import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigationevent.DirectNavigationEventInput
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import com.nuvio.app.core.ui.PlatformBackHandler
 import com.nuvio.app.core.ui.LocalPosterClickAnchor
 import com.nuvio.app.navigation.PosterNavigationState
 import com.nuvio.app.navigation.posterNavigationEntry
@@ -223,6 +225,19 @@ internal fun MainAppContent(
     onSwitchProfile: () -> Unit = {},
 ) {
         val navBackStack = rememberNavBackStack(navigationSavedStateConfiguration, initialRoute)
+        val desktopHistory = remember(navBackStack) {
+            if (isDesktop && !useNativeNavigation) DesktopNavigationHistory(
+                DesktopNavigationLocation(tab = initialTab, routes = navBackStack.filterIsInstance<AppRoute>()),
+                routeAvailable = { route ->
+                    when (route) {
+                        is PlayerRoute -> false
+                        is StreamRoute -> StreamLaunchStore.get(route.launchId) != null
+                        is CatalogRoute -> CatalogLaunchStore.get(route.launchId) != null
+                        else -> true
+                    }
+                },
+            ) else null
+        }
         val posterNavigation = remember { PosterNavigationState() }
         val metaScreenSettings by remember {
             MetaScreenSettingsRepository.ensureLoaded()
@@ -232,7 +247,10 @@ internal fun MainAppContent(
             metaScreenSettings.posterTransitionEnabled && onNavigate == null
         val routeDisposalDecorator = remember {
             RouteDisposalNavEntryDecorator<NavKey> { key ->
-                if (key is AppRoute) disposeRoute(key)
+                if (key is AppRoute) {
+                    desktopHistory?.invalidateRoute(key)
+                    disposeRoute(key)
+                }
             }
         }
         // Keep route history stable even when callbacks or transition preferences change.
@@ -243,6 +261,7 @@ internal fun MainAppContent(
         val navController = remember(navBackStack, onNavigate != null, onGoBack != null, onReplace != null) {
             NuvioNavigator(
                 backStack = navBackStack,
+                desktopHistory = desktopHistory,
                 onExternalNavigate = if (onNavigate != null) { route, singleTop ->
                     externalNavigate.value?.invoke(route, singleTop)
                 } else null,
@@ -259,7 +278,12 @@ internal fun MainAppContent(
         val focusManager = LocalFocusManager.current
         val uriHandler = LocalUriHandler.current
         val coroutineScope = rememberCoroutineScope()
-        var selectedTab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
+        var mobileSelectedTab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
+        // Keep a State delegate: remembered callbacks and snapshotFlow must read the
+        // latest selection, rather than capture a composition-time enum value.
+        val selectedTab by remember(desktopHistory, initialTab) {
+            derivedStateOf { desktopHistory?.current?.tab ?: mobileSelectedTab }
+        }
         var searchFocusRequestCount by remember { mutableStateOf(0) }
         val homeScrollToTopRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
         val searchScrollToTopRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
@@ -332,6 +356,15 @@ internal fun MainAppContent(
         }
         val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
         val launchOverlayProfile = profileState.activeProfile ?: profileState.profiles.firstOrNull()
+        val desktopProfileIdentity = (authState as? AuthState.Authenticated)?.userId to profileState.activeProfile?.profileIndex
+        LaunchedEffect(desktopProfileIdentity) {
+            if (navController.changeDesktopProfile(desktopProfileIdentity)) {
+                selectedPosterActionTarget = null
+                showLibraryListPicker = false
+                showExitConfirmation = false
+                requestedSettingsPageName = null
+            }
+        }
     val playerSettingsUiState by remember {
         PlayerSettingsRepository.ensureLoaded()
         PlayerSettingsRepository.uiState
@@ -424,12 +457,12 @@ internal fun MainAppContent(
         if (useNativeNavigation && onActivate != null) {
             onActivate(tab)
         } else {
-            selectedTab = tab
+            if (desktopHistory != null) navController.selectDesktopTab(tab) else mobileSelectedTab = tab
         }
     }
 
     fun handleRootTabClick(tab: AppScreenTab) {
-        navController.clearForwardHistory()
+        if (desktopHistory == null) navController.clearForwardHistory()
         if (selectedTab != tab) {
             activateTab(tab)
             return
@@ -1309,11 +1342,15 @@ internal fun MainAppContent(
         }
 
         fun selectDetailNavigationTab(tab: AppScreenTab) {
-            navController.navigate(TabsRoute) {
-                popUpTo<TabsRoute>()
-                launchSingleTop = true
+            if (desktopHistory != null) {
+                navController.selectDesktopTab(tab, resetToRoot = true)
+            } else {
+                navController.navigate(TabsRoute) {
+                    popUpTo<TabsRoute>()
+                    launchSingleTop = true
+                }
+                handleRootTabClick(tab)
             }
-            handleRootTabClick(tab)
         }
 
         val selectNavigationProfile: (com.nuvio.app.features.profiles.NuvioProfile) -> Unit = { profile ->
@@ -1350,6 +1387,11 @@ internal fun MainAppContent(
             }
         }
 
+        PlatformBackHandler(
+            enabled = desktopHistory != null && currentRoute is TabsRoute && navController.canPopBackStack(),
+            onBack = { navController.popBackStack() },
+        )
+
         AppUpdaterHost(
             controller = appUpdaterController,
             modifier = Modifier.fillMaxSize(),
@@ -1358,6 +1400,7 @@ internal fun MainAppContent(
                 enabled = currentRoute !is PlayerRoute && selectedPosterActionTarget == null,
                 canGoBack = navController.canPopBackStack(),
                 canGoForward = navController.canGoForward,
+                gestureResetKey = desktopHistory?.generation to desktopProfileIdentity,
                 onBack = { navController.popBackStack() },
                 onForward = { navController.goForward() },
             ) {
@@ -1448,6 +1491,8 @@ internal fun MainAppContent(
                             libraryDisintegrationRequest = libraryDisintegrationRequests.current,
                             continueWatchingDisintegrationRequest = continueWatchingDisintegrationRequests.current,
                             requestedSettingsPageName = requestedSettingsPageName,
+                            desktopSettingsPageName = desktopHistory?.current?.settingsPage?.name,
+                            desktopSettingsCategoryName = desktopHistory?.current?.settingsCategory?.name,
                         ),
                         actions = { isTabletLayout ->
                             AppTabActions(
@@ -1510,6 +1555,15 @@ internal fun MainAppContent(
                                 onContinueWatchingClick = onContinueWatchingClick,
                                 onContinueWatchingLongPress = onContinueWatchingLongPress,
                                 onSwitchProfile = onSwitchProfile,
+                                onDesktopSettingsPageChange = if (desktopHistory != null) {
+                                    { page -> navController.openDesktopSettings(page) }
+                                } else null,
+                                onDesktopSettingsCategoryChange = if (desktopHistory != null) {
+                                    { category -> navController.openDesktopSettings("Root", category) }
+                                } else null,
+                                onDesktopSettingsBack = if (desktopHistory != null) {
+                                    { navController.popBackStack(); Unit }
+                                } else null,
                                 onSettingsPageClick = if (useNativeNavigation && !isTabletLayout) {
                                     { pageName, title ->
                                         navController.navigate(SettingsPageRoute(pageName, title))

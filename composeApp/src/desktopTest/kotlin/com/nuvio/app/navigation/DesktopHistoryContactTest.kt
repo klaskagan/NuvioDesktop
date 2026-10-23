@@ -2,6 +2,7 @@ package com.nuvio.app.navigation
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ScrollWheel
@@ -19,6 +20,8 @@ class DesktopHistoryContactTest {
     @get:Rule val compose = createComposeRule()
     private val phases = MutableSharedFlow<HistoryGesturePhase>(extraBufferCapacity = 16)
     private val actions = mutableListOf<HistorySwipe>()
+    private val modalVisible = mutableStateOf(false)
+    private val profile = mutableStateOf(0)
 
     @Test fun holdAndReturnWithoutLiftingCancelsEvenAfterTenSeconds() {
         showHost()
@@ -66,6 +69,34 @@ class DesktopHistoryContactTest {
         compose.runOnIdle { assertEquals(listOf(HistorySwipe.Forward), actions) }
     }
 
+    @Test fun modalOpeningAndClosingCancelsHeldGestureBeforeLateRelease() {
+        showHost()
+        phase(HistoryGesturePhase.Began)
+        compose.onRoot().performMouseInput { enter(center); scroll(-4f, ScrollWheel.Horizontal) }
+        compose.runOnIdle { modalVisible.value = true }
+        compose.mainClock.advanceTimeBy(32)
+        compose.runOnIdle { modalVisible.value = false }
+        compose.mainClock.advanceTimeBy(32)
+        phase(HistoryGesturePhase.Ended)
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle { assertEquals(emptyList(), actions) }
+        phase(HistoryGesturePhase.Began)
+        compose.onRoot().performMouseInput { advanceEventTime(600); scroll(-4f, ScrollWheel.Horizontal) }
+        phase(HistoryGesturePhase.Ended)
+        compose.runOnIdle { assertEquals(listOf(HistorySwipe.Back), actions) }
+    }
+
+    @Test fun profileChangeCancelsHeldGestureBeforeRelease() {
+        showHost()
+        phase(HistoryGesturePhase.Began)
+        compose.onRoot().performMouseInput { enter(center); scroll(-4f, ScrollWheel.Horizontal) }
+        compose.runOnIdle { profile.value++ }
+        compose.mainClock.advanceTimeBy(32)
+        phase(HistoryGesturePhase.Ended)
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle { assertEquals(emptyList(), actions) }
+    }
+
     private fun phase(phase: HistoryGesturePhase) {
         compose.runOnIdle { assertTrue(phases.tryEmit(phase)) }
         compose.mainClock.advanceTimeBy(32)
@@ -77,11 +108,15 @@ class DesktopHistoryContactTest {
             CompositionLocalProvider(LocalHistoryGesturePhaseEvents provides phases) {
                 DesktopHistoryNavigationHost(
                     enabled = true,
+                    gestureResetKey = profile.value,
                     canGoBack = true,
                     canGoForward = true,
                     onBack = { actions += HistorySwipe.Back },
                     onForward = { actions += HistorySwipe.Forward },
-                ) { Box(Modifier.fillMaxSize()) }
+                ) {
+                    Box(Modifier.fillMaxSize())
+                    if (modalVisible.value) BlockDesktopHistoryGestures()
+                }
             }
         }
         compose.waitForIdle()

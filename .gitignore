@@ -36,6 +36,7 @@ AGENTS.md
 
 PERFORMANCE_FINDINGS.md
 scripts/*
+!scripts/desktop-ui-tests.init.gradle
 !scripts/tv-handoff/
 !scripts/tv-handoff/**
 scripts/tv-handoff/**/__pycache__/
