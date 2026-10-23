@@ -248,6 +248,11 @@ internal fun PlayerScreenRuntime.skipInterval(interval: SkipInterval) {
 }
 
 internal fun PlayerScreenRuntime.setPlaybackPlaying(playing: Boolean) {
+    if (playing) {
+        cancelTvHandoff?.invoke()
+        cancelTvHandoff = null
+        if (tvHandoffTransferred) return
+    }
     if (playing == shouldPlay) return
     if (isPartyControlLocked) {
         toggleOwnPlayback()

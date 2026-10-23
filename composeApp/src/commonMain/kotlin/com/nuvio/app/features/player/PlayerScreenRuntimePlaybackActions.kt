@@ -362,6 +362,7 @@ internal suspend fun PlayerScreenRuntime.resolveParentalGuideImdbId(): String? {
 internal fun PlayerScreenRuntime.flushWatchProgress(
     scrobbleAction: TrackingScrobbleAction = TrackingScrobbleAction.STOP,
 ) {
+    if (tvHandoffTransferred) return
     when (scrobbleAction) {
         TrackingScrobbleAction.PAUSE -> emitTrackingScrobblePause()
         TrackingScrobbleAction.STOP -> emitStopScrobbleForCurrentProgress()
@@ -427,6 +428,7 @@ internal fun PlayerScreenRuntime.scheduleProgressSyncAfterSeek() {
 }
 
 internal fun PlayerScreenRuntime.persistPlaybackProgressTick() {
+    if (tvHandoffTransferred) return
     val now = WatchProgressClock.nowEpochMs()
     if (now - lastProgressPersistEpochMs < PlaybackProgressPersistIntervalMs) return
     lastProgressPersistEpochMs = now

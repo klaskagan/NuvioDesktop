@@ -36,6 +36,7 @@ import nuvio.composeapp.generated.resources.compose_settings_page_tmdb_enrichmen
 import nuvio.composeapp.generated.resources.compose_settings_page_trakt
 import nuvio.composeapp.generated.resources.compose_settings_page_tracking
 import nuvio.composeapp.generated.resources.settings_detail_navigation
+import nuvio.composeapp.generated.resources.settings_paired_tvs
 import nuvio.composeapp.generated.resources.settings_account
 import org.jetbrains.compose.resources.StringResource
 
@@ -103,6 +104,11 @@ internal enum class SettingsPage(
         titleRes = Res.string.compose_settings_page_advanced,
         category = SettingsCategory.Advanced,
         parentPage = Root,
+    ),
+    PairedTvs(
+        titleRes = Res.string.settings_paired_tvs,
+        category = SettingsCategory.Advanced,
+        parentPage = Advanced,
     ),
     Notifications(
         titleRes = Res.string.compose_settings_page_notifications,

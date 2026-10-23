@@ -256,6 +256,7 @@
             <button class="action" data-command="subtitles"><svg><use href="#icon-subs"></use></svg><span id="subtitlesLabel">Subs</span></button>
             <button class="action" data-command="audio"><svg><use href="#icon-audio"></use></svg><span id="audioLabel">Audio</span></button>
             <button class="action optional" id="sourcesButton" data-command="sources"><svg><use href="#icon-source"></use></svg><span id="sourcesLabel">Sources</span></button>
+            <button class="action optional" id="tvHandoffButton" data-command="continueOnTv" style="display:none"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v2h8v-2h5a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m0 14H3V5h18z"/></svg><span id="tvHandoffLabel">Continue on TV</span></button>
             <button class="action optional" id="episodesButton" data-command="episodes"><svg><use href="#icon-episodes"></use></svg><span id="episodesLabel">Episodes</span></button>
           </div>
           <div class="playback-status">
@@ -277,6 +278,13 @@
         <div class="track-panel audio-rail-panel">
           <div class="track-header" id="speedPanelTitle">Playback Speed</div>
           <div class="track-list" id="speedOptionList"></div>
+        </div>
+      </section>
+      <section class="modal-layer player-rail-modal" id="tvHandoffModal" aria-label="Continue on TV" hidden>
+        <div class="track-panel audio-rail-panel">
+          <div class="track-header" id="tvHandoffPanelTitle">Continue on TV</div>
+          <div class="track-list" id="tvHandoffDeviceList"></div>
+          <div class="track-empty" id="tvHandoffStatus" aria-live="polite" hidden></div>
         </div>
       </section>
       <section class="modal-layer player-rail-modal" id="audioModal" aria-label="Audio tracks" hidden>

@@ -25,6 +25,33 @@ import java.io.File
 import java.util.Properties
 import javax.inject.Inject
 
+/** Local macOS builds still need a code identity for reliable Local Network consent. */
+abstract class AdHocSignMacosAppTask @Inject constructor(
+    private val execOperations: ExecOperations,
+) : DefaultTask() {
+    @get:InputDirectory
+    abstract val appDirectory: DirectoryProperty
+
+    @TaskAction
+    fun signIfNeeded() {
+        val app = appDirectory.get().asFile
+        val verification = ByteArrayOutputStream()
+        val valid = execOperations.exec {
+            commandLine("/usr/bin/codesign", "--verify", "--deep", "--strict", app.absolutePath)
+            isIgnoreExitValue = true
+            standardOutput = verification
+            errorOutput = verification
+        }.exitValue == 0
+        // Preserve an existing valid identity rather than re-signing unchanged builds.
+        if (!valid) execOperations.exec {
+            commandLine("/usr/bin/codesign", "--force", "--deep", "--sign", "-", app.absolutePath)
+        }.assertNormalExitValue()
+        execOperations.exec {
+            commandLine("/usr/bin/codesign", "--verify", "--deep", "--strict", app.absolutePath)
+        }.assertNormalExitValue()
+    }
+}
+
 abstract class GenerateRuntimeConfigsTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
@@ -1204,6 +1231,7 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.ktor.client.cio)
                 implementation("com.squareup.okhttp3:okhttp:4.12.0")
+                implementation("org.bouncycastle:bcpkix-jdk18on:1.81")
                 implementation(libs.quickjs.kt)
                 implementation(libs.ksoup)
                 implementation(libs.sentry.jvm)
@@ -1321,6 +1349,12 @@ compose.desktop {
                 iconFile.set(project.file("src/desktopMain/resources/icons/nuvio-app-icon-transparent.icns"))
                 infoPlist {
                     extraKeysRawXml = """
+                        <key>NSLocalNetworkUsageDescription</key>
+                        <string>Nuvio connects to your TVs to discover, pair, and continue playback on your home network.</string>
+                        <key>NSBonjourServices</key>
+                        <array>
+                            <string>_androidtvremote2._tcp</string>
+                        </array>
                         <key>CFBundleURLTypes</key>
                         <array>
                             <dict>
@@ -1371,6 +1405,22 @@ compose.desktop {
 
         buildTypes.release.proguard {
             isEnabled.set(false)
+        }
+    }
+}
+
+// Developer ID signing above takes precedence. Ad-hoc signing is for local builds;
+// it does not notarize or enable hardened-runtime/library-validation restrictions.
+if (isMacHost && macosSigningIdentity == null) {
+    listOf(false, true).forEach { release ->
+        val flavor = if (release) "Release" else ""
+        val distribution = if (release) "main-release" else "main"
+        val signApp = tasks.register<AdHocSignMacosAppTask>("signLocal${flavor}MacosApp") {
+            dependsOn("create${flavor}Distributable")
+            appDirectory.set(layout.buildDirectory.dir("compose/binaries/$distribution/app/Nuvio.app"))
+        }
+        tasks.matching { it.name == "package${flavor}Dmg" }.configureEach {
+            dependsOn(signApp)
         }
     }
 }

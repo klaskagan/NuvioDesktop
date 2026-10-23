@@ -2552,4 +2552,7 @@
     <string name="settings_detail_navigation_hide_delay">Hide Delay</string>
     <string name="settings_detail_navigation_hide_delay_description">How long the top bar stays visible after the last mouse movement. Default: 3 seconds.</string>
     <string name="settings_detail_navigation_hide_delay_value">%1$d s</string>
+    <string name="player_continue_on_tv">Continue on TV</string>
+    <string name="settings_paired_tvs">Paired TVs</string>
+    <string name="settings_paired_tvs_description">Find and pair Android TV or LG webOS devices on your home network.</string>
 </resources>

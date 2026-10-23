@@ -400,6 +400,7 @@ internal class NativePlayerController(
         onScrubChange: (Long) -> Boolean,
         onScrubFinished: (Long) -> Boolean,
     ) {
+        com.nuvio.app.features.handoff.observeTvHandoffPlayback(this, ::refreshControlsForImage)
         this.onAction = onAction
         this.onEvent = onEvent
         this.onScrubChange = onScrubChange
@@ -433,7 +434,13 @@ internal class NativePlayerController(
             controlsState = state
             return
         }
+        val handoff = com.nuvio.app.features.handoff.tvHandoffPlaybackView()
         val stateWithVolume = state.copy(
+            tvHandoffDevices = handoff.devices,
+            tvHandoffReady = handoff.ready,
+            tvHandoffBusy = handoff.busy,
+            tvHandoffCanResume = handoff.canResume,
+            tvHandoffStatus = handoff.status,
             volumeLevel = resolveDesktopPlayerVolumeLevel(
                 requestedLevel = state.volumeLevel,
                 currentLevel = currentVolumeLevel,
@@ -536,6 +543,11 @@ internal class NativePlayerController(
             log.d { "event received handle=$handle type=$type value=$value" }
         }
         when (type) {
+            "selectHandoffTv" -> {
+                if (value.isFinite() && value >= 0 && value == value.toInt().toDouble())
+                    com.nuvio.app.features.handoff.selectTvHandoffDevice(value.toInt())
+            }
+            "resumeTvHandoff" -> com.nuvio.app.features.handoff.resumeTvHandoffPlayback()
             "cursorActivity" -> host.noteCursorActivity()
             "scrubChange" -> {
                 val handled = onScrubChange(value.toLong())
@@ -846,6 +858,7 @@ internal class NativePlayerController(
     }
 
     private fun invalidateForRelease() {
+        com.nuvio.app.features.handoff.stopObservingTvHandoffPlayback(this)
         cancelPendingAttachment()
         host.onCursorActivity = null
         onAction = { false }
@@ -1246,6 +1259,7 @@ private fun String.toPlayerControlsAction(): PlayerControlsAction? =
         "sources" -> PlayerControlsAction.Sources
         "episodes" -> PlayerControlsAction.Episodes
         "external" -> PlayerControlsAction.OpenExternalPlayer
+        "continueOnTv" -> PlayerControlsAction.ContinueOnTv
         "submitIntro" -> PlayerControlsAction.SubmitIntro
         "videoSettings" -> PlayerControlsAction.VideoSettings
         else -> null
@@ -1257,7 +1271,7 @@ private data class NativeControlsStructureKey(
     val isInPip: Boolean,
 )
 
-private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageReady: () -> Unit): String =
+internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageReady: () -> Unit): String =
     buildString {
         append('{')
         appendJsonField("title", title)
@@ -1301,6 +1315,28 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         appendJsonField("episodesLabel", episodesLabel)
         append(',')
         appendJsonField("externalPlayerLabel", externalPlayerLabel)
+        append(',')
+        appendJsonField("tvHandoffLabel", tvHandoffLabel)
+        append(',')
+        appendJsonField("tvHandoffReady", tvHandoffReady)
+        append(',')
+        appendJsonField("tvHandoffBusy", tvHandoffBusy)
+        append(',')
+        appendJsonField("tvHandoffCanResume", tvHandoffCanResume)
+        append(',')
+        appendJsonField("tvHandoffStatus", tvHandoffStatus)
+        append(",\"tvHandoffDevices\":[")
+        tvHandoffDevices.forEachIndexed { index, device ->
+            if (index > 0) append(',')
+            append('{')
+            appendJsonField("name", device.name)
+            append(',')
+            appendJsonField("platform", device.platform)
+            append('}')
+        }
+        append(']')
+        append(',')
+        appendJsonField("showTvHandoff", showTvHandoff)
         append(',')
         appendJsonField("playLabel", playLabel)
         append(',')

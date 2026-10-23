@@ -1126,6 +1126,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     std::atomic<double> _requestedVolumePercent;
     BOOL _didFocusControlsWebView;
     BOOL _controlsWebReady;
+    BOOL _didLogControlsError;
     BOOL _fullscreenTransitionActive;
     NSString *_pendingControlsJson;
     double _initialStartSeconds;
@@ -2053,6 +2054,12 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
         jsonString];
     [_webView evaluateJavaScript:script completionHandler:^(id _Nullable jsResult, NSError * _Nullable error) {
         if (error) {
+            if (!_didLogControlsError) {
+                _didLogControlsError = YES;
+                NSLog(@"Nuvio player controls failed: %@ (line %@)",
+                      error.userInfo[@"WKJavaScriptExceptionMessage"] ?: error.localizedDescription,
+                      error.userInfo[@"WKJavaScriptExceptionLineNumber"] ?: @"unknown");
+            }
             return;
         }
         NSString *resultText = [jsResult isKindOfClass:[NSString class]] ? (NSString *)jsResult : @"unknown";
