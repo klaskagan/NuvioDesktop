@@ -46,6 +46,14 @@ Follow adjacent feature code for resource strings, persistence, and navigation.
 A desktop-only implementation may still need Android/iOS contract implementations
 so shared source sets compile.
 
+Keep navigation selection live inside retained callbacks and `snapshotFlow`.
+Use the `selectedTab` State delegate in `MainAppContent.kt` as the reference:
+`derivedStateOf` reads the desktop history or mobile selection, and callbacks read
+that delegate when invoked. A plain `val` copied from state can leave a remembered
+click handler treating a later click as a reselect, while `snapshotFlow` observes
+no state reads. For callbacks that need a changing value without restarting their
+owner, use `rememberUpdatedState` where appropriate.
+
 For multi-step settings, use a single state for mutually exclusive panels such as
 discovery versus Add/Edit. Clear incompatible results and transient errors when
 switching modes. Guard late callbacks against cancellation, a changed selection,
@@ -69,6 +77,24 @@ for the current JDK and packaging requirements. Native macOS player checks may
 require the packaged app: the development `:composeApp:run` controls have shown
 behavior differing from the DMG build. Do not silently replace the user's installed
 app or trigger TV/network activity as part of an unrelated UI check.
+
+For navigation regressions, exercise the real `MainAppContent` screens and click
+handlers, not only the history model or colored placeholder panes. Assert the
+shown destination as well as selection. `MainAppTabNavigationTest` covers Home →
+Search → Library → Settings → Library → Search → Home with both desktop layouts,
+and returning to an initially selected Search tab. Keep repeated visits and tab
+reselection in the regression sequence.
+
+Full-app desktop UI tests require isolated profile storage. Run them with the
+existing init script, which gives the test JVM a separate app-data home:
+
+```sh
+./gradlew -I scripts/desktop-ui-tests.init.gradle :composeApp:desktopTest --tests 'com.nuvio.app.MainAppTabNavigationTest'
+```
+
+These integration tests skip without the isolation flag supplied by that script;
+a skipped run does not verify the navigation regression. Do not use a real user
+profile as a full-app test fixture.
 
 At handoff, report the behavior changed, tests run, and any visual or hardware
 checks that remain unverified. Improve this guidance from demonstrated recurring
