@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -37,8 +38,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -97,7 +100,6 @@ fun CatalogScreen(
 ) {
     val uiState by CatalogRepository.uiState.collectAsStateWithLifecycle()
     val homeCatalogSettingsUiState by HomeCatalogSettingsRepository.uiState.collectAsStateWithLifecycle()
-    val posterCardStyle = rememberPosterCardStyleUiState()
     val networkStatusUiState by NetworkStatusRepository.uiState.collectAsStateWithLifecycle()
     val watchedUiState by remember {
         WatchedRepository.ensureLoaded()
@@ -112,11 +114,12 @@ fun CatalogScreen(
             target = target,
         )
     }
-    val gridState = rememberLazyGridState(
-        initialFirstVisibleItemIndex = initialScrollPosition.firstVisibleItemIndex,
-        initialFirstVisibleItemScrollOffset = initialScrollPosition.firstVisibleItemScrollOffset,
-    )
-    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val gridState = key(target, homeCatalogSettingsUiState.hideUnreleasedContent) {
+        rememberLazyGridState(
+            initialFirstVisibleItemIndex = initialScrollPosition.firstVisibleItemIndex,
+            initialFirstVisibleItemScrollOffset = initialScrollPosition.firstVisibleItemScrollOffset,
+        )
+    }
     var observedOfflineState by remember { mutableStateOf(false) }
 
     LaunchedEffect(target, homeCatalogSettingsUiState.hideUnreleasedContent) {
@@ -173,6 +176,43 @@ fun CatalogScreen(
         }
     }
 
+    CatalogContent(
+        title = title,
+        subtitle = subtitle,
+        target = target,
+        uiState = uiState,
+        gridState = gridState,
+        watchedKeys = watchedUiState.watchedKeys,
+        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+        networkCondition = networkStatusUiState.condition,
+        onBack = onBack,
+        onRetry = {
+            NetworkStatusRepository.requestRefresh(force = true)
+            CatalogRepository.load(target = target, force = true)
+        },
+        onPosterClick = onPosterClick,
+        onPosterLongClick = onPosterLongClick,
+        modifier = modifier,
+    )
+}
+
+@Composable
+internal fun CatalogContent(
+    title: String,
+    subtitle: String,
+    target: CatalogTarget,
+    uiState: CatalogUiState,
+    gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
+    watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String>,
+    networkCondition: NetworkCondition,
+    onBack: () -> Unit,
+    onRetry: () -> Unit,
+    onPosterClick: ((MetaPreview) -> Unit)? = null,
+    onPosterLongClick: ((MetaPreview) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    val posterCardStyle = rememberPosterCardStyleUiState()
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -203,20 +243,45 @@ fun CatalogScreen(
             GridCells.Fixed(columns)
         }
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        val seasonalTheme = remember(target) { target.seasonalThemeOrNull() }
+        val minHeroHeight = (maxHeight * 0.60f).coerceIn(280.dp, 560.dp)
+        var heroHeightPx by remember(target) { mutableIntStateOf(0) }
+        var headerHeightPx by remember(target) { mutableIntStateOf(0) }
+
+        Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
+            if (seasonalTheme != null) {
+                SeasonalCatalogBackdrop(
+                    theme = seasonalTheme,
+                    minHeight = minHeroHeight,
+                    measuredHeightPx = heroHeightPx,
+                    gridState = gridState,
+                )
+            }
             LazyVerticalGrid(
                 columns = gridCells,
                 state = gridState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().testTag("catalog_grid"),
                 contentPadding = PaddingValues(
                     start = pageHorizontalPadding,
-                    top = with(androidx.compose.ui.platform.LocalDensity.current) { headerHeightPx.toDp() } + 12.dp,
+                    top = if (seasonalTheme != null) 0.dp else {
+                        with(androidx.compose.ui.platform.LocalDensity.current) { headerHeightPx.toDp() } + 12.dp
+                    },
                     end = pageHorizontalPadding,
                     bottom = nuvioSafeBottomPadding(28.dp),
                 ),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
+                if (seasonalTheme != null) {
+                    item(key = "seasonal_catalog_intro", span = { GridItemSpan(maxLineSpan) }, contentType = "seasonal_hero") {
+                        SeasonalCatalogIntroduction(
+                            title = title,
+                            subtitle = subtitle,
+                            minHeight = minHeroHeight,
+                            modifier = Modifier.onSizeChanged { heroHeightPx = it.height },
+                        )
+                    }
+                }
                 if (uiState.items.isEmpty() && uiState.isLoading) {
                     items(columns * 3) {
                         if (isDesktop) {
@@ -240,14 +305,8 @@ fun CatalogScreen(
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         CatalogEmptyState(
                             errorMessage = uiState.errorMessage,
-                            networkCondition = networkStatusUiState.condition,
-                            onRetry = {
-                                NetworkStatusRepository.requestRefresh(force = true)
-                                CatalogRepository.load(
-                                    target = target,
-                                    force = true,
-                                )
-                            },
+                            networkCondition = networkCondition,
+                            onRetry = onRetry,
                         )
                     }
                 } else {
@@ -257,7 +316,7 @@ fun CatalogScreen(
                     ) { keyedItem ->
                         val item = keyedItem.value
                         val isWatched = WatchingState.isPosterWatched(
-                            watchedKeys = watchedUiState.watchedKeys,
+                            watchedKeys = watchedKeys,
                             item = item,
                             fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                         )
@@ -295,13 +354,17 @@ fun CatalogScreen(
                     .padding(vertical = 8.dp, horizontal = 4.dp),
             )
 
-            CatalogHeader(
-                title = title,
-                subtitle = subtitle,
-                pageHorizontalPadding = pageHorizontalPadding,
-                modifier = Modifier.onSizeChanged { headerHeightPx = it.height },
-                onBack = onBack,
-            )
+            if (seasonalTheme != null) {
+                SeasonalCatalogBackControl(pageHorizontalPadding = pageHorizontalPadding, onBack = onBack)
+            } else {
+                CatalogHeader(
+                    title = title,
+                    subtitle = subtitle,
+                    pageHorizontalPadding = pageHorizontalPadding,
+                    modifier = Modifier.onSizeChanged { headerHeightPx = it.height },
+                    onBack = onBack,
+                )
+            }
         }
     }
 }
