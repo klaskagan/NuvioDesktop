@@ -1,0 +1,1723 @@
+diff --git a/android/app/build.gradle.kts b/android/app/build.gradle.kts
+index ac4fb81cd3e8d6797bce72786e12f82b9d3cee1e..ac23550f5f7fcb805d781071c8dc1753dd254f79 100644
+--- a/android/app/build.gradle.kts
++++ b/android/app/build.gradle.kts
+@@ -24,10 +24,11 @@ val (vx, vy, vz) = versao.split(".").map { it.toInt() }
+ android {
+     namespace = "space.nuvio.nativelegacy"
+     compileSdk = 35
+-    ndkVersion = "27.2.12479018"
++    ndkVersion = (findProperty("nuvio.ndkVersion") as String?) ?: "27.2.12479018"
+ 
+     defaultConfig {
+         applicationId = "space.nuvio.nativelegacy"
++        manifestPlaceholders["handoffScheme"] = "nuvio-legacy-handoff"
+         minSdk = 24
+         targetSdk = 35
+         versionCode = vx * 10000 + vy * 100 + vz
+@@ -81,7 +82,9 @@ android {
+         debug {
+             // Nunca substituir a instalacao de producao durante diagnosticos.
+             applicationIdSuffix = ".strictdebug"
++            manifestPlaceholders["handoffScheme"] = "nuvio-legacy-handoff-debug"
+             versionNameSuffix = "-strictdebug"
++            resValue("string", "app_name", "Nuvio Legacy TV")
+         }
+         release {
+             isMinifyEnabled = false
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index 8de7148089c1a7fcc1ab7099b0ba1cf13fd9eebb..92956e4488bce23e459b6b19a5bd19dd1b189420 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -78,6 +78,7 @@
+                 <action android:name="android.intent.action.VIEW" />
+                 <category android:name="android.intent.category.DEFAULT" />
+                 <category android:name="android.intent.category.BROWSABLE" />
++                <data android:scheme="${handoffScheme}" />
+                 <data android:scheme="nuvio-legacy" />
+                 <data android:scheme="stremio" />
+             </intent-filter>
+diff --git a/android/app/src/main/java/space/nuvio/nativelegacy/NuvioActivity.kt b/android/app/src/main/java/space/nuvio/nativelegacy/NuvioActivity.kt
+index d335429a452bba454eb99cad95d330ba71c3f80b..bcbbc56c601b0a3e694f34bb5c6af40fb639b73c 100644
+--- a/android/app/src/main/java/space/nuvio/nativelegacy/NuvioActivity.kt
++++ b/android/app/src/main/java/space/nuvio/nativelegacy/NuvioActivity.kt
+@@ -267,10 +267,15 @@ class NuvioActivity : SDLActivity() {
+ 
+     // LINK EXTERNO (docs/deeplink.md): o C valida; aqui so se limita o tamanho.
+     private external fun nativeDeepLink(url: String)
++    private external fun nativeHandoff(payload: String)
+ 
+     private fun entregarDeepLink(i: Intent?) {
+         if (mBrokenLibraries || i?.action != Intent.ACTION_VIEW) return
+         val url = i.dataString ?: return
++        if (url.startsWith("nuvio-legacy-handoff:") || url.startsWith("nuvio-legacy-handoff-debug:")) {
++            NativeHandoffLaunch.payload(url)?.let(::nativeHandoff)
++            return
++        }
+         if (url.length <= 512) nativeDeepLink(url)
+     }
+ 
+diff --git a/src/ajustes.c b/src/ajustes.c
+index d21bd7069a7a05ffc53ab8ae9895b89080b5feb4..d33c3eb06c5f1f7eddc92d576bf56a35f18dc48f 100644
+--- a/src/ajustes.c
++++ b/src/ajustes.c
+@@ -6912,6 +6912,7 @@ static const char *textoLeitura(int op) {
+         snprintf(buf, sizeof buf, i18n("Em dia (%s)"), AJ_VERSAO);
+         return buf;
+       case ATUALIZACAO_BUSCA_ERRO: return i18n("Sem resposta");
++      case ATUALIZACAO_BUSCA_CUSTOM: return "Continue on TV build";
+       default: return i18n("OK procura");
+     }
+   }
+@@ -7843,6 +7844,7 @@ static const char *efeitoOpcao(int op) {
+         snprintf(bufAt, sizeof bufAt, i18n("Você está na versão mais recente (%s)"), AJ_VERSAO);
+         return bufAt;
+       case ATUALIZACAO_BUSCA_ERRO: return i18n("Não deu para consultar agora");
++      case ATUALIZACAO_BUSCA_CUSTOM: return "Updates require a rebuilt Continue on TV package. Upstream installers are disabled in this custom build.";
+       default: return NULL;
+     }
+   }
+diff --git a/src/app.c b/src/app.c
+index 04319f0fd8944517edd6cd4dbb8d02e1d08c83a5..cf68b581348c679a7d526cdaf69af5cd62145297 100644
+--- a/src/app.c
++++ b/src/app.c
+@@ -1,3 +1,7 @@
++#include "handoff.h"
++#ifdef NV_WEBOS
++#include "handoff_protocol.h"
++#endif
+ // Roteador de telas.
+ //
+ // Antes disto o main.c decidia entre home e detalhe com um if. Com menu, busca,
+@@ -1272,6 +1276,7 @@ static const char *urlCanal(const Stream *s, char *buf, size_t n) {
+ }
+ 
+ static int tocarFonteGuardada(void) {
++  if (handoff_pending()) return 0;
+   Stream s;
+   char alvo[64];
+   // #618: a fresh automatic choice must use the add-on's current order.
+@@ -3795,6 +3800,21 @@ static int spotAtalho(const SDL_Event *e) {
+   return (e->key.keysym.scancode == NV_SCANCODE_YELLOW ||
+           e->key.keysym.scancode == NV_SCANCODE_CH_DOWN) && tela != TELA_GUIA;
+ }
++/* Reuse only the saved, unlocked profile requested by an already trusted
++ * desktop. The receiver calls this on the UI thread; ordinary app startup and
++ * a different/PIN-protected profile keep the existing chooser. */
++int app_handoff_restore_profile(const char *owner, int profile) {
++  if (!owner || !owner[0] || !sessao_logada() ||
++      strcmp(perfis_dono(), owner) || perfis_ativo() != profile ||
++      tela != TELA_ESCOLHA_PERFIL || !perfis_pode_dispensar()) return 0;
++  perfis_manter_ativo();
++  perfilsel_continuar_ativo();
++  sync_iniciar();
++  tela = TELA_HOME;
++  menu_definir_destino(MENU_INICIO);
++  return 1;
++}
++
+ static int spotPode(void) {
+   return tela != TELA_LOGIN && tela != TELA_ESCOLHA_PERFIL && !player_aberto() &&
+          !spainel_aberto() && !guia_overlay_aberta();
+@@ -3838,6 +3858,15 @@ static void deeplinkAbrir(const DeepLink *d) {
+   else desc_pedir_titulo_tmdb(d->tmdb, d->serie ? "tv" : "movie");
+ }
+ 
++static char handoffTitle[64];
++static int handoffSeason, handoffEpisode;
++void app_handoff_start(const char *content,int season,int episode) {
++ DeepLink d={0};char url[160];snprintf(url,sizeof url,"nuvio-legacy://play/%s/%s",episode>0?"series":"movie",content);
++ if(!deeplink_parse(url,&d))return;
++ d.temporada=season;d.episodio=episode;
++ snprintf(handoffTitle,sizeof handoffTitle,"%s",content);handoffSeason=season;handoffEpisode=episode;
++ deeplinkAbrir(&d);
++}
+ static void spotAbrir(int voz) {
+   static Uint32 ultimo;
+   Uint32 t = SDL_GetTicks();
+@@ -4145,6 +4174,7 @@ static int relogioPedidoPagina(void) {
+ }
+ 
+ void app_evento(const SDL_Event *e) {
++  if (handoff_event(e)) return;
+   static int backRetido;
+   static Uint32 backUltimo;
+   // Guard before any sheet/panel consumes Back. Flagged repeats are always held;
+@@ -5327,6 +5357,22 @@ void app_atualizar(float dt, Uint32 agora) {
+       ilhacart_dispensar(qual);
+     } else if (o == ILHA_PEDIU_DEPOIS) ilhacart_adiar(qual);
+   }
++  if(handoffTitle[0]) {
++   if(!handoff_pending()||player_aberto())handoffTitle[0]=0;
++   else if(detail_aberto()) {
++    const CatItem *ci=cat_item(detail_indice());
++    if(ci&&
++#ifdef NV_WEBOS
++       handoff_content_matches(handoffTitle,handoffEpisode>0,ci->imdb,ci->tmdb,!strcmp(ci->tipo,"series"))
++#else
++       !strcmp(ci->imdb,handoffTitle)
++#endif
++    ) {
++     cwTocarT=handoffSeason;cwTocarE=handoffEpisode;
++     detail_pedir_reproduzir();handoffTitle[0]=0;
++    }
++   }
++  }
+   { DeepLink dl;
+     if (tela != TELA_LOGIN && tela != TELA_ESCOLHA_PERFIL &&
+         !desc_titulo_buscando() && deeplink_pegar(&dl)) deeplinkAbrir(&dl); }
+@@ -5788,6 +5834,7 @@ void app_atualizar(float dt, Uint32 agora) {
+         cwTocarT = cwTocarE = 0;
+       }
+       if (doInicio) player_do_inicio();
++      handoff_player_opened();
+       // O episodio so fica definitivo DEPOIS de abrir o player. Refaça sempre
+       // o pedido de legenda nesse ponto; a busca de prefetch pode ter comecado
+       // no episodio anteriormente focado e o worker agora troca para o pedido
+diff --git a/src/atualizacao.c b/src/atualizacao.c
+index 359dfae170957977fbfc46e8355c32b4e0ba6809..4e4fab839136ad782db4ee0a21349d9ce94102ff 100644
+--- a/src/atualizacao.c
++++ b/src/atualizacao.c
+@@ -19,6 +19,7 @@
+ #include "horafmt.h"
+ #include "app_id.h"
+ #include "atualizacao.h"
++#include "handoff.h"
+ #include "ilha.h"
+ #include "dados.h"
+ #include "rede.h"
+@@ -639,7 +640,7 @@ static int fioConsulta(void *arg) {
+ // Sem o Homebrew Channel instalado nao ha caminho nenhum, e o cartao volta a
+ // ser so aviso (ver podeInstalar).
+ static int fioInstalar(void *arg) {
+-#ifdef NV_DTS_DEBUG
++#if defined(NV_DTS_DEBUG) || NV_HANDOFF_LOCAL_BUILD
+   /* Production release IPKs carry the production ID; never install them from
+    * an isolated diagnostic app, including through a stale update card. */
+   (void)arg; return 0;
+@@ -735,7 +736,7 @@ static int temInstalador(void) {
+ }
+ 
+ static int podeInstalar(void) {
+-#ifdef NV_DTS_DEBUG
++#if defined(NV_DTS_DEBUG) || NV_HANDOFF_LOCAL_BUILD
+   return 0;
+ #endif
+   return AT_INSTALA && ipkUrl[0] && estado == AT_PARADO && temInstalador();
+@@ -832,6 +833,9 @@ static void apkFalhou(void) {
+ }
+ 
+ static int fioInstalarApk(void *arg) {
++#if NV_HANDOFF_LOCAL_BUILD
++  (void)arg; return 0; /* Stock APKs do not carry our receiver overlay. */
++#endif
+   char dir[600] = "", nome[96], rel[128], arq[600] = "", hex[65] = "", ver[32], hash[80];
+   char *buf = NULL;
+   long n = 0;
+@@ -987,7 +991,7 @@ static int podeReconsultar(void) {
+ }
+ 
+ void atualizacao_verificar(void) {
+-#ifdef NV_DTS_DEBUG
++#if defined(NV_DTS_DEBUG) || NV_HANDOFF_LOCAL_BUILD
+   return; /* Debug IPKs are installed explicitly, outside production updates. */
+ #endif
+   static long ultChamada;
+@@ -1011,7 +1015,7 @@ void atualizacao_verificar(void) {
+ }
+ 
+ void atualizacao_procurar_agora(void) {
+-#ifdef NV_DTS_DEBUG
++#if defined(NV_DTS_DEBUG) || NV_HANDOFF_LOCAL_BUILD
+   return;
+ #endif
+   if (!mtx) mtx = SDL_CreateMutex();
+@@ -1024,6 +1028,9 @@ void atualizacao_procurar_agora(void) {
+ }
+ 
+ int atualizacao_busca(void) {
++#if NV_HANDOFF_LOCAL_BUILD
++  return ATUALIZACAO_BUSCA_CUSTOM;
++#endif
+   int b;
+   if (!mtx) return ATUALIZACAO_BUSCA_NADA;
+   SDL_LockMutex(mtx); b = busca; SDL_UnlockMutex(mtx);
+diff --git a/src/atualizacao.h b/src/atualizacao.h
+index 8f99dbcff4e131b20e3a69a14400535cea489507..d683b8155c967cec8c441eb0dfbc7baab3f1317c 100644
+--- a/src/atualizacao.h
++++ b/src/atualizacao.h
+@@ -22,7 +22,7 @@ void atualizacao_retomou(void);
+ void atualizacao_procurar_agora(void);
+ // O que a ultima consulta respondeu, para a linha dos Ajustes.
+ enum { ATUALIZACAO_BUSCA_NADA = 0, ATUALIZACAO_BUSCA_PROCURANDO,
+-       ATUALIZACAO_BUSCA_EM_DIA, ATUALIZACAO_BUSCA_NOVA, ATUALIZACAO_BUSCA_ERRO };
++       ATUALIZACAO_BUSCA_EM_DIA, ATUALIZACAO_BUSCA_NOVA, ATUALIZACAO_BUSCA_ERRO, ATUALIZACAO_BUSCA_CUSTOM };
+ int  atualizacao_busca(void);
+ // 1 (uma vez) quando a consulta pedida por atualizacao_procurar_agora achou
+ // versao nova: quem pediu abre o cartao.
+diff --git a/src/fontepref.c b/src/fontepref.c
+index 959cfd378de01875e9d1d328716493bda5e835a2..610b3d383c6df083312b210b4531d2e1e1be041d 100644
+--- a/src/fontepref.c
++++ b/src/fontepref.c
+@@ -1,3 +1,4 @@
++#include "handoff.h"
+ // A fonte escolhida a mao, lembrada por titulo e por perfil. Ver a nota longa
+ // em fontepref.h — em especial a ordem de casamento (bingeGroup declarado pelo
+ // addon, depois provedor + trilha de audio), por que a chave nao pode ser a
+@@ -1224,6 +1225,7 @@ int fontepref_escolher_manual(const char *id) {
+ }
+ 
+ int fontepref_escolher(const char *id) {
++  if (handoff_pending()) return -1; // Resolve using TV quality preferences.
+   const FontePref *p = fontepref_do_titulo(id);
+   return p ? escolherManual(p) : escolherAuto(id);
+ }
+diff --git a/src/main.c b/src/main.c
+index cfb0a7b8f9359ff25eb8d68277b9c37f2592203f..a45495525bfb4e2d5bbad083e23a8adc219c2642 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -1,3 +1,4 @@
++#include "handoff.h"
+ // Bootstrap: janela, contexto GL, loop e telemetria. Toda a UI vive nos modulos.
+ #include "app_id.h"
+ #include "arranque.h"
+@@ -1018,6 +1019,8 @@ int main(int argc, char **argv) {
+   // registro de todos os eventos SDL nao mostrava nada: a tecla nunca era
+   // entregue, e o codigo que ela usa tambem nao era o que eu procurava.
+   SDL_SetHint("SDL_WEBOS_ACCESS_POLICY_KEYS_BACK", "true");
++  // The SDL lifecycle logger includes authenticated launch parameters.
++  handoff_install_lifecycle();
+ #ifdef NV_WEBOS
+   // SDL_LOG_CATEGORY_SYSTEM PERMANECE no padrao (#205): o SDL-webOS loga o
+   // lifecycleEvent(v2) inteiro no INFO, e o SAM inclui os parametros de
+@@ -1707,6 +1710,8 @@ int main(int argc, char **argv) {
+   NV_ETAPA("app_iniciar");
+   arranque_etapa("app_iniciar");
+   if (!app_iniciar(dirArte)) return 1;
++  handoff_ready();
++  if (argc > 1 && argv[1][0] == '{') handoff_launch(argv[1]);
+   arranque_etapa("app_iniciar ok");
+   NV_ETAPA("addons/catalogo");
+   // Cor viva: a paleta da ultima cena volta ANTES do primeiro quadro, entao
+@@ -2171,6 +2176,7 @@ int main(int argc, char **argv) {
+     fBomb = NV_DT(t0);
+     fUplN = tex_upl_n; fUplB = tex_upl_bytes;
+     t0 = NV_T0();
++    handoff_tick();
+     app_atualizar(dt, agora);
+     // COR VIVA: UMA vez por quadro, antes do desenho. Consome o pedido que o
+     // desenho do quadro anterior fez (corviva_definir) e anda a transicao; o
+@@ -2256,6 +2262,7 @@ int main(int argc, char **argv) {
+     txt_novo_quadro();
+     ponteiro_quadro(agora);
+     app_desenhar(agora);
++    handoff_draw();
+     if (perftv_enabled) snprintf(perfScreen, sizeof perfScreen, "%s", perfTvScreen());
+     // A abertura (#213) cobre os primeiros quadros, com a home montando por baixo.
+     if (abertura_ativa()) {
+diff --git a/src/player.c b/src/player.c
+index 8951c0299e5650526c3ae13b416f717dac4f2e8b..609b6200bdca74c62c073415cc6893049d7713f4 100644
+--- a/src/player.c
++++ b/src/player.c
+@@ -1,3 +1,4 @@
++#include "handoff.h"
+ // Tela de reproducao, no formato do NOSSO APP WEB.
+ //
+ // A referencia mudou: esta variante legacy segue o player do app web (o bloco
+@@ -2192,6 +2193,7 @@ void player_definir_retomada_fonte(double segundos) {
+     retomarFonteSeg = segundos;
+ }
+ void player_definir_fonte(const char *url) {
++  handoff_player_opened();
+   if ((!aberto && !mini) || !url || !*url) return;
+   fonteAcaoInvalidar();
+   // A primeira fonte ainda pode aproveitar a legenda antecipada na espera.
+@@ -7227,3 +7229,5 @@ float player_osd_brilho(void) {
+                              agora > ultimoInput ? agora - ultimoInput : 0u,
+                              tocando);
+ }
++
++int player_handoff_ready(void) { return retomadaAplicada && video_pronto() && !player_carregando(); }
+diff --git a/src/player.h b/src/player.h
+index 626f8f253b3d6adc0c405b9d0c8e1e1714026338..6ef027819cb97b1479e7e25d851e29f31ad0a1ee 100644
+--- a/src/player.h
++++ b/src/player.h
+@@ -170,6 +170,7 @@ void player_definir_fonte(const char *url);
+ // quando a sessao foi iniciada com "Assistir do comeco". Chamar antes de parar.
+ // Zero e um ponto valido (a pessoa voltou ao inicio), nao retomada ausente.
+ void player_definir_retomada_fonte(double segundos);
++int player_handoff_ready(void);
+ // Desfaz a fonte em curso SEM fechar a tela: o video para e a sessao volta a
+ // "abrindo fonte", como logo depois de player_abrir. E o recuo da fonte
+ // guardada (fontevolta.h) para a busca normal, sem a pessoa ver o player
+diff --git a/src/rede.c b/src/rede.c
+index a80774064d5b908439896d0ba3a906169ea0ffc3..0c81fda0a132aa50554f8a9ea7b07be2a2bbcac6 100644
+--- a/src/rede.c
++++ b/src/rede.c
+@@ -401,7 +401,7 @@ int rede_pedir(const RedePedido *p, RedeResposta *r) {
+   if (p && p->receber_corpo && p->url && !strncmp(p->url,"https://",8) &&
+       (!p->metodo || !strcmp(p->metodo,"GET")) && !p->seguir && !p->cabecalhos &&
+       !p->corpo && !p->n_corpo && !p->job && !p->parar && !p->intervalo &&
+-      !p->janela_corpo_ms && !p->ca_arquivo && !p->tls_pessoal &&
++      !p->janela_corpo_ms && !p->ca_arquivo && !p->tls_pessoal && !p->tls_chave_pin &&
+       !p->max_cabecalhos && p->prazo_ms<=300000 && p->max_bytes<=REDE_CORPO_MAXIMO) {
+     unsigned total=0;
+     r->erro=nv_http_fluxo(p->url,p->prazo_ms?p->prazo_ms:15000,
+diff --git a/src/rede.h b/src/rede.h
+index 4783a067b4e40324e2b9f7845c8fbfef797c0060..97f37a5ee63b101a0641e3a9f39cc9182c082115 100644
+--- a/src/rede.h
++++ b/src/rede.h
+@@ -54,6 +54,9 @@ typedef struct {
+   size_t max_bytes, max_cabecalhos;
+   int seguir;          /* 0 = devolver 3xx; 1 = ate 5 redirects */
+   const char *ca_arquivo;
++  /* Exact SHA-256 SPKI pin for local handoff. HTTPS only, no redirects.
++   * libcurl checks this during TLS, before transmitting credentials. */
++  const char *tls_chave_pin;
+   /* #290: 1 = servidor PESSOAL configurado pela pessoa (Jellyfin/Emby/Plex),
+    * que costuma ter certificado autoassinado ou de rede local. O certificado
+    * deixa de ser verificado SO enquanto o pedido estiver na MESMA origem
+diff --git a/src/rede_pedido.inc b/src/rede_pedido.inc
+index 4f74f728c13a4c7bc12eff05130121f4f6b49b37..c7fa7db0228eb3c67c9e33d1003f005c9d3a96d9 100644
+--- a/src/rede_pedido.inc
++++ b/src/rede_pedido.inc
+@@ -257,6 +257,8 @@ int rede_pedir(const RedePedido *p, RedeResposta *r) {
+       !pedidoCabsValidos(p->cabecalhos, c.tetoCab)) {
+     r->erro = REDE_ENTRADA; return 0;
+   }
++  if (p->tls_chave_pin && (!tls || p->seguir || strlen(p->tls_chave_pin) != 52 ||
++      strncmp(p->tls_chave_pin, "sha256//", 8))) { r->erro = REDE_ENTRADA; return 0; }
+   /* `origem` follows redirects; the personal-server origin is the first one. */
+   memcpy(origemPessoal, origem, sizeof origemPessoal);
+   rede_job_reter(p->job);
+@@ -300,11 +302,12 @@ int rede_pedir(const RedePedido *p, RedeResposta *r) {
+     PEDIDO_OPT(OPT_NOSIGNAL, 1L);
+     { /* #290: servidor pessoal so na propria origem (ver tls_pessoal em rede.h). */
+       char aqui[300];
+-      int tlsAqui = 0, pessoal = p->tls_pessoal &&
+-        pedidoOrigem(url, aqui, sizeof aqui, &tlsAqui) && tlsAqui && !strcmp(aqui, origemPessoal);
++      int tlsAqui = 0, pessoal = p->tls_chave_pin || (p->tls_pessoal &&
++        pedidoOrigem(url, aqui, sizeof aqui, &tlsAqui) && tlsAqui && !strcmp(aqui, origemPessoal));
+       PEDIDO_OPT(OPT_SSL_VERIFYPEER, pessoal ? 0L : 1L);
+       PEDIDO_OPT(OPT_SSL_VERIFYHOST, pessoal ? 0L : 2L);
+     }
++    if (p->tls_chave_pin) PEDIDO_OPT(10230 /* CURLOPT_PINNEDPUBLICKEY */, p->tls_chave_pin);
+     if (p->ca_arquivo || discordCa[0]) PEDIDO_OPT(OPT_CAINFO, p->ca_arquivo ? p->ca_arquivo : discordCa);
+     PEDIDO_OPT(OPT_USERAGENT, "Nuvio/1.8");
+     /* Media diagnostics measure the player's wire body, without transparent
+diff --git a/src/streams.c b/src/streams.c
+index 39fa8a3c86382c878ed0d1f08dd9049056c09538..198f8bf0e295ef64f5f814701e3e8b19a2c3403c 100644
+--- a/src/streams.c
++++ b/src/streams.c
+@@ -1,3 +1,4 @@
++#include "handoff.h"
+ #include "streams.h"
+ #include "plrui.h"
+ #include "ondever.h"
+@@ -1335,6 +1336,7 @@ static long pontosDoAlvo(const Stream *s, const char *alvo) {
+   }
+ #endif
+   p -= multasDeAlvo(s, alvo);
++  if (handoff_pending()) { char text[3072]; snprintf(text,sizeof text,"%s %s %s",s->rotulo,s->descricao,s->arquivo); p += handoff_edition_bonus(text); }
+   return p;
+ }
+ static long pontos(const Stream *s) { return pontosDoAlvo(s, NULL); }
+diff --git a/tests/deeplink_app.c b/tests/deeplink_app.c
+index 853296f30591087d94569c13cb462740539b42df..1abd1a60b72bedc13934d08ea5cdcc029526ccdf 100644
+--- a/tests/deeplink_app.c
++++ b/tests/deeplink_app.c
+@@ -1,3 +1,4 @@
++#include <stdio.h>
+ // Harness for the real deeplinkAbrir body, extracted by deeplink.sh.
+ #include "deeplink.h"
+ #include <assert.h>
+diff --git a/tests/rede_pedido_buffer.c b/tests/rede_pedido_buffer.c
+index 7bb33b99e343ea9228c25ae878a54a51e533a3b0..d55d7e8f348d59a90b001f0217d6cb3f678b8c35 100644
+--- a/tests/rede_pedido_buffer.c
++++ b/tests/rede_pedido_buffer.c
+@@ -15,7 +15,7 @@ static void *alocar(void *p, size_t n) {
+ #define realloc alocar
+ #include "../src/rede.c"
+ #undef realloc
+-static int receberFluxo(const void *b, size_t n, void *u) {
++static int receberFluxoTeste(const void *b, size_t n, void *u) {
+   assert(b && n == 32); (*(int *)u)++; return 1;
+ }
+ int main(void) {
+@@ -71,7 +71,7 @@ int main(void) {
+   assert(!pedidoCorpo(dados, 1, 1, &c) && r.fim_teto && !chamadas);
+   assert(c.descartado == 4096); // strict accepted-byte cap; no media allocation
+   rede_resposta_limpar(&r);
+-  p.janela_corpo_ms=0; p.receber_corpo=receberFluxo;
++  p.janela_corpo_ms=0; p.receber_corpo=receberFluxoTeste;
+   int recebidos=0; p.corpo_usuario=&recebidos; c.status=302; c.tetoCorpo=64;
+   assert(pedidoCorpo(dados,1,32,&c)==32 && !recebidos && !chamadas);
+   c.status=200; r.n_corpo=0;
+diff --git a/tools/android.sh b/tools/android.sh
+index 36e9cb0a404dbe605cb4078091b82d4919b848c7..3cdf801c3154a90fc4536f048d5a50f22d4690b2 100755
+--- a/tools/android.sh
++++ b/tools/android.sh
+@@ -36,7 +36,8 @@ export JAVA_HOME="${JAVA_HOME:-$(ls -d "$HOME"/.local/jdks/jdk-17*/Contents/Home
+ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+ export ANDROID_SDK_ROOT="$ANDROID_HOME"
+ [ -x "$JAVA_HOME/bin/java" ] || { echo "android.sh: JDK 17 nao achado (JAVA_HOME)" >&2; exit 1; }
+-for d in ndk/27.2.12479018 platforms/android-35 build-tools/35.0.0 cmake/3.22.1; do
++NDK_VERSION="${NUVIO_NDK_VERSION:-27.2.12479018}"
++for d in "ndk/$NDK_VERSION" platforms/android-35 build-tools/35.0.0 cmake/3.22.1; do
+   [ -d "$ANDROID_HOME/$d" ] || { echo "android.sh: falta $ANDROID_HOME/$d (sdkmanager)" >&2; exit 1; }
+ done
+ 
+@@ -91,10 +92,10 @@ for abi in arm64-v8a armeabi-v7a; do
+ done
+ 
+ echo "[4/5] gradle"
+-export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_HOME/ndk/27.2.12479018}"
++export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_HOME/ndk/$NDK_VERSION}"
+ FFMPEG_AAR="$EST/media3-ffmpeg-16kb.aar"
+ bash tools/android/ffmpeg-android.sh "$FFMPEG_AAR" arm64-v8a armeabi-v7a
+-GR=(android/gradlew -p android --console=plain -Pnuvio.sdlSrc="$CACHE/src" -Pnuvio.estagio="$EST" -Pnuvio.ffmpegAar="$FFMPEG_AAR")
++GR=(android/gradlew -p android --console=plain -Pnuvio.ndkVersion="$NDK_VERSION" -Pnuvio.sdlSrc="$CACHE/src" -Pnuvio.estagio="$EST" -Pnuvio.ffmpegAar="$FFMPEG_AAR")
+ [ "${NUVIO_ANDROID_OFFLINE:-0}" != 1 ] || GR+=(--offline)
+ # Motor P2P embutido: pasta achada por tools/p2p-motor/pasta.sh (NUVIO_P2P_MOTOR,
+ # ou a pasta padrao); configurada e incompleta = erro, nunca pacote sem motor calado.
+@@ -109,8 +110,14 @@ fi
+ # Nucleo EBML/NAL do mkv.c em Rust, ligado por padrao (dono aprovou em 14/10/2026);
+ # NUVIO_RUST_MKVCORE=0 volta ao C para comparar.
+ if [ "${NUVIO_RUST_MKVCORE:-1}" = 1 ]; then
+-  NV_RUST_MKV_DIR="$EST/rust-mkvcore"
+-  tools/rust-mkvcore.sh --android "$NV_RUST_MKV_DIR" >&2
++  NV_RUST_MKV_DIR="${NUVIO_RUST_MKVCORE_PREBUILT:-$EST/rust-mkvcore}"
++  if [ -n "${NUVIO_RUST_MKVCORE_PREBUILT:-}" ]; then
++    for abi in arm64-v8a armeabi-v7a; do
++      [ -f "$NV_RUST_MKV_DIR/$abi/libmkvcore.a" ] || { echo "Missing prebuilt Rust archive for $abi" >&2; exit 1; }
++    done
++  else
++    tools/rust-mkvcore.sh --android "$NV_RUST_MKV_DIR" >&2
++  fi
+   GR+=(-Pnuvio.rustMkvcore="$NV_RUST_MKV_DIR")
+ fi
+ TAREFAS=()
+diff --git a/tools/arm.sh b/tools/arm.sh
+index ffcbec95c119fc41c7ec449e6f8b6928c98bd853..8fe6738a18ef8d0072b947e7b3834c55c0f6a7a5 100755
+--- a/tools/arm.sh
++++ b/tools/arm.sh
+@@ -88,10 +88,10 @@ RUST_VOL=()
+ if [ "$RUST_MKVCORE" = 1 ]; then
+   RUST_PERSONALITY=0
+   if [ "${NUVIO_DV7:-1}" = 1 ] && [ "$DTS_ENABLED" = 1 ]; then RUST_PERSONALITY=1; fi
+-  RUST_LIB=$(NUVIO_RUST_EXTERNAL_PERSONALITY="$RUST_PERSONALITY" CARGO_NET_OFFLINE=true bash tools/rust-mkvcore.sh armv7-unknown-linux-gnueabi)
++  RUST_LIB=${NUVIO_RUST_LIB:-$(NUVIO_RUST_EXTERNAL_PERSONALITY="$RUST_PERSONALITY" CARGO_NET_OFFLINE=true bash tools/rust-mkvcore.sh armv7-unknown-linux-gnueabi)}
+   RUST_VOL=(-v "$RUST_LIB:/tmp/libmkvcore.a:ro")
+   # The container has no cargo: build the DV7 converter here with the same toolchain.
+-  if [ "$RUST_PERSONALITY" = 1 ]; then
++  if [ "$RUST_PERSONALITY" = 1 ] && [ ! -f build/dv7/libnuvio_dv7.a ]; then
+     (export RUSTUP_HOME="${RUSTUP_HOME:-/Volumes/ExternalSSD/rust/rustup}" CARGO_HOME="${CARGO_HOME:-/Volumes/ExternalSSD/rust/cargo}"
+      export PATH="$CARGO_HOME/bin:$PATH" NUVIO_DV7_TARGET=armv7-unknown-linux-gnueabi
+      bash tools/build-dv7.sh >&2)
+diff --git a/tools/p2p-motor/build-android.sh b/tools/p2p-motor/build-android.sh
+index 3aacd2346d5e555cfb9972e0698e9394b1ad76e6..e139b07234fc4135d4721a4d7c83a5f06452d49b 100755
+--- a/tools/p2p-motor/build-android.sh
++++ b/tools/p2p-motor/build-android.sh
+@@ -13,7 +13,7 @@ cd "$(dirname "$0")/../.."
+ . tools/p2p-motor/pasta.sh; nv_p2p_raiz
+ W="${1:-${NV_P2P_RAIZ:-/Volumes/ExternalSSD/nuvio-p2p-motor}/android}"
+ SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+-NDK="$SDK/ndk/27.2.12479018"
++NDK="${ANDROID_NDK_HOME:-$SDK/ndk/27.2.12479018}"
+ [ -d "$NDK" ] || { echo "build-android.sh: NDK ausente em $NDK" >&2; exit 1; }
+ mkdir -p "$W"
+ [ -d "$W/nuvio-engine/.git" ] || git clone -q https://github.com/NuvioMedia/nuvio-engine "$W/nuvio-engine"
+diff --git a/tools/p2p-motor/build-arm.sh b/tools/p2p-motor/build-arm.sh
+index 8229c147256ca44748f3f58d7acf082e0b23c9d6..d77fd775bfc4b8938218b15215cada7a34ff4fa7 100755
+--- a/tools/p2p-motor/build-arm.sh
++++ b/tools/p2p-motor/build-arm.sh
+@@ -16,9 +16,10 @@ if [ ! -d "$W/nuvio-engine/.git" ]; then
+   git clone -q https://github.com/NuvioMedia/nuvio-engine "$W/nuvio-engine"
+ fi
+ nv_p2p_fonte "$W/nuvio-engine"
+-cp tools/p2p-motor/poc.c "$W/poc.c"
++sed 's|../../tests/nvtmp.h|nvtmp.h|' tools/p2p-motor/poc.c > "$W/poc.c"
++cp tests/nvtmp.h "$W/nvtmp.h"
+ # -j baixo: com -j$(nproc) o cc1plus do libtorrent estoura a RAM do container (Killed).
+-ctr_run --rm --platform linux/arm64 -e NV_JOBS="${NV_JOBS:-2}" -v "$W":/w nuvio-webos-sdk sh -c '
++ctr_run --rm --platform "${NUVIO_BUILD_PLATFORM:-linux/arm64}" -e NV_JOBS="${NV_JOBS:-2}" -v "$W":/w nuvio-webos-sdk sh -c '
+   set -e
+   command -v cmake >/dev/null 2>&1 && cmake --version >/dev/null 2>&1 || {
+     apt-get update -qq >/dev/null && apt-get install -y -qq cmake git >/dev/null; }
+diff --git a/android/app/src/main/java/space/nuvio/nativelegacy/NativeHandoffLaunch.kt b/android/app/src/main/java/space/nuvio/nativelegacy/NativeHandoffLaunch.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..45cb3d731bd7b891e4f7f03940170160f980d87a
+--- /dev/null
++++ b/android/app/src/main/java/space/nuvio/nativelegacy/NativeHandoffLaunch.kt
+@@ -0,0 +1,18 @@
++package space.nuvio.nativelegacy
++
++import java.net.URI
++import java.net.URLDecoder
++
++internal object NativeHandoffLaunch {
++    fun payload(url: String): String? = runCatching {
++        require(url.length <= 65536)
++        val uri = URI(url)
++        require(uri.scheme in setOf("nuvio-legacy-handoff", "nuvio-legacy-handoff-debug"))
++        require(uri.host == "handoff" && uri.userInfo == null && uri.port == -1 && uri.fragment == null && uri.path.isNullOrEmpty())
++        val params = uri.rawQuery.orEmpty().split('&')
++        require(params.size == 1 && params.single().startsWith("launch="))
++        val decoded = URLDecoder.decode(params.single().substringAfter('='), "UTF-8")
++        require(decoded.startsWith("{") && decoded.toByteArray(Charsets.UTF_8).size <= 16384)
++        decoded
++    }.getOrNull()
++}
+diff --git a/android/app/src/test/java/space/nuvio/nativelegacy/NativeHandoffLaunchTest.kt b/android/app/src/test/java/space/nuvio/nativelegacy/NativeHandoffLaunchTest.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..24e7950ff3545ca35f5a3eb8eadb5b7ad491b564
+--- /dev/null
++++ b/android/app/src/test/java/space/nuvio/nativelegacy/NativeHandoffLaunchTest.kt
+@@ -0,0 +1,21 @@
++package space.nuvio.nativelegacy
++import org.junit.Assert.*
++import org.junit.Test
++import java.net.URLEncoder
++
++class NativeHandoffLaunchTest {
++    private val payload = "{\"token\":\"a+b/\"}"
++    private fun url(scheme: String = "nuvio-legacy-handoff-debug") = "$scheme://handoff?launch=" + URLEncoder.encode(payload, "UTF-8")
++    @Test fun decodesProductionAndDebugRoutesWithoutLosingPlusCharacters() {
++        assertEquals(payload, NativeHandoffLaunch.payload(url()))
++        assertEquals(payload, NativeHandoffLaunch.payload(url("nuvio-legacy-handoff")))
++    }
++    @Test fun rejectsAmbiguousAndMalformedRoutes() {
++        for (bad in listOf(url()+"&launch=x", url()+"#fragment", "nuvio-legacy-handoff:opaque", "nuvio-legacy-handoff://other?launch=%7B%7D", "nuvio-legacy-handoff://handoff?launch=%zz", url("https")))
++            assertNull(bad, NativeHandoffLaunch.payload(bad))
++    }
++    @Test fun rejectsOversizedPayloadsBeforeNativeDelivery() {
++        assertNull(NativeHandoffLaunch.payload("nuvio-legacy-handoff://handoff?launch=" + URLEncoder.encode("{"+"x".repeat(16384), "UTF-8")))
++        assertNull(NativeHandoffLaunch.payload("x".repeat(65537)))
++    }
++}
+diff --git a/src/handoff.c b/src/handoff.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..097296e4c54504199d1fd0279b3f69b1e65e81a6
+--- /dev/null
++++ b/src/handoff.c
+@@ -0,0 +1,620 @@
++/* Local desktop receiver. Network runs on one worker; SDL/player only on UI.
++ * No media URL is received: the existing title/source router remains in charge.
++ */
++#define _GNU_SOURCE
++#include "handoff.h"
++#if defined(NV_WEBOS) || defined(NV_ANDROID)
++#include "app.h"
++#include "catalogo.h"
++#include "dados.h"
++#include "gfx.h"
++#include "handoff_protocol.h"
++#include "js.h"
++#include "perfis.h"
++#include "player.h"
++#include "rede.h"
++#include "sessao.h"
++#include "text.h"
++#include <ctype.h>
++#include <math.h>
++#include <pthread.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <time.h>
++#include <unistd.h>
++
++enum { H_WAIT = 1, H_START, H_LOADING, H_DONE, H_FAILED };
++typedef struct {
++  HandoffLaunch launch;
++  HandoffRequest request;
++  unsigned seq;
++  int stage, decision, trusted;
++  int opened, playing, mediaReady, mediaFailed, seekAttempts;
++  double position, stablePosition, duration;
++  Uint32 stableSince, lastSeek;
++  uint64_t profileSession;
++} Transfer;
++static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
++static pthread_cond_t wake = PTHREAD_COND_INITIALIZER;
++static unsigned generation;
++static HandoffLaunch queued;
++static Transfer *active;
++static int started, queuedValid, focus, ready;
++static unsigned uiOwned, uiStarted, inflightSeq, recentIndex;
++static char inflight[65], recentIds[128][65];
++static double recentExpiry[128];
++static double epoch(void) {
++  struct timespec t;
++  clock_gettime(CLOCK_REALTIME, &t);
++  return t.tv_sec * 1000. + t.tv_nsec / 1000000.;
++}
++static int cancelled(void *u) {
++  Transfer *t = u;
++  int stop;
++  pthread_mutex_lock(&lock);
++  stop = generation != t->seq;
++  pthread_mutex_unlock(&lock);
++  return stop || epoch() >= t->request.expires;
++}
++static char *exchange(Transfer *t, const char *phase, double position,
++                      const char *failure) {
++  char url[160], auth[96], body[512];
++  RedeResposta r;
++  RedePedido p = {0};
++  snprintf(url, sizeof url, "%s%s", t->launch.endpoint, phase ? "/status" : "");
++  snprintf(auth, sizeof auth, "Authorization: Bearer %s", t->launch.token);
++  const char *headers[] = {auth, "Content-Type: application/json", NULL};
++  p.url = url;
++  p.metodo = phase ? "POST" : "GET";
++  p.cabecalhos = headers;
++  p.prazo_ms = 6000;
++  p.max_bytes = 16384;
++  p.max_cabecalhos = 16384;
++  p.tls_chave_pin = t->launch.pin;
++  /* During first fetch expiry is not known yet. Generation still cancels I/O.
++   */
++  if (t->request.expires) {
++    p.parar = cancelled;
++    p.parar_usuario = t;
++  }
++  if (phase) {
++    snprintf(body, sizeof body,
++             "{\"requestId\":\"%s\",\"targetDeviceId\":\"%s\",\"phase\":\"%s\","
++             "\"positionMs\":%.0f%s%s%s}",
++             t->request.id, t->request.target, phase, position,
++             failure ? ",\"failureCode\":\"" : "", failure ? failure : "",
++             failure ? "\"" : "");
++    p.corpo = body;
++    p.n_corpo = strlen(body);
++  }
++  int ok = rede_pedir(&p, &r) && r.status == 200;
++  if (!ok) {
++    char diagnostic[128];
++    snprintf(diagnostic, sizeof diagnostic,
++             "network request=%.8s curl=%d status=%d error=%d\n", t->launch.id,
++             r.curl_erro, r.status, r.erro);
++    dados_gravar_leve("handoff-receiver.txt", diagnostic);
++  }
++  char *result = ok ? r.corpo : NULL;
++  if (ok)
++    r.corpo = NULL;
++  rede_resposta_limpar(&r);
++  return result;
++}
++static int status(Transfer *t, const char *phase, double pos,
++                  const char *failure) {
++  char *s = exchange(t, phase, pos, failure);
++  int ok = s != NULL;
++  free(s);
++  return ok;
++}
++static int trusted(Transfer *t) {
++  char line[160];
++  char *saved = dados_ler("handoff-trust.txt");
++  snprintf(line, sizeof line, "%s %s\n", t->launch.sender, t->launch.pin);
++  int ok = saved && strstr(saved, line) &&
++           (strstr(saved, line) == saved || strstr(saved, line)[-1] == '\n');
++  free(saved);
++  return ok;
++}
++static void trust(Transfer *t) {
++  char line[160], buf[4096];
++  char *saved = dados_ler("handoff-trust.txt");
++  snprintf(line, sizeof line, "%s %s\n", t->launch.sender, t->launch.pin);
++  if (saved && strlen(saved) < sizeof buf - 160)
++    snprintf(buf, sizeof buf, "%s%s", saved, line);
++  else
++    snprintf(buf, sizeof buf, "%s", line);
++  free(saved);
++  dados_gravar("handoff-trust.txt", buf);
++}
++/* Persist recent request ids, bounded by the two-minute request lifetime. */
++static int replay(Transfer *t, int remember) {
++  char buf[16384] = "", id[65];
++  double until;
++  char *saved = dados_ler("handoff-seen.txt"), *p = saved;
++  int seen = 0, count = 0;
++  while (p && *p) {
++    int n = 0;
++    if (sscanf(p, "%64s %lf%n", id, &until, &n) != 2 || !n)
++      break;
++    if (until > epoch()) {
++      if (!strcmp(id, t->request.id))
++        seen = 1;
++      if (count++ < 128) {
++        size_t len = strlen(buf);
++        snprintf(buf + len, sizeof buf - len, "%s %.0f\n", id, until);
++      }
++    }
++    p = strchr(p, '\n');
++    if (p)
++      p++;
++  }
++  free(saved);
++  if (count >= 128)
++    return 1;
++  if (remember && !seen) {
++    size_t len = strlen(buf);
++    snprintf(buf + len, sizeof buf - len, "%s %.0f\n", t->request.id,
++             t->request.expires);
++    dados_gravar("handoff-seen.txt", buf);
++  }
++  return seen;
++}
++static void *worker(void *unused) {
++  (void)unused;
++  for (;;) {
++    Transfer t = {0};
++    pthread_mutex_lock(&lock);
++    inflight[0] = 0;
++    while (!queuedValid)
++      pthread_cond_wait(&wake, &lock);
++    t.launch = queued;
++    t.seq = generation;
++    inflightSeq = t.seq;
++    snprintf(inflight, sizeof inflight, "%s", t.launch.id);
++    queuedValid = 0;
++    active = NULL;
++    pthread_mutex_unlock(&lock);
++    char *json = exchange(&t, NULL, 0, NULL);
++    if (!json)
++      continue;
++    int valid = handoff_parse_request(json, &t.launch, epoch(), &t.request);
++    free(json);
++    if (!valid)
++      continue;
++    if (replay(&t, 0)) {
++      status(&t, "FAILED", 0, "DUPLICATE_REQUEST");
++      continue;
++    }
++    if (!status(&t, "RECEIVED", 0, NULL) ||
++        !status(&t, "AWAITING_USER", 0, NULL))
++      continue;
++    dados_gravar_leve("handoff-receiver.txt", "request validated\n");
++    t.trusted = trusted(&t);
++    t.stage = H_WAIT;
++    printf("[handoff] request validated\n");
++    pthread_mutex_lock(&lock);
++    if (generation == t.seq)
++      active = &t;
++    pthread_mutex_unlock(&lock);
++    int approved = 0, loading = 0;
++    Uint32 lastPoll = 0, lastDiagnostic = 0;
++    while (!cancelled(&t)) {
++      char note[200] = "";
++      pthread_mutex_lock(&lock);
++      int decision = t.decision, opened = t.opened, playing = t.playing;
++      double pos = t.position;
++      if (SDL_GetTicks() - lastDiagnostic >= 5000) {
++        snprintf(note, sizeof note,
++                 "request=%.8s stage=%d positionMs=%.0f durationMs=%.0f "
++                 "ready=%d failed=%d seeks=%d\n",
++                 t.launch.id, t.stage, t.position, t.duration, t.mediaReady,
++                 t.mediaFailed, t.seekAttempts);
++        lastDiagnostic = SDL_GetTicks();
++      }
++      pthread_mutex_unlock(&lock);
++      if (note[0])
++        dados_gravar_leve("handoff-receiver.txt", note);
++      if (decision < 0) {
++        status(&t, "FAILED", 0,
++               decision == -2   ? "PROFILE_REQUIRED"
++               : decision == -3 ? "EDITION_MISMATCH"
++               : decision == -4 ? "SEEK_FAILED"
++                                : "USER_DECLINED");
++        break;
++      }
++      if (!approved && decision == 1) {
++        char *fresh = exchange(&t, NULL, 0, NULL);
++        if (!fresh)
++          break;
++        free(fresh);
++        if (!status(&t, "RESOLVING", 0, NULL))
++          break;
++        trust(&t);
++        replay(&t, 1);
++        approved = 1;
++        pthread_mutex_lock(&lock);
++        if (generation == t.seq) {
++          unsigned slot = recentIndex++ % 128;
++          snprintf(recentIds[slot], sizeof recentIds[slot], "%s", t.request.id);
++          recentExpiry[slot] = t.request.expires;
++          t.stage = H_START;
++        }
++        pthread_mutex_unlock(&lock);
++      }
++      if (approved && opened && !loading) {
++        if (!status(&t, "LOADING", 0, NULL))
++          break;
++        loading = 1;
++      }
++      if (loading && playing) {
++        if (!status(&t, "PLAYING", pos, NULL))
++          break;
++        pthread_mutex_lock(&lock);
++        t.stage = H_DONE;
++        printf("[handoff] playback confirmed\n");
++        pthread_mutex_unlock(&lock);
++        break;
++      }
++      if (SDL_GetTicks() - lastPoll >= 1000) {
++        char *poll = exchange(&t, NULL, 0, NULL);
++        lastPoll = SDL_GetTicks();
++        if (!poll)
++          break;
++        free(poll);
++      }
++      SDL_Delay(50);
++    }
++    pthread_mutex_lock(&lock);
++    if (t.stage != H_DONE)
++      t.stage = H_FAILED;
++    /* Keep the completed snapshot alive until the UI has consumed it. */
++    while (active == &t && generation == t.seq)
++      pthread_cond_wait(&wake, &lock);
++    if (active == &t)
++      active = NULL;
++    pthread_mutex_unlock(&lock);
++  }
++  return NULL;
++}
++void handoff_launch(const char *json) {
++  HandoffLaunch l;
++  if (!handoff_parse_launch(json, &l))
++    return;
++  pthread_mutex_lock(&lock);
++  for (unsigned i = 0; i < 128; i++)
++    if (recentExpiry[i] > epoch() && !strcmp(recentIds[i], l.id)) {
++      pthread_mutex_unlock(&lock);
++      return;
++    }
++  if (inflightSeq == generation && !strcmp(inflight, l.id)) {
++    pthread_mutex_unlock(&lock);
++    return;
++  }
++  if ((active && !strcmp(active->launch.id, l.id)) ||
++      (queuedValid && !strcmp(queued.id, l.id))) {
++    pthread_mutex_unlock(&lock);
++    return;
++  }
++  dados_gravar_leve("handoff-receiver.txt", "launch accepted\n");
++  queued = l;
++  queuedValid = 1;
++  generation++;
++  printf("[handoff] launch received\n");
++  if (!started && ready) {
++    pthread_t thread;
++    if (!pthread_create(&thread, NULL, worker, NULL)) {
++      pthread_detach(thread);
++      started = 1;
++    }
++  }
++  pthread_cond_broadcast(&wake);
++  pthread_mutex_unlock(&lock);
++}
++/* Retail LG SDL owns the native lifecycle subscription and does not expose
++ * its launch parameters as an SDL event. It delivers the bounded JSON to the
++ * public SDL log callback. Consume that payload without printing it; all normal
++ * SDL lifecycle/window processing stays intact. Never forward JSON system logs:
++ * launch parameters can contain credentials even when this receiver ignores
++ * them. There is no private-symbol interposition or extra listener on the LAN.
++ */
++#ifdef NV_WEBOS
++static SDL_LogOutputFunction previousLog;
++static void *previousLogData;
++static void lifecycleLog(void *unused, int category, SDL_LogPriority priority,
++                         const char *message) {
++  (void)unused;
++  if (category == SDL_LOG_CATEGORY_SYSTEM) {
++    const char *json = strchr(message, '{');
++    if (json) {
++      char event[32] = "";
++      if (strnlen(json, 16385) <= 16384 &&
++          js_texto_raiz(json, "event", event, sizeof event) &&
++          (!strcmp(event, "launch") || !strcmp(event, "relaunch"))) {
++        handoff_launch(json);
++        char decoded[4097];
++        if (js_texto(json, NULL, "parameters", decoded, sizeof decoded))
++          handoff_launch(decoded);
++      }
++      return;
++    }
++  }
++  if (previousLog)
++    previousLog(previousLogData, category, priority, message);
++}
++void handoff_install_lifecycle(void) {
++  SDL_LogGetOutputFunction(&previousLog, &previousLogData);
++  SDL_LogSetOutputFunction(lifecycleLog, NULL);
++  SDL_LogSetPriority(SDL_LOG_CATEGORY_SYSTEM, SDL_LOG_PRIORITY_INFO);
++}
++#else
++void handoff_install_lifecycle(void) {}
++#include <jni.h>
++JNIEXPORT void JNICALL
++Java_space_nuvio_nativelegacy_NuvioActivity_nativeHandoff(JNIEnv *env,
++    jobject activity, jstring payload) {
++  (void)activity;
++  if (!payload || (*env)->GetStringUTFLength(env, payload) > 16384) return;
++  const char *json = (*env)->GetStringUTFChars(env, payload, NULL);
++  if (json) {
++    handoff_launch(json);
++    (*env)->ReleaseStringUTFChars(env, payload, json);
++  }
++}
++#endif
++void handoff_ready(void) {
++  pthread_mutex_lock(&lock);
++  ready = 1;
++  if (queuedValid && !started) {
++    pthread_t thread;
++    if (!pthread_create(&thread, NULL, worker, NULL)) {
++      pthread_detach(thread);
++      started = 1;
++    }
++  }
++  pthread_cond_broadcast(&wake);
++  pthread_mutex_unlock(&lock);
++}
++int handoff_pending(void) {
++  int yes;
++  pthread_mutex_lock(&lock);
++  yes = active && active->seq == generation &&
++        (active->stage == H_START || active->stage == H_LOADING);
++  pthread_mutex_unlock(&lock);
++  return yes;
++}
++static void normalized(const char *s, char *out, size_t n) {
++  size_t i = 0;
++  for (; *s && i + 1 < n; s++)
++    if (isalnum((unsigned char)*s))
++      out[i++] = (char)tolower((unsigned char)*s);
++  out[i] = 0;
++}
++long handoff_edition_bonus(const char *text) {
++  char hint[128] = "", raw[128] = "", haystack[4096];
++  pthread_mutex_lock(&lock);
++  if (active && active->seq == generation &&
++      (active->stage == H_START || active->stage == H_LOADING))
++    snprintf(raw, sizeof raw, "%s", active->request.edition);
++  pthread_mutex_unlock(&lock);
++  if (!raw[0])
++    return 0;
++  normalized(raw, hint, sizeof hint);
++  normalized(text, haystack, sizeof haystack);
++  return hint[0] && strstr(haystack, hint) ? 1000000L : 0;
++}
++void handoff_player_opened(void) {
++  pthread_mutex_lock(&lock);
++  if (active && active->seq == uiStarted && active->stage == H_LOADING) {
++    const CatItem *c = cat_item(player_indice());
++    int s, e;
++    player_episodio_atual(&s, &e);
++    if (c &&
++        handoff_content_matches(active->request.content, active->request.series,
++                                c->imdb, c->tmdb, !strcmp(c->tipo, "series")) &&
++        (!active->request.series ||
++         (s == active->request.season && e == active->request.episode))) {
++      player_do_inicio();
++      player_definir_retomada_fonte(active->request.position / 1000.);
++      active->opened = 1;
++      uiOwned = active->seq;
++    }
++  }
++  pthread_mutex_unlock(&lock);
++}
++void handoff_tick(void) {
++  pthread_mutex_lock(&lock);
++  Transfer *t = active;
++  if (!t || t->seq != generation) {
++    int stop = uiOwned != 0;
++    uiOwned = 0;
++    pthread_mutex_unlock(&lock);
++    if (stop && player_aberto())
++      player_encerrar();
++    return;
++  }
++  if (uiOwned && uiOwned != t->seq) {
++    uiOwned = 0;
++    pthread_mutex_unlock(&lock);
++    if (player_aberto())
++      player_encerrar();
++    return;
++  }
++  if (t->stage == H_DONE || t->stage == H_FAILED) {
++    int stop = t->stage == H_FAILED && uiOwned == t->seq;
++    uiOwned = 0;
++    active = NULL;
++    focus = 0;
++    pthread_cond_broadcast(&wake);
++    pthread_mutex_unlock(&lock);
++    if (stop && player_aberto())
++      player_encerrar();
++    return;
++  }
++  if (t->stage == H_WAIT && t->trusted && !app_no_login() &&
++      perfis_precisa_escolher() && perfis_dono()[0] &&
++      !strcmp(perfis_dono(), t->request.account) &&
++      perfis_ativo() == t->request.profile && perfis_pode_dispensar()) {
++    char owner[64];
++    snprintf(owner, sizeof owner, "%s", t->request.account);
++    int profile = t->request.profile;
++    pthread_mutex_unlock(&lock);
++    extern int app_handoff_restore_profile(const char *, int);
++    app_handoff_restore_profile(owner, profile);
++    return;
++  }
++  if (t->stage == H_WAIT && !app_no_login() && !perfis_precisa_escolher() &&
++      perfis_dono()[0]) {
++    if (!sessao_logada() || strcmp(perfis_dono(), t->request.account) ||
++        perfis_ativo() != t->request.profile)
++      t->decision = -2;
++    else if (t->trusted && !player_aberto())
++      t->decision = 1;
++    else if (!focus)
++      focus = 1;
++  }
++  if (t->stage == H_START) {
++    t->profileSession = perfis_sessao_geracao();
++    t->stage = H_LOADING;
++    uiStarted = t->seq;
++    printf("[handoff] opening title\n");
++    char content[64];
++    snprintf(content, sizeof content, "%s", t->request.content);
++    int s = t->request.season, e = t->request.episode;
++    pthread_mutex_unlock(&lock);
++    extern void app_handoff_start(const char *, int, int);
++    app_handoff_start(content, s, e);
++    return;
++  }
++  if (t->stage == H_LOADING) {
++    if (!perfis_sessao_atual(t->profileSession)) {
++      t->decision = -2;
++    } else if (t->opened) {
++      const CatItem *c = cat_item(player_indice());
++      int s, e;
++      player_episodio_atual(&s, &e);
++      if (!player_aberto() || !c ||
++          !handoff_content_matches(t->request.content, t->request.series,
++                                   c->imdb, c->tmdb,
++                                   !strcmp(c->tipo, "series")) ||
++          (t->request.series &&
++           (s != t->request.season || e != t->request.episode)))
++        t->decision = -1;
++      double actualDuration = video_duracao() * 1000.;
++      t->duration = actualDuration;
++      t->mediaFailed = video_falhou();
++      if (video_pronto() && actualDuration > 0 &&
++          fabs(actualDuration - t->request.duration) >
++              fmax(60000., t->request.duration * .03))
++        t->decision = -3;
++      double pos = video_pos() * 1000.;
++      int ready = video_tocando() && player_handoff_ready() &&
++                  fabs(pos - t->request.position) <= 2000;
++      t->position = pos;
++      t->mediaReady = player_handoff_ready();
++      if (!ready) {
++        t->stableSince = 0;
++        t->playing = 0;
++        if (video_pronto() && video_tocando() && player_handoff_ready() &&
++            fabs(pos - t->request.position) > 2000 &&
++            SDL_GetTicks() - t->lastSeek >= 2000) {
++          t->lastSeek = SDL_GetTicks();
++          if (t->seekAttempts++ < 6)
++            video_buscar(t->request.position / 1000.);
++          else
++            t->decision = -4;
++        }
++      } else if (!t->stableSince) {
++        t->stableSince = SDL_GetTicks();
++        t->stablePosition = pos;
++      } else if (SDL_GetTicks() - t->stableSince >= 750 &&
++                 pos >= t->stablePosition + 100) {
++        t->playing = 1;
++        t->position = pos;
++      }
++    }
++  }
++  pthread_mutex_unlock(&lock);
++}
++int handoff_event(const SDL_Event *e) {
++  pthread_mutex_lock(&lock);
++  int modal =
++      focus && active && active->seq == generation && active->stage == H_WAIT;
++  if (modal && e->type == SDL_KEYDOWN) {
++    SDL_Keycode k = e->key.keysym.sym;
++    if (k == SDLK_LEFT || k == SDLK_RIGHT || k == SDLK_TAB)
++      focus = focus == 1 ? 2 : 1;
++    if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE || k == SDLK_SELECT) {
++      active->decision = focus == 1 ? 1 : -1;
++      focus = 0;
++    }
++    if (k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_BACKSPACE ||
++        e->key.keysym.scancode == 482) {
++      active->decision = -1;
++      focus = 0;
++    }
++  }
++  if (modal && (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONUP)) {
++    int w = 1920, h = 1080;
++    SDL_Window *window = SDL_GetMouseFocus();
++    if (window)
++      SDL_GetWindowSize(window, &w, &h);
++    float x = (e->type == SDL_MOUSEMOTION ? e->motion.x : e->button.x) *
++              1920.f / (w ? w : 1920);
++    float y = (e->type == SDL_MOUSEMOTION ? e->motion.y : e->button.y) *
++              1080.f / (h ? h : 1080);
++    if (y >= 620 && y <= 690) {
++      if (x >= 510 && x <= 910)
++        focus = 1;
++      else if (x >= 960 && x <= 1360)
++        focus = 2;
++      if (e->type == SDL_MOUSEBUTTONUP &&
++          ((x >= 510 && x <= 910) || (x >= 960 && x <= 1360))) {
++        active->decision = focus == 1 ? 1 : -1;
++        focus = 0;
++      }
++    }
++  }
++  pthread_mutex_unlock(&lock);
++  return modal && (e->type == SDL_KEYDOWN || e->type == SDL_KEYUP ||
++                   e->type == SDL_MOUSEBUTTONDOWN ||
++                   e->type == SDL_MOUSEBUTTONUP || e->type == SDL_MOUSEMOTION);
++}
++void handoff_draw(void) {
++  char title[2049], code[64];
++  int f = 0, tr = 0;
++  pthread_mutex_lock(&lock);
++  if (focus && active && active->seq == generation && active->stage == H_WAIT) {
++    f = focus;
++    tr = active->trusted;
++    snprintf(title, sizeof title, "%s", active->request.title);
++    snprintf(code, sizeof code, "Desktop code: %.6s", active->launch.pin + 8);
++  }
++  pthread_mutex_unlock(&lock);
++  if (!f)
++    return;
++  gfx_cor((GfxRect){0, 0, 1920, 1080}, 0, 0, 0, 0, .65f);
++  gfx_chrome((GfxRect){460, 330, 1000, 420}, 24.f / 420.f, 1);
++  txt_desenhar(
++      txt_linha(TXT_TITULO2,
++                tr ? "Continue watching on this TV?" : "Pair Nuvio Desktop?",
++                255, 255, 255, 255),
++      510, 375);
++  txt_desenhar(txt_linha_corta(TXT_BODY, title, 235, 235, 235, 255, 900), 510,
++               455);
++  if (!tr)
++    txt_desenhar(txt_linha(TXT_BODY, code, 200, 200, 200, 255), 510, 515);
++  for (int i = 1; i <= 2; i++) {
++    float x = i == 1 ? 510 : 960;
++    gfx_cor((GfxRect){x, 620, 400, 70}, 14.f / 70.f, f == i ? .95f : .2f,
++            f == i ? .95f : .2f, f == i ? .95f : .2f, 1);
++    int c = f == i ? 15 : 255;
++    txt_desenhar(
++        txt_linha(TXT_BODY, i == 1 ? "Continue" : "Cancel", c, c, c, 255),
++        x + 30, 637);
++  }
++}
++
++#endif
+diff --git a/src/handoff.h b/src/handoff.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..df27137cd2256a4aed0819c3afbf6a8fbdab72b9
+--- /dev/null
++++ b/src/handoff.h
+@@ -0,0 +1,39 @@
++#ifndef NV_HANDOFF_H
++#define NV_HANDOFF_H
++#include <SDL2/SDL.h>
++#if defined(NV_WEBOS) || defined(NV_ANDROID)
++#define NV_HANDOFF_LOCAL_BUILD 1
++#else
++#define NV_HANDOFF_LOCAL_BUILD 0
++#endif
++#if defined(NV_WEBOS) || defined(NV_ANDROID)
++/* Lifecycle delivery is thread safe. Other entry points belong to the UI
++ * thread. */
++void handoff_launch(const char *json);
++void handoff_install_lifecycle(void);
++void handoff_ready(void);
++void handoff_tick(void);
++int handoff_event(const SDL_Event *event);
++void handoff_draw(void);
++/* Called after the episode is finalized and before source selection. */
++void handoff_player_opened(void);
++int handoff_pending(void);
++long handoff_edition_bonus(const char *text);
++#else
++static inline void handoff_launch(const char *json) { (void)json; }
++static inline void handoff_install_lifecycle(void) {}
++static inline void handoff_ready(void) {}
++static inline void handoff_tick(void) {}
++static inline int handoff_event(const SDL_Event *e) {
++  (void)e;
++  return 0;
++}
++static inline void handoff_draw(void) {}
++static inline void handoff_player_opened(void) {}
++static inline int handoff_pending(void) { return 0; }
++static inline long handoff_edition_bonus(const char *s) {
++  (void)s;
++  return 0;
++}
++#endif
++#endif
+diff --git a/src/handoff_protocol.c b/src/handoff_protocol.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..72aaac82e2fc12072c9b464d86e05f6576eee9b1
+--- /dev/null
++++ b/src/handoff_protocol.c
+@@ -0,0 +1,215 @@
++#include "handoff_protocol.h"
++#include "deeplink.h"
++#include "js.h"
++#include <ctype.h>
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++/* Locate direct fields only, reject duplicates and malformed separators. */
++static const char *field(const char *s, const char *key) {
++  const char *found = NULL, *p = s;
++  char k[128];
++  if (!s || strlen(s) > 16384)
++    return NULL;
++  while (isspace((unsigned char)*p))
++    p++;
++  if (*p++ != '{')
++    return NULL;
++  for (int n = 0; n < 64; n++) {
++    while (isspace((unsigned char)*p))
++      p++;
++    if (*p == '}')
++      return found;
++    if (*p != '"' || !js_cadeia(p, k, sizeof k))
++      return NULL;
++    p++;
++    while (*p && *p != '"') {
++      if (*p == '\\' && p[1])
++        p++;
++      p++;
++    }
++    if (!*p++)
++      return NULL;
++    while (isspace((unsigned char)*p))
++      p++;
++    if (*p++ != ':')
++      return NULL;
++    while (isspace((unsigned char)*p))
++      p++;
++    if (!strcmp(key, k)) {
++      if (found)
++        return NULL;
++      found = p;
++    }
++    if (*p == '{' || *p == '[') {
++      p = js_fim(p);
++      if (!p)
++        return NULL;
++    } else if (*p == '"') {
++      p++;
++      while (*p && *p != '"') {
++        if (*p == '\\' && p[1])
++          p++;
++        p++;
++      }
++      if (!*p++)
++        return NULL;
++    } else {
++      const char *a = p;
++      while (*p && *p != ',' && *p != '}')
++        p++;
++      if (p == a)
++        return NULL;
++    }
++    while (isspace((unsigned char)*p))
++      p++;
++    if (*p == '}')
++      return found;
++    if (*p++ != ',')
++      return NULL;
++  }
++  return NULL;
++}
++static int text(const char *s, const char *key, char *out, size_t cap) {
++  const char *v = field(s, key);
++  return v && *v == '"' && js_cadeia(v, out, cap) && out[0];
++}
++static double number(const char *s, const char *key) {
++  const char *v = field(s, key);
++  char *e;
++  double d;
++  if (!v || (!isdigit((unsigned char)*v) && *v != '-'))
++    return NAN;
++  d = strtod(v, &e);
++  while (isspace((unsigned char)*e))
++    e++;
++  return (*e == ',' || *e == '}') && isfinite(d) ? d : NAN;
++}
++static int ident(const char *s) {
++  size_t n = strlen(s);
++  if (n < 1 || n > 64)
++    return 0;
++  for (; *s; s++)
++    if (!isalnum((unsigned char)*s) && *s != '-')
++      return 0;
++  return 1;
++}
++int handoff_parse_launch(const char *json, HandoffLaunch *o) {
++  char raw[4097];
++  const char *s = json;
++  unsigned a, b, c, d, port;
++  int n = 0;
++  memset(o, 0, sizeof *o);
++  if (!json || strlen(json) > 4096)
++    return 0;
++  if (js_bruto(json, NULL, "handoff", raw, sizeof raw))
++    s = raw;
++  if (!text(s, "endpoint", o->endpoint, sizeof o->endpoint) ||
++      !text(s, "publicKeyPin", o->pin, sizeof o->pin) ||
++      !text(s, "token", o->token, sizeof o->token) ||
++      !text(s, "requestId", o->id, sizeof o->id) ||
++      !text(s, "senderDeviceId", o->sender, sizeof o->sender) ||
++      !text(s, "targetDeviceId", o->target, sizeof o->target))
++    return 0;
++  if (sscanf(o->endpoint, "https://%u.%u.%u.%u:%u/v1/handoff%n", &a, &b, &c, &d,
++             &port, &n) != 5 ||
++      !n || o->endpoint[n] || a > 255 || b > 255 || c > 255 || d > 255 ||
++      port < 1 || port > 65535 ||
++      !(a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) ||
++        (a == 169 && b == 254)))
++    return 0;
++  /* Canonical numeric IP prevents alternative URL interpretations by libcurl.
++   */
++  char canonical[128];
++  snprintf(canonical, sizeof canonical, "https://%u.%u.%u.%u:%u/v1/handoff", a,
++           b, c, d, port);
++  if (strcmp(canonical, o->endpoint))
++    return 0;
++  if (strlen(o->token) != 64 || strlen(o->pin) != 52 ||
++      strncmp(o->pin, "sha256//", 8) || o->pin[51] != '=')
++    return 0;
++  for (int i = 0; i < 64; i++)
++    if (!strchr("0123456789abcdef", o->token[i]))
++      return 0;
++  for (int i = 8; i < 51; i++)
++    if (!isalnum((unsigned char)o->pin[i]) && o->pin[i] != '+' &&
++        o->pin[i] != '/')
++      return 0;
++  return ident(o->id) && ident(o->sender) && ident(o->target);
++}
++int handoff_parse_request(const char *s, const HandoffLaunch *l, double now,
++                          HandoffRequest *o) {
++  char type[16], expected[96], url[160];
++  DeepLink dl;
++  double profile, season, episode;
++  memset(o, 0, sizeof *o);
++  if (!s || number(s, "version") != 1 ||
++      !text(s, "requestId", o->id, sizeof o->id) || strcmp(o->id, l->id) ||
++      !text(s, "senderDeviceId", o->sender, sizeof o->sender) ||
++      strcmp(o->sender, l->sender) ||
++      !text(s, "targetDeviceId", o->target, sizeof o->target) ||
++      strcmp(o->target, l->target) ||
++      !text(s, "accountId", o->account, sizeof o->account) ||
++      !ident(o->account) ||
++      !text(s, "contentId", o->content, sizeof o->content) ||
++      !text(s, "videoId", o->video, sizeof o->video) ||
++      !text(s, "title", o->title, sizeof o->title) ||
++      !text(s, "contentType", type, sizeof type))
++    return 0;
++  o->series = !strcmp(type, "series");
++  if (!o->series && strcmp(type, "movie"))
++    return 0;
++  profile = number(s, "profileId");
++  season = number(s, "season");
++  episode = number(s, "episode");
++  if (!isfinite(profile) || profile < 1 || profile > 6 ||
++      floor(profile) != profile)
++    return 0;
++  o->profile = (int)profile;
++  if (o->series) {
++    if (!isfinite(season) || season < 0 || season > 9999 ||
++        floor(season) != season || !isfinite(episode) || episode < 1 ||
++        episode > 9999 || floor(episode) != episode)
++      return 0;
++    o->season = (int)season;
++    o->episode = (int)episode;
++  }
++  snprintf(url, sizeof url, "nuvio-legacy://play/%s/%s", type, o->content);
++  if (!deeplink_parse(url, &dl))
++    return 0;
++  if (o->series)
++    snprintf(expected, sizeof expected, "%s:%d:%d", o->content, o->season,
++             o->episode);
++  else
++    snprintf(expected, sizeof expected, "%s", o->content);
++  if (strcmp(expected, o->video))
++    return 0;
++  o->created = number(s, "createdAtEpochMs");
++  o->expires = number(s, "expiresAtEpochMs");
++  o->position = number(s, "positionMs");
++  o->duration = number(s, "durationMs");
++  if (!isfinite(o->created) || !isfinite(o->expires) ||
++      !isfinite(o->position) || !isfinite(o->duration) ||
++      o->created > now + 5000 || o->expires <= now ||
++      o->expires - o->created < 1 || o->expires - o->created > 120000 ||
++      o->position < 0 || o->position >= o->duration ||
++      o->duration > 2147483647.)
++    return 0;
++  text(s, "editionHint", o->edition, sizeof o->edition);
++  return 1;
++}
++
++int handoff_content_matches(const char *content, int series, const char *imdb,
++                            long tmdb, int catalog_series) {
++  char url[160];
++  DeepLink d;
++  if (series != catalog_series)
++    return 0;
++  snprintf(url, sizeof url, "nuvio-legacy://meta/%s/%s",
++           series ? "series" : "movie", content);
++  if (!deeplink_parse(url, &d))
++    return 0;
++  return d.imdb[0] ? imdb && !strcmp(d.imdb, imdb)
++                   : d.tmdb > 0 && d.tmdb == tmdb;
++}
+diff --git a/src/handoff_protocol.h b/src/handoff_protocol.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..afc9bdccd9dc0d314bf236a12c68f38d0a5b6d1c
+--- /dev/null
++++ b/src/handoff_protocol.h
+@@ -0,0 +1,19 @@
++#ifndef NV_HANDOFF_PROTOCOL_H
++#define NV_HANDOFF_PROTOCOL_H
++#include <stddef.h>
++typedef struct {
++  char endpoint[128], pin[53], token[65], id[65], sender[65], target[65];
++} HandoffLaunch;
++typedef struct {
++  char id[65], sender[65], target[65], account[65], content[64], video[96],
++      title[2049], edition[64];
++  int profile, season, episode, series;
++  double created, expires, position, duration;
++} HandoffRequest;
++int handoff_parse_launch(const char *json, HandoffLaunch *out);
++int handoff_parse_request(const char *json, const HandoffLaunch *launch,
++                          double now, HandoffRequest *out);
++
++int handoff_content_matches(const char *content, int series, const char *imdb,
++                            long tmdb, int catalog_series);
++#endif
+diff --git a/tests/handoff.sh b/tests/handoff.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..6d2eed31400964475f7fc6a83c6b5568c36dfee4
+--- /dev/null
++++ b/tests/handoff.sh
+@@ -0,0 +1,16 @@
++#!/bin/bash
++set -euo pipefail
++cd "$(dirname "$0")/.."
++tmp=$(mktemp -d "${TMPDIR:-/tmp}/nuvio-handoff.XXXXXX")
++srv="";trap '[ -z "$srv" ] || kill "$srv" 2>/dev/null || true; rm -rf "$tmp"' EXIT
++cc -O1 -g -Isrc tests/handoff_protocol.c src/handoff_protocol.c src/js.c src/deeplink.c -pthread -lm -o "$tmp/protocol"
++"$tmp/protocol"
++openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost -keyout "$tmp/key.pem" -out "$tmp/cert.pem" > "$tmp/cert.log" 2>&1
++pin="sha256//$(openssl x509 -in "$tmp/cert.pem" -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256 -binary | openssl base64 -A)"
++python3 tests/rede_pedido_server.py "$tmp/ports" "$tmp/cert.pem" "$tmp/key.pem" &
++srv=$!
++for i in $(seq 50); do [ -s "$tmp/ports" ] && break; sleep 0.1; done
++test -s "$tmp/ports"
++flags=(-O1 -g -Isrc -pthread);if [ "$(uname)" != Darwin ]; then flags+=(-ldl);fi
++cc "${flags[@]}" tests/handoff_tls.c src/rede.c src/redeurl.c -o "$tmp/tls"
++"$tmp/tls" "$(sed -n '2p' "$tmp/ports")/ok" "$pin"
+diff --git a/tests/handoff_profile.c b/tests/handoff_profile.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..d229439e4762d90d882a991a843e9d1f6c1028c4
+--- /dev/null
++++ b/tests/handoff_profile.c
+@@ -0,0 +1,26 @@
++#include <assert.h>
++#include <string.h>
++#include <stdio.h>
++enum { TELA_HOME, TELA_ESCOLHA_PERFIL, MENU_INICIO };
++static int tela, logged, unlocked, profile, kept, continued, synced;
++static const char *account;
++static int sessao_logada(void) { return logged; }
++static const char *perfis_dono(void) { return account; }
++static int perfis_ativo(void) { return profile; }
++static int perfis_pode_dispensar(void) { return unlocked; }
++static void perfis_manter_ativo(void) { kept++; }
++static void perfilsel_continuar_ativo(void) { continued++; }
++static void sync_iniciar(void) { synced++; }
++static void menu_definir_destino(int m) { assert(m == MENU_INICIO); }
++#include "handoff_profile.inc"
++static void reset(void) { tela=TELA_ESCOLHA_PERFIL; logged=unlocked=1; profile=2; account="owner"; kept=continued=synced=0; }
++int main(void) {
++ reset(); assert(app_handoff_restore_profile("owner",2)); assert(tela==TELA_HOME && kept==1 && continued==1 && synced==1);
++ reset(); unlocked=0; assert(!app_handoff_restore_profile("owner",2)); assert(tela==TELA_ESCOLHA_PERFIL && !kept);
++ reset(); assert(!app_handoff_restore_profile("other",2)); assert(!kept);
++ reset(); assert(!app_handoff_restore_profile("owner",1)); assert(!kept);
++ reset(); logged=0; assert(!app_handoff_restore_profile("owner",2)); assert(!kept);
++ reset(); tela=TELA_HOME; assert(!app_handoff_restore_profile("owner",2)); assert(!kept);
++ reset(); assert(!app_handoff_restore_profile(NULL,2)); assert(!app_handoff_restore_profile("",2));
++ puts("handoff profile: PASS (saved matching unlocked profile only)");
++}
+diff --git a/tests/handoff_profile.sh b/tests/handoff_profile.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..ef4d8be3a1eae83a27f83a239a550b807dde69f1
+--- /dev/null
++++ b/tests/handoff_profile.sh
+@@ -0,0 +1,13 @@
++#!/bin/bash
++set -euo pipefail
++cd "$(dirname "$0")/.."
++python3 - <<'PYTEST'
++from pathlib import Path
++import subprocess,tempfile
++source=Path('src/app.c').read_text();start=source.index('int app_handoff_restore_profile(');end=source.index('\nstatic int spotPode(',start)
++with tempfile.TemporaryDirectory(prefix='handoff-profile-') as tmp:
++ Path(tmp,'handoff_profile.inc').write_text(source[start:end])
++ binary=str(Path(tmp,'test'))
++ subprocess.run(['cc','-Wall','-Wextra','-Werror','tests/handoff_profile.c','-I'+tmp,'-o',binary],check=True)
++ subprocess.run([binary],check=True)
++PYTEST
+diff --git a/tests/handoff_protocol.c b/tests/handoff_protocol.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..8c97e3b5b35026630852decaf41bb905f5a73100
+--- /dev/null
++++ b/tests/handoff_protocol.c
+@@ -0,0 +1,43 @@
++#include "handoff_protocol.h"
++#include <assert.h>
++#include <stdio.h>
++#include <string.h>
++static const char *launch =
++    "{\"endpoint\":\"https://192.168.1.2:4444/v1/"
++    "handoff\",\"publicKeyPin\":\"sha256//"
++    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"token\":"
++    "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\","
++    "\"requestId\":\"request-1\",\"senderDeviceId\":\"desktop-1\","
++    "\"targetDeviceId\":\"tv-1\"}";
++static const char *request =
++    "{\"version\":1,\"requestId\":\"request-1\",\"senderDeviceId\":\"desktop-"
++    "1\",\"targetDeviceId\":\"tv-1\",\"accountId\":\"user-1\",\"profileId\":1,"
++    "\"contentType\":\"movie\",\"contentId\":\"tt0111161\",\"videoId\":"
++    "\"tt0111161\",\"title\":\"Movie\",\"positionMs\":900000,\"durationMs\":"
++    "7200000,\"createdAtEpochMs\":1000000,\"expiresAtEpochMs\":1120000}";
++int main(void) {
++  HandoffLaunch l;
++  HandoffRequest r;
++  char buf[5000];
++  assert(handoff_parse_launch(launch, &l));
++  assert(handoff_parse_request(request, &l, 1000500, &r));
++  assert(r.position == 900000);
++  assert(!handoff_parse_request(request, &l, 1120000, &r));
++  snprintf(buf, sizeof buf, "{\"endpoint\":\"http://127.0.0.1/\",%s",
++           launch + 1);
++  assert(!handoff_parse_launch(buf, &l));
++  assert(handoff_parse_launch(launch, &l));
++  strcpy(l.id, "another");
++  assert(!handoff_parse_request(request, &l, 1000500, &r));
++  assert(handoff_parse_launch(launch, &l));
++  snprintf(buf, sizeof buf, "{\"profileId\":2,%s", request + 1);
++  assert(!handoff_parse_request(buf, &l, 1000500, &r));
++  snprintf(buf, sizeof buf, "{\"positionMs\":1e999,%s", request + 1);
++  assert(!handoff_parse_request(buf, &l, 1000500, &r));
++  assert(handoff_content_matches("tt0111161", 0, "tt0111161", 1, 0));
++  assert(handoff_content_matches("tmdb:603", 0, "tt0133093", 603, 0));
++  assert(!handoff_content_matches("tmdb:603", 1, "tt0133093", 603, 0));
++  assert(!handoff_content_matches("tt0111161", 0, "tt0133093", 603, 0));
++  puts("handoff protocol: PASS (identity, expiry, exact position, duplicate "
++       "fields, local endpoint)");
++}
+diff --git a/tests/handoff_tls.c b/tests/handoff_tls.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..acf170834234c3d87c4ee0f5b43790cd97d24b96
+--- /dev/null
++++ b/tests/handoff_tls.c
+@@ -0,0 +1,30 @@
++#include "rede.h"
++#include <assert.h>
++#include <stdio.h>
++int main(int argc, char **argv) {
++  assert(argc == 3);
++  RedePedido p = {0};
++  RedeResposta r;
++  const char *headers[] = {"Authorization: Bearer synthetic-fixture-token",
++                           NULL};
++  p.url = argv[1];
++  p.tls_chave_pin = argv[2];
++  p.cabecalhos = headers;
++  p.prazo_ms = 3000;
++  p.max_bytes = 16384;
++  assert(rede_pedir(&p, &r) && r.status == 200);
++  rede_resposta_limpar(&r);
++  p.tls_chave_pin = "sha256//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
++  assert(!rede_pedir(&p, &r) && r.curl_erro == 90 && !r.corpo);
++  rede_resposta_limpar(&r);
++  p.tls_chave_pin = argv[2];
++  p.seguir = 1;
++  assert(!rede_pedir(&p, &r) && r.erro == REDE_ENTRADA);
++  rede_resposta_limpar(&r);
++  p.seguir = 0;
++  p.url = "http://127.0.0.1/";
++  assert(!rede_pedir(&p, &r) && r.erro == REDE_ENTRADA);
++  rede_resposta_limpar(&r);
++  puts("handoff pinned TLS: PASS (valid key, wrong key blocked, no HTTP or "
++       "redirects)");
++}
+diff --git a/tests/handoff_ui.c b/tests/handoff_ui.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..eeb5a7e82526e78f5c0325745334495ca6600a3e
+--- /dev/null
++++ b/tests/handoff_ui.c
+@@ -0,0 +1,26 @@
++#include <SDL.h>
++#include <assert.h>
++#include <pthread.h>
++#include <stdio.h>
++#include <string.h>
++enum { H_WAIT=1 };
++typedef struct { unsigned seq; int stage,decision; } Transfer;
++static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
++static unsigned generation=7;
++static int focus;
++static Transfer transfer,*active;
++SDL_Window *SDL_GetMouseFocus(void) { return NULL; }
++void SDL_GetWindowSize(SDL_Window *w,int *x,int *y) { (void)w; *x=1920; *y=1080; }
++#include "handoff_ui.inc"
++static void reset(void) { transfer=(Transfer){7,H_WAIT,0}; active=&transfer; focus=1; }
++static void key(SDL_Keycode k) { SDL_Event e;memset(&e,0,sizeof e);e.type=SDL_KEYDOWN;e.key.keysym.sym=k;assert(handoff_event(&e)); }
++int main(void) {
++ SDL_Keycode ok[]={SDLK_RETURN,SDLK_KP_ENTER,SDLK_SPACE,SDLK_SELECT};
++ for(unsigned i=0;i<sizeof ok/sizeof ok[0];i++) { reset();key(ok[i]);assert(transfer.decision==1 && !focus); }
++ reset();key(SDLK_RIGHT);assert(focus==2);key(SDLK_RETURN);assert(transfer.decision==-1);
++ reset();key(SDLK_AC_BACK);assert(transfer.decision==-1);
++ reset();key(SDLK_BACKSPACE);assert(transfer.decision==-1);
++ reset();SDL_Event e;memset(&e,0,sizeof e);e.type=SDL_MOUSEBUTTONUP;e.button.x=1050;e.button.y=650;assert(handoff_event(&e));assert(transfer.decision==-1);
++ reset();generation=8;memset(&e,0,sizeof e);e.type=SDL_KEYDOWN;e.key.keysym.sym=SDLK_RETURN;assert(!handoff_event(&e));assert(!transfer.decision);
++ puts("handoff UI: PASS (remote OK variants, cancel, pointer and obsolete prompts)");
++}
+diff --git a/tests/handoff_ui.sh b/tests/handoff_ui.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..2bf11f7137cd17bca73967ec4e2cb5c2019c8b94
+--- /dev/null
++++ b/tests/handoff_ui.sh
+@@ -0,0 +1,13 @@
++#!/bin/bash
++set -euo pipefail
++cd "$(dirname "$0")/.."
++python3 - <<'PYTEST'
++from pathlib import Path
++import subprocess,tempfile,shlex
++source=Path('src/handoff.c').read_text();a=source.index('int handoff_event(');b=source.index('\nvoid handoff_draw(',a)
++with tempfile.TemporaryDirectory(prefix='handoff-ui-') as tmp:
++ Path(tmp,'handoff_ui.inc').write_text(source[a:b]);binary=str(Path(tmp,'test'))
++ flags=shlex.split(subprocess.check_output(['pkg-config','--cflags','sdl2'],text=True))
++ subprocess.run(['cc','-Wall','-Wextra','-Werror',*flags,'tests/handoff_ui.c','-I'+tmp,'-pthread','-o',binary],check=True)
++ subprocess.run([binary],check=True)
++PYTEST

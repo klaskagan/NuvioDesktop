@@ -1,0 +1,665 @@
+diff --git a/js/app.js b/js/app.js
+index 3c0e561c6d7e519e8a4e5a597a7305f0456bc991..71848c60e695d4d006a06e96ff61750b204a0a65 100644
+--- a/js/app.js
++++ b/js/app.js
+@@ -1,4 +1,5 @@
+ import "./ui/components/serverWatchedNotice.js";
++import { installTvHandoffReceiver } from "./core/handoff/tvHandoffReceiver.js";
+ import { MediaServerSyncService } from "./core/profile/mediaServerSyncService.js";
+ import { installCustomPosterFallback } from "./core/poster/customPoster.js";
+ import { installWebOsImgurImageFallback } from "./core/media/imageProxy.js";
+@@ -679,6 +680,7 @@ async function bootstrapApp() {
+   markBootStage("Checking authentication");
+   await AuthManager.bootstrap();
+   installPartyEffects();
++  installTvHandoffReceiver();
+ }
+ 
+ async function bootstrapAddonRemoteMode() {
+diff --git a/js/ui/screens/player/playerScreenMethods-31-seek-playback-seconds.js b/js/ui/screens/player/playerScreenMethods-31-seek-playback-seconds.js
+index d9327bd80c747d8f97f85b9fa94c5a5e75d3cd24..c7185f9798ebcadfbda97dafc9aa430e1b355358 100644
+--- a/js/ui/screens/player/playerScreenMethods-31-seek-playback-seconds.js
++++ b/js/ui/screens/player/playerScreenMethods-31-seek-playback-seconds.js
+@@ -30,7 +30,7 @@ export function createPlayerScreenMethods31() {
+       if (typeof PlayerController.seekToSeconds === "function") {
+         const didSeek = Boolean(
+           PlayerController.seekToSeconds(seconds, {
+-            exact: Boolean(this.isPartySynced?.()),
++            exact: Boolean(this.params?.handoffRequestId || this.isPartySynced?.()),
+             paused: this.getPlaybackControlPaused?.() ?? Boolean(this.paused)
+           })
+         );
+@@ -93,14 +93,17 @@ export function createPlayerScreenMethods31() {
+         return;
+       }
+ 
++      const handoff = Boolean(this.params?.handoffRequestId);
+       const targetSeconds =
+         Number.isFinite(durationSeconds) && durationSeconds > 0
+-          ? Math.max(0, Math.min(requestedSeconds, Math.max(0, durationSeconds - 3)))
++          ? Math.max(0, Math.min(requestedSeconds, Math.max(0, durationSeconds - (handoff ? 0.1 : 3))))
+           : requestedSeconds;
+       const currentSeconds = this.getPlaybackCurrentSeconds();
+-      const toleranceSeconds = Math.max(1.5, Math.min(8, targetSeconds * 0.03));
++      const toleranceSeconds = handoff ? 1.5 : Math.max(1.5, Math.min(8, targetSeconds * 0.03));
+ 
+-      if (Number.isFinite(currentSeconds) && currentSeconds >= Math.max(0, targetSeconds - toleranceSeconds)) {
++      if (Number.isFinite(currentSeconds) && (handoff
++        ? Math.abs(currentSeconds - targetSeconds) <= toleranceSeconds
++        : currentSeconds >= Math.max(0, targetSeconds - toleranceSeconds))) {
+         this.finalizePendingPlaybackRestore(restore);
+         return;
+       }
+diff --git a/js/ui/screens/player/playerScreenMethods-35-play-stream-candidate.js b/js/ui/screens/player/playerScreenMethods-35-play-stream-candidate.js
+index 4e5572989618005333c99cb934d188b6a3e188d1..29db29c77dbdda2b95760413339ea7267ef68b85 100644
+--- a/js/ui/screens/player/playerScreenMethods-35-play-stream-candidate.js
++++ b/js/ui/screens/player/playerScreenMethods-35-play-stream-candidate.js
+@@ -44,7 +44,7 @@ export function createPlayerScreenMethods35() {
+               (entry.episode ?? null) === (this.params?.episode ?? null)
+           );
+           const resume = newerServerResume(result.stream.serverUserState, saved, this.params?.startFromBeginning);
+-          if (resume && !options.preservePlaybackState) {
++          if (resume && !options.preservePlaybackState && !this.params?.handoffRequestId) {
+             this.pendingPlaybackRestore = { timeSeconds: resume.positionMs / 1000, paused: false, attempts: 0, lastAttemptAt: 0 };
+             options = { ...options, preservePendingRestore: true };
+           }
+diff --git a/js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js b/js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js
+index 4011bdf5da25dd087bcdbcd2345f09178930c990..f15a530c218e66db1681711b4fef79c7da018480 100644
+--- a/js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js
++++ b/js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js
+@@ -1,4 +1,5 @@
+ import { expectedEpisodeFilename } from "../../../core/streams/filenameEpisodeMatcher.js";
++import { preferHandoffEdition } from "../../../core/handoff/tvHandoffProtocol.js";
+ import { StreamLinkCacheStore, activeStreamLinkProfile } from "../../../data/local/streamLinkCacheStore.js";
+ import { cachedStreamLinkCandidate } from "../../../core/streams/streamLinkReuse.js";
+ /* eslint-disable no-unused-vars */
+@@ -27,6 +28,7 @@ export function createStreamScreenMethods05() {
+ 
+   return {
+     tryResumeCachedStreamLink() {
++      if (this.params?.handoffRequestId) return false;
+       const settings = PlayerSettingsStore.get();
+       if (
+         this.autoResumeAttempted ||
+@@ -58,6 +60,7 @@ export function createStreamScreenMethods05() {
+       return true;
+     },
+     maybeAutoResumeStream({ allLoaded = false } = {}) {
++      if (this.params?.handoffRequestId) return;
+       if (this.autoResumeAttempted || this.params?.manualSelection) {
+         return;
+       }
+@@ -129,7 +132,7 @@ export function createStreamScreenMethods05() {
+         settings.streamAutoPlayPreferBingeGroupForNextEpisode && settings.streamAutoPlayReuseBingeGroup
+           ? StreamPreferencesStore.getLatestForContent(this.params?.itemId)
+           : null;
+-      const preferredBingeGroup = String(savedPreference?.bingeGroup || "").trim();
++      const preferredBingeGroup = this.params?.handoffRequestId ? "" : String(savedPreference?.bingeGroup || "").trim();
+       // Android may reuse a remembered group before the search timeout, including
+       // MANUAL mode. An explicit manualSelection route above always wins.
+       const autoPlayMode = String(settings.streamAutoPlayMode || "MANUAL").toUpperCase();
+@@ -141,7 +144,7 @@ export function createStreamScreenMethods05() {
+           .filter(Boolean)
+       );
+       const selected = selectAutoPlayStream(
+-        this.getFilteredStreams().filter((stream) => !stream.partyShared),
++        preferHandoffEdition(this.getFilteredStreams().filter((stream) => !stream.partyShared), this.params?.handoffEditionHint),
+         {
+           mode: settings.streamAutoPlayMode,
+           source: settings.streamAutoPlaySource,
+diff --git a/js/ui/screens/stream/streamScreenMethods-10-play-stream.js b/js/ui/screens/stream/streamScreenMethods-10-play-stream.js
+index 1bfc4a6c84120f7df983e89d46be096c5b75d24d..7b413fc1cc7705a1775a8d3d72bd1b99a6370992 100644
+--- a/js/ui/screens/stream/streamScreenMethods-10-play-stream.js
++++ b/js/ui/screens/stream/streamScreenMethods-10-play-stream.js
+@@ -1,3 +1,4 @@
++import { handoffResumeParameters } from "../../../core/handoff/tvHandoffProtocol.js";
+ import { activeStreamLinkProfile } from "../../../data/local/streamLinkCacheStore.js";
+ /* eslint-disable no-unused-vars */
+ import * as internals from "./streamScreen.js";
+@@ -31,17 +32,18 @@ export function createStreamScreenMethods10() {
+       const itemType = normalizeType(this.params?.itemType);
+       const playerEpisodes =
+         itemType === "series" || itemType === "tv" ? (Array.isArray(this.params?.episodes) ? this.params.episodes : null) : [];
+-      const startFromBeginning = Boolean(this.params?.startFromBeginning);
++      const handoffResume = handoffResumeParameters(this.params);
++      const startFromBeginning = handoffResume ? handoffResume.startFromBeginning : Boolean(this.params?.startFromBeginning);
+       const routeResumeProgress = {
+         positionMs: Number(this.params?.resumePositionMs || 0) || 0,
+         progressPercent: this.params?.resumeProgressPercent,
+         durationMs: Number(this.params?.resumeDurationMs || 0) || 0
+       };
+-      const hasRouteResume = !startFromBeginning && isWatchProgressInProgress(routeResumeProgress);
++      const hasRouteResume = Boolean(handoffResume) || (!startFromBeginning && isWatchProgressInProgress(routeResumeProgress));
+       let resumePositionMs = hasRouteResume ? routeResumeProgress.positionMs : 0;
+       let resumeProgressPercent = hasRouteResume ? routeResumeProgress.progressPercent : null;
+       let resumeDurationMs = hasRouteResume ? routeResumeProgress.durationMs : 0;
+-      if (!startFromBeginning && resumePositionMs <= 0 && !(Number(resumeProgressPercent) > 0)) {
++      if (!handoffResume && !startFromBeginning && resumePositionMs <= 0 && !(Number(resumeProgressPercent) > 0)) {
+         const resumeTarget =
+           itemType === "series" || itemType === "tv"
+             ? {
+@@ -74,6 +76,7 @@ export function createStreamScreenMethods10() {
+           this.params?.original_language ||
+           null,
+         videoId: this.params?.videoId || null,
++        ...(handoffResume || {}),
+         resumePositionMs,
+         resumeProgressPercent,
+         resumeDurationMs,
+diff --git a/services/webos/services.json b/services/webos/services.json
+index da0e02237ff560675bff34720c480a4331bb47a5..b747964b8274fba418041396f9fec39ab298830a 100644
+--- a/services/webos/services.json
++++ b/services/webos/services.json
+@@ -105,6 +105,11 @@
+           "name": "audioTranscodeStop",
+           "description": "Stop a local audio conversion session",
+           "public": true
++        },
++        {
++          "name": "handoffRequest",
++          "description": "Exchange bounded messages with a pinned local desktop handoff session",
++          "public": true
+         }
+       ]
+     }
+diff --git a/services/webos/src/index.js b/services/webos/src/index.js
+index 4fd8c3f4998dd4767029aabff95c0096a86e4121..18f6ce15798e6f850e24266d3eeb24073cd4dac8 100644
+--- a/services/webos/src/index.js
++++ b/services/webos/src/index.js
+@@ -31,6 +31,7 @@ function createService() {
+ }
+ 
+ var service = createService();
++require("./handoff").register(service);
+ 
+ var runtimeState = {
+   booted: false,
+diff --git a/js/core/handoff/tvHandoffProtocol.js b/js/core/handoff/tvHandoffProtocol.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..101e2db7a2b45b2ae13758e57bf05895d0d7d8a1
+--- /dev/null
++++ b/js/core/handoff/tvHandoffProtocol.js
+@@ -0,0 +1,34 @@
++export function preferHandoffEdition(streams, hint) {
++  if (!hint) return streams;
++  const pattern = hint === "director's cut" ? /\bdirector(?:s|'s)?\s+cut\b/ : new RegExp(`\\b${String(hint).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
++  const matches = streams.filter((stream) => pattern.test(
++    [stream.name, stream.title, stream.description, stream.behaviorHints?.filename].filter(Boolean).join(" ").toLowerCase().replace(/[._-]+/g, " ")
++  ));
++  return matches.length ? matches : streams;
++}
++
++
++export function validateHandoffRequest(request, launch, now = Date.now()) {
++  if (request.version !== 1 || request.requestId !== launch.requestId || request.targetDeviceId !== launch.targetDeviceId ||
++      request.senderDeviceId !== launch.senderDeviceId || !["movie", "series"].includes(request.contentType) ||
++      !Number.isSafeInteger(request.positionMs) || request.positionMs < 0 || request.positionMs >= request.durationMs ||
++      !Number.isSafeInteger(request.createdAtEpochMs) || !Number.isSafeInteger(request.expiresAtEpochMs) ||
++      request.createdAtEpochMs > now + 5000 || request.expiresAtEpochMs <= now ||
++      request.expiresAtEpochMs <= request.createdAtEpochMs || request.expiresAtEpochMs - request.createdAtEpochMs > 120000 ||
++      !String(request.contentId || "").trim() || !String(request.videoId || "").trim() ||
++      (request.contentType === "series" && (!Number.isInteger(request.season) || request.season < 0 || !Number.isInteger(request.episode) || request.episode < 1))) {
++    throw new Error("Invalid or expired handoff");
++  }
++}
++
++
++// An explicit handoff timestamp takes precedence over Continue Watching thresholds.
++export function handoffResumeParameters(params = {}) {
++  const positionMs = Number(params.resumePositionMs);
++  const durationMs = Number(params.resumeDurationMs);
++  if (!params.handoffRequestId || !Number.isSafeInteger(positionMs) || positionMs < 0 ||
++      !Number.isSafeInteger(durationMs) || durationMs <= positionMs) return null;
++  return { resumePositionMs: positionMs, resumeDurationMs: durationMs,
++    resumeProgressPercent: null, startFromBeginning: positionMs === 0,
++    handoffRequestId: params.handoffRequestId };
++}
+diff --git a/js/core/handoff/tvHandoffReceiver.js b/js/core/handoff/tvHandoffReceiver.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..f10bd3259849f4318ecc7648b5a6dad4968369a3
+--- /dev/null
++++ b/js/core/handoff/tvHandoffReceiver.js
+@@ -0,0 +1,176 @@
++import { validateHandoffRequest } from "./tvHandoffProtocol.js";
++import { requestWebOsCompanionService } from "../../platform/webos/webosCompanionService.js";
++import { AuthManager } from "../auth/authManager.js";
++import { ProfileManager } from "../profile/profileManager.js";
++import { Router } from "../../ui/navigation/router.js";
++import { PlayerController } from "../player/playerController.js";
++
++let active = null;
++let handling = false;
++let handlingId = null;
++let queuedLaunch = null;
++
++
++async function exchange(launch, status = null) {
++  const response = await requestWebOsCompanionService({ method: "handoffRequest",
++    parameters: { launch, status }, timeoutMs: 8000, retryOnFailure: false });
++  if (!response.payload?.returnValue) throw new Error("Desktop disconnected");
++  return response.payload.result;
++}
++
++function approval(message, launch = null, expires = Date.now() + 90000) {
++  return new Promise((resolve) => {
++    const previous = document.activeElement;
++    const overlay = document.createElement("div");
++    overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#000b;display:flex;align-items:center;justify-content:center";
++    const card = document.createElement("div");
++    card.style.cssText = "background:#202024;color:white;padding:40px;border-radius:18px;max-width:700px;font-size:26px";
++    const text = document.createElement("p"); text.textContent = message;
++    const accept = document.createElement("button"); accept.textContent = "Continue";
++    const cancel = document.createElement("button"); cancel.textContent = "Cancel";
++    [accept, cancel].forEach((button) => { button.style.cssText = "font-size:26px;margin:12px;padding:12px 30px"; });
++    let finished = false; let timeout; let poll;
++    const finish = (value) => { if (finished) return; finished = true; clearTimeout(timeout); clearInterval(poll); document.removeEventListener("keydown", key, true); overlay.remove(); previous?.focus?.(); resolve(value); };
++    const key = (event) => {
++      event.preventDefault(); event.stopImmediatePropagation();
++      if (["ArrowLeft", "ArrowRight", "Tab"].includes(event.key)) (document.activeElement === accept ? cancel : accept).focus();
++      if (event.key === "Enter") finish(document.activeElement === accept);
++      if (["Escape", "Backspace", "GoBack"].includes(event.key) || event.keyCode === 461) finish(false);
++    };
++    accept.onclick = () => finish(true); cancel.onclick = () => finish(false);
++    card.append(text, accept, cancel); overlay.append(card); document.body.append(overlay);
++    document.addEventListener("keydown", key, true); accept.focus();
++    timeout = setTimeout(() => finish(false), Math.max(1, Math.min(90000, expires - Date.now())));
++    let polling = false;
++    if (launch) poll = setInterval(async () => {
++      if (polling || finished) return;
++      if (queuedLaunch || Date.now() >= expires) { finish(false); return; }
++      polling = true;
++      try { await exchange(launch); } catch (_) { finish(false); }
++      finally { polling = false; }
++    }, 1000);
++  });
++}
++
++
++async function receive(launch) {
++  if (!launch || typeof launch !== "object" || typeof launch.requestId !== "string") return;
++  if (handling) {
++    if (launch.requestId !== handlingId) {
++      queuedLaunch = launch;
++      if (active) active.cancelled = true;
++    }
++    return;
++  }
++  handling = true; handlingId = launch.requestId;
++  let request;
++  let phase = "RECEIVED";
++  const status = async (next, positionMs = null, failureCode = null) => {
++    await exchange(launch, { requestId: request.requestId, targetDeviceId: request.targetDeviceId,
++      phase: next, ...(positionMs == null ? {} : { positionMs }), ...(failureCode ? { failureCode } : {}) });
++    phase = next;
++  };
++  try {
++    request = await exchange(launch);
++    validateHandoffRequest(request, launch);
++    await status("RECEIVED");
++    await status("AWAITING_USER");
++    const readyDeadline = Date.now() + 30000;
++    while ((!AuthManager.isAuthenticated || !ProfileManager.getActiveProfileId() ||
++        ["profileSelection", "authQrSignIn"].includes(Router.getCurrent())) && Date.now() < readyDeadline) {
++      await new Promise((resolve) => setTimeout(resolve, 250));
++      await exchange(launch);
++    }
++    if (request.accountId !== await AuthManager.getEffectiveUserId()) throw new Error("Use the same Nuvio account on both devices");
++    if (Number(request.profileId) !== Number(ProfileManager.getActiveProfileId())) {
++      await status("FAILED", null, "PROFILE_REQUIRED");
++      await approval("Select the matching profile on TV, then retry Continue on TV from desktop."); return;
++    }
++    const seen = JSON.parse(localStorage.getItem("handoff-seen-requests") || "{}");
++    Object.keys(seen).forEach((id) => { if (Number(seen[id]) <= Date.now()) delete seen[id]; });
++    if (Object.prototype.hasOwnProperty.call(seen, request.requestId) || Object.keys(seen).length >= 128) {
++      await status("FAILED", null, "DUPLICATE_REQUEST"); return;
++    }
++    const trusted = localStorage.getItem(`handoff-desktop-${launch.senderDeviceId}`) === launch.certificatePin;
++    const message = trusted ? `Continue “${request.title}” on this TV?` :
++      `Pair Nuvio Desktop and continue “${request.title}”? Desktop code: ${String(launch.certificatePin).slice(0, 6).toUpperCase()}`;
++    if ((!trusted || Router.getCurrent() === "player") && !await approval(message, launch, request.expiresAtEpochMs)) {
++      await status("FAILED", null, "USER_DECLINED"); return;
++    }
++    validateHandoffRequest(await exchange(launch), launch);
++    await status("RESOLVING");
++    localStorage.setItem(`handoff-desktop-${launch.senderDeviceId}`, launch.certificatePin);
++    Object.defineProperty(seen, request.requestId, { value: request.expiresAtEpochMs, enumerable: true, configurable: true, writable: true });
++    localStorage.setItem("handoff-seen-requests", JSON.stringify(seen));
++    if (active) active.cancelled = true;
++    const session = { request, launch, cancelled: false };
++    active = session;
++    const previousPlaybackToken = Number(PlayerController.playRequestToken || 0);
++    let stableSince = 0;
++    let stablePosition = 0;
++    let lastSeekAt = 0;
++    await Router.navigate("stream", { itemId: request.contentId, videoId: request.videoId,
++      itemType: request.contentType, itemTitle: request.title, season: request.season, episode: request.episode,
++      resumePositionMs: request.positionMs, resumeDurationMs: request.durationMs,
++      startFromBeginning: request.positionMs === 0,
++      handoffEditionHint: request.editionHint || null, handoffRequestId: request.requestId });
++    await status("AWAITING_USER");
++    while (!session.cancelled && active === session && Date.now() < request.expiresAtEpochMs) {
++      await exchange(launch); // 410 or disconnection cancels pending playback.
++      const current = Router.getCurrent();
++      const params = Router.currentParams || {};
++      const matches = current === "player" && params.handoffRequestId === request.requestId && String(params.itemId) === request.contentId && String(params.videoId) === request.videoId;
++      if (matches && phase !== "LOADING") await status("LOADING");
++      const screen = matches ? Router.getCurrentScreen() : null;
++      if (matches && Number(PlayerController.playRequestToken || 0) > previousPlaybackToken) {
++        const position = Math.round(PlayerController.getCurrentTimeSeconds() * 1000);
++        const atTarget = Math.abs(position - request.positionMs) <= 2000;
++        if (!atTarget && screen && !screen.pendingPlaybackRestore && Date.now() - lastSeekAt >= 1200) {
++          lastSeekAt = Date.now();
++          if (request.positionMs === 0) screen.seekPlaybackSeconds(0);
++          else {
++            screen.pendingPlaybackRestore = { timeSeconds: request.positionMs / 1000, paused: false, attempts: 0, lastAttemptAt: 0 };
++            screen.attemptPendingPlaybackRestore({ force: true });
++          }
++        }
++        const ready = atTarget && PlayerController.isPlaying && screen?.hasPresentedPlaybackFrame &&
++          !screen.pendingPlaybackRestore && !screen.seekLoading && !PlayerController.video?.seeking;
++        if (!ready) stableSince = 0;
++        else if (!stableSince) { stableSince = Date.now(); stablePosition = position; }
++        else if (Date.now() - stableSince >= 750 && position >= stablePosition + 100) {
++          await status("PLAYING", position);
++          // Subsequent manual source changes use the current TV position.
++          for (const route of [params, screen.params, params.streamRouteParams]) {
++            if (route) delete route.handoffRequestId;
++          }
++          active = null; return;
++        }
++      } else stableSince = 0;
++      await new Promise((resolve) => setTimeout(resolve, 250));
++    }
++    throw new Error("Transfer expired");
++  } catch (_) {
++    if (request && active?.request?.requestId === request.requestId) {
++      const params = Router.currentParams || {};
++      if (Router.getCurrent() === "player" && params.handoffRequestId === request.requestId && String(params.itemId) === request.contentId && String(params.videoId) === request.videoId) PlayerController.pause();
++      active = null;
++    }
++    if (request && phase !== "PLAYING") await status("FAILED", null, "RECEIVER_FAILED").catch(() => {});
++  } finally {
++    handling = false; handlingId = null;
++    const next = queuedLaunch; queuedLaunch = null;
++    if (next) void receive(next);
++  }
++}
++
++function launchPayload(event) {
++  const raw = event?.detail || globalThis.webOSSystem?.launchParams || globalThis.PalmSystem?.launchParams || {};
++  try { return (typeof raw === "string" ? JSON.parse(raw) : raw)?.handoff; } catch (_) { return null; }
++}
++
++export function installTvHandoffReceiver() {
++  document.addEventListener("webOSRelaunch", (event) => { void receive(launchPayload(event)); });
++  document.addEventListener("webOSLaunch", (event) => { void receive(launchPayload(event)); });
++  // Auth/profile initialization may still be routing after bootstrap.
++  setTimeout(() => { void receive(launchPayload()); }, 1500);
++}
+diff --git a/scripts/test-tv-handoff.mjs b/scripts/test-tv-handoff.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d66b5621e3a7f00b2c08967c0f81ef2ded4844a4
+--- /dev/null
++++ b/scripts/test-tv-handoff.mjs
+@@ -0,0 +1,168 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { createRequire } from "node:module";
++import { mkdtempSync, readFileSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { execFileSync } from "node:child_process";
++import https from "node:https";
++import { createHash } from "node:crypto";
++import { preferHandoffEdition, validateHandoffRequest } from "../js/core/handoff/tvHandoffProtocol.js";
++
++const require = createRequire(import.meta.url);
++const bridge = require("../services/webos/src/handoff.js");
++const now = Date.now();
++const launch = { requestId: "request", senderDeviceId: "desktop", targetDeviceId: "tv" };
++const request = { version: 1, ...launch, contentId: "tt0133093", videoId: "tt0133093", contentType: "movie",
++  positionMs: 60000, durationMs: 600000, createdAtEpochMs: now, expiresAtEpochMs: now + 120000 };
++
++test("validates content identity and expiry", () => {
++  assert.doesNotThrow(() => validateHandoffRequest(request, launch, now));
++  for (const changed of [{ version: 2 }, { positionMs: -1 }, { targetDeviceId: "another" },
++    { expiresAtEpochMs: now }, { expiresAtEpochMs: now + 120001 }, { contentType: "series" }]) {
++    assert.throws(() => validateHandoffRequest({ ...request, ...changed }, launch, now));
++  }
++});
++
++test("edition preference allows a higher-quality release", () => {
++  const streams = [{ title: "Movie.1080p.WEB-DL" }, { title: "Movie.EXTENDED.2160p.DV.HDR" }];
++  assert.deepEqual(preferHandoffEdition(streams, "extended"), [streams[1]]);
++  assert.deepEqual(preferHandoffEdition(streams, "theatrical"), streams);
++  assert.deepEqual(preferHandoffEdition(streams, null), streams);
++});
++
++test("local bridge rejects public endpoints, redirects and missing authentication", () => {
++  const allowed = { endpoint: "https://192.168.1.2:1234/v1/handoff", certificatePin: "a".repeat(64), token: "b".repeat(64) };
++  assert.doesNotThrow(() => bridge.validate({ launch: allowed }));
++  for (const endpoint of ["https://example.com/v1/handoff", "http://192.168.1.2/v1/handoff",
++    "https://127.0.0.1/v1/handoff", "https://192.168.1.2/other", "https://192.168.1.2/v1/handoff?token=1"]) {
++    assert.throws(() => bridge.validate({ launch: { ...allowed, endpoint } }));
++  }
++  assert.throws(() => bridge.validate({ launch: { ...allowed, token: "" } }));
++});
++
++test("TLS bridge checks certificate before sending credentials", async () => {
++  // Real TLS fixture on a private interface, never an external service.
++  const { networkInterfaces } = await import("node:os");
++  const address = Object.values(networkInterfaces()).flat().find((entry) => entry && !entry.internal &&
++    entry.family === "IPv4" && /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(entry.address))?.address;
++  if (!address) return;
++  const directory = mkdtempSync(join(tmpdir(), "nuvio-handoff-tls-"));
++  let server;
++  try {
++    execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", join(directory, "key"),
++      "-out", join(directory, "cert"), "-days", "1", "-subj", "/CN=Nuvio test"], { stdio: "ignore" });
++    const cert = readFileSync(join(directory, "cert"));
++    const { X509Certificate } = await import("node:crypto");
++    const pin = createHash("sha256").update(new X509Certificate(cert).raw).digest("hex");
++    let requests = 0;
++    server = https.createServer({ key: readFileSync(join(directory, "key")), cert }, (req, res) => {
++      requests++;
++      assert.equal(req.headers.authorization, `Bearer ${"b".repeat(64)}`);
++      res.end(JSON.stringify({ ok: true }));
++    });
++    await new Promise((resolve) => server.listen(0, address, resolve));
++    const payload = { launch: { endpoint: `https://${address}:${server.address().port}/v1/handoff`,
++      token: "b".repeat(64), certificatePin: pin } };
++    assert.deepEqual(await bridge.exchange(payload), { ok: true });
++    assert.equal(requests, 1);
++    await assert.rejects(() => bridge.exchange({ launch: { ...payload.launch, certificatePin: "0".repeat(64) } }));
++    assert.equal(requests, 1);
++  } finally {
++    if (server) await new Promise((resolve) => server.close(resolve));
++    rmSync(directory, { recursive: true, force: true });
++  }
++});
++
++async function isolatedHandoffModule(entry, stubs) {
++  const { build } = await import("esbuild");
++  const result = await build({ entryPoints: [new URL(entry, import.meta.url).pathname], bundle: true,
++    write: false, format: "esm", platform: "node", plugins: [{ name: "handoff-fixtures", setup(api) {
++      api.onResolve({ filter: /.*/ }, ({ path }) => {
++        const stub = Object.keys(stubs).find((name) => path.endsWith(name));
++        return stub ? { path: stub, namespace: "handoff-fixture" } : null;
++      });
++      api.onLoad({ filter: /.*/, namespace: "handoff-fixture" }, ({ path }) => ({ contents: stubs[path], loader: "js" }));
++    }}] });
++  return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
++}
++
++test("actual stream navigation preserves handoff time near start, middle and end", async () => {
++  const { isWatchProgressInProgress } = await import("../js/domain/model/watchProgress.js");
++  let navigation; let lookups = 0;
++  globalThis.__handoffStreamFixture = {
++    Router: { getCurrent: () => "stream", navigate: (route, params) => { navigation = { route, params }; } },
++    streamRepository: { setLocalPluginSearchPaused() {} },
++    watchProgressRepository: { async getResumeByContentId() { lookups++; return { positionMs: 999999 }; } },
++    isWatchProgressInProgress
++  };
++  try {
++    const { createStreamScreenMethods10 } = await isolatedHandoffModule("../js/ui/screens/stream/streamScreenMethods-10-play-stream.js", {
++      "streamScreen.js": `const f=globalThis.__handoffStreamFixture; export const {Router,streamRepository,watchProgressRepository,isWatchProgressInProgress}=f; export const normalizeType=x=>x;`,
++      "streamLinkCacheStore.js": "export const activeStreamLinkProfile=()=>1;"
++    });
++    const stream = { id: "tv-4k", url: "https://example.invalid/movie" };
++    for (const position of [0, 15000, 900000, 7100000]) {
++      const screen = { ...createStreamScreenMethods10(), loadToken: 1,
++        params: { itemId: "movie", videoId: "movie", itemType: "movie", itemTitle: "Movie",
++          handoffRequestId: "transfer", resumePositionMs: position, resumeDurationMs: 7200000 },
++        cancelAutoPlayCountdown() {}, cancelAutoPlaySelectionWait() {}, getFilteredStreams: () => [stream], getBackdropUrl: () => null };
++      await screen.playStream(stream.id);
++      assert.equal(navigation.route, "player");
++      assert.equal(navigation.params.resumePositionMs, position);
++      assert.equal(navigation.params.handoffRequestId, "transfer");
++      assert.equal(navigation.params.startFromBeginning, position === 0);
++    }
++    assert.equal(lookups, 0, "cloud progress must not replace an explicit handoff time");
++  } finally { delete globalThis.__handoffStreamFixture; }
++});
++
++test("receiver ignores an old player and confirms only after the new session seeks and advances", async () => {
++  const now = Date.now();
++  const req = { ...request, createdAtEpochMs: now, expiresAtEpochMs: now + 120000,
++    accountId: "account", profileId: 1, positionMs: 900000, durationMs: 7200000 };
++  const launchParams = { ...launch, certificatePin: "a".repeat(64) };
++  const listeners = new Map(); const storage = new Map();
++  storage.set("handoff-desktop-desktop", launchParams.certificatePin);
++  const previousDocument = globalThis.document; const previousStorage = globalThis.localStorage;
++  let resolvePlaying; let rejectPlaying; let seekAt = 0; let seekCount = 0; let confirmed = false;
++  const done = new Promise((resolve, reject) => { resolvePlaying = resolve; rejectPlaying = reject; });
++  const controller = { playRequestToken: 1, isPlaying: true, video: { seeking: false },
++    getCurrentTimeSeconds: () => controller.playRequestToken === 1 ? 900 : seekAt ? 900 + (Date.now() - seekAt) / 1000 : 0,
++    pause() {} };
++  const screen = { hasPresentedPlaybackFrame: true, seekLoading: false, pendingPlaybackRestore: null,
++    attemptPendingPlaybackRestore() { seekCount++; seekAt = Date.now(); this.pendingPlaybackRestore = null; } };
++  const router = { currentParams: {}, route: "home", getCurrent() { return this.route; },
++    getCurrentScreen: () => screen,
++    async navigate(_, params) { this.route = "player"; this.currentParams = screen.params = params; } };
++  globalThis.document = { addEventListener: (name, callback) => listeners.set(name, callback) };
++  globalThis.localStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) };
++  globalThis.__handoffReceiverFixture = { controller, router, async bridge({ parameters }) {
++    const update = parameters.status;
++    if (update?.phase === "FAILED") rejectPlaying(new Error(update.failureCode));
++    if (update?.phase === "PLAYING") { confirmed = true; resolvePlaying(update); }
++    return { payload: { returnValue: true, result: update ? {} : req } };
++  } };
++  let timer;
++  try {
++    const { installTvHandoffReceiver } = await isolatedHandoffModule("../js/core/handoff/tvHandoffReceiver.js", {
++      "webosCompanionService.js": "export const requestWebOsCompanionService=x=>globalThis.__handoffReceiverFixture.bridge(x);",
++      "authManager.js": "export const AuthManager={isAuthenticated:true,getEffectiveUserId:async()=> 'account'};",
++      "profileManager.js": "export const ProfileManager={getActiveProfileId:()=>1};",
++      "router.js": "export const Router=globalThis.__handoffReceiverFixture.router;",
++      "playerController.js": "export const PlayerController=globalThis.__handoffReceiverFixture.controller;"
++    });
++    installTvHandoffReceiver();
++    listeners.get("webOSRelaunch")({ detail: { handoff: launchParams } });
++    await new Promise((resolve) => setTimeout(resolve, 1200));
++    assert.equal(confirmed, false, "matching time from the previous player is not proof of a transfer");
++    controller.playRequestToken = 2;
++    const update = await Promise.race([done, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("handoff did not complete")), 5000); })]);
++    assert.ok(seekCount > 0);
++    assert.ok(Date.now() - seekAt >= 750);
++    assert.ok(update.positionMs >= req.positionMs && update.positionMs <= req.positionMs + 2000);
++  } finally {
++    clearTimeout(timer); globalThis.document = previousDocument; globalThis.localStorage = previousStorage;
++    delete globalThis.__handoffReceiverFixture;
++  }
++});
+diff --git a/services/webos/src/handoff.js b/services/webos/src/handoff.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..480dbdd37d4c5aac1fc6b0edffeb8b49f1a0e34b
+--- /dev/null
++++ b/services/webos/src/handoff.js
+@@ -0,0 +1,87 @@
++"use strict";
++
++// Narrow pinned-TLS bridge for the WebView, which cannot accept a private desktop certificate.
++var https = require("https");
++var tls = require("tls");
++var crypto = require("crypto");
++var URL = require("url").URL;
++
++function validate(payload) {
++  var launch = payload.launch || {};
++  var endpoint = new URL(String(launch.endpoint || ""));
++  var octets = endpoint.hostname.split(".").map(Number);
++  var privateAddress = octets.length === 4 && octets.every(function (part) {
++    return Number.isInteger(part) && part >= 0 && part <= 255;
++  }) && (octets[0] === 10 || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
++    (octets[0] === 192 && octets[1] === 168) || (octets[0] === 169 && octets[1] === 254));
++  if (!privateAddress || endpoint.protocol !== "https:" || endpoint.pathname !== "/v1/handoff" ||
++      endpoint.username || endpoint.password || endpoint.search || endpoint.hash ||
++      !/^[0-9a-f]{64}$/.test(launch.certificatePin || "") || !/^[0-9a-f]{64}$/.test(launch.token || "")) {
++    throw new Error("Invalid local handoff endpoint");
++  }
++  var body = payload.status == null ? null : JSON.stringify(payload.status);
++  if (body && Buffer.byteLength(body) > 16384) throw new Error("Status too large");
++  return { endpoint: endpoint, launch: launch, body: body };
++}
++
++function exchange(payload) {
++  return new Promise(function (resolve, reject) {
++    var validated;
++    try { validated = validate(payload); } catch (error) { reject(error); return; }
++    var endpoint = validated.endpoint;
++    var launch = validated.launch;
++    var agent = new https.Agent({ keepAlive: false });
++    // Return the TLS socket to HTTP only after checking its exact certificate.
++    agent.createConnection = function (options, callback) {
++      var socket = tls.connect({ host: endpoint.hostname, port: Number(endpoint.port || 443),
++        rejectUnauthorized: false });
++      var settled = false;
++      function finish(error) {
++        if (settled) return;
++        settled = true;
++        if (error) { socket.destroy(); callback(error); } else callback(null, socket);
++      }
++      socket.setTimeout(5000, function () { finish(new Error("TLS timeout")); });
++      socket.once("error", finish);
++      socket.once("secureConnect", function () {
++        var certificate = socket.getPeerCertificate();
++        var pin = certificate.raw && crypto.createHash("sha256").update(certificate.raw).digest("hex");
++        finish(pin === launch.certificatePin ? null : new Error("Desktop certificate mismatch"));
++      });
++    };
++    var request = https.request({ hostname: endpoint.hostname, port: Number(endpoint.port || 443),
++      path: endpoint.pathname + (validated.body ? "/status" : ""),
++      method: validated.body ? "POST" : "GET", agent: agent,
++      headers: { Authorization: "Bearer " + launch.token, "Content-Type": "application/json" }
++    }, function (response) {
++      var chunks = []; var size = 0;
++      response.on("data", function (chunk) {
++        size += chunk.length;
++        if (size > 16384) { request.destroy(new Error("Response too large")); return; }
++        chunks.push(chunk);
++      });
++      response.on("end", function () {
++        agent.destroy();
++        if (response.statusCode !== 200) { reject(new Error("Transfer cancelled or expired")); return; }
++        try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch (error) { reject(error); }
++      });
++      response.on("error", reject);
++    });
++    request.setTimeout(6000, function () { request.destroy(new Error("Handoff request timeout")); });
++    request.on("error", function (error) { agent.destroy(); reject(error); });
++    request.end(validated.body || undefined);
++  });
++}
++
++exports.validate = validate;
++exports.exchange = exchange;
++exports.register = function (service) {
++  service.register("handoffRequest", function (message) {
++    exchange(message.payload || {}).then(function (result) {
++      message.respond({ returnValue: true, result: result });
++    }, function () {
++      // Credentials, launch tokens and URLs must never appear in service errors.
++      message.respond({ returnValue: false, errorCode: -1, errorText: "Local handoff connection failed" });
++    });
++  });
++};

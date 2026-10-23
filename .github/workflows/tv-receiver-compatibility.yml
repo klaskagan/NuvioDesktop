@@ -1,0 +1,51 @@
+name: TV receiver update compatibility
+on:
+  workflow_dispatch:
+    inputs:
+      receiver:
+        type: choice
+        options: [legacy, webos, android]
+        default: legacy
+        required: true
+      ref:
+        description: Upstream tag or commit (empty selects latest stable tag)
+        required: false
+permissions:
+  contents: read
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        if: inputs.receiver == 'android'
+      - name: Native receiver UI test headers
+        if: inputs.receiver == 'legacy'
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      - name: Apply overlay and test against upstream
+        env:
+          RECEIVER: ${{ inputs.receiver }}
+          UPSTREAM_REF: ${{ inputs.ref }}
+        run: |
+          args=(prepare --receiver "$RECEIVER" --destination "$RUNNER_TEMP/receiver" --test)
+          if [ -n "$UPSTREAM_REF" ]; then args+=(--ref "$UPSTREAM_REF"); fi
+          python3 scripts/tv-handoff/receiver_updates.py "${args[@]}"
+      - name: Save compatibility diff
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/receiver/.git" ]; then
+            git -C "$RUNNER_TEMP/receiver" diff HEAD --binary > receiver-update.diff
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: receiver-update-review
+          path: receiver-update.diff

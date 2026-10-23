@@ -1,0 +1,55 @@
+{
+  "android": {
+    "url": "https://github.com/NuvioMedia/NuvioTV.git",
+    "base": "ce6ca448b9972d205ac2ba9f2a55a07743cc81f1",
+    "patch": "NuvioTV.patch",
+    "tests": [
+      [
+        "./gradlew",
+        ":app:testFullDebugUnitTest",
+        "--tests",
+        "com.nuvio.tv.core.deeplink.*",
+        "--console=plain"
+      ]
+    ]
+  },
+  "webos": {
+    "url": "https://github.com/NuvioMedia/NuvioTVSmart.git",
+    "base": "c8674f2d47d79239cd1dd67c4752bde371e589f7",
+    "patch": "NuvioTVSmart.patch",
+    "tests": [
+      [
+        "node",
+        "--test",
+        "scripts/test-tv-handoff.mjs"
+      ]
+    ]
+  },
+  "legacy": {
+    "url": "https://github.com/iqui27/nuvio-native-legacy.git",
+    "base": "87c8b8909f0d605f1d8351147fe5afb9de233b8d",
+    "patch": "NuvioNativeLegacy.patch",
+    "tests": [
+      [
+        "bash",
+        "tests/handoff.sh"
+      ],
+      [
+        "bash",
+        "tests/handoff_profile.sh"
+      ],
+      [
+        "bash",
+        "tests/handoff_ui.sh"
+      ],
+      [
+        "bash",
+        "tests/deeplink.sh"
+      ],
+      [
+        "bash",
+        "tests/rede_pedido.sh"
+      ]
+    ]
+  }
+}
