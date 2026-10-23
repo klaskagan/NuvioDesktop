@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nuvio Project Patterns"
+  short_description: "Reuse Nuvio UI, navigation, and player patterns"
+  default_prompt: "Use $nuvio-project-patterns to implement this feature consistently with Nuvio's existing components and interactions."
