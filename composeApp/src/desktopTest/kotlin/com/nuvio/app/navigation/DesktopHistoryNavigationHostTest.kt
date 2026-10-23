@@ -166,6 +166,84 @@ class DesktopHistoryNavigationHostTest {
         }
     }
 
+    @Test fun emptyHistoryNeverShowsEitherSwipeOverlay() {
+        compose.mainClock.autoAdvance = false
+        val history = DesktopNavigationHistory(DesktopNavigationLocation())
+        val navigator = NuvioNavigator(NavBackStack<NavKey>(TabsRoute), desktopHistory = history)
+        setNavigatorHost(navigator)
+        compose.onRoot().performMouseInput { enter(center); scroll(-4f, ScrollWheel.Horizontal) }
+        compose.mainClock.advanceTimeBy(100)
+        assertNoOverlays()
+        val directory = File("build/reports/history-navigation").apply { mkdirs() }
+        ImageIO.write(compose.onRoot().captureToImage().toAwtImage(), "png", File(directory, "empty-history.png"))
+        compose.mainClock.advanceTimeBy(600)
+        compose.onRoot().performMouseInput { advanceEventTime(600); scroll(4f, ScrollWheel.Horizontal) }
+        compose.mainClock.advanceTimeBy(100)
+        assertNoOverlays()
+        compose.mainClock.advanceTimeBy(600)
+        compose.runOnIdle { assertEquals(TabsRoute, navigator.currentRoute) }
+    }
+
+    @Test fun overlayOnlyAppearsForTheDirectionWithHistory() {
+        compose.mainClock.autoAdvance = false
+        val movie = DetailRoute("movie", "one")
+        val history = DesktopNavigationHistory(DesktopNavigationLocation())
+        val navigator = NuvioNavigator(NavBackStack<NavKey>(TabsRoute), desktopHistory = history)
+        navigator.navigate(movie)
+        setNavigatorHost(navigator)
+        compose.onRoot().performMouseInput { enter(center); scroll(4f, ScrollWheel.Horizontal) }
+        compose.mainClock.advanceTimeBy(100)
+        assertNoOverlays()
+        compose.mainClock.advanceTimeBy(600)
+        compose.runOnIdle { assertEquals(movie, navigator.currentRoute) }
+        compose.onRoot().performMouseInput { advanceEventTime(600); scroll(-4f, ScrollWheel.Horizontal) }
+        compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithTag("history_back_overlay").assertExists()
+        compose.mainClock.advanceTimeBy(600)
+        compose.runOnIdle { assertEquals(TabsRoute, navigator.currentRoute) }
+        compose.onRoot().performMouseInput { advanceEventTime(600); scroll(-4f, ScrollWheel.Horizontal) }
+        compose.mainClock.advanceTimeBy(100)
+        assertNoOverlays()
+        compose.mainClock.advanceTimeBy(600)
+        compose.runOnIdle { assertEquals(TabsRoute, navigator.currentRoute) }
+        compose.onRoot().performMouseInput { advanceEventTime(600); scroll(4f, ScrollWheel.Horizontal) }
+        compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithTag("history_forward_overlay").assertExists()
+        compose.mainClock.advanceTimeBy(600)
+        compose.runOnIdle { assertEquals(movie, navigator.currentRoute) }
+    }
+
+    @Test fun reversingIntoUnavailableDirectionHidesOverlayImmediately() {
+        compose.mainClock.autoAdvance = false
+        val history = DesktopNavigationHistory(DesktopNavigationLocation())
+        val navigator = NuvioNavigator(NavBackStack<NavKey>(TabsRoute), desktopHistory = history)
+        navigator.navigate(DetailRoute("movie", "one"))
+        setNavigatorHost(navigator)
+        compose.onRoot().performMouseInput { enter(center); scroll(-1f, ScrollWheel.Horizontal) }
+        compose.mainClock.advanceTimeBy(80)
+        compose.onNodeWithTag("history_back_overlay").assertExists()
+        compose.onRoot().performMouseInput { advanceEventTime(30); scroll(2f, ScrollWheel.Horizontal) }
+        compose.mainClock.advanceTimeBy(32)
+        assertNoOverlays()
+    }
+
+    private fun assertNoOverlays() {
+        compose.onNodeWithTag("history_back_overlay").assertDoesNotExist()
+        compose.onNodeWithTag("history_forward_overlay").assertDoesNotExist()
+    }
+
+    private fun setNavigatorHost(navigator: NuvioNavigator) {
+        compose.setContent {
+            DesktopHistoryNavigationHost(
+                enabled = true,
+                canGoBack = navigator.canPopBackStack(),
+                canGoForward = navigator.canGoForward,
+                onBack = { navigator.popBackStack() },
+                onForward = { navigator.goForward() },
+            ) { Box(Modifier.fillMaxSize().background(Color(0xFF24272B))) }
+        }
+    }
+
     private fun setHost(content: @androidx.compose.runtime.Composable () -> Unit) {
         compose.setContent {
             DesktopHistoryNavigationHost(

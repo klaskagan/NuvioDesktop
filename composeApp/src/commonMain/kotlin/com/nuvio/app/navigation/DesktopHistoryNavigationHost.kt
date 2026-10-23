@@ -95,35 +95,37 @@ internal fun DesktopHistoryNavigationHost(
             animationSpec = tween(90),
             label = "history_swipe_progress",
         )
-        AnimatedVisibility(
-            visible = inputEnabled && preview != null,
-            modifier = Modifier.align(if (back) Alignment.CenterStart else Alignment.CenterEnd),
-            enter = fadeIn(tween(90)),
-            exit = fadeOut(tween(200)),
-        ) {
-            // Half of the circular surface sits outside the window, like browser history arrows.
-            Box(
-                Modifier.size(104.dp)
-                    .offset(x = ((52f - progress * 20f) * if (back) -1f else 1f).dp)
-                    .background(Color.Black.copy(alpha = 0.88f), CircleShape)
-                    .testTag(if (back) "history_back_overlay" else "history_forward_overlay"),
-                contentAlignment = Alignment.Center,
+        if (available) {
+            AnimatedVisibility(
+                visible = inputEnabled && preview != null,
+                modifier = Modifier.align(if (back) Alignment.CenterStart else Alignment.CenterEnd),
+                enter = fadeIn(tween(90)),
+                exit = fadeOut(tween(200)),
             ) {
-                Canvas(Modifier.offset(x = if (back) 18.dp else (-18).dp).size(44.dp)) {
-                    val color = Color.White.copy(alpha = if (available && progress >= 0.95f) 1f else 0.45f)
-                    val tip = if (back) size.width * 0.18f else size.width * 0.82f
-                    val tail = if (back) size.width * 0.82f else size.width * 0.18f
-                    val neck = size.width * 0.50f
-                    drawLine(color, Offset(tip, center.y), Offset(tail, center.y), 5.dp.toPx(), StrokeCap.Round)
-                    drawPath(
-                        Path().apply {
-                            moveTo(neck, size.height * 0.18f)
-                            lineTo(tip, center.y)
-                            lineTo(neck, size.height * 0.82f)
-                        },
-                        color,
-                        style = Stroke(5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-                    )
+                // Half of the circular surface sits outside the window, like browser history arrows.
+                Box(
+                    Modifier.size(104.dp)
+                        .offset(x = ((52f - progress * 20f) * if (back) -1f else 1f).dp)
+                        .background(Color.Black.copy(alpha = 0.88f), CircleShape)
+                        .testTag(if (back) "history_back_overlay" else "history_forward_overlay"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Canvas(Modifier.offset(x = if (back) 18.dp else (-18).dp).size(44.dp)) {
+                        val color = Color.White.copy(alpha = if (progress >= 0.95f) 1f else 0.45f)
+                        val tip = if (back) size.width * 0.18f else size.width * 0.82f
+                        val tail = if (back) size.width * 0.82f else size.width * 0.18f
+                        val neck = size.width * 0.50f
+                        drawLine(color, Offset(tip, center.y), Offset(tail, center.y), 5.dp.toPx(), StrokeCap.Round)
+                        drawPath(
+                            Path().apply {
+                                moveTo(neck, size.height * 0.18f)
+                                lineTo(tip, center.y)
+                                lineTo(neck, size.height * 0.82f)
+                            },
+                            color,
+                            style = Stroke(5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                        )
+                    }
                 }
             }
         }
