@@ -21,7 +21,9 @@ captures
 node_modules/
 logs/
 analysis/
-Docs
+[Dd]ocs/*
+![Dd]ocs/continue-on-tv.md
+![Dd]ocs/tv-handoff/
 SUPPORTER_COSMETICS.md
 supabase/migrations/
 keystore/
@@ -30,9 +32,16 @@ asset
 scripts/scrape_android_compose_animation_docs.py
 tools
 AGENTS.md
+!/AGENTS.md
 
 PERFORMANCE_FINDINGS.md
 scripts/*
+!scripts/tv-handoff/
+!scripts/tv-handoff/**
+scripts/tv-handoff/**/__pycache__/
+scripts/tv-handoff/**/*.py[cod]
+scripts/tv-handoff/**/.venv/
+scripts/tv-handoff/**/venv/
 !scripts/sign-ios-device-app.py
 iosApp/Configuration/DeviceSigning.local.json
 

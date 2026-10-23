@@ -74,6 +74,9 @@ const nextEpisodeStatus = document.getElementById("nextEpisodeStatus");
 const nextEpisodeAction = document.getElementById("nextEpisodeAction");
 const sourcesButton = document.getElementById("sourcesButton");
 const episodesButton = document.getElementById("episodesButton");
+const tvHandoffModal = document.getElementById("tvHandoffModal");
+const tvHandoffDeviceList = document.getElementById("tvHandoffDeviceList");
+const tvHandoffStatus = document.getElementById("tvHandoffStatus");
 const audioModal = document.getElementById("audioModal");
 const subtitleModal = document.getElementById("subtitleModal");
 const speedModal = document.getElementById("speedModal");
@@ -973,6 +976,7 @@ const rangePositionMs = () => {
 };
 
 const modalByName = {
+  tvHandoff: tvHandoffModal,
   audio: audioModal,
   subtitles: subtitleModal,
   speed: speedModal,
@@ -1025,6 +1029,7 @@ const setModalVisibility = (modal, visible, animated = true) => {
 const closePlayerModal = (notifyDismiss = false, animated = true) => {
   const closingModal = activeModal;
   activeModal = "";
+  if (closingModal === "tvHandoff") send("dismissTvHandoff", 0);
   modalElements.forEach(modal => {
     setModalVisibility(modal, false, animated);
   });
@@ -1042,6 +1047,7 @@ const openPlayerModal = modal => {
     closePlayerModal(false);
     return;
   }
+  if (activeModal === "tvHandoff" && modal !== "tvHandoff") send("dismissTvHandoff", 0);
   if (activeModal === "party" && modal !== "party") onPartyModalClosed();
   if (modal === "party" && activeModal !== "party") onPartyModalOpened();
   activeModal = modal;
@@ -1137,6 +1143,47 @@ const renderSpeedOptionList = () => {
     row.appendChild(buildCheckIcon());
     speedOptionList.appendChild(row);
   });
+};
+
+const renderTvHandoffList = () => {
+  document.getElementById("tvHandoffPanelTitle").textContent = state.tvHandoffLabel || "Continue on TV";
+  tvHandoffDeviceList.textContent = "";
+  const devices = normalizeItems(state.tvHandoffDevices);
+  if (!devices.length) {
+    appendEmptyTrackState(tvHandoffDeviceList, "Add a TV in Settings → Advanced → Paired TVs.");
+  }
+  devices.forEach((device, index) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "track-row audio-track-row";
+    row.disabled = !state.tvHandoffReady || Boolean(state.tvHandoffBusy);
+    const copy = document.createElement("span");
+    copy.className = "audio-track-copy";
+    const name = document.createElement("span");
+    name.className = "audio-track-name";
+    name.textContent = device.name;
+    const detail = document.createElement("span");
+    detail.className = "audio-track-language";
+    detail.textContent = device.platform === "sony" ? "Android TV" : "LG webOS";
+    copy.append(name, detail); row.appendChild(copy);
+    row.addEventListener("click", event => {
+      event.stopPropagation();
+      send("selectHandoffTv", index);
+    });
+    tvHandoffDeviceList.appendChild(row);
+  });
+  if (state.tvHandoffCanResume) {
+    const resume = document.createElement("button");
+    resume.type = "button"; resume.className = "track-row";
+    resume.textContent = "Resume here";
+    resume.addEventListener("click", event => {
+      event.stopPropagation(); send("resumeTvHandoff", 0); closePlayerModal();
+    });
+    tvHandoffDeviceList.appendChild(resume);
+  }
+  const status = String(state.tvHandoffStatus || "");
+  tvHandoffStatus.textContent = status;
+  tvHandoffStatus.hidden = !status;
 };
 
 const renderAudioTrackList = () => {
@@ -2098,6 +2145,7 @@ const renderP2pConsentModal = () => {
 };
 
 const renderActiveModal = (modalOpened = false) => {
+  if (activeModal === "tvHandoff") renderTvHandoffList();
   if (activeModal === "audio") renderAudioTrackList();
   if (activeModal === "subtitles") renderSubtitleModal();
   if (activeModal === "speed") renderSpeedOptionList();
@@ -2457,6 +2505,9 @@ const renderChrome = () => {
   subtitlesLabel.textContent = state.subtitlesLabel || "Subs";
   audioLabel.textContent = state.audioLabel || "Audio";
   sourcesLabel.textContent = state.sourcesLabel || "Sources";
+  document.getElementById("tvHandoffButton").style.display = state.showTvHandoff ? "" : "none";
+  document.getElementById("tvHandoffLabel").textContent = state.tvHandoffLabel || "Continue on TV";
+  setActionButtonLabel("continueOnTv", state.tvHandoffLabel || "Continue on TV");
   episodesLabel.textContent = state.episodesLabel || "Episodes";
   setActionButtonLabel("resize", state.resizeModeLabel || "Fit");
   setActionButtonLabel("speed", state.playbackSpeedLabel || "1x");
@@ -2867,6 +2918,11 @@ document.querySelectorAll("[data-command]").forEach(button => {
         return;
       }
       requestPlaybackState("setPlaybackState", true);
+      return;
+    }
+    if (command === "continueOnTv") {
+      openPlayerModal("tvHandoff");
+      send("continueOnTv", 0);
       return;
     }
     if (command === "audio") {

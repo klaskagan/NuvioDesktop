@@ -783,7 +783,9 @@ private fun MobileSettingsScreen(
                 SettingsPage.Advanced -> advancedSettingsContent(
                     isTablet = false,
                     rememberLastProfileEnabled = rememberLastProfileEnabled,
+                    onPairedTvsClick = { onPageChange(SettingsPage.PairedTvs) },
                 )
+                SettingsPage.PairedTvs -> item { com.nuvio.app.features.handoff.PairedTvSettings { onPageChange(SettingsPage.Advanced) } }
                 SettingsPage.Notifications -> if (AppFeaturePolicy.notificationsEnabled) {
                     notificationsSettingsContent(
                         isTablet = false,
@@ -1260,7 +1262,9 @@ private fun TabletSettingsScreen(
                             SettingsPage.Advanced -> advancedSettingsContent(
                                 isTablet = true,
                                 rememberLastProfileEnabled = rememberLastProfileEnabled,
+                                onPairedTvsClick = { openInlinePage(SettingsPage.PairedTvs) },
                             )
+                            SettingsPage.PairedTvs -> item { com.nuvio.app.features.handoff.PairedTvSettings { openInlinePage(SettingsPage.Advanced) } }
                             SettingsPage.Notifications -> if (AppFeaturePolicy.notificationsEnabled) {
                                 notificationsSettingsContent(
                                     isTablet = true,

@@ -62,7 +62,10 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val systemBackRegistration = args.onSystemBackHandlerChanged
     DisposableEffect(runtime, systemBackRegistration) {
         systemBackRegistration { runtime.requestBack() }
-        onDispose { systemBackRegistration(null) }
+        onDispose {
+            systemBackRegistration(null)
+            if (!runtime.tvHandoffTransferred) runtime.cancelTvHandoff?.invoke()
+        }
     }
     val isInPip = rememberIsInPictureInPicture()
     val displayedPositionMs = scrubbingPositionMs ?: playbackSnapshot.positionMs
@@ -278,6 +281,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         sourcesLabel = stringResource(Res.string.compose_player_sources),
         episodesLabel = stringResource(Res.string.compose_player_episodes),
         externalPlayerLabel = stringResource(Res.string.streams_open_external_player),
+        tvHandoffLabel = stringResource(Res.string.player_continue_on_tv),
+        showTvHandoff = isDesktop && !partyControls.active && playbackSnapshot.durationMs > 0,
         playLabel = stringResource(Res.string.detail_btn_play),
         pauseLabel = stringResource(Res.string.compose_action_pause),
         closeLabel = stringResource(Res.string.compose_player_close),
@@ -798,7 +803,7 @@ internal fun releaseRetainedPlayerBeforeNavigation(
     }
 }
 
-private fun PlayerScreenRuntime.requestBack() {
+internal fun PlayerScreenRuntime.requestBack() {
     flushWatchProgress()
     val exitingController = playerLifecycleController
     args.onBack { afterRelease, releaseFailed ->
@@ -836,6 +841,7 @@ private fun PlayerScreenRuntime.requestBack() {
 private fun PlayerScreenRuntime.handlePlayerControlsAction(action: PlayerControlsAction): Boolean {
     playerControlsLog.d { "action=$action ${playerControlLogContext()}" }
     when (action) {
+        PlayerControlsAction.ContinueOnTv -> continueOnTv()
         PlayerControlsAction.ToggleChrome -> {
             if (playerControlsLocked) {
                 revealLockedOverlay()
@@ -904,6 +910,9 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
         playerControlsLog.d { "event type=$type value=$value ${playerControlLogContext()}" }
     }
     when (type) {
+        "dismissTvHandoff" -> {
+            cancelTvHandoff?.invoke(); cancelTvHandoff = null
+        }
         "cursorActivity" -> {
             if (!playerControlsLocked) {
                 controlsVisible = true

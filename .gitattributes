@@ -1,2 +1,5 @@
 composeApp/src/desktopMain/native/windows/runtime/libmpv-2.dll filter=lfs diff=lfs merge=lfs -text
 composeApp/src/desktopMain/native/macos/runtime/**/*.dylib filter=lfs diff=lfs merge=lfs -text
+
+# Unified patches require a single-space prefix on blank context lines.
+docs/tv-handoff/*.patch whitespace=-blank-at-eol eol=lf

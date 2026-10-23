@@ -70,12 +70,15 @@ enum class PlayerControlsAction {
     Sources,
     Episodes,
     OpenExternalPlayer,
+    ContinueOnTv,
     SubmitIntro,
     LockToggle,
     VideoSettings,
     DoubleTapSeekBack,
     DoubleTapSeekForward,
 }
+
+data class PlayerControlTvDevice(val name: String, val platform: String)
 
 data class PlayerControlsState(
     val title: String = "",
@@ -98,6 +101,13 @@ data class PlayerControlsState(
     val sourcesLabel: String = "Sources",
     val episodesLabel: String = "Episodes",
     val externalPlayerLabel: String = "External",
+    val tvHandoffLabel: String = "Continue on TV",
+    val showTvHandoff: Boolean = false,
+    val tvHandoffDevices: List<PlayerControlTvDevice> = emptyList(),
+    val tvHandoffReady: Boolean = false,
+    val tvHandoffBusy: Boolean = false,
+    val tvHandoffCanResume: Boolean = false,
+    val tvHandoffStatus: String = "",
     val playLabel: String = "Play",
     val pauseLabel: String = "Pause",
     val closeLabel: String = "Close player",

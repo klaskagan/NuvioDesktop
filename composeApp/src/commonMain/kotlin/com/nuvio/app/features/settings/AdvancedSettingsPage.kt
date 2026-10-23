@@ -62,12 +62,30 @@ import nuvio.composeapp.generated.resources.sentry_sent_body_desktop
 import nuvio.composeapp.generated.resources.sentry_sent_title
 import nuvio.composeapp.generated.resources.sentry_turn_off
 import nuvio.composeapp.generated.resources.sentry_turn_on
+import nuvio.composeapp.generated.resources.player_continue_on_tv
+import nuvio.composeapp.generated.resources.settings_paired_tvs
+import nuvio.composeapp.generated.resources.settings_paired_tvs_description
 import org.jetbrains.compose.resources.stringResource
 
 internal fun LazyListScope.advancedSettingsContent(
     isTablet: Boolean,
     rememberLastProfileEnabled: Boolean,
+    onPairedTvsClick: () -> Unit,
 ) {
+    if (com.nuvio.app.isDesktop) {
+        item {
+            SettingsSection(title = stringResource(Res.string.player_continue_on_tv), isTablet = isTablet) {
+                SettingsGroup(isTablet = isTablet) {
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_paired_tvs),
+                        description = stringResource(Res.string.settings_paired_tvs_description),
+                        isTablet = isTablet,
+                        onClick = onPairedTvsClick,
+                    )
+                }
+            }
+        }
+    }
     item {
         SettingsSection(
             title = stringResource(Res.string.settings_advanced_section_startup),
