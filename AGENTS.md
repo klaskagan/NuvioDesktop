@@ -26,6 +26,8 @@ skill is not in the session catalog, read that file directly.
   the displayed destination. Run full-app UI tests with isolated profile storage.
 - Verify visible changes in the appropriate running UI when tools permit. A build
   or unit test alone is not visual validation. State any unverified behavior.
+- For collection hero/backdrop work, read `.agents/collection-backdrops.md` and
+  reuse the seasonal catalog implementation as the reference.
 
 ## Repository boundaries
 
