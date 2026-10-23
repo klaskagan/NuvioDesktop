@@ -98,6 +98,7 @@ internal fun Modifier.desktopHistoryGestures(
     onForward: () -> Unit,
     onPreview: (HistorySwipePreview?) -> Unit = {},
     exclusions: HistoryGestureExclusions? = null,
+    gestureResetKey: Any? = null,
 ): Modifier = if (!isDesktop) this else composed {
     val currentEnabled by rememberUpdatedState(enabled)
     val currentBack by rememberUpdatedState(onBack)
@@ -107,6 +108,16 @@ internal fun Modifier.desktopHistoryGestures(
     val scope = rememberCoroutineScope()
     var finishJob by remember { mutableStateOf<Job?>(null) }
     val session = remember { HistorySwipeSession() }
+    DisposableEffect(enabled, gestureResetKey) {
+        finishJob?.cancel()
+        session.reset()
+        currentPreview(null)
+        onDispose {
+            finishJob?.cancel()
+            session.reset()
+            currentPreview(null)
+        }
+    }
     fun accept(direction: HistorySwipe?) {
         if (!currentEnabled) return
         when (direction) {

@@ -53,6 +53,7 @@ fun DialogSurface(
     properties: DialogProperties = DialogProperties(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    com.nuvio.app.navigation.BlockDesktopHistoryGestures()
     val tokens = MaterialTheme.nuvio
     BasicAlertDialog(onDismissRequest = onDismissRequest, properties = properties) {
         Surface(

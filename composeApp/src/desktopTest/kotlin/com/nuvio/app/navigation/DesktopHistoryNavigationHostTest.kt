@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import com.nuvio.app.AppScreenTab
+import com.nuvio.app.features.settings.SettingsPage
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -125,6 +127,43 @@ class DesktopHistoryNavigationHostTest {
         compose.runOnIdle { assertEquals(emptyList(), actions) }
         compose.mainClock.advanceTimeBy(500)
         compose.runOnIdle { assertEquals(listOf(HistorySwipe.Forward), actions) }
+    }
+
+    @Test fun swipesTraverseTabsAndSettingsParentsInTheSharedHistory() {
+        val history = DesktopNavigationHistory(DesktopNavigationLocation())
+        val navigator = NuvioNavigator(NavBackStack<NavKey>(TabsRoute), desktopHistory = history)
+        navigator.selectDesktopTab(AppScreenTab.Search)
+        navigator.selectDesktopTab(AppScreenTab.Library)
+        navigator.openDesktopSettings("DetailNavigation")
+        compose.setContent {
+            DesktopHistoryNavigationHost(
+                enabled = true,
+                canGoBack = navigator.canPopBackStack(),
+                canGoForward = navigator.canGoForward,
+                onBack = { navigator.popBackStack() },
+                onForward = { navigator.goForward() },
+            ) { Box(Modifier.fillMaxSize()) }
+        }
+        compose.onRoot().performMouseInput { enter(center) }
+        fun swipe(amount: Float) {
+            compose.onRoot().performMouseInput { advanceEventTime(600); scroll(amount, ScrollWheel.Horizontal) }
+            compose.mainClock.advanceTimeBy(600)
+        }
+        swipe(-4f)
+        compose.runOnIdle { assertEquals(SettingsPage.Appearance, history.current.settingsPage) }
+        swipe(-4f)
+        compose.runOnIdle { assertEquals(SettingsPage.Root, history.current.settingsPage) }
+        swipe(-4f)
+        compose.runOnIdle { assertEquals(AppScreenTab.Library, history.current.tab) }
+        swipe(-4f)
+        compose.runOnIdle { assertEquals(AppScreenTab.Search, history.current.tab) }
+        swipe(4f)
+        compose.runOnIdle { assertEquals(AppScreenTab.Library, history.current.tab) }
+        swipe(4f)
+        compose.runOnIdle {
+            assertEquals(AppScreenTab.Settings, history.current.tab)
+            assertEquals(SettingsPage.Root, history.current.settingsPage)
+        }
     }
 
     private fun setHost(content: @androidx.compose.runtime.Composable () -> Unit) {

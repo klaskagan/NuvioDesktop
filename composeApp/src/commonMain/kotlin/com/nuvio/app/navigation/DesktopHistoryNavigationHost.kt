@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +35,25 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.isDesktop
 
+internal class HistoryGestureBlockers {
+    var count by mutableIntStateOf(0)
+    var generation by mutableIntStateOf(0)
+}
+
+private val LocalHistoryGestureBlockers = staticCompositionLocalOf<HistoryGestureBlockers?> { null }
+
+/** A modal owns input until dismissal, and cancels any gesture already in progress. */
+@Composable
+internal fun BlockDesktopHistoryGestures() {
+    val blockers = LocalHistoryGestureBlockers.current
+    val active = com.nuvio.app.core.ui.LocalScreenActive.current
+    DisposableEffect(blockers, active) {
+        val owner = blockers.takeIf { active }
+        owner?.let { it.count++; it.generation++ }
+        onDispose { owner?.let { it.count--; it.generation++ } }
+    }
+}
+
 @Composable
 internal fun DesktopHistoryNavigationHost(
     enabled: Boolean,
@@ -38,6 +61,7 @@ internal fun DesktopHistoryNavigationHost(
     canGoForward: Boolean,
     onBack: () -> Unit,
     onForward: () -> Unit,
+    gestureResetKey: Any? = null,
     content: @Composable () -> Unit,
 ) {
     if (!isDesktop) {
@@ -45,12 +69,15 @@ internal fun DesktopHistoryNavigationHost(
         return
     }
     val exclusions = remember { HistoryGestureExclusions() }
+    val blockers = remember { HistoryGestureBlockers() }
+    val inputEnabled = enabled && blockers.count == 0 && LocalWindowInfo.current.isWindowFocused
     var preview by remember { mutableStateOf<HistorySwipePreview?>(null) }
     var lastPreview by remember { mutableStateOf(HistorySwipePreview(HistorySwipe.Back, 0f)) }
     val availableBack = canGoBack
     val availableForward = canGoForward
     Box(Modifier.fillMaxSize().clipToBounds().desktopHistoryGestures(
-        enabled = enabled,
+        enabled = inputEnabled,
+        gestureResetKey = gestureResetKey to blockers.generation,
         exclusions = exclusions,
         onBack = { if (availableBack) onBack() },
         onForward = { if (availableForward) onForward() },
@@ -59,7 +86,7 @@ internal fun DesktopHistoryNavigationHost(
             if (it != null) lastPreview = it
         },
     )) {
-        CompositionLocalProvider(LocalHistoryGestureExclusions provides exclusions) { content() }
+        CompositionLocalProvider(LocalHistoryGestureExclusions provides exclusions, LocalHistoryGestureBlockers provides blockers) { content() }
         val direction = preview?.direction ?: lastPreview.direction
         val back = direction == HistorySwipe.Back
         val available = if (back) canGoBack else canGoForward
@@ -69,7 +96,7 @@ internal fun DesktopHistoryNavigationHost(
             label = "history_swipe_progress",
         )
         AnimatedVisibility(
-            visible = enabled && preview != null,
+            visible = inputEnabled && preview != null,
             modifier = Modifier.align(if (back) Alignment.CenterStart else Alignment.CenterEnd),
             enter = fadeIn(tween(90)),
             exit = fadeOut(tween(200)),

@@ -153,6 +153,8 @@ internal data class AppTabState(
     val libraryDisintegrationRequest: DisintegrationRequest<String>? = null,
     val continueWatchingDisintegrationRequest: DisintegrationRequest<String>? = null,
     val requestedSettingsPageName: String? = null,
+    val desktopSettingsPageName: String? = null,
+    val desktopSettingsCategoryName: String? = null,
 )
 
 internal data class AppTabRequests(
@@ -175,6 +177,9 @@ internal data class AppTabActions(
     val onContinueWatchingClick: ((ContinueWatchingItem) -> Unit)? = null,
     val onContinueWatchingLongPress: ((ContinueWatchingItem) -> Unit)? = null,
     val onSwitchProfile: (() -> Unit)? = null,
+    val onDesktopSettingsPageChange: ((String) -> Unit)? = null,
+    val onDesktopSettingsCategoryChange: ((String) -> Unit)? = null,
+    val onDesktopSettingsBack: (() -> Unit)? = null,
     val onSettingsPageClick: ((pageName: String, title: String) -> Unit)? = null,
     val onHomescreenSettingsClick: () -> Unit = {},
     val onMetaScreenSettingsClick: () -> Unit = {},
@@ -293,6 +298,11 @@ internal fun AppTabHost(
                     rootActionsEnabled = state.tabsRouteActiveState.value,
                     isSelectedTab = selectedTab == AppScreenTab.Settings,
                     onNavigatePage = actions.onSettingsPageClick,
+                    desktopPageName = state.desktopSettingsPageName,
+                    desktopCategoryName = state.desktopSettingsCategoryName,
+                    onDesktopPageChange = actions.onDesktopSettingsPageChange,
+                    onDesktopCategoryChange = actions.onDesktopSettingsCategoryChange,
+                    onDesktopBack = actions.onDesktopSettingsBack,
                     onSwitchProfile = actions.onSwitchProfile,
                     onHomescreenClick = actions.onHomescreenSettingsClick,
                     onMetaScreenClick = actions.onMetaScreenSettingsClick,

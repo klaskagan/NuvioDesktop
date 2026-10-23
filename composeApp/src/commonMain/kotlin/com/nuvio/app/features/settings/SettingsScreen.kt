@@ -146,6 +146,11 @@ fun SettingsScreen(
     isSelectedTab: Boolean = true,
     onNavigatePage: ((pageName: String, title: String) -> Unit)? = null,
     onExternalBack: (() -> Unit)? = null,
+    desktopPageName: String? = null,
+    desktopCategoryName: String? = null,
+    onDesktopPageChange: ((String) -> Unit)? = null,
+    onDesktopCategoryChange: ((String) -> Unit)? = null,
+    onDesktopBack: (() -> Unit)? = null,
     showInternalHeader: Boolean = true,
     onSwitchProfile: (() -> Unit)? = null,
     onHomescreenClick: () -> Unit = {},
@@ -271,7 +276,12 @@ fun SettingsScreen(
             HomeCatalogSettingsRepository.syncCollections(collections)
         }
 
-        var currentPage by rememberSaveable(initialPageName) { mutableStateOf(initialPageName) }
+        var localPage by rememberSaveable(initialPageName) { mutableStateOf(initialPageName) }
+        val currentPage = desktopPageName ?: localPage
+        fun setCurrentPage(value: String) {
+            if (desktopPageName != null && onDesktopPageChange != null) onDesktopPageChange(value)
+            else localPage = value
+        }
         val scrollToTopRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
         val pageTitles = if (onNavigatePage != null) settingsPageTitles() else emptyMap()
         val page = remember(currentPage) {
@@ -286,7 +296,7 @@ fun SettingsScreen(
             if (!targetPage.isEnabledByPolicy()) return
             val externalNavigator = onNavigatePage
             if (externalNavigator == null) {
-                currentPage = targetPage.name
+                setCurrentPage(targetPage.name)
                 return
             }
             if (targetPage == SettingsPage.Root && onExternalBack != null) {
@@ -297,32 +307,36 @@ fun SettingsScreen(
         }
 
         fun navigateBack() {
+            if (desktopPageName != null && onDesktopBack != null) {
+                onDesktopBack()
+                return
+            }
             val parentPage = previousPage ?: return
             if (onNavigatePage != null && onExternalBack != null) {
                 onExternalBack()
             } else {
-                currentPage = parentPage.name
+                setCurrentPage(parentPage.name)
             }
         }
 
-        val openHomescreen = if (onNavigatePage != null) ({ openPage(SettingsPage.Homescreen) }) else onHomescreenClick
-        val openMetaScreen = if (onNavigatePage != null) ({ openPage(SettingsPage.MetaScreen) }) else onMetaScreenClick
-        val openContinueWatching = if (onNavigatePage != null) {
+        val openHomescreen = if (onNavigatePage != null || desktopPageName != null) ({ openPage(SettingsPage.Homescreen) }) else onHomescreenClick
+        val openMetaScreen = if (onNavigatePage != null || desktopPageName != null) ({ openPage(SettingsPage.MetaScreen) }) else onMetaScreenClick
+        val openContinueWatching = if (onNavigatePage != null || desktopPageName != null) {
             { openPage(SettingsPage.ContinueWatching) }
         } else onContinueWatchingClick
-        val openAddons = if (onNavigatePage != null) ({ openPage(SettingsPage.Addons) }) else onAddonsClick
-        val openPlugins = if (onNavigatePage != null) ({ openPage(SettingsPage.Plugins) }) else onPluginsClick
-        val openAccount = if (onNavigatePage != null) ({ openPage(SettingsPage.Account) }) else onAccountClick
-        val openSupportersContributors = if (onNavigatePage != null) {
+        val openAddons = if (onNavigatePage != null || desktopPageName != null) ({ openPage(SettingsPage.Addons) }) else onAddonsClick
+        val openPlugins = if (onNavigatePage != null || desktopPageName != null) ({ openPage(SettingsPage.Plugins) }) else onPluginsClick
+        val openAccount = if (onNavigatePage != null || desktopPageName != null) ({ openPage(SettingsPage.Account) }) else onAccountClick
+        val openSupportersContributors = if (onNavigatePage != null || desktopPageName != null) {
             { openPage(SettingsPage.SupportersContributors) }
         } else onSupportersContributorsClick
-        val openLicensesAttributions = if (onNavigatePage != null) {
+        val openLicensesAttributions = if (onNavigatePage != null || desktopPageName != null) {
             { openPage(SettingsPage.LicensesAttributions) }
         } else onLicensesAttributionsClick
 
         LaunchedEffect(page, currentPage) {
             if (page.name != currentPage) {
-                currentPage = page.name
+                setCurrentPage(page.name)
             }
         }
 
@@ -360,6 +374,8 @@ fun SettingsScreen(
         if (maxWidth >= 960.dp) {
             TabletSettingsScreen(
                 page = page,
+                desktopCategoryName = desktopCategoryName,
+                onDesktopCategoryChange = onDesktopCategoryChange,
                 topChromePadding = topChromePadding,
                 scrollToTopRequests = scrollToTopRequests,
                 onPageChange = ::openPage,
@@ -914,6 +930,8 @@ private fun rememberSettingsRootSearchRevealConnection(
 @Composable
 private fun TabletSettingsScreen(
     page: SettingsPage,
+    desktopCategoryName: String? = null,
+    onDesktopCategoryChange: ((String) -> Unit)? = null,
     topChromePadding: Dp? = null,
     scrollToTopRequests: Flow<Unit>,
     onPageChange: (SettingsPage) -> Unit,
@@ -979,7 +997,9 @@ private fun TabletSettingsScreen(
     onCollectionsClick: () -> Unit = {},
     onWatchPartyClick: () -> Unit = {},
 ) {
-    var selectedCategory by rememberSaveable { mutableStateOf(SettingsCategory.General.name) }
+    var localCategory by rememberSaveable { mutableStateOf(SettingsCategory.General.name) }
+    val selectedCategory = if (desktopCategoryName != null && page != SettingsPage.Root) page.category.name
+        else desktopCategoryName ?: localCategory
     val activeCategory = SettingsCategory.valueOf(selectedCategory)
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val effectiveTopOffset = topChromePadding ?: (statusBarPadding + 24.dp)
@@ -988,12 +1008,12 @@ private fun TabletSettingsScreen(
 
     LaunchedEffect(page) {
         if (page.opensInlineOnTablet) {
-            selectedCategory = page.category.name
+            if (desktopCategoryName == null) localCategory = page.category.name
         }
     }
 
     fun openInlinePage(page: SettingsPage) {
-        selectedCategory = page.category.name
+        if (desktopCategoryName == null) localCategory = page.category.name
         navBarScrollState?.expand()
         onPageChange(page)
     }
@@ -1031,9 +1051,11 @@ private fun TabletSettingsScreen(
                         selected = category == activeCategory,
                         onClick = {
                             if (category != activeCategory || page != SettingsPage.Root) {
-                                selectedCategory = category.name
+                                if (onDesktopCategoryChange != null) {
+                                    onDesktopCategoryChange(category.name)
+                                } else localCategory = category.name
                                 navBarScrollState?.expand()
-                                if (page != SettingsPage.Root) {
+                                if (onDesktopCategoryChange == null && page != SettingsPage.Root) {
                                     onPageChange(SettingsPage.Root)
                                 }
                             }
