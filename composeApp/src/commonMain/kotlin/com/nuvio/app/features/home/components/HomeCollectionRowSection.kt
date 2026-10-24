@@ -34,6 +34,7 @@ import com.nuvio.app.core.ui.posterCardClickable
 import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
 import com.nuvio.app.features.collection.Collection
 import com.nuvio.app.features.collection.CollectionFolder
+import com.nuvio.app.features.collection.usesConfiguredArtwork
 import com.nuvio.app.features.home.PosterShape
 
 @Composable
@@ -85,6 +86,7 @@ private fun HomeCollectionRowSectionContent(
     ) { folder ->
         CollectionFolderCard(
             folder = folder,
+            shape = if (collection.usesConfiguredArtwork()) PosterShape.Landscape else folder.posterShape,
             animateGifs = animateGifs,
             onClick = onFolderClick?.let { { it(collection.id, folder.id) } },
         )
@@ -94,14 +96,13 @@ private fun HomeCollectionRowSectionContent(
 @Composable
 private fun CollectionFolderCard(
     folder: CollectionFolder,
+    shape: PosterShape,
     modifier: Modifier = Modifier,
     animateGifs: Boolean = true,
     onClick: (() -> Unit)? = null,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
     val basePosterWidthDp = desktopCatalogShelfPosterBaseWidthDp(posterCardStyle.widthDp)
-    val isLandscapeMode = posterCardStyle.catalogLandscapeModeEnabled
-    val shape = if (isLandscapeMode) PosterShape.Landscape else folder.posterShape
     val cardWidth: Dp
     val aspectRatio: Float
 

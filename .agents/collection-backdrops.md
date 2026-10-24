@@ -36,6 +36,17 @@ Paths are relative to the repository root:
 - Reuse bundled seasonal resources; this treatment requires no additional image
   API requests. Use Nuvio's names and descriptions, without Netflix branding.
 
+## Configured community collections
+
+By Decade, Studios, and the unnamed streaming collection use synced folder
+`heroBackdropUrl` and `titleLogoUrl` artwork through `CollectionArtwork.kt`.
+Home keeps the existing collection shelves and cover/GIF cards; do not apply the
+seasonal spotlight layout there. Folder pages and expanded source
+catalogs share the seasonal backdrop overlays and scrolling treatment. Preserve
+collection/source identity when expanding an addon-backed collection row so its
+artwork and pagination remain attached to that folder. Personal and other
+community collections retain their standard presentation.
+
 ## Layout and scrolling
 
 - Render artwork full width behind the introduction, with proportional

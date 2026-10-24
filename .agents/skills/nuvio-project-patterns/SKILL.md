@@ -86,7 +86,7 @@ and returning to an initially selected Search tab. Keep repeated visits and tab
 reselection in the regression sequence.
 
 Full-app desktop UI tests require isolated profile storage. Run them with the
-existing init script, which gives the test JVM a separate app-data home:
+existing init script, which gives the test JVM a separate app-data home and an in-memory Java preferences store for auth:
 
 ```sh
 ./gradlew -I scripts/desktop-ui-tests.init.gradle :composeApp:desktopTest --tests 'com.nuvio.app.MainAppTabNavigationTest'

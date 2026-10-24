@@ -3,7 +3,10 @@ package com.nuvio.app.features.home.components
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import com.nuvio.app.core.ui.NuvioShelfSection
@@ -26,36 +29,20 @@ fun HomeCatalogRowSection(
     onViewAllClick: (() -> Unit)? = null,
     onPosterClick: ((MetaPreview) -> Unit)? = null,
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
+    allowPortraitFallback: Boolean = true,
 ) {
-    if (sectionPadding != null) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         HomeCatalogRowSectionContent(
-            section = section,
-            entries = entries,
-            watchedKeys = watchedKeys,
-            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-            modifier = modifier.fillMaxWidth(),
-            sectionPadding = sectionPadding,
-            onViewAllClick = onViewAllClick,
-            onPosterClick = onPosterClick,
-            onPosterLongClick = onPosterLongClick,
+            section = section, entries = entries, watchedKeys = watchedKeys,
+            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys, modifier = Modifier.fillMaxWidth(),
+            sectionPadding = sectionPadding ?: homeSectionHorizontalPaddingForWidth(maxWidth.value),
+            onViewAllClick = onViewAllClick, onPosterClick = onPosterClick,
+            onPosterLongClick = onPosterLongClick, allowPortraitFallback = allowPortraitFallback,
         )
-    } else {
-        BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-            HomeCatalogRowSectionContent(
-                section = section,
-                entries = entries,
-                watchedKeys = watchedKeys,
-                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                modifier = Modifier.fillMaxWidth(),
-                sectionPadding = homeSectionHorizontalPaddingForWidth(maxWidth.value),
-                onViewAllClick = onViewAllClick,
-                onPosterClick = onPosterClick,
-                onPosterLongClick = onPosterLongClick,
-            )
-        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HomeCatalogRowSectionContent(
     section: HomeCatalogSection,
@@ -67,11 +54,24 @@ private fun HomeCatalogRowSectionContent(
     onViewAllClick: (() -> Unit)?,
     onPosterClick: ((MetaPreview) -> Unit)?,
     onPosterLongClick: ((MetaPreview) -> Unit)?,
+    allowPortraitFallback: Boolean,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
+    val rowState = rememberLazyListState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = .25f, behindFraction = .25f) })
+    val excluded = preservesOriginalLandscapeArtwork(section.title, section.target)
+    val prepared = rememberShelfArtworkPrefetch(rowState, entries, section.key, enhanceTitles = !excluded, allowPortraitFallback = allowPortraitFallback)
+    val gate = remember(section.key, entries, prepared, posterCardStyle.catalogLandscapeModeEnabled) { LandscapeRowRevealState() }
+    val visibleIndices by remember(rowState) { derivedStateOf { rowState.layoutInfo.visibleItemsInfo.map { it.index } } }
+    val cohort = visibleIndices.mapNotNull { entries.getOrNull(it) }.filter {
+        isTitleArtworkMedia(it.type)
+    }
+    val cohortReady = visibleIndices.isNotEmpty() && cohort.all { gate.ready[it.stableKey()] == true }
+    SideEffect { if (!gate.revealed && cohortReady) gate.revealed = true }
 
+    CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared, LocalLandscapeRowReveal provides gate) {
     NuvioShelfSection(
         title = section.title,
+        state = rowState,
         entries = entries,
         modifier = modifier,
         headerHorizontalPadding = sectionPadding,
@@ -83,6 +83,8 @@ private fun HomeCatalogRowSectionContent(
     ) { item ->
         HomePosterCard(
             item = item,
+            allowPortraitFallback = allowPortraitFallback,
+            enhanceLandscapeTitles = !excluded,
             useLandscapeBackdropMode = posterCardStyle.catalogLandscapeModeEnabled,
             isWatched = WatchingState.isPosterWatched(
                 watchedKeys = watchedKeys,
@@ -92,5 +94,6 @@ private fun HomeCatalogRowSectionContent(
             onClick = onPosterClick?.let { { it(item) } },
             onLongClick = onPosterLongClick?.let { { it(item) } },
         )
+    }
     }
 }

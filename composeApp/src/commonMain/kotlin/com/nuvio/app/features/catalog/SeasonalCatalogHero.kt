@@ -37,31 +37,42 @@ internal fun SeasonalCatalogBackdrop(
     gridState: LazyGridState,
 ) {
     val artwork = theme.backgroundArtwork ?: return
-    val height = with(LocalDensity.current) { measuredHeightPx.toDp() }.takeIf { measuredHeightPx > 0 } ?: minHeight
-    val pageBackground = MaterialTheme.colorScheme.background
-    Box(
-        Modifier.fillMaxWidth()
-            .wrapContentHeight(Alignment.Top, unbounded = true)
-            .height(height)
-            .graphicsLayer {
-                translationY = if (gridState.firstVisibleItemIndex == 0) {
-                    -gridState.firstVisibleItemScrollOffset.toFloat()
-                } else {
-                    -size.height
-                }
-            }
-            .testTag("seasonal_catalog_background_${theme.id}"),
-    ) {
-        Image(painterResource(artwork), null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
-        Box(Modifier.matchParentSize().background(Brush.horizontalGradient(listOf(
-            Color.Black.copy(alpha = 0.45f), theme.tint.copy(alpha = 0.12f), Color.Black.copy(alpha = 0.24f),
-        ))))
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(
-            0f to pageBackground.copy(alpha = 0.15f),
-            0.55f to pageBackground.copy(alpha = 0.15f),
-            1f to pageBackground,
-        )))
+    CatalogHeroBackdrop(minHeight, measuredHeightPx, {
+        if (gridState.firstVisibleItemIndex == 0) -gridState.firstVisibleItemScrollOffset.toFloat() else -it
+    }, "seasonal_catalog_background_${theme.id}", theme.tint) {
+        Image(painterResource(artwork), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
     }
+}
+
+/** Shared by seasonal and configured collection art; the image follows its measured introduction. */
+@Composable
+internal fun CatalogHeroBackdrop(
+    minHeight: Dp,
+    measuredHeightPx: Int,
+    scrollTranslation: (Float) -> Float,
+    tag: String,
+    tint: Color = MaterialTheme.colorScheme.primary,
+    artwork: @Composable () -> Unit,
+) {
+    val height = with(LocalDensity.current) { measuredHeightPx.toDp() }.takeIf { measuredHeightPx > 0 } ?: minHeight
+    Box(Modifier.fillMaxWidth().wrapContentHeight(Alignment.Top, unbounded = true).height(height)
+        .graphicsLayer { translationY = scrollTranslation(size.height) }.testTag(tag)) {
+        artwork()
+        CatalogHeroReadability(Modifier.matchParentSize(), tint)
+    }
+}
+
+@Composable
+internal fun CatalogHeroReadability(modifier: Modifier, tint: Color = MaterialTheme.colorScheme.primary, fadeTop: Boolean = false) {
+    val background = MaterialTheme.colorScheme.background
+    Box(modifier.background(Brush.horizontalGradient(listOf(
+        Color.Black.copy(alpha = 0.45f), tint.copy(alpha = 0.12f), Color.Black.copy(alpha = 0.24f),
+    ))))
+    Box(modifier.background(Brush.verticalGradient(
+        0f to background.copy(alpha = if (fadeTop) 1f else 0.15f),
+        0.55f to background.copy(alpha = 0.15f),
+        1f to background,
+    )))
 }
 
 @Composable

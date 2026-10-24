@@ -1,5 +1,14 @@
 package com.nuvio.app.features.library
 
+import com.nuvio.app.features.home.PosterShape
+import com.nuvio.app.features.home.components.isTitleArtworkMedia
+import com.nuvio.app.features.home.components.LocalLandscapeRowReveal
+import com.nuvio.app.features.home.components.LandscapeRowRevealState
+import com.nuvio.app.features.home.components.LocalLandscapeArtworkLoader
+import com.nuvio.app.features.tmdb.TmdbSettingsRepository
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -306,6 +315,26 @@ fun LibraryScreen(
             }
         }
 
+        val artworkRows = remember(sourceMode, displaySettings.layoutMode, librarySectionsDisplay, verticalProjection, gridColumns, effectivePosterPattern, maxWidth, posterCardStyle.widthDp, posterCardStyle.catalogLandscapeModeEnabled, serverShelves) {
+            if (sourceMode == LibraryViewMode.Servers) serverShelves.orEmpty().mapNotNull { shelf -> shelf.section?.let { section ->
+                com.nuvio.app.features.home.components.ArtworkPrefetchRow("server-shelf:${section.key}", section.items.take(com.nuvio.app.features.home.components.artworkVisibleCardCount(maxWidth.value, 16f, posterCardStyle.widthDp, posterCardStyle.catalogLandscapeModeEnabled) + 1))
+            } } else if (sourceMode != LibraryViewMode.Saved) emptyList() else if (displaySettings.layoutMode == LibraryLayoutMode.VERTICAL) {
+                verticalProjection.entries.chunked(gridColumns).map { entries ->
+                    val first = entries.first().item
+                    com.nuvio.app.features.home.components.ArtworkPrefetchRow("library-vertical:${first.type}:${first.id}", entries.map { entry ->
+                        entry.item.toMetaPreview().let { if (effectivePosterPattern.isNotBlank()) it.withCustomPosterUrl(effectivePosterPattern) else it }
+                    })
+                }
+            } else librarySectionsDisplay.map { section ->
+                com.nuvio.app.features.home.components.ArtworkPrefetchRow("library-horizontal:${section.type}",
+                    section.previewEntries.take(com.nuvio.app.features.home.components.artworkVisibleCardCount(maxWidth.value, 16f, posterCardStyle.widthDp, posterCardStyle.catalogLandscapeModeEnabled) + 1).map { entry ->
+                        entry.item.toMetaPreview().let { if (effectivePosterPattern.isNotBlank()) it.withCustomPosterUrl(effectivePosterPattern) else it }
+                    })
+            }
+        }
+        val prepared = com.nuvio.app.features.home.components.rememberListArtworkPrefetch(listState, artworkRows,
+            listOf(sourceMode, uiState.sourceMode, displaySettings.layoutMode, effectiveSortOption, selectedLibrarySectionKey, selectedLibraryType))
+        CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
         NuvioScreen(
             modifier = Modifier.fillMaxSize(),
             horizontalPadding = 0.dp,
@@ -535,6 +564,7 @@ fun LibraryScreen(
                 }
             }
         }
+    }
     }
 }
 
@@ -1246,8 +1276,33 @@ private fun LazyListScope.librarySections(
         items = displaySections,
         key = { section -> "library-horizontal:${section.type}" },
     ) { section ->
+        val style = rememberPosterCardStyleUiState()
+        val tmdbSettings by remember {
+            TmdbSettingsRepository.ensureLoaded()
+            TmdbSettingsRepository.uiState
+        }.collectAsStateWithLifecycle()
+        val rowState = rememberLazyListState()
+        val prepared = com.nuvio.app.features.home.components.rememberShelfArtworkPrefetch(rowState, section.previewEntries.map { it.item.toMetaPreview().let { preview -> if (posterPattern.isNotBlank()) preview.withCustomPosterUrl(posterPattern) else preview } }, section.type)
+        val artworkLoader = LocalLandscapeArtworkLoader.current
+        val gate = remember(section.type, section.previewEntries.map { it.globalKey },
+            style.catalogLandscapeModeEnabled, tmdbSettings.language, tmdbSettings.apiKey, artworkLoader, prepared) {
+            LandscapeRowRevealState()
+        }
+        val visibleIndices by remember(rowState) {
+            derivedStateOf { rowState.layoutInfo.visibleItemsInfo.map { it.index } }
+        }
+        val cohort = visibleIndices.mapNotNull { section.previewEntries.getOrNull(it)?.item }.filter {
+            isTitleArtworkMedia(it.type)
+        }
+        val cohortReady = visibleIndices.isNotEmpty() && cohort.all { gate.ready["${it.type}:${it.id}"] == true }
+        SideEffect { if (!gate.revealed && cohortReady) gate.revealed = true }
+        CompositionLocalProvider(
+            LocalLandscapeRowReveal provides gate,
+            com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared,
+        ) {
         NuvioShelfSection(
             title = localizedLibrarySectionTitle(section.type, section.displayTitle),
+            state = rowState,
             entries = section.previewEntries,
             modifier = libraryContentTransitionModifier(),
             headerHorizontalPadding = 16.dp,
@@ -1285,6 +1340,7 @@ private fun LazyListScope.librarySections(
                     },
                 )
             }
+        }
         }
     }
 }
