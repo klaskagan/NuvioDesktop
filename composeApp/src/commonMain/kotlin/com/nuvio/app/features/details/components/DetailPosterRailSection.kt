@@ -4,16 +4,24 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork
+import com.nuvio.app.features.home.components.LocalLandscapeRowReveal
+import com.nuvio.app.features.home.components.LocalLandscapeArtworkLoader
+import com.nuvio.app.features.home.components.LandscapeRowRevealState
+import com.nuvio.app.features.home.components.isTitleArtworkMedia
+import com.nuvio.app.features.home.components.rememberShelfArtworkPrefetch
+import com.nuvio.app.features.tmdb.TmdbSettingsRepository
+import com.nuvio.app.features.profiles.ProfileRepository
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -23,17 +31,12 @@ import com.nuvio.app.isDesktop
 import com.nuvio.app.core.ui.nuvioHorizontalScrollBleed
 import com.nuvio.app.core.ui.NuvioShelfSection
 import com.nuvio.app.core.ui.nuvioShelfHoverOverdraw
-import com.nuvio.app.core.ui.PosterLandscapeAspectRatio
-import com.nuvio.app.core.ui.SkeletonPoster
-import com.nuvio.app.core.ui.landscapePosterWidth
 import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.PosterShape
 import com.nuvio.app.features.home.components.HomePosterCard
 import com.nuvio.app.features.home.stableKey
 import com.nuvio.app.features.watching.application.WatchingState
-import com.nuvio.app.features.tmdb.TmdbMetadataService
-import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 
 @Composable
 fun DetailPosterRailSection(
@@ -51,18 +54,33 @@ fun DetailPosterRailSection(
 ) {
     if (items.isEmpty()) return
     val posterCardStyle = rememberPosterCardStyleUiState()
-    val tmdbSettings by remember {
+    val rowState = rememberLazyListState()
+    val settings by remember {
         TmdbSettingsRepository.ensureLoaded()
         TmdbSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
+    val profile by ProfileRepository.state.collectAsStateWithLifecycle()
+    val loader = LocalLandscapeArtworkLoader.current
+    val identities = items.map { it.stableKey() to it.posterShape }
+    val gate = remember(title, identities, posterCardStyle.catalogLandscapeModeEnabled,
+        settings.language, settings.apiKey, loader, profile.activeProfile?.id) { LandscapeRowRevealState() }
+    val visibleIndices by remember(rowState) {
+        derivedStateOf { rowState.layoutInfo.visibleItemsInfo.map { it.index } }
+    }
+    val cohort = visibleIndices.mapNotNull(items::getOrNull).filter { isTitleArtworkMedia(it.type) }
+    val ready = visibleIndices.isNotEmpty() && cohort.all { gate.ready[it.stableKey()] == true }
+    SideEffect { if (!gate.revealed && ready) gate.revealed = true }
+    val prepared = rememberShelfArtworkPrefetch(rowState, items, identity = listOf("detail-rail", title))
 
     val rowHoverInset = if (isDesktop) DetailRailHoverInset else 0.dp
     val rowEdgePadding = headerHorizontalPadding + horizontalScrollPadding + rowHoverInset
 
     Column(modifier = modifier.fillMaxWidth()) {
+        CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared, LocalLandscapeRowReveal provides gate) {
         NuvioShelfSection(
             title = if (showHeader) title else "",
             entries = items,
+            state = rowState,
             rowModifier = Modifier
                 .nuvioHorizontalScrollBleed(horizontalScrollPadding)
                 .nuvioShelfHoverOverdraw(rowHoverInset),
@@ -76,36 +94,18 @@ fun DetailPosterRailSection(
             key = { item -> item.stableKey() },
         ) { item ->
             val landscape = posterCardStyle.catalogLandscapeModeEnabled || item.posterShape == PosterShape.Landscape
-            val localizedBackdrop = rememberDetailBackdrop(
+            HomePosterCard(
                 item = item,
-                language = tmdbSettings.language,
-                enabled = landscape && (item.id.startsWith("tmdb:") || tmdbSettings.enabled && tmdbSettings.useArtwork),
+                useLandscapeBackdropMode = landscape,
+                isWatched = WatchingState.isPosterWatched(
+                    watchedKeys = watchedKeys,
+                    item = item,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                ),
+                onClick = onPosterClick?.let { { it(item) } },
+                onLongClick = onPosterLongClick?.let { { it(item) } },
             )
-            if (localizedBackdrop.isLoading) {
-                SkeletonPoster(
-                    modifier = Modifier.width(landscapePosterWidth(posterCardStyle.widthDp)),
-                    aspectRatio = PosterLandscapeAspectRatio,
-                    cornerRadius = posterCardStyle.cornerRadiusDp.dp,
-                    showLabels = !posterCardStyle.hideLabelsEnabled,
-                    showDetail = false,
-                )
-            } else {
-                val cardItem = remember(item, localizedBackdrop.url) {
-                    localizedBackdrop.url?.let { item.copy(banner = it) } ?: item
-                }
-                HomePosterCard(
-                    item = cardItem,
-                    useLandscapeBackdropMode = landscape,
-                    showLandscapeOverlay = false,
-                    isWatched = WatchingState.isPosterWatched(
-                        watchedKeys = watchedKeys,
-                        item = item,
-                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                    ),
-                    onClick = onPosterClick?.let { { it(item) } },
-                    onLongClick = onPosterLongClick?.let { { it(item) } },
-                )
-            }
+        }
         }
 
         sourceLabel
@@ -126,20 +126,3 @@ fun DetailPosterRailSection(
 }
 
 private val DetailRailHoverInset = 20.dp
-@Composable
-private fun rememberDetailBackdrop(item: MetaPreview, language: String, enabled: Boolean): DetailBackdrop {
-    var backdrop by remember(item.id, item.type, language, enabled) {
-        mutableStateOf(DetailBackdrop(isLoading = enabled))
-    }
-    LaunchedEffect(item.id, item.type, language, enabled) {
-        if (enabled) {
-            backdrop = DetailBackdrop(
-                url = TmdbMetadataService.fetchLocalizedBackdrop(item.id, item.type, language),
-                isLoading = false,
-            )
-        }
-    }
-    return backdrop
-}
-
-private data class DetailBackdrop(val url: String? = null, val isLoading: Boolean)

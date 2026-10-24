@@ -46,33 +46,41 @@ object TmdbMetadataService {
     private val backdropCacheMutex = Mutex()
     private val backdropRequests = Semaphore(4)
 
-    private val landscapeArtworkCache = linkedMapOf<String, TmdbLandscapeArtwork>()
+    private val landscapeArtworkCache = LandscapeArtworkCache<TmdbLandscapeArtwork>()
+    private val detailsWithImagesCache = LandscapeArtworkCache<TmdbDetailsResponse>(capacity = 128)
+
+    private suspend fun fetchDetailsWithImages(id: String, type: String, language: String): TmdbDetailsResponse? {
+        val key = "$id:$type:$language:${TmdbSettingsRepository.effectiveApiKey()}"
+        return detailsWithImagesCache.get(key) {
+            val details = fetch<TmdbDetailsResponse>(endpoint = "$type/$id",
+                query = tmdbArtworkDetailsQuery(language)) ?: return@get null
+            val images = details.images.withFallbackLogos(language) {
+                // Only needed when the selected/English/neutral payload has no usable logo.
+                // The standalone endpoint supplies all languages, including native title logos.
+                fetch<TmdbImagesResponse>(endpoint = "$type/$id/images")
+            }
+            details.copy(images = images)
+        }
+    }
 
     internal suspend fun fetchLandscapeArtwork(id: String, type: String, language: String): TmdbLandscapeArtwork? =
         withContext(Dispatchers.Default) {
             val mediaType = TmdbService.normalizeMediaType(type)
             if (mediaType != "movie" && mediaType != "tv") return@withContext null
             val normalized = normalizeTmdbLanguage(language)
-            backdropRequests.withPermit {
-                val tmdbId = TmdbService.ensureTmdbId(id, mediaType) ?: return@withPermit null
-                val key = "$tmdbId:$mediaType:$normalized:${TmdbSettingsRepository.effectiveApiKey()}"
-                backdropCacheMutex.withLock {
-                    landscapeArtworkCache[key]?.let { return@withPermit it }
+            val key = "$id:$mediaType:$normalized:${TmdbSettingsRepository.effectiveApiKey()}"
+            landscapeArtworkCache.get(key) {
+                backdropRequests.withPermit {
+                    val tmdbId = TmdbService.ensureTmdbId(id, mediaType) ?: return@withPermit null
+                    val response = fetchDetailsWithImages(tmdbId, mediaType, normalized) ?: return@withPermit null
+                    val images = response.images
+                    val paths = images.selectLandscapeImagePaths(normalized, response.originalLanguage)
+                    TmdbLandscapeArtwork(
+                        backdrop = buildImageUrl(paths.backdrop, "w1280"),
+                        logo = buildImageUrl(paths.logo, "w500"),
+                        cleanBackdrop = buildImageUrl(images.selectCleanLandscapeBackdropPath(), "w780"),
+                    )
                 }
-                val images = fetch<TmdbImagesResponse>(
-                    endpoint = "$mediaType/$tmdbId/images",
-                    query = mapOf("include_image_language" to tmdbImageLanguages(normalized)),
-                ) ?: return@withPermit null
-                val paths = images.selectLandscapeImagePaths(normalized)
-                val artwork = TmdbLandscapeArtwork(
-                    backdrop = buildImageUrl(paths.backdrop, "w1280"),
-                    logo = buildImageUrl(paths.logo, "w500"),
-                )
-                backdropCacheMutex.withLock {
-                    landscapeArtworkCache[key] = artwork
-                    if (landscapeArtworkCache.size > 256) landscapeArtworkCache.remove(landscapeArtworkCache.keys.first())
-                }
-                artwork
             }
         }
 
@@ -955,15 +963,12 @@ object TmdbMetadataService {
         enrichmentCache[cacheKey]?.let { return@withContext it }
 
         val numericId = tmdbId.toIntOrNull() ?: return@withContext null
-        val includeImageLanguage = tmdbImageLanguages(normalizedLanguage)
 
         val response = coroutineScope {
-            val details = async {
-                fetch<TmdbDetailsResponse>(
-                    endpoint = "$mediaType/$numericId",
-                    query = mapOf("language" to normalizedLanguage),
-                )
-            }
+            // Explicit image languages retain neutral art alongside localized details. Both
+            // cards and Details share this response, without a second localized details call.
+            val artworkDetails = async { fetchDetailsWithImages(numericId.toString(), mediaType, normalizedLanguage) }
+            val details = artworkDetails
             val credits = async {
                 if (mediaType == "tv") {
                     fetch<TmdbAggregateCreditsResponse>(
@@ -977,12 +982,7 @@ object TmdbMetadataService {
                     )
                 }
             }
-            val images = async {
-                fetch<TmdbImagesResponse>(
-                    endpoint = "$mediaType/$numericId/images",
-                    query = mapOf("include_image_language" to includeImageLanguage),
-                )
-            }
+            val images = async { artworkDetails.await()?.images }
             val ageRating = async {
                 when (mediaType) {
                     "tv" -> fetch<TmdbTvContentRatingsResponse>(
@@ -1070,7 +1070,7 @@ object TmdbMetadataService {
             description = description,
             genres = genres,
             backdrop = buildImageUrl(details.backdropPath, "w1280"),
-            logo = buildImageUrl(images?.logos.orEmpty().selectBestLocalizedImagePath(normalizedLanguage), "w500"),
+            logo = buildImageUrl(images?.selectLandscapeImagePaths(normalizedLanguage, details.originalLanguage)?.logo, "w500"),
             poster = buildImageUrl(details.posterPath, "w500"),
             people = people,
             director = directors,
@@ -1856,6 +1856,7 @@ private data class Quadruple<A, B, C, D>(
 private data class TmdbDetailsResponse(
     val title: String? = null,
     val name: String? = null,
+    val images: TmdbImagesResponse = TmdbImagesResponse(),
     val overview: String? = null,
     @SerialName("release_date") val releaseDate: String? = null,
     @SerialName("first_air_date") val firstAirDate: String? = null,
@@ -2268,4 +2269,4 @@ internal data class TmdbDiscoverResult(
     @SerialName("vote_count") val voteCount: Int? = null,
 )
 
-internal data class TmdbLandscapeArtwork(val backdrop: String?, val logo: String?)
+internal data class TmdbLandscapeArtwork(val backdrop: String?, val logo: String?, val cleanBackdrop: String? = null)

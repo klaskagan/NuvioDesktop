@@ -23,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.runtime.derivedStateOf
@@ -257,6 +258,19 @@ fun SearchScreen(
             else -> stringResource(Res.string.compose_nav_search)
         }
 
+        val artworkRows = remember(query, discoverUiState.items, discoverColumns, uiState.sections, maxWidth, posterCardStyle.widthDp, posterCardStyle.catalogLandscapeModeEnabled) {
+            if (query.isBlank()) discoverUiState.items.chunked(discoverColumns).mapIndexed { index, items ->
+                com.nuvio.app.features.home.components.ArtworkPrefetchRow("discover-row:$index", items)
+            } else uiState.sections.withDuplicateSafeLazyKeys { it.key }.map { keyed ->
+                val section = keyed.value
+                com.nuvio.app.features.home.components.ArtworkPrefetchRow(keyed.lazyKey,
+                    if (com.nuvio.app.features.home.components.preservesOriginalLandscapeArtwork(section.title, section.target)) emptyList()
+                    else section.items.take(com.nuvio.app.features.home.components.artworkVisibleCardCount(maxWidth.value, homeSectionPadding.value, posterCardStyle.widthDp, posterCardStyle.catalogLandscapeModeEnabled) + 1))
+            }
+        }
+        val prepared = com.nuvio.app.features.home.components.rememberListArtworkPrefetch(listState, artworkRows,
+            listOf(query, discoverUiState.selectedCatalogKey, discoverUiState.selectedType, discoverUiState.selectedGenre))
+        CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
         NuvioScreen(
             horizontalPadding = 0.dp,
             topPadding = if (topChromePadding != null) 0.dp else null,
@@ -420,6 +434,7 @@ fun SearchScreen(
                 }
             }
         }
+    }
     }
 }
 

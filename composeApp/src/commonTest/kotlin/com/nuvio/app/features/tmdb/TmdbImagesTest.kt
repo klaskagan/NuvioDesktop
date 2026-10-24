@@ -75,13 +75,13 @@ class TmdbImagesTest {
     }
 
     @Test
-    fun missingLogoKeepsLocalizedLandscapeForTextTitleFallback() {
+    fun originalLanguageLogoRemainsAvailableWhenPreferredLanguageIsMissing() {
         val artwork = TmdbImagesResponse(
             backdrops = listOf(TmdbImage("/clean.jpg"), TmdbImage("/english.jpg", "en")),
             logos = listOf(TmdbImage("/japanese.png", "ja")),
         ).selectLandscapeImagePaths("en")
-        assertEquals("/english.jpg", artwork.backdrop)
-        assertNull(artwork.logo)
+        assertEquals("/clean.jpg", artwork.backdrop)
+        assertEquals("/japanese.png", artwork.logo)
     }
 
     @Test
@@ -95,6 +95,26 @@ class TmdbImagesTest {
         assertEquals("/wide.jpg", artwork.backdrop)
         assertNull(artwork.logo)
         assertNull(TmdbImagesResponse().selectLandscapeImagePaths("en").backdrop)
+    }
+
+    @Test fun titleOverlaysOnlyUseLanguageNeutralLandscapeArtworkEvenWithoutLogo() {
+        val images = TmdbImagesResponse(backdrops = listOf(
+            TmdbImage("/branded.jpg", "en", aspectRatio = 1.78),
+            TmdbImage("/portrait.jpg", aspectRatio = 0.67),
+            TmdbImage("/clean.jpg", aspectRatio = 1.78),
+        ))
+        assertEquals("/clean.jpg", images.selectCleanLandscapeBackdropPath())
+        assertNull(images.copy(backdrops = images.backdrops.take(2)).selectCleanLandscapeBackdropPath())
+    }
+
+    @Test fun familySeriesUseOriginalLanguageLogosInsteadOfPlainText() {
+        for ((language, path) in listOf("tr" to "/yali.png", "es" to "/chavo.png")) {
+            val images = TmdbImagesResponse(
+                logos = listOf(TmdbImage("/other-language.png", "pt"), TmdbImage(path, language)),
+                backdrops = listOf(TmdbImage("/clean.jpg")),
+            )
+            assertEquals(path, images.selectLandscapeImagePaths("en", originalLanguage = language).logo)
+        }
     }
 
 }

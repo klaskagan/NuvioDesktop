@@ -4,6 +4,8 @@ import com.nuvio.app.core.poster.CustomPosterUrlRepository
 import com.nuvio.app.core.poster.withCustomPosterUrls
 import com.nuvio.app.features.collection.CollectionRepository
 import com.nuvio.app.features.collection.TmdbCollectionSourceResolver
+import com.nuvio.app.features.collection.findCollectionCatalog
+import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.collection.catalogRouteKey
 import com.nuvio.app.features.library.LibraryRepository
 import com.nuvio.app.features.servers.ServerCatalog
@@ -153,7 +155,8 @@ object CatalogRepository {
 
                     is CatalogTarget.CollectionSource -> fetchCollectionSourcePage(
                         target = target,
-                        page = requestedSkip.takeIf { it > 0 } ?: 1,
+                        skip = requestedSkip,
+                        forceRefresh = forceRefresh,
                     )
 
                     is CatalogTarget.Seasonal -> com.nuvio.app.features.home.SeasonalSpotlightRepository.page(
@@ -227,7 +230,8 @@ private fun CatalogPage.withUnreleasedFilter(hideUnreleasedContent: Boolean): Ca
 
 private suspend fun fetchCollectionSourcePage(
     target: CatalogTarget.CollectionSource,
-    page: Int,
+    skip: Int,
+    forceRefresh: Boolean,
 ): CatalogPage {
     CollectionRepository.initialize()
     val source = CollectionRepository.getCollection(target.collectionId)
@@ -238,9 +242,15 @@ private suspend fun fetchCollectionSourcePage(
         ?: error(getString(Res.string.catalog_load_failed))
 
     return when {
-        source.isTmdb -> TmdbCollectionSourceResolver.resolve(source = source, page = page)
-        source.isTrakt -> TraktPublicListSourceResolver.resolve(source = source, page = page)
-        else -> error(getString(Res.string.catalog_load_failed))
+        source.isTmdb -> TmdbCollectionSourceResolver.resolve(source = source, page = skip.coerceAtLeast(1))
+        source.isTrakt -> TraktPublicListSourceResolver.resolve(source = source, page = skip.coerceAtLeast(1))
+        else -> {
+            val catalogSource = source.addonCatalogSource() ?: error(getString(Res.string.catalog_load_failed))
+            val resolved = AddonRepository.uiState.value.addons.findCollectionCatalog(catalogSource)
+                ?: error(getString(Res.string.catalog_load_failed))
+            fetchCatalogPage(resolved.addon.manifestUrl, catalogSource.type, catalogSource.catalogId,
+                genre = catalogSource.genre, skip = skip.takeIf { it > 0 }, forceRefresh = forceRefresh)
+        }
     }
 }
 

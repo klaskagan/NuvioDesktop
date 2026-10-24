@@ -26,7 +26,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import com.nuvio.app.core.ui.NuvioBackButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.nuvio.app.features.collection.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
@@ -78,6 +81,7 @@ import com.nuvio.app.features.home.PosterShape
 import com.nuvio.app.features.home.components.HomeEmptyStateCard
 import com.nuvio.app.features.home.components.HomePosterHoverPreview
 import com.nuvio.app.features.home.components.HomePosterCard
+import com.nuvio.app.features.home.components.preservesOriginalLandscapeArtwork
 import com.nuvio.app.features.home.stableKey
 import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.features.watching.application.WatchingState
@@ -231,9 +235,15 @@ internal fun CatalogContent(
             }
         }
         val basePosterWidthDp = catalogPosterBaseWidthDp(posterCardStyle.widthDp)
+        val seasonalTheme = remember(target) { target.seasonalThemeOrNull() }
+        val collections by CollectionRepository.collections.collectAsState()
+        val artworkFolder = (target as? CatalogTarget.CollectionSource)?.takeIf { isDesktop }?.let { source ->
+            collections.firstOrNull { it.id == source.collectionId }?.artworkFolder(source.folderId)
+        }
+        val landscapeMode = posterCardStyle.catalogLandscapeModeEnabled || artworkFolder != null
         val gridCells = if (isDesktop) {
             GridCells.FixedSize(
-                if (posterCardStyle.catalogLandscapeModeEnabled) {
+                if (landscapeMode) {
                     landscapePosterWidth(basePosterWidthDp)
                 } else {
                     basePosterWidthDp.dp
@@ -243,11 +253,23 @@ internal fun CatalogContent(
             GridCells.Fixed(columns)
         }
 
-        val seasonalTheme = remember(target) { target.seasonalThemeOrNull() }
+        val hasHero = seasonalTheme != null || artworkFolder != null
         val minHeroHeight = (maxHeight * 0.60f).coerceIn(280.dp, 560.dp)
         var heroHeightPx by remember(target) { mutableIntStateOf(0) }
         var headerHeightPx by remember(target) { mutableIntStateOf(0) }
 
+        val keyedArtworkItems = remember(uiState.items) { uiState.items.withDuplicateSafeLazyKeys { it.stableKey() } }
+        val artworkColumns = if (isDesktop) {
+            com.nuvio.app.features.home.components.artworkFixedGridColumns(constraints.maxWidth, pageHorizontalPadding,
+                if (landscapeMode) landscapePosterWidth(basePosterWidthDp) else basePosterWidthDp.dp)
+        } else columns
+        val enhanceArtwork = !preservesOriginalLandscapeArtwork(title, target)
+        val artworkRows = remember(keyedArtworkItems, artworkColumns, enhanceArtwork) {
+            com.nuvio.app.features.home.components.artworkGridRows(keyedArtworkItems.map { it.value }, keyedArtworkItems.map { it.lazyKey }, artworkColumns).map { it.copy(enhanceTitles = enhanceArtwork) }
+        }
+        val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, artworkRows, target, allowPortraitFallback = artworkFolder == null, forceShape = if (artworkFolder != null) PosterShape.Landscape else null)
+        val artworkGates = com.nuvio.app.features.home.components.rememberGridArtworkGates(artworkRows, listOf(target, artworkColumns))
+        CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
         Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
             if (seasonalTheme != null) {
                 SeasonalCatalogBackdrop(
@@ -257,13 +279,18 @@ internal fun CatalogContent(
                     gridState = gridState,
                 )
             }
+            if (artworkFolder != null) {
+                CollectionBackdrop(artworkFolder, minHeroHeight, heroHeightPx) { height ->
+                    if (gridState.firstVisibleItemIndex == 0) -gridState.firstVisibleItemScrollOffset.toFloat() else -height
+                }
+            }
             LazyVerticalGrid(
                 columns = gridCells,
                 state = gridState,
                 modifier = Modifier.fillMaxSize().testTag("catalog_grid"),
                 contentPadding = PaddingValues(
                     start = pageHorizontalPadding,
-                    top = if (seasonalTheme != null) 0.dp else {
+                    top = if (hasHero) 0.dp else {
                         with(androidx.compose.ui.platform.LocalDensity.current) { headerHeightPx.toDp() } + 12.dp
                     },
                     end = pageHorizontalPadding,
@@ -282,12 +309,17 @@ internal fun CatalogContent(
                         )
                     }
                 }
+                if (artworkFolder != null) {
+                    item(key = "collection_intro", span = { GridItemSpan(maxLineSpan) }) {
+                        CollectionIntroduction(artworkFolder, minHeroHeight, Modifier.onSizeChanged { heroHeightPx = it.height }, subtitle = title)
+                    }
+                }
                 if (uiState.items.isEmpty() && uiState.isLoading) {
                     items(columns * 3) {
                         if (isDesktop) {
                             CatalogSkeletonTile(
                                 cornerRadiusDp = posterCardStyle.cornerRadiusDp,
-                                aspectRatio = if (posterCardStyle.catalogLandscapeModeEnabled) {
+                                aspectRatio = if (landscapeMode) {
                                     PosterLandscapeAspectRatio
                                 } else {
                                     0.68f
@@ -311,7 +343,7 @@ internal fun CatalogContent(
                     }
                 } else {
                     items(
-                        items = uiState.items.withDuplicateSafeLazyKeys { item -> item.stableKey() },
+                        items = keyedArtworkItems,
                         key = { item -> item.lazyKey },
                     ) { keyedItem ->
                         val item = keyedItem.value
@@ -320,14 +352,23 @@ internal fun CatalogContent(
                             item = item,
                             fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                         )
+                        CompositionLocalProvider(com.nuvio.app.features.home.components.LocalLandscapeRowReveal provides artworkGates[keyedItem.lazyKey]) {
                         if (isDesktop) {
                             HomePosterCard(
                                 item = item,
-                                useLandscapeBackdropMode = posterCardStyle.catalogLandscapeModeEnabled,
+                                enhanceLandscapeTitles = !preservesOriginalLandscapeArtwork(title, target),
+                                allowPortraitFallback = artworkFolder == null,
+                                useLandscapeBackdropMode = landscapeMode,
                                 isWatched = isWatched,
                                 onClick = onPosterClick?.let { { it(item) } },
                                 onLongClick = onPosterLongClick?.let { { it(item) } },
                             )
+                        } else if (item.posterShape == PosterShape.Landscape || posterCardStyle.catalogLandscapeModeEnabled) {
+                            HomePosterCard(item = item, fillWidth = true,
+                                enhanceLandscapeTitles = !preservesOriginalLandscapeArtwork(title, target),
+                                isWatched = isWatched,
+                                onClick = onPosterClick?.let { { it(item) } },
+                                onLongClick = onPosterLongClick?.let { { it(item) } })
                         } else {
                             CatalogPosterTile(
                                 item = item,
@@ -337,6 +378,7 @@ internal fun CatalogContent(
                                 onClick = onPosterClick?.let { { it(item) } },
                                 onLongClick = onPosterLongClick?.let { { it(item) } },
                             )
+                        }
                         }
                     }
                     if (uiState.isLoading) {
@@ -354,7 +396,7 @@ internal fun CatalogContent(
                     .padding(vertical = 8.dp, horizontal = 4.dp),
             )
 
-            if (seasonalTheme != null) {
+            if (hasHero) {
                 SeasonalCatalogBackControl(pageHorizontalPadding = pageHorizontalPadding, onBack = onBack)
             } else {
                 CatalogHeader(
@@ -366,6 +408,7 @@ internal fun CatalogContent(
                 )
             }
         }
+    }
     }
 }
 
@@ -433,84 +476,8 @@ private fun CatalogPosterTile(
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
 ) {
-    HomePosterHoverPreview(
-        item = item,
-        isWatched = isWatched,
-        onClick = onClick,
-        onLongClick = onLongClick,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier
-                .desktopPosterHoverScale()
-                .then(it),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(item.posterShape.catalogAspectRatio())
-                    .clip(RoundedCornerShape(cornerRadiusDp.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .nuvioCardDepth(
-                        shape = RoundedCornerShape(cornerRadiusDp.dp),
-                        surface = NuvioCardDepthSurface.Posters,
-                    )
-                    .posterCardClickable(
-                        onClick = onClick,
-                        onLongClick = onLongClick,
-                        zoomImageUrl = item.poster,
-                        zoomCornerRadius = cornerRadiusDp.dp,
-                        hoverScaleEnabled = false,
-                    ),
-            ) {
-                if (item.poster != null) {
-                    val platformContext = coil3.compose.LocalPlatformContext.current
-                    val hasFallback = !item.rawPosterUrl.isNullOrBlank() && item.rawPosterUrl != item.poster
-                    val imageModel = remember(item.poster, item.rawPosterUrl, platformContext) {
-                        if (hasFallback) {
-                            coil3.request.ImageRequest.Builder(platformContext)
-                                .data(item.poster)
-                                .memoryCacheKeyExtras(
-                                    mapOf(com.nuvio.app.core.poster.CustomPosterFallbackInterceptor.FALLBACK_URL_KEY to item.rawPosterUrl!!)
-                                )
-                                .build()
-                        } else {
-                            item.poster
-                        }
-                    }
-                    AsyncImage(
-                        model = imageModel,
-                        contentDescription = item.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
-                }
-                NuvioPosterWatchedOverlay(isWatched = isWatched)
-            }
-            if (!hideLabels) {
-                Text(
-                    text = item.name,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val detail = item.releaseInfo?.let { formatReleaseDateForDisplay(it) }
-                if (detail != null) {
-                    Text(
-                        text = detail,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                } else {
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-            }
-        }
-    }
+    HomePosterCard(item = item, modifier = Modifier.fillMaxWidth(), fillWidth = true,
+        respectGlobalPosterStyle = false, isWatched = isWatched, onClick = onClick, onLongClick = onLongClick)
 }
 
 @Composable

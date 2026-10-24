@@ -4,5 +4,7 @@ allprojects {
     tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
         systemProperty 'user.home', new File(temporaryDir, 'isolated-home').absolutePath
         systemProperty 'nuvio.test.isolatedHome', 'true'
+        // macOS Java preferences ignore user.home; isolate auth and other preference stores too.
+        systemProperty 'java.util.prefs.PreferencesFactory', 'com.nuvio.app.core.storage.IsolatedPreferencesFactory'
     }
 }

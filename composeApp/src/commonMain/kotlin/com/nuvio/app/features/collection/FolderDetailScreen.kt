@@ -118,6 +118,20 @@ fun FolderDetailScreen(
         return
     }
 
+    if (uiState.artworkFolder != null) {
+        ConfiguredFolderContent(
+            uiState = uiState,
+            sections = FolderDetailRepository.getCatalogSectionsForRows(),
+            watchedKeys = watchedUiState.watchedKeys,
+            onBack = onBack,
+            onTabSelected = FolderDetailRepository::selectTab,
+            onLoadMore = FolderDetailRepository::loadMoreSelectedTab,
+            onCatalogClick = onCatalogClick,
+            onPosterClick = onPosterClick,
+        )
+        return
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -408,6 +422,12 @@ private fun TabbedGridContent(
                 GridCells.Fixed(columns)
             }
 
+            val keyedMedia = remember(selectedTab.items) { selectedTab.items.withDuplicateSafeLazyKeys { it.stableKey() } }
+            val mediaColumns = if (isDesktop) com.nuvio.app.features.home.components.artworkFixedGridColumns(constraints.maxWidth, pageHorizontalPadding, basePosterWidthDp.dp) else columns
+            val mediaRows = remember(keyedMedia, mediaColumns) { com.nuvio.app.features.home.components.artworkGridRows(keyedMedia.map { it.value }, keyedMedia.map { it.lazyKey }, mediaColumns) }
+            val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, mediaRows, listOf(uiState.collectionId, selectedTab.sourceKey), forceShape = com.nuvio.app.features.home.PosterShape.Poster)
+            val gates = com.nuvio.app.features.home.components.rememberGridArtworkGates(mediaRows, listOf(uiState.collectionId, selectedTab.sourceKey, mediaColumns))
+            CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
             when {
                 selectedTab.isLoading && selectedTab.items.isEmpty() -> LoadingIndicator()
                 selectedTab.error != null && selectedTab.items.isEmpty() -> ErrorMessage(selectedTab.error)
@@ -428,7 +448,7 @@ private fun TabbedGridContent(
                             verticalArrangement = Arrangement.spacedBy(if (isDesktop) 18.dp else 14.dp),
                         ) {
                             items(
-                                items = selectedTab.items.withDuplicateSafeLazyKeys { item -> item.stableKey() },
+                                items = keyedMedia,
                                 key = { item -> item.lazyKey },
                             ) { keyedItem ->
                                 val item = keyedItem.value
@@ -444,8 +464,12 @@ private fun TabbedGridContent(
                                 ) { cardModifier ->
                                     NuvioPosterCard(
                                         title = item.name,
-                                        imageUrl = item.poster,
+                                        imageUrl = item.poster.takeUnless { prepared[item.stableKey()]?.isLoading == true },
                                         modifier = cardModifier,
+                                        revealArtworkTogether = true,
+                                        artworkPending = prepared[item.stableKey()]?.isLoading == true,
+                                        showArtwork = gates[keyedItem.lazyKey]?.revealed ?: true,
+                                        onArtworkReadyChanged = { ready -> gates[keyedItem.lazyKey]?.report(item.stableKey(), ready) },
                                         basePosterWidthDp = if (isDesktop) basePosterWidthDp else null,
                                         fallbackImageUrl = item.rawPosterUrl,
                                         shape = NuvioPosterShape.Poster,
@@ -473,6 +497,7 @@ private fun TabbedGridContent(
                 }
             }
         }
+    }
     }
 }
 

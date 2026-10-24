@@ -60,6 +60,8 @@ data class FolderTab(
 data class FolderDetailUiState(
     val folder: CollectionFolder? = null,
     val collectionTitle: String = "",
+    val collectionId: String = "",
+    val artworkFolder: CollectionFolder? = null,
     val viewMode: FolderViewMode = FolderViewMode.TABBED_GRID,
     val tabs: List<FolderTab> = emptyList(),
     val selectedTabIndex: Int = 0,
@@ -100,6 +102,7 @@ object FolderDetailRepository {
     private val loadJobs = mutableMapOf<Int, Job>()
     private var activeCollectionId: String? = null
     private var activeFolderId: String? = null
+    private var loadGeneration = 0
 
     fun initialize(collectionId: String, folderId: String) {
         val current = _uiState.value
@@ -191,7 +194,7 @@ object FolderDetailRepository {
                     val resolvedCatalog = addons.findCollectionCatalog(catalogSource)
                     val addon = resolvedCatalog?.addon
                     val catalog = resolvedCatalog?.catalog
-                    val label = catalog?.name ?: catalogSource.catalogId
+                    val label = source.title?.takeIf { it.isNotBlank() } ?: catalog?.name ?: catalogSource.catalogId
                     val typeLabel = localizedMediaTypeLabel(catalogSource.type)
                     val genreSuffix = if (catalogSource.genre != null) " · ${catalogSource.genre}" else ""
                     add(
@@ -215,6 +218,8 @@ object FolderDetailRepository {
         _uiState.value = FolderDetailUiState(
             folder = folder,
             collectionTitle = collection.title,
+            collectionId = collection.id,
+            artworkFolder = collection.artworkFolder(folder.id),
             viewMode = collection.folderViewMode,
             tabs = tabs,
             selectedTabIndex = 0,
@@ -253,6 +258,7 @@ object FolderDetailRepository {
     }
 
     fun clear() {
+        loadGeneration++
         loadJobs.values.forEach { it.cancel() }
         loadJobs.clear()
         activeCollectionId = null
@@ -320,6 +326,7 @@ object FolderDetailRepository {
         }
 
         loadJobs.remove(index)?.cancel()
+        val generation = loadGeneration
         val job = scope.launch {
             runCatching {
                 val source = currentTab.source
@@ -343,6 +350,7 @@ object FolderDetailRepository {
                     )
                 }.withUnreleasedFilter()
             }.onSuccess { page ->
+                if (generation != loadGeneration) return@onSuccess
                 val posterPattern = com.nuvio.app.core.poster.CustomPosterUrlRepository.let { repo ->
                     repo.ensureLoaded()
                     repo.patternForScreen(com.nuvio.app.core.poster.CustomPosterScreen.COLLECTIONS)
@@ -374,6 +382,7 @@ object FolderDetailRepository {
                 }
                 rebuildAllTab()
             }.onFailure { error ->
+                if (error is kotlinx.coroutines.CancellationException || generation != loadGeneration) return@onFailure
                 log.e(error) { "Failed to load source ${currentTab.catalogId}" }
                 updateTab(index) { tab ->
                     tab.copy(
@@ -434,7 +443,7 @@ object FolderDetailRepository {
         val collectionId = activeCollectionId ?: return emptyList()
 
         return current.tabs.filter { !it.isAllTab && it.items.isNotEmpty() }.mapNotNull { tab ->
-            val directSource = tab.source?.let { it.isTmdb || it.isTrakt } == true
+            val directSource = current.artworkFolder != null || tab.source?.let { it.isTmdb || it.isTrakt } == true
             val target = if (directSource) {
                 val sourceKey = tab.sourceKey ?: return@mapNotNull null
                 CatalogTarget.CollectionSource(

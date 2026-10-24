@@ -1,0 +1,26 @@
+{
+  "logos": [
+    {
+      "aspect_ratio": 9.477,
+      "height": 193,
+      "iso_3166_1": "US",
+      "iso_639_1": "en",
+      "file_path": "/gkEzrnmF8fJCjeg2xuy9sju65ra.png",
+      "vote_average": 0.0,
+      "vote_count": 0,
+      "width": 1829
+    }
+  ],
+  "backdrops": [
+    {
+      "aspect_ratio": 1.778,
+      "height": 1152,
+      "iso_3166_1": null,
+      "iso_639_1": null,
+      "file_path": "/i16MjvM9YsQ85ejdB63gtGXDu4W.jpg",
+      "vote_average": 5.786,
+      "vote_count": 7,
+      "width": 2048
+    }
+  ]
+}
