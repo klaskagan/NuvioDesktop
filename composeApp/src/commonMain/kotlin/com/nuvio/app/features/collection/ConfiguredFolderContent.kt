@@ -40,14 +40,6 @@ internal fun ConfiguredFolderContent(
     val gridState = key(uiState.collectionId, folder.id, if (rows) "rows" else selected?.sourceKey ?: "all") {
         rememberLazyGridState()
     }
-    val currentLoadMore by rememberUpdatedState(onLoadMore)
-    LaunchedEffect(gridState, rows, uiState.selectedTabCanLoadMore, uiState.selectedTabIsLoadingMore, uiState.isLoading) {
-        if (rows || uiState.isLoading || !uiState.selectedTabCanLoadMore || uiState.selectedTabIsLoadingMore) return@LaunchedEffect
-        snapshotFlow {
-            val info = gridState.layoutInfo
-            info.totalItemsCount > 2 && (info.visibleItemsInfo.lastOrNull()?.index ?: -1) >= info.totalItemsCount - 6
-        }.distinctUntilChanged().collect { if (it) currentLoadMore() }
-    }
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).clipToBounds()) {
         val padding = desktopPageHorizontalPaddingForWidth(maxWidth.value)
         val minHeroHeight = (maxHeight * 0.60f).coerceIn(280.dp, 560.dp)
@@ -71,7 +63,15 @@ internal fun ConfiguredFolderContent(
             } else com.nuvio.app.features.home.components.artworkGridRows(keyedMovies.map { it.value }, keyedMovies.map { it.lazyKey }, columns)
         }
         val identity = listOf(uiState.collectionId, folder.id, rows, selected?.sourceKey, columns)
-        val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, artworkRows, identity, allowPortraitFallback = false, forceShape = PosterShape.Landscape)
+        val pageWindow = com.nuvio.app.features.home.components.rememberMediaPrefetchWindow(identity)
+        val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, artworkRows, identity, allowPortraitFallback = false, forceShape = PosterShape.Landscape, window = pageWindow)
+        com.nuvio.app.features.home.components.MediaPagePrefetchEffect(
+            rows = artworkRows, window = pageWindow, viewport = gridState, identity = identity,
+            canLoadMore = uiState.selectedTabCanLoadMore,
+            isLoading = uiState.isLoading || uiState.selectedTabIsLoadingMore,
+            enabled = !rows, onLoadMore = onLoadMore,
+            visibleKeys = { gridState.layoutInfo.visibleItemsInfo.map { it.key } },
+        )
         val artworkGates = com.nuvio.app.features.home.components.rememberGridArtworkGates(if (rows) emptyList() else artworkRows, identity)
         CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
         CollectionBackdrop(folder, minHeroHeight, heroHeight) { height ->

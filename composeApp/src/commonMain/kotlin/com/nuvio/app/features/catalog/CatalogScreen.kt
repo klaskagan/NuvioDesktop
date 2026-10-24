@@ -144,18 +144,6 @@ fun CatalogScreen(
             }
     }
 
-    LaunchedEffect(gridState, uiState.canLoadMore, uiState.isLoading) {
-        snapshotFlow { gridState.layoutInfo }
-            .map { layoutInfo ->
-                val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-                lastVisible >= layoutInfo.totalItemsCount - 6
-            }
-            .distinctUntilChanged()
-            .filter { it && uiState.canLoadMore && !uiState.isLoading }
-            .collect {
-                CatalogRepository.loadMore()
-            }
-    }
 
     LaunchedEffect(networkStatusUiState.condition, target) {
         when (networkStatusUiState.condition) {
@@ -197,6 +185,7 @@ fun CatalogScreen(
         onPosterClick = onPosterClick,
         onPosterLongClick = onPosterLongClick,
         modifier = modifier,
+        onLoadMore = CatalogRepository::loadMore,
     )
 }
 
@@ -215,6 +204,7 @@ internal fun CatalogContent(
     onPosterClick: ((MetaPreview) -> Unit)? = null,
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onLoadMore: (() -> Unit)? = null,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
     BoxWithConstraints(
@@ -267,7 +257,14 @@ internal fun CatalogContent(
         val artworkRows = remember(keyedArtworkItems, artworkColumns, enhanceArtwork) {
             com.nuvio.app.features.home.components.artworkGridRows(keyedArtworkItems.map { it.value }, keyedArtworkItems.map { it.lazyKey }, artworkColumns).map { it.copy(enhanceTitles = enhanceArtwork) }
         }
-        val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, artworkRows, target, allowPortraitFallback = artworkFolder == null, forceShape = if (artworkFolder != null) PosterShape.Landscape else null)
+        val pageWindow = com.nuvio.app.features.home.components.rememberMediaPrefetchWindow(target)
+        val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, artworkRows, target, allowPortraitFallback = artworkFolder == null, forceShape = if (artworkFolder != null) PosterShape.Landscape else null, window = pageWindow)
+        com.nuvio.app.features.home.components.MediaPagePrefetchEffect(
+            rows = artworkRows, window = pageWindow, viewport = gridState, identity = target,
+            canLoadMore = uiState.canLoadMore, isLoading = uiState.isLoading,
+            enabled = onLoadMore != null, onLoadMore = { onLoadMore?.invoke() },
+            visibleKeys = { gridState.layoutInfo.visibleItemsInfo.map { it.key } },
+        )
         val artworkGates = com.nuvio.app.features.home.components.rememberGridArtworkGates(artworkRows, listOf(target, artworkColumns))
         CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
         Box(modifier = Modifier.fillMaxSize().clipToBounds()) {

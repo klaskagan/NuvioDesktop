@@ -1,5 +1,7 @@
 package com.nuvio.app.core.ui
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -114,10 +116,12 @@ internal actual fun NuvioAsyncImage(
         }
     }
 
-    AsyncImage(
+    val preview = remember(requestModel) { cachedMediaImagePreview(requestModel as? ImageRequest) }
+    val render: @Composable (Modifier) -> Unit = { imageModifier ->
+        AsyncImage(
         model = requestModel,
         contentDescription = contentDescription,
-        modifier = modifier,
+        modifier = imageModifier,
         transform = transform,
         onState = onState,
         alignment = alignment,
@@ -127,6 +131,15 @@ internal actual fun NuvioAsyncImage(
         filterQuality = filterQuality ?: FilterQuality.High,
         clipToBounds = clipToBounds,
     )
+    }
+    if (preview != null) {
+        // Draw synchronously beneath Coil, including its initial Empty state and disk decode.
+        Box(modifier = modifier, contentAlignment = alignment) {
+            Image(painter = preview.painter, contentDescription = null, modifier = Modifier.matchParentSize(),
+                contentScale = contentScale, alignment = alignment, alpha = alpha, colorFilter = colorFilter)
+            render(Modifier.matchParentSize())
+        }
+    } else render(modifier)
 }
 
 private fun Any?.withDesktopHighQualitySize(context: PlatformContext): Any? {

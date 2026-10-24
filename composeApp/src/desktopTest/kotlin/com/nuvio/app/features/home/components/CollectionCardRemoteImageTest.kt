@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.unit.dp
+import com.nuvio.app.AppEnvironment
 import com.sun.net.httpserver.HttpServer
 import org.junit.Rule
 import java.awt.image.BufferedImage
@@ -54,6 +55,7 @@ class CollectionCardRemoteImageTest {
         try {
             val baseUrl = "http://127.0.0.1:${server.address.port}"
             compose.setContent {
+                AppEnvironment {
                 CollectionCardRemoteImage(
                     imageUrl = "$baseUrl/$path",
                     staticImageUrl = "$baseUrl/cover.png",
@@ -62,6 +64,7 @@ class CollectionCardRemoteImageTest {
                     contentScale = ContentScale.Crop,
                     animateIfPossible = true,
                 )
+                }
             }
             val card = compose.onNodeWithTag("card")
             fun waitForColor(channel: Int) {
@@ -75,7 +78,9 @@ class CollectionCardRemoteImageTest {
                 }
             }
             waitForColor(2)
-            assertEquals(0, requests.get(), "The focus asset should not load before hover")
+            // The component intentionally prefetches the focus asset while its static cover shows.
+            compose.waitUntil(timeoutMillis = 5_000) { requests.get() == 1 }
+            assertEquals(1, requests.get(), "Visible collection cards prefetch their focus asset once")
             card.performMouseInput { enter(center) }
             waitForColor(0)
             waitForColor(1)

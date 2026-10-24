@@ -356,18 +356,6 @@ private fun TabbedGridContent(
 ) {
     val gridState = rememberLazyGridState()
 
-    LaunchedEffect(gridState, uiState.selectedTabIndex, uiState.selectedTabCanLoadMore, uiState.selectedTabIsLoadingMore) {
-        snapshotFlow { gridState.layoutInfo }
-            .map { layoutInfo ->
-                val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-                lastVisible >= layoutInfo.totalItemsCount - 6
-            }
-            .distinctUntilChanged()
-            .filter { it && uiState.selectedTabCanLoadMore && !uiState.selectedTabIsLoadingMore }
-            .collect {
-                FolderDetailRepository.loadMoreSelectedTab()
-            }
-    }
 
     Column(modifier = modifier.fillMaxSize()) {
         if (uiState.tabs.size > 1) {
@@ -425,7 +413,16 @@ private fun TabbedGridContent(
             val keyedMedia = remember(selectedTab.items) { selectedTab.items.withDuplicateSafeLazyKeys { it.stableKey() } }
             val mediaColumns = if (isDesktop) com.nuvio.app.features.home.components.artworkFixedGridColumns(constraints.maxWidth, pageHorizontalPadding, basePosterWidthDp.dp) else columns
             val mediaRows = remember(keyedMedia, mediaColumns) { com.nuvio.app.features.home.components.artworkGridRows(keyedMedia.map { it.value }, keyedMedia.map { it.lazyKey }, mediaColumns) }
-            val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, mediaRows, listOf(uiState.collectionId, selectedTab.sourceKey), forceShape = com.nuvio.app.features.home.PosterShape.Poster)
+            val artworkIdentity = listOf(uiState.collectionId, selectedTab.sourceKey)
+            val pageWindow = com.nuvio.app.features.home.components.rememberMediaPrefetchWindow(artworkIdentity)
+            val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, mediaRows, artworkIdentity, forceShape = com.nuvio.app.features.home.PosterShape.Poster, window = pageWindow)
+            com.nuvio.app.features.home.components.MediaPagePrefetchEffect(
+                rows = mediaRows, window = pageWindow, viewport = gridState, identity = artworkIdentity,
+                canLoadMore = uiState.selectedTabCanLoadMore,
+                isLoading = uiState.isLoading || selectedTab.isLoading || uiState.selectedTabIsLoadingMore,
+                onLoadMore = FolderDetailRepository::loadMoreSelectedTab,
+                visibleKeys = { gridState.layoutInfo.visibleItemsInfo.map { it.key } },
+            )
             val gates = com.nuvio.app.features.home.components.rememberGridArtworkGates(mediaRows, listOf(uiState.collectionId, selectedTab.sourceKey, mediaColumns))
             CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
             when {

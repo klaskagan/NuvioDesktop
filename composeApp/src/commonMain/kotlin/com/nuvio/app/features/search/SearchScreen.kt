@@ -177,20 +177,6 @@ fun SearchScreen(
         }
     }
 
-    ScreenActivityEffect(listState, query, discoverUiState.canLoadMore, discoverUiState.isLoading) { screenActive ->
-        if (!screenActive || query.isNotBlank()) return@ScreenActivityEffect
-
-        snapshotFlow { listState.layoutInfo }
-            .map { layoutInfo ->
-                val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-                lastVisible >= layoutInfo.totalItemsCount - 4
-            }
-            .distinctUntilChanged()
-            .filter { it && discoverUiState.canLoadMore && !discoverUiState.isLoading }
-            .collect {
-                SearchRepository.loadMoreDiscover()
-            }
-    }
 
     ScreenActivityEffect(query, lastRequestedQuery, uiState.isLoading, uiState.sections) { screenActive ->
         if (!screenActive) return@ScreenActivityEffect
@@ -268,8 +254,16 @@ fun SearchScreen(
                     else section.items.take(com.nuvio.app.features.home.components.artworkVisibleCardCount(maxWidth.value, homeSectionPadding.value, posterCardStyle.widthDp, posterCardStyle.catalogLandscapeModeEnabled) + 1))
             }
         }
+        val artworkIdentity = listOf(query, discoverUiState.selectedCatalogKey, discoverUiState.selectedType, discoverUiState.selectedGenre)
+        val pageWindow = com.nuvio.app.features.home.components.rememberMediaPrefetchWindow(artworkIdentity)
         val prepared = com.nuvio.app.features.home.components.rememberListArtworkPrefetch(listState, artworkRows,
-            listOf(query, discoverUiState.selectedCatalogKey, discoverUiState.selectedType, discoverUiState.selectedGenre))
+            artworkIdentity, window = pageWindow)
+        com.nuvio.app.features.home.components.MediaPagePrefetchEffect(
+            rows = artworkRows, window = pageWindow, viewport = listState, identity = artworkIdentity,
+            canLoadMore = discoverUiState.canLoadMore, isLoading = discoverUiState.isLoading,
+            enabled = query.isBlank(), onLoadMore = SearchRepository::loadMoreDiscover,
+            visibleKeys = { listState.layoutInfo.visibleItemsInfo.map { it.key } },
+        )
         CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
         NuvioScreen(
             horizontalPadding = 0.dp,

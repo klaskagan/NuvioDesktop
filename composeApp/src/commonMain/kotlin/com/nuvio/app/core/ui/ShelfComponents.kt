@@ -248,6 +248,7 @@ fun NuvioPosterCard(
     logoTextFallback: Boolean = false,
     revealArtworkTogether: Boolean = false,
     artworkPending: Boolean = false,
+    mediaIdentity: String = title,
     showArtwork: Boolean = true,
     onArtworkReadyChanged: ((Boolean) -> Unit)? = null,
     fillWidth: Boolean = false,
@@ -266,13 +267,36 @@ fun NuvioPosterCard(
         shape = shape,
     )
     val shouldShowTitleBelow = showTitleBelow && !posterCardStyle.hideLabelsEnabled
-    var imageResolved by remember(title, imageUrl, fallbackImageUrl) { mutableStateOf(imageUrl == null) }
-    var logoLoaded by remember(title, imageUrl, bottomLeftLogoUrl) { mutableStateOf(false) }
+    val platformContext = coil3.compose.LocalPlatformContext.current
+    val imageModel = remember(imageUrl, fallbackImageUrl, platformContext, revealArtworkTogether, shape) {
+        if (imageUrl == null) null
+        else if (revealArtworkTogether) posterImageRequest(platformContext, imageUrl, shape, fallback = fallbackImageUrl)
+        else if (!fallbackImageUrl.isNullOrBlank() && fallbackImageUrl != imageUrl) coil3.request.ImageRequest.Builder(platformContext)
+            .data(imageUrl).memoryCacheKeyExtras(mapOf(com.nuvio.app.core.poster.CustomPosterFallbackInterceptor.FALLBACK_URL_KEY to fallbackImageUrl)).build()
+        else imageUrl
+    }
+    val logoModel = remember(bottomLeftLogoUrl, platformContext, revealArtworkTogether) {
+        if (bottomLeftLogoUrl.isNullOrBlank()) null
+        else if (revealArtworkTogether) landscapeImageRequest(platformContext, bottomLeftLogoUrl, logo = true)
+        else bottomLeftLogoUrl
+    }
+    val cachedImage = remember(imageModel, mediaIdentity) { cachedMediaImagePreview(imageModel as? coil3.request.ImageRequest, mediaIdentity) }
+    val cachedLogo = remember(logoModel, mediaIdentity) { cachedMediaImagePreview(logoModel as? coil3.request.ImageRequest, mediaIdentity) }
+    val warmReturn = remember(mediaIdentity) { cachedImage?.wasDisplayed == true && (bottomLeftLogoUrl.isNullOrBlank() || cachedLogo?.wasDisplayed == true) }
+    var imageResolved by remember(title, imageUrl, fallbackImageUrl) { mutableStateOf(imageUrl == null || cachedImage != null) }
+    var logoLoaded by remember(title, imageUrl, bottomLeftLogoUrl) { mutableStateOf(cachedLogo != null) }
     var logoFailed by remember(title, imageUrl, bottomLeftLogoUrl) { mutableStateOf(false) }
     val individuallyReady = !revealArtworkTogether || (!artworkPending && imageResolved &&
         (bottomLeftLogoUrl.isNullOrBlank() || logoLoaded || logoFailed))
-    SideEffect { onArtworkReadyChanged?.invoke(individuallyReady) }
-    val artworkReady = individuallyReady && showArtwork
+    // A previously displayed poster/logo pair stays visible while its full-resolution image is restored.
+    val artworkReady = individuallyReady && (showArtwork || warmReturn)
+    SideEffect {
+        onArtworkReadyChanged?.invoke(individuallyReady)
+        if (artworkReady) {
+            markMediaImageDisplayed(imageModel as? coil3.request.ImageRequest, mediaIdentity)
+            markMediaImageDisplayed(logoModel as? coil3.request.ImageRequest, mediaIdentity)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -308,23 +332,15 @@ fun NuvioPosterCard(
                 contentAlignment = Alignment.Center,
             ) {
                 if (imageUrl != null) {
-                    val platformContext = coil3.compose.LocalPlatformContext.current
-                    val hasFallback = !fallbackImageUrl.isNullOrBlank() && fallbackImageUrl != imageUrl
-                    val imageModel = remember(imageUrl, fallbackImageUrl, platformContext, revealArtworkTogether) {
-                        if (revealArtworkTogether) posterImageRequest(platformContext, imageUrl, shape, fallback = fallbackImageUrl)
-                        else if (hasFallback) coil3.request.ImageRequest.Builder(platformContext)
-                            .data(imageUrl)
-                            .memoryCacheKeyExtras(mapOf(com.nuvio.app.core.poster.CustomPosterFallbackInterceptor.FALLBACK_URL_KEY to fallbackImageUrl!!))
-                            .build()
-                        else imageUrl
-                    }
                     NuvioAsyncImage(
                         model = imageModel,
+                        placeholder = cachedImage?.painter,
+                        error = cachedImage?.painter,
                         contentDescription = title,
                         modifier = Modifier.matchParentSize(),
-                        onLoading = { imageResolved = false },
+                        onLoading = { imageResolved = cachedImage != null },
                         onSuccess = { imageResolved = true },
-                        onError = { imageResolved = true; onImageError?.invoke() },
+                        onError = { imageResolved = true; if (cachedImage == null) onImageError?.invoke() },
                         contentScale = ContentScale.Crop,
                     )
                 } else {
@@ -361,22 +377,19 @@ fun NuvioPosterCard(
                             .padding(horizontal = NuvioTokens.Space.s10, vertical = NuvioTokens.Space.s10),
                     ) {
                         if (!bottomLeftLogoUrl.isNullOrBlank()) {
-                            val logoContext = coil3.compose.LocalPlatformContext.current
-                            val logoModel = remember(bottomLeftLogoUrl, logoContext, revealArtworkTogether) {
-                                if (revealArtworkTogether) landscapeImageRequest(logoContext, bottomLeftLogoUrl, logo = true)
-                                else bottomLeftLogoUrl
-                            }
                             NuvioAsyncImage(
                                 model = logoModel,
+                                placeholder = cachedLogo?.painter,
+                                error = cachedLogo?.painter,
                                 contentDescription = stringResource(Res.string.poster_logo_content_description, title),
                                 modifier = Modifier
                                     .width(catalogLogoOverlaySize.width)
                                     .height(catalogLogoOverlaySize.height),
                                 contentScale = ContentScale.Fit,
                                 alignment = Alignment.CenterStart,
-                                onLoading = { logoLoaded = false; logoFailed = false },
+                                onLoading = { logoLoaded = cachedLogo != null; logoFailed = false },
                                 onSuccess = { logoLoaded = true; logoFailed = false },
-                                onError = { logoLoaded = false; logoFailed = true },
+                                onError = { logoLoaded = cachedLogo != null; logoFailed = cachedLogo == null },
                             )
                         }
                         if (bottomLeftLogoUrl.isNullOrBlank() || (logoTextFallback && if (revealArtworkTogether) logoFailed else !logoLoaded)) {

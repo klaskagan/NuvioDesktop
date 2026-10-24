@@ -15,19 +15,12 @@ import com.nuvio.app.features.home.PosterShape
 import com.nuvio.app.features.home.stableKey
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 
 internal fun artworkVisibleCardCount(widthDp: Float, paddingDp: Float, posterBaseWidth: Int, landscape: Boolean = true): Int {
     val base = desktopCatalogShelfPosterBaseWidthDp(posterBaseWidth)
     val cardWidth = if (landscape) landscapePosterWidth(base).value else base.toFloat()
     return ceil(((widthDp - paddingDp * 2).coerceAtLeast(0f) + 10f) / (cardWidth + 10f)).toInt().coerceAtLeast(1)
-}
-
-internal fun prefetchRowKeys(ordered: List<String>, visible: List<String>, ahead: Int = 2): List<String> {
-    if (ordered.isEmpty()) return emptyList()
-    val indices = visible.mapNotNull { key -> ordered.indexOf(key).takeIf { it >= 0 } }
-    val start = indices.minOrNull() ?: 0
-    val end = ((indices.maxOrNull() ?: 0) + ahead).coerceAtMost(ordered.lastIndex)
-    return ordered.subList(start, end + 1)
 }
 
 /** A visual row: a LazyColumn item or a group of individual LazyVerticalGrid cells. */
@@ -87,8 +80,9 @@ internal fun rememberListArtworkPrefetch(
     enabled: Boolean = true,
     language: String? = null,
     apiKey: String? = null,
-): PreparedArtworkStore = rememberViewportArtworkPrefetch(state, rows, identity, enabled, language, apiKey) {
-    state.layoutInfo.visibleItemsInfo.map { it.key }
+    window: MediaPrefetchWindow? = null,
+): PreparedArtworkStore = rememberViewportArtworkPrefetch(state, rows, identity, enabled, language, apiKey, window = window) {
+    state.layoutInfo.visibleItemsInfo.map { ArtworkViewportItem(it.key, it.offset, it.size) }
 }
 
 @Composable
@@ -99,8 +93,9 @@ internal fun rememberGridArtworkPrefetch(
     enabled: Boolean = true,
     allowPortraitFallback: Boolean = true,
     forceShape: PosterShape? = null,
-): PreparedArtworkStore = rememberViewportArtworkPrefetch(state, rows, identity, enabled, allowPortraitFallback = allowPortraitFallback, forceShape = forceShape) {
-    state.layoutInfo.visibleItemsInfo.map { it.key }
+    window: MediaPrefetchWindow? = null,
+): PreparedArtworkStore = rememberViewportArtworkPrefetch(state, rows, identity, enabled, allowPortraitFallback = allowPortraitFallback, forceShape = forceShape, window = window) {
+    state.layoutInfo.visibleItemsInfo.map { ArtworkViewportItem(it.key, it.offset.y, it.size.height) }
 }
 
 @Composable
@@ -114,7 +109,9 @@ private fun rememberViewportArtworkPrefetch(
     allowPortraitFallback: Boolean = true,
     forceShape: PosterShape? = null,
     parentStore: PreparedArtworkStore? = null,
-    visibleKeys: () -> List<Any>,
+    window: MediaPrefetchWindow? = null,
+    horizontal: Boolean = false,
+    visibleItems: () -> List<ArtworkViewportItem>,
 ): PreparedArtworkStore {
     val settings by remember {
         com.nuvio.app.features.tmdb.TmdbSettingsRepository.ensureLoaded()
@@ -135,16 +132,58 @@ private fun rememberViewportArtworkPrefetch(
     DisposableEffect(scope) { onDispose { scope.cancel() } }
     var active by remember(scope) { mutableStateOf(true) }
     ScreenActivityEffect(scope) { active = it }
-    val prepared = remember(scope) { PreparedArtworkStore(parentStore) }
-    val managedKeys = remember(rows, enabled) { if (enabled) rows.flatMap { it.items }.map(MetaPreview::stableKey).toSet() else emptySet() }
+    val scheduler = rememberMediaPreparationScheduler()
+    fun requestKey(request: MediaPreload) = MediaPreparationKey(profile.activeProfile?.id, language, apiKey, metadataLoader, imageLoader,
+        listOf(request.item.id, request.item.type, request.item.poster, request.item.rawPosterUrl,
+            request.item.banner, request.item.landscapePoster, request.item.logo),
+        request.shape, request.enhanceTitles, request.alwaysShowTitle, allowPortraitFallback, style.alwaysShowLandscapeClearlogo)
+    val allKeys = remember(rows, scope) { rows.flatMap { row -> row.items.map { item ->
+        val request = MediaPreload(item, row.forceShape ?: forceShape ?: if (landscape) PosterShape.Landscape else item.posterShape, row.enhanceTitles, row.alwaysShowTitle)
+        item.stableKey() to requestKey(request)
+    } }.toMap() }
+    val latestKeys by rememberUpdatedState(allKeys)
+    val prepared = remember(scope, scheduler) { PreparedArtworkStore(parentStore) { key -> latestKeys[key]?.let(scheduler::peek) } }
+    prepared.rows(rows)
+    val managedKeys = remember(rows) { rows.flatMap { it.items }.map(MetaPreview::stableKey).toSet() }
     prepared.manage(managedKeys)
     val order = remember(rows) { rows.map { it.key.toString() } }
     val rowForItem = remember(rows) { rows.flatMap { row -> row.itemKeys.map { it to row.key.toString() } }.toMap() }
     val byKey = remember(rows) { rows.associateBy { it.key.toString() } }
-    var plannedRows by remember(scope, order) { mutableStateOf(prefetchRowKeys(order, visibleKeys().mapNotNull(rowForItem::get))) }
-    LaunchedEffect(scope, rows, viewport) {
-        snapshotFlow { prefetchRowKeys(order, visibleKeys().mapNotNull(rowForItem::get)) }
-            .distinctUntilChanged().collect { plannedRows = it }
+    val prefetchWindow = window ?: rememberMediaPrefetchWindow(scope)
+    fun visibleRows() = visibleItems().mapNotNull { item -> rowForItem[item.key]?.let { key -> key to item } }
+    var plannedRows by remember(scope, order) { mutableStateOf(adaptivePrefetchRowKeys(order, visibleRows().map { it.first }, 2, 1)) }
+    var visibleRowKeys by remember(scope, order) { mutableStateOf(emptySet<String>()) }
+    val rowIndices = remember(order) { order.withIndex().associate { it.value to it.index } }
+    LaunchedEffect(scope, rows, viewport, scheduler, prefetchWindow) {
+        var previousVisible = emptySet<String>()
+        snapshotFlow { visibleRows() to scheduler.metrics.preparationMillis }
+            .distinctUntilChanged().collectLatest { (visible, preparationMillis) ->
+                val first = visible.minByOrNull { rowIndices[it.first] ?: 0 }
+                val position = first?.let { (key, item) ->
+                    (rowIndices[key] ?: 0).toDouble() - item.offset.toDouble() / item.size.coerceAtLeast(1)
+                } ?: 0.0
+                val units = if (horizontal) visible.size.coerceAtLeast(1) else 1
+                fun update() {
+                    if (visible.isNotEmpty()) prefetchWindow.observe(position, mediaPrefetchNowMillis(), preparationMillis, units)
+                    plannedRows = adaptivePrefetchRowKeys(order, visible.map { it.first }, prefetchWindow.aheadRows, prefetchWindow.direction, units)
+                }
+                update()
+                visibleRowKeys = visible.map { it.first }.toSet()
+                prepared.visibleRows = visibleRowKeys.sortedBy { rowIndices[it] ?: 0 }
+                val visibleSet = visible.map { it.first }.toSet()
+                (visibleSet - previousVisible).forEach { key ->
+                    val media = byKey[key]?.items.orEmpty().filter { isTitleArtworkMedia(it.type) }
+                    if (media.isNotEmpty()) scheduler.metrics.rowEntered(media.all { prepared[it.stableKey()]?.isLoading == false })
+                }
+                previousVisible = visibleSet
+                delay(300)
+                update() // A stationary viewport returns to the small baseline window.
+            }
+    }
+    val priorities = remember(plannedRows, visibleRowKeys, byKey) {
+        plannedRows.flatMapIndexed { index, key -> byKey[key]?.items.orEmpty().mapIndexed { card, item ->
+            item.stableKey() to (if (key in visibleRowKeys) index * 1000 + card else 1_000_000 + index * 1000 + card)
+        } }.groupBy({ it.first }, { it.second }).mapValues { (_, values) -> values.min() }
     }
     val candidates = remember(plannedRows, byKey, landscape, active, enabled, forceShape, parentStore) {
         (if (active && enabled) plannedRows else emptyList()).flatMap { key ->
@@ -155,46 +194,64 @@ private fun rememberViewportArtworkPrefetch(
             }
         }.distinctBy { it.item.stableKey() }
     }
-    val scheduler = remember(scope) {
-        BoundedArtworkPreloader<MediaPreload>(scope, key = { it.item.stableKey() }) { request ->
-            val item = request.item
-            prepared.begin(item.stableKey())
-            var artwork: com.nuvio.app.features.tmdb.TmdbLandscapeArtwork? = null
-            var logoFailed = false
-            try {
-            val completed = withTimeoutOrNull(12_000) {
-                val wide = request.shape == PosterShape.Landscape
-                val enhanced = wide && request.enhanceTitles && !request.alwaysShowTitle
-                artwork = if (enhanced) metadataLoader(item.id, item.type, language) else null
-                val landscapePoster = item.landscapePoster.takeUnless { request.alwaysShowTitle || (!enhanced && style.alwaysShowLandscapeClearlogo) }
-                val background = if (wide) artwork?.cleanBackdrop ?: landscapePoster ?: item.banner ?: item.poster.takeIf { allowPortraitFallback } else item.poster
-                val logo = if (artwork?.cleanBackdrop != null) artwork?.logo ?: item.logo
-                    else if (wide && (!request.enhanceTitles || request.alwaysShowTitle) && landscapePoster.isNullOrBlank()) item.logo else null
-                val fallback = if (artwork?.cleanBackdrop != null) null
-                    else if (wide && !landscapePoster.isNullOrBlank()) item.banner ?: item.rawPosterUrl.takeIf { allowPortraitFallback }
-                    else item.rawPosterUrl.takeIf { !wide || allowPortraitFallback }
-                coroutineScope {
-                    val image = async {
-                        background?.let { imageLoader.execute(com.nuvio.app.core.ui.posterImageRequest(context, it, request.shape.toPosterShape(), fallback = fallback)) }
-                    }
-                    val title = async {
-                        logo?.let { imageLoader.execute(landscapeImageRequest(context, it, logo = true)) }
-                    }
-                    val imageResult = image.await()
-                    logoFailed = title.await() is coil3.request.ErrorResult
-                    if (imageResult is coil3.request.ErrorResult) artwork = artwork?.copy(cleanBackdrop = null)
-                }
-                true
-            } ?: false
-            if (!completed) logoFailed = true
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { artwork = null }
-            prepared.complete(item.stableKey(), LandscapeMediaArtworkState(artwork, logoFailed = logoFailed))
-        }
-    }
-    LaunchedEffect(scheduler, candidates) {
+    val owner = remember(scope) { Any() }
+    DisposableEffect(scheduler, owner) { onDispose { scheduler.remove(owner) } }
+    LaunchedEffect(scheduler, owner, candidates, priorities) {
         prepared.plan(candidates.map { it.item.stableKey() })
-        scheduler.update(candidates)
+        scheduler.update(owner, candidates.map { request ->
+            val requestKey = requestKey(request)
+            SharedMediaPreparationScheduler.Request(requestKey, priorities[request.item.stableKey()] ?: 1000, load = {
+                val item = request.item
+                var artwork: com.nuvio.app.features.tmdb.TmdbLandscapeArtwork? = null
+                var logoFailed = false
+                try {
+                val completed = withTimeoutOrNull(12_000) {
+                    val wide = request.shape == PosterShape.Landscape
+                    val enhanced = wide && request.enhanceTitles && !request.alwaysShowTitle
+                    val metadataStart = mediaPrefetchNowMillis()
+                    artwork = if (enhanced) metadataLoader(item.id, item.type, language) else null
+                    if (enhanced && artwork == null) logoFailed = true
+                    scheduler.metrics.metadata(mediaPrefetchNowMillis() - metadataStart)
+                    val landscapePoster = item.landscapePoster.takeUnless { request.alwaysShowTitle || (!enhanced && style.alwaysShowLandscapeClearlogo) }
+                    val background = if (wide) artwork?.cleanBackdrop ?: landscapePoster ?: item.banner ?: item.poster.takeIf { allowPortraitFallback } else item.poster
+                    val logo = if (artwork?.cleanBackdrop != null) artwork?.logo ?: item.logo
+                        else if (wide && (!request.enhanceTitles || request.alwaysShowTitle) && landscapePoster.isNullOrBlank()) item.logo else null
+                    val fallback = if (artwork?.cleanBackdrop != null) null
+                        else if (wide && !landscapePoster.isNullOrBlank()) item.banner ?: item.rawPosterUrl.takeIf { allowPortraitFallback }
+                        else item.rawPosterUrl.takeIf { !wide || allowPortraitFallback }
+                    val imageStart = mediaPrefetchNowMillis()
+                    coroutineScope {
+                        val image = async {
+                            background?.let {
+                                val model = com.nuvio.app.core.ui.posterImageRequest(context, it, request.shape.toPosterShape(), fallback = fallback)
+                                imageLoader.execute(model).also { result ->
+                                    if (result is coil3.request.SuccessResult) com.nuvio.app.core.ui.cacheMediaImagePreview(model, result.image)
+                                }
+                            }
+                        }
+                        val title = async {
+                            logo?.let {
+                                val model = landscapeImageRequest(context, it, logo = true)
+                                imageLoader.execute(model).also { result ->
+                                    if (result is coil3.request.SuccessResult) com.nuvio.app.core.ui.cacheMediaImagePreview(model, result.image)
+                                }
+                            }
+                        }
+                        val imageResult = image.await()
+                        logoFailed = (title.await() is coil3.request.ErrorResult) || logoFailed
+                        if (imageResult is coil3.request.ErrorResult) { artwork = artwork?.copy(cleanBackdrop = null); logoFailed = true }
+                    }
+                    scheduler.metrics.images(mediaPrefetchNowMillis() - imageStart)
+                    true
+                } ?: false
+                if (!completed) logoFailed = true
+                } catch (cancelled: CancellationException) {
+                    currentCoroutineContext().ensureActive()
+                    artwork = null; logoFailed = true
+                } catch (_: Exception) { artwork = null; logoFailed = true }
+                LandscapeMediaArtworkState(artwork, logoFailed = logoFailed)
+            }, ready = { result -> prepared.complete(request.item.stableKey(), result) })
+        })
     }
     return prepared
 }
@@ -220,6 +277,12 @@ internal fun rememberHomeArtworkPrefetch(
     return rememberListArtworkPrefetch(listState, planned, profileKey, enabled = true, language = language, apiKey = apiKey)
 }
 
+private data class ArtworkViewportItem(val key: Any, val offset: Int, val size: Int)
+private data class MediaPreparationKey(
+    val profileId: String?, val language: String, val apiKey: String, val loader: Any, val imageLoader: Any,
+    val artworkInputs: List<String?>, val shape: PosterShape, val enhanceTitles: Boolean, val alwaysShowTitle: Boolean,
+    val allowPortraitFallback: Boolean, val alwaysShowClearlogo: Boolean,
+)
 private data class MediaPreload(val item: MetaPreview, val shape: PosterShape, val enhanceTitles: Boolean, val alwaysShowTitle: Boolean)
 private fun PosterShape.toPosterShape(): com.nuvio.app.core.ui.NuvioPosterShape = when (this) {
     PosterShape.Poster -> com.nuvio.app.core.ui.NuvioPosterShape.Poster
@@ -243,9 +306,16 @@ internal fun rememberShelfArtworkPrefetch(
     val rows = remember(items, enhanceTitles, forceShape, alwaysShowLandscapeTitle) { items.distinctBy(MetaPreview::stableKey).map {
         ArtworkPrefetchRow(it.stableKey(), listOf(it), enhanceTitles = enhanceTitles, forceShape = forceShape, alwaysShowTitle = alwaysShowLandscapeTitle)
     } }
-    return rememberViewportArtworkPrefetch(state, rows, identity, true, allowPortraitFallback = allowPortraitFallback, parentStore = parent) {
-        state.layoutInfo.visibleItemsInfo.map { it.key }
+    val controlledByParent = parent != null && items.any { parent.manages(it.stableKey()) }
+    val approaching = !controlledByParent || items.any { parent?.isPlanned(it.stableKey()) == true }
+    val prepared = rememberViewportArtworkPrefetch(state, rows, identity, approaching, allowPortraitFallback = allowPortraitFallback, parentStore = parent, horizontal = true) {
+        state.layoutInfo.visibleItemsInfo.map { ArtworkViewportItem(it.key, it.offset, it.size) }
     }
+    val visibleKeys by remember(state, items) { derivedStateOf {
+        state.layoutInfo.visibleItemsInfo.mapNotNull { items.getOrNull(it.index)?.stableKey() }
+    } }
+    SideEffect { prepared.visibleCohort(visibleKeys) }
+    return prepared
 }
 
 @Composable
@@ -264,5 +334,5 @@ internal fun rememberMediaShelfGate(state: LazyListState, items: List<MetaPrevie
 internal fun rememberFixedRowArtworkPrefetch(items: List<MetaPreview>): PreparedArtworkStore {
     val parent = LocalPreparedLandscapeArtwork.current
     val rows = remember(items) { listOf(ArtworkPrefetchRow("media-row", items)) }
-    return rememberViewportArtworkPrefetch("media-row", rows, items.map(MetaPreview::stableKey), true, parentStore = parent) { listOf("media-row") }
+    return rememberViewportArtworkPrefetch("media-row", rows, items.map(MetaPreview::stableKey), true, parentStore = parent) { listOf(ArtworkViewportItem("media-row", 0, 1)) }
 }

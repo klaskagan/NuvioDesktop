@@ -148,12 +148,22 @@ private fun PosterGridTile(
     val rowGate = LocalLandscapeRowReveal.current.takeIf { isTitleArtworkMedia(item.type) }
     val prepared = LocalPreparedLandscapeArtwork.current[item.stableKey()].takeIf { isTitleArtworkMedia(item.type) }
     val pending = prepared?.isLoading == true
-    var imageResolved by remember(item.id, item.type, item.poster, item.rawPosterUrl) {
-        mutableStateOf(item.poster == null)
+    val platformContext = coil3.compose.LocalPlatformContext.current
+    val imageModel = remember(item.poster, item.rawPosterUrl, item.posterShape, platformContext) {
+        item.poster?.let { posterImageRequest(platformContext, it,
+            if (item.posterShape == PosterShape.Square) NuvioPosterShape.Square else NuvioPosterShape.Poster,
+            fallback = item.rawPosterUrl) }
     }
+    val cached = remember(imageModel) { com.nuvio.app.core.ui.cachedMediaImagePreview(imageModel, item.stableKey()) }
+    val warmReturn = remember(item.id, item.type) { cached?.wasDisplayed == true }
+    var imageResolved by remember(item.id, item.type, item.poster, item.rawPosterUrl) { mutableStateOf(item.poster == null || cached != null) }
     val individuallyReady = !isTitleArtworkMedia(item.type) || (!pending && imageResolved)
-    SideEffect { rowGate?.report(item.stableKey(), individuallyReady) }
-    val showImage = individuallyReady && (rowGate?.revealed ?: true)
+    val ordered = LocalPreparedLandscapeArtwork.current.mayReveal(item.stableKey())
+    val showImage = individuallyReady && (((rowGate?.revealed ?: true) && ordered) || warmReturn)
+    SideEffect {
+        rowGate?.report(item.stableKey(), individuallyReady)
+        if (showImage) com.nuvio.app.core.ui.markMediaImageDisplayed(imageModel, item.stableKey())
+    }
     val hiddenContent = if (showImage) Modifier else Modifier.clearAndSetSemantics { }
     HomePosterHoverPreview(
         item = item,
@@ -189,18 +199,14 @@ private fun PosterGridTile(
             ) {
                 Box(Modifier.matchParentSize().graphicsLayer { alpha = if (showImage) 1f else 0f }.then(hiddenContent)) {
                 if (item.poster != null && !pending) {
-                    val platformContext = coil3.compose.LocalPlatformContext.current
-                    val imageModel = remember(item.poster, item.rawPosterUrl, item.posterShape, platformContext) {
-                        posterImageRequest(platformContext, item.poster,
-                            if (item.posterShape == PosterShape.Square) NuvioPosterShape.Square else NuvioPosterShape.Poster,
-                            fallback = item.rawPosterUrl)
-                    }
                     if (isDesktop) {
                         NuvioAsyncImage(
                             model = imageModel,
+                            placeholder = cached?.painter,
+                            error = cached?.painter,
                             contentDescription = item.name,
                             modifier = Modifier.fillMaxSize(),
-                            onLoading = { imageResolved = false },
+                            onLoading = { imageResolved = cached != null },
                             onSuccess = { imageResolved = true },
                             onError = { imageResolved = true },
                             contentScale = ContentScale.Crop,

@@ -9,7 +9,7 @@ import kotlinx.coroutines.sync.withLock
 
 /** Coalesces duplicate visible cards and bounds successful and missing-artwork results. */
 internal class LandscapeArtworkCache<V>(
-    private val capacity: Int = 256,
+    private val capacity: Int = 4096,
     private val now: () -> Long = WatchProgressClock::nowEpochMs,
 ) {
     private data class Entry<V>(val value: V?, val expiresAt: Long)

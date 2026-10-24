@@ -3,6 +3,8 @@ package com.nuvio.app.features.home.components
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.features.catalog.CatalogTarget
+import com.nuvio.app.features.home.MetaPreview
+import com.nuvio.app.features.home.stableKey
 import com.nuvio.app.features.tmdb.TmdbLandscapeArtwork
 import com.nuvio.app.features.tmdb.TmdbMetadataService
 import com.nuvio.app.features.tmdb.TmdbSettingsRepository
@@ -28,18 +30,48 @@ internal val LocalLandscapeArtworkLoader = staticCompositionLocalOf<suspend (Str
 
 /** Stable provider; completing one asset invalidates its card, rather than every shelf. */
 @Stable
-internal class PreparedArtworkStore(private val parent: PreparedArtworkStore? = null) {
+internal class PreparedArtworkStore(
+    private val parent: PreparedArtworkStore? = null,
+    private val historyCapacity: Int = 4096,
+    private val cached: (String) -> LandscapeMediaArtworkState? = { null },
+) {
     private val slots = mutableStateMapOf<String, MutableState<LandscapeMediaArtworkState>>()
     // Membership is supplied by the parent before composing children. Result slots remain observable.
     private var managedKeys: Set<String> = emptySet()
     private val pending = LandscapeMediaArtworkState(isLoading = true)
     private val readyOrder = ArrayDeque<String>()
     private val active = mutableSetOf<String>()
-    operator fun get(key: String): LandscapeMediaArtworkState? = slots[key]?.value ?: parent?.get(key) ?: pending.takeIf { key in managedKeys }
+    operator fun get(key: String): LandscapeMediaArtworkState? {
+        val local = slots[key]?.value
+        return local?.takeUnless { it.isLoading } ?: parent?.get(key)?.takeUnless { it.isLoading }
+            ?: cached(key) ?: local ?: parent?.get(key) ?: pending.takeIf { key in managedKeys }
+    }
+    private var rowMembers: Map<String, List<String>> = emptyMap()
+    var visibleRows by mutableStateOf(emptyList<String>())
+    private val revealCohorts = mutableStateMapOf<String, List<String>>()
+    fun visibleCohort(keys: List<String>) {
+        parent?.visibleCohort(keys)
+        if (keys.isEmpty()) return
+        rowMembers.forEach { (row, members) ->
+            val visible = keys.filter { it in members }
+            if (visible.isNotEmpty()) revealCohorts[row] = visible
+        }
+    }
+    fun rows(rows: List<ArtworkPrefetchRow>) { rowMembers = rows.associate { it.key.toString() to it.items.filter { item -> isTitleArtworkMedia(item.type) }.map(MetaPreview::stableKey) } }
+    fun mayReveal(key: String): Boolean {
+        if (parent?.manages(key) == true) return parent.mayReveal(key)
+        val index = visibleRows.indexOfFirst { key in rowMembers[it].orEmpty() }
+        if (index < 0) return true
+        return visibleRows.take(index).all { row -> (revealCohorts[row] ?: rowMembers[row]).orEmpty().all { get(it)?.isLoading == false } }
+    }
     // Known offscreen items wait for the viewport scheduler rather than racing it with a card lookup.
     fun manage(keys: Set<String>) { managedKeys = keys }
     fun manages(key: String): Boolean = key in managedKeys || parent?.manages(key) == true
+    private var plannedKeys by mutableStateOf(emptySet<String>())
+    fun isPlanned(key: String): Boolean = key in plannedKeys || parent?.isPlanned(key) == true
     fun plan(keys: List<String>) {
+        plannedKeys = keys.toSet()
+        trimReady()
         androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
             val keep = keys.toSet() + active + readyOrder.toSet()
             slots.keys.toList().filterNot(keep::contains).forEach(slots::remove)
@@ -51,7 +83,14 @@ internal class PreparedArtworkStore(private val parent: PreparedArtworkStore? = 
         active.remove(key)
         slots.getOrPut(key) { mutableStateOf(result) }.value = result
         readyOrder.remove(key); readyOrder.addLast(key)
-        while (readyOrder.size > 128) slots.remove(readyOrder.removeFirst())
+        trimReady()
+    }
+    private fun trimReady() {
+        while (readyOrder.size > historyCapacity) {
+            // Visible and approaching rows must not turn pending after their scheduler delivered them.
+            val victim = readyOrder.firstOrNull { it !in plannedKeys && it !in active } ?: break
+            readyOrder.remove(victim); slots.remove(victim)
+        }
     }
 }
 internal val LocalPreparedLandscapeArtwork = staticCompositionLocalOf { PreparedArtworkStore() }
