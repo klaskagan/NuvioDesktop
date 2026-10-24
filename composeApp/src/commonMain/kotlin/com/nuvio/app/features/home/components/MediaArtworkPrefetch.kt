@@ -138,7 +138,7 @@ private fun rememberViewportArtworkPrefetch(
             request.item.banner, request.item.landscapePoster, request.item.logo),
         request.shape, request.enhanceTitles, request.alwaysShowTitle, allowPortraitFallback, style.alwaysShowLandscapeClearlogo)
     val allKeys = remember(rows, scope) { rows.flatMap { row -> row.items.map { item ->
-        val request = MediaPreload(item, row.forceShape ?: forceShape ?: if (landscape) PosterShape.Landscape else item.posterShape, row.enhanceTitles, row.alwaysShowTitle)
+        val request = MediaPreload(item, row.forceShape ?: forceShape ?: if (landscape) PosterShape.Landscape else item.posterShape, row.enhanceTitles && item.calendarCard == null, row.alwaysShowTitle)
         item.stableKey() to requestKey(request)
     } }.toMap() }
     val latestKeys by rememberUpdatedState(allKeys)
@@ -190,7 +190,7 @@ private fun rememberViewportArtworkPrefetch(
             val row = byKey[key] ?: return@flatMap emptyList()
             row.items.filter { isTitleArtworkMedia(it.type) && parentStore?.manages(it.stableKey()) != true }.map { item ->
                 MediaPreload(item, row.forceShape ?: forceShape ?: if (landscape) PosterShape.Landscape else item.posterShape,
-                    row.enhanceTitles, row.alwaysShowTitle)
+                    row.enhanceTitles && item.calendarCard == null, row.alwaysShowTitle)
             }
         }.distinctBy { it.item.stableKey() }
     }

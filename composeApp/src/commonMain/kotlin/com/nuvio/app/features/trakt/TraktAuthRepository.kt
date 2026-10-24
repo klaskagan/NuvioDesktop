@@ -775,7 +775,11 @@ object TraktAuthRepository : TrackingAuthProvider {
         }
 
         _isAuthenticated.value = authState.isAuthenticated
+        val calendarKey = if (mode == TraktConnectionMode.CONNECTED)
+            "$currentProfileId:$profileGeneration:${authState.userSlug ?: authState.username.orEmpty()}" else null
+        val calendarAccountChanged = _uiState.value.calendarAccountKey != calendarKey
         _uiState.value = TraktAuthUiState(
+            calendarAccountKey = calendarKey,
             mode = mode,
             credentialsConfigured = hasRequiredCredentials(),
             isLoading = isLoading,
@@ -789,6 +793,7 @@ object TraktAuthRepository : TrackingAuthProvider {
             statusMessage = statusMessage,
             errorMessage = errorMessage,
         )
+        if (calendarAccountChanged) TraktCalendarRepository.invalidate()
     }
 
     private fun persist(profileId: Int = currentProfileId) {

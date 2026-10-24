@@ -2555,4 +2555,15 @@
     <string name="player_continue_on_tv">Continue on TV</string>
     <string name="settings_paired_tvs">Paired TVs</string>
     <string name="settings_paired_tvs_description">Find and pair Android TV or LG webOS devices on your home network.</string>
+    <string name="calendar_today">Today</string>
+    <string name="calendar_tomorrow">Tomorrow</string>
+    <string name="calendar_in_days">In %1$d days</string>
+    <string name="calendar_premiere">Premiere</string>
+    <string name="calendar_finale">Finale</string>
+    <string name="calendar_movie">Movie</string>
+    <string name="calendar_empty">No releases in the next 14 days.</string>
+    <string name="calendar_disconnected">Connect Trakt in Settings to see your calendar.</string>
+    <string name="calendar_auth_expired">Reconnect Trakt in Settings to load your calendar.</string>
+    <string name="calendar_error">Could not load your calendar. Please try again.</string>
+    <string name="calendar_partial">Some calendar releases could not be loaded.</string>
 </resources>

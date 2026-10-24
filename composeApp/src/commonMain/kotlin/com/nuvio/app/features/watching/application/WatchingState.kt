@@ -21,6 +21,12 @@ object WatchingState {
         item: MetaPreview,
         fullyWatchedSeriesKeys: Set<String> = emptySet(),
     ): Boolean {
+        item.calendarCard?.episodes?.takeIf { it.isNotEmpty() }?.let { episodes ->
+            return episodes.all { episode ->
+                watchedItemKeys(type = item.type, id = item.id, season = episode.season, episode = episode.number)
+                    .any(watchedKeys::contains)
+            }
+        }
         val posterKeys = watchedItemKeys(type = item.type, id = item.id)
         if (posterKeys.any(watchedKeys::contains)) return true
         return item.type.isSeriesLikeWatchingContentType(includeAnime = true) &&

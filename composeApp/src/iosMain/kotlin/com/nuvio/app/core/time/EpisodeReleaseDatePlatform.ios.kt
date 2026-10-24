@@ -1,11 +1,13 @@
 package com.nuvio.app.core.time
 
 import platform.Foundation.NSDate
+import platform.Foundation.localTimeZone
 import platform.Foundation.NSDateFormatter
 import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.Foundation.timeIntervalSince1970
 
 internal actual object EpisodeReleaseDatePlatform {
+    actual fun timezoneId(): String = platform.Foundation.NSTimeZone.localTimeZone.name
     actual fun nowEpochMs(): Long = (NSDate().timeIntervalSince1970 * 1_000.0).toLong()
 
     actual fun localIsoDateAtEpochMs(epochMs: Long): String? {

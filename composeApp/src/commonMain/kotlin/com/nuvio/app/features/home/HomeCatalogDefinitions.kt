@@ -23,6 +23,7 @@ data class HomeCatalogDefinition(
     val supportsPagination: Boolean,
     val descriptorSignature: String,
     val serverConnectionId: String? = null,
+    val supportsHero: Boolean = true,
 ) {
     val cacheKey: String
         get() = "$key|$descriptorSignature"
@@ -68,7 +69,7 @@ fun buildHomeCatalogDefinitions(addons: List<ManagedAddon>): List<HomeCatalogDef
                     descriptorSignature = buildHomeCatalogDescriptorSignature(addon, manifest, catalog),
                 )
             }
-    }.distinctBy(HomeCatalogDefinition::key) + ServerCatalog.homeDefinitions()
+    }.distinctBy(HomeCatalogDefinition::key) + ServerCatalog.homeDefinitions() + traktCalendarDefinitions()
 
 private fun buildHomeCatalogDescriptorSignature(
     addon: ManagedAddon,
@@ -148,3 +149,14 @@ private class CatalogDescriptorSignature {
 }
 
 internal fun String.displayLabel(): String = localizedMediaTypeLabel(this)
+
+internal fun traktCalendarDefinitions(): List<HomeCatalogDefinition> {
+    val connected = com.nuvio.app.features.trakt.TraktAuthRepository.uiState.value.calendarAccountKey != null
+    val key = com.nuvio.app.features.trakt.TRAKT_CALENDAR_KEY
+    if (!connected && !HomeCatalogSettingsRepository.hasPreference(key)) return emptyList()
+    return listOf(HomeCatalogDefinition(
+        key = key, defaultTitle = "Trakt Calendar", catalogName = "Trakt Calendar", addonName = "Trakt",
+        manifestUrl = "", type = "calendar", catalogId = "calendar", supportsPagination = false,
+        descriptorSignature = "native-calendar-v1", supportsHero = false,
+    ))
+}

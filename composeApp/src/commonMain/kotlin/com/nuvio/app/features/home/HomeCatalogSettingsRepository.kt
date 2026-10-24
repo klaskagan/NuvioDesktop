@@ -35,6 +35,7 @@ data class HomeCatalogSettingsItem(
     val isCollection: Boolean = false,
     val collectionId: String? = null,
     val isPinnedToTop: Boolean = false,
+    val supportsHero: Boolean = true,
 ) {
     val displayTitle: String
         get() = customTitle.ifBlank { defaultTitle }
@@ -172,7 +173,7 @@ object HomeCatalogSettingsRepository {
     private fun syncCatalogsInternal(addons: List<ManagedAddon>) {
         ensureLoaded()
         val collections = CollectionRepository.collections.value
-        val syncInput = CatalogSyncInput(addons, collections, Locale.current.toLanguageTag(), ServerRepository.uiState.value.revision)
+        val syncInput = CatalogSyncInput(addons, collections, Locale.current.toLanguageTag(), ServerRepository.uiState.value.revision, traktCalendarDefinitions().isNotEmpty())
         if (lastCatalogSync == syncInput) return
         definitions = buildHomeCatalogDefinitions(addons)
         collectionDefinitions = buildCollectionDefinitions(collections)
@@ -219,6 +220,11 @@ object HomeCatalogSettingsRepository {
         HomeRepository.applyCurrentSettings()
     }
 
+    internal fun hasPreference(key: String): Boolean {
+        ensureLoaded()
+        return key in preferences
+    }
+
     internal fun snapshot(): HomeCatalogSettingsSnapshot {
         ensureLoaded()
         return snapshotRef.value
@@ -262,6 +268,7 @@ object HomeCatalogSettingsRepository {
     }
 
     fun setHeroSourceEnabled(key: String, enabled: Boolean) {
+        if (definitions.firstOrNull { it.key == key }?.supportsHero == false) return
         updatePreference(key, pushRemote = false) { preference ->
             if (!enabled) {
                 preference.copy(heroSourceEnabled = false)
@@ -385,7 +392,7 @@ object HomeCatalogSettingsRepository {
         var enabledHeroSourceCount = 0
         orderedEntries.forEach { entry ->
             val stored = current[entry.key]
-            val heroSourceEnabled = if (entry.isCollection) {
+            val heroSourceEnabled = if (entry.isCollection || definitions.firstOrNull { it.key == entry.key }?.supportsHero == false) {
                 false
             } else {
                 (stored?.heroSourceEnabled ?: true) &&
@@ -424,6 +431,7 @@ object HomeCatalogSettingsRepository {
                 val preference = preferences[definition.key]
                 HomeCatalogSettingsItem(
                     key = definition.key,
+                    supportsHero = definition.supportsHero,
                     defaultTitle = definition.defaultTitle,
                     addonName = definition.addonName,
                     customTitle = preference?.customTitle.orEmpty(),
@@ -703,4 +711,5 @@ private data class CatalogSyncInput(
     val collections: List<Collection>,
     val locale: String,
     val serverRevision: Int,
+    val calendarRegistered: Boolean,
 )
