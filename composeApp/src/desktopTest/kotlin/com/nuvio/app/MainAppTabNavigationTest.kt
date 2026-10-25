@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -30,7 +31,7 @@ class MainAppTabNavigationTest {
     private fun verifyTabs(
         layout: DesktopNavigationLayout,
         initialTab: AppScreenTab = AppScreenTab.Home,
-        sequence: List<String> = listOf("Search", "Library", "Settings", "Library", "Search", "Home"),
+        sequence: List<String> = listOf("Search", "Library", "Calendar", "Settings", "Calendar", "Library", "Search", "Home"),
     ) = runDesktopComposeUiTest(width = 1200, height = 900) {
         assumeTrue("Full app tests require isolated profile storage; use scripts/desktop-ui-tests.init.gradle",
             System.getProperty("nuvio.test.isolatedHome") == "true")
@@ -46,6 +47,7 @@ class MainAppTabNavigationTest {
             sequence.forEach { tab ->
                 onNodeWithContentDescription(tab).performClick()
                 waitForIdle()
+                if (tab == "Calendar") onNodeWithTag("calendar-screen").assertExists()
                 if (tab == "Search") onNodeWithText("Search movies, shows...").assertExists()
                 else onNodeWithText("Search movies, shows...").assertDoesNotExist()
             }

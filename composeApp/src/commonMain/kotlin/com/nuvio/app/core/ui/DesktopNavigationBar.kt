@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -93,7 +97,12 @@ internal fun DesktopNavigationBar(
             viewportWidth > 1600.dp -> 30.dp
             else -> 28.dp
         }
-        val trackWidth = ((iconSize + 20.dp + 64.dp * labelFraction) * items.size + 8.dp).coerceAtMost(maxWidth)
+        val textMeasurer = rememberTextMeasurer()
+        val labelStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
+        val labelWidthPx = items.maxOf { textMeasurer.measure(it.label, labelStyle).size.width }
+        // Reserve the measured label plus the existing item padding and icon/label gap.
+        val labelSpace = with(LocalDensity.current) { labelWidthPx.toDp() } + 20.dp
+        val trackWidth = ((iconSize + 20.dp + labelSpace * labelFraction) * items.size + 8.dp).coerceAtMost(maxWidth)
         JellyNavigationBar(
             items = items,
             labelFraction = labelFraction,

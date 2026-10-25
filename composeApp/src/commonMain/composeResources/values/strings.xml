@@ -2566,4 +2566,27 @@
     <string name="calendar_auth_expired">Reconnect Trakt in Settings to load your calendar.</string>
     <string name="calendar_error">Could not load your calendar. Please try again.</string>
     <string name="calendar_partial">Some calendar releases could not be loaded.</string>
+    <string name="calendar_screen_title">Calendar</string>
+    <string name="calendar_this_week">This week</string>
+    <string name="calendar_next_week">Next week</string>
+    <string name="calendar_view_day">Day</string>
+    <string name="calendar_view_week">Week</string>
+    <string name="calendar_view_month">Month</string>
+    <string name="calendar_filter_all">All</string>
+    <string name="calendar_filter_shows">Shows</string>
+    <string name="calendar_filter_movies">Movies</string>
+    <string name="calendar_landscape_posters">Landscape Posters</string>
+    <string name="calendar_range_empty">No releases in this date range.</string>
+    <string name="calendar_day_empty">No releases on this day.</string>
+    <plurals name="calendar_release_count">
+        <item quantity="one">%1$d release</item>
+        <item quantity="other">%1$d releases</item>
+    </plurals>
+    <string name="calendar_orientation_portrait">Portrait posters. Switch to landscape</string>
+    <string name="calendar_orientation_landscape">Landscape posters. Switch to portrait</string>
+    <string name="calendar_previous">Previous</string>
+    <string name="calendar_next">Next</string>
+    <string name="calendar_load_earlier">Load earlier dates</string>
+    <string name="calendar_load_later">Load later dates</string>
+    <string name="calendar_choose_date">Choose date</string>
 </resources>

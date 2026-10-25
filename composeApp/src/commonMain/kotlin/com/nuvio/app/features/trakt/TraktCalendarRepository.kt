@@ -52,7 +52,7 @@ class CalendarRepository(
     }
 
     suspend fun load(days: Int = 14, force: Boolean = false, startDate: String? = null) = mutex.withLock {
-        require(days in 1..31)
+        require(days in 1..93)
         val owner = account()
         if (owner != currentAccount) invalidate()
         if (owner == null) return@withLock
@@ -114,7 +114,7 @@ class CalendarRepository(
 
 object TraktCalendarRepository {
     private val json = Json { ignoreUnknownKeys = true }
-    private val repository = CalendarRepository(
+    private val cache = CalendarTransportCache(
         account = { TraktAuthRepository.uiState.value.calendarAccountKey },
         fetch = { shows, start, days ->
             val owner = TraktAuthRepository.uiState.value.calendarAccountKey
@@ -128,9 +128,25 @@ object TraktCalendarRepository {
             decodeCalendarBatch(response.body, shows, json)
         },
     )
+    private fun engine() = CalendarRepository(
+        account = { TraktAuthRepository.uiState.value.calendarAccountKey }, fetch = cache::load)
+    private val repository = engine()
+    private val sessions = mutableSetOf<CalendarRepository>()
+    private val lock = SynchronizedObject()
     val uiState: StateFlow<CalendarState> = repository.state
-    fun invalidate() = repository.invalidate()
-    suspend fun load(days: Int = 14, force: Boolean = false) = repository.load(days, force)
+    /** Each retained screen owns its observable range; transport/cache are shared with Home. */
+    fun createSession(): CalendarRepository = synchronized(lock) { engine().also { sessions.add(it) } }
+    fun releaseSession(session: CalendarRepository) = synchronized(lock) { sessions.remove(session); session.invalidate() }
+    fun invalidate() = synchronized(lock) {
+        cache.invalidate()
+        repository.invalidate()
+        sessions.forEach { it.invalidate() }
+    }
+    fun expireCache() = cache.expire()
+    suspend fun load(days: Int = 14, force: Boolean = false) {
+        if (force) cache.expire()
+        repository.load(days, force)
+    }
     suspend fun loadRange(startDate: String, days: Int, force: Boolean = false) = repository.load(days, force, startDate)
 }
 
