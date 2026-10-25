@@ -1,10 +1,19 @@
-# Trailer player comparison (macOS)
+# Trailer player selection (macOS)
 
-Two independent branches start from the same develop revision. Neither is merged:
+Both reviewed backends are integrated on `codex/trailer-player-choice`. The original
+comparison branches remain available as references. Settings → Detail Page →
+**Trailer Player** chooses **YouTube** (default) or **Native** for explicitly opened
+trailers. This preference is stored per local profile. Existing profiles and
+unknown saved values default to YouTube; unsupported platforms use Native without
+changing the saved preference. It is independent of the ordinary movie player,
+Hero Trailer Playback, and hover-card trailer/sound/start-position settings.
 
-- `codex/trailer-native-player-review`: mpv overlay and native Nuvio toolbar.
-- `codex/trailer-youtube-player-review`: official YouTube embedded player for
-  explicitly opened trailers. Ordinary movie playback keeps its existing engine.
+Capture the effective backend when the Details click starts a `TrailerPlaybackRequest`.
+Use that backend for resolution, rendering and Retry until dismissal. A preference
+change applies to the next opening; it must not swap an active player's source or
+session. YouTube requests produce a watch URL directly, bypassing extraction and
+native caches; Native uses `NATIVE_PLAYER` resolution. The resolver itself must not
+read the preference or turn native source requests into embed URLs.
 
 Both carry the reviewed HeroTrailerSelector preference: trailer category and
 official status first, then resolution tier before publication date. Resolution
@@ -12,7 +21,7 @@ ranges include 1440p and sizes above 2160p. This changes upload selection, not t
 initial adaptive rendition, and adds no requests. The displayed trailer list is
 not reordered by this selector. Hero and hover-card settings remain independent.
 
-## YouTube experiment
+## YouTube player
 
 The macOS path bypasses signed-URL extraction, stream probes, split-track muxing,
 and Nuvio's playback toolbar for the explicit trailer. WKWebView displays the
@@ -40,10 +49,10 @@ blocked, preserve YouTube's own play button instead of replacing it with a timeo
 
 YouTube owns adaptive quality; its API cannot force an HD starting rendition.
 Branding, recommendations and possible ads belong to the YouTube player. Some
-uploaders disallow embedding. These are comparison tradeoffs, not bugs to hide.
+uploaders disallow embedding. These are player tradeoffs, not bugs to hide.
 
-Hero/card previews keep the shared AVPlayer frame-rendering session in both
-branches. A child WebView above Compose would obscure metadata and ignore the
+Hero/card previews keep the shared AVPlayer frame-rendering session with either
+backend. A child WebView above Compose would obscure metadata and ignore the
 previews' Compose opacity/clip behavior. Preview resolution/cache keys remain
 separate from explicitly opened trailers. Publish readiness only with a decoded
 frame; keep artwork during loading and cancel dismissed hover work.
@@ -134,3 +143,11 @@ The packaged macOS check confirmed that Hope can still enable captions with the
 default-off policy. Do not report this parameter as a guaranteed caption-off
 setting. Physical speaker output and other operating systems require separate
 validation.
+
+`TrailerPlayerBackendTest` verifies migration defaults, persistence, independent
+preview preferences and unsupported-platform fallback. `TrailerPlayerSettingsUiTest`
+clicks the actual setting chips and checks their selected state after reloading.
+`TrailerPlaybackRequestTest` verifies YouTube bypasses extraction and Native keeps
+separate audio; `DetailsTrailerUiTest` exercises the real Details handler with both
+choices, Retry, expand/collapse and dismissal. Keep this coverage when adding a
+backend; testing either comparison branch alone cannot catch misrouted sources.

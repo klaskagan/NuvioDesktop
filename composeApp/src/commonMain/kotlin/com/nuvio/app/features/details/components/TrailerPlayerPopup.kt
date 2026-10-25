@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import com.nuvio.app.core.ui.NuvioModalBottomSheet
 import com.nuvio.app.core.ui.dismissNuvioBottomSheet
@@ -44,6 +45,8 @@ import com.nuvio.app.isIos
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
+import com.nuvio.app.features.trailer.TrailerPlayerBackend
+import com.nuvio.app.features.trailer.YouTubeEmbed
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,10 +60,12 @@ fun TrailerPlayerPopup(
     errorMessage: String?,
     onDismiss: () -> Unit,
     onRetry: (() -> Unit)? = null,
+    playbackRequestId: Int = 0,
+    backend: TrailerPlayerBackend = TrailerPlayerBackend.Native,
 ) {
     if (!visible) return
-    if (com.nuvio.app.features.trailer.YouTubeEmbed.supported) {
-        com.nuvio.app.features.trailer.YouTubeEmbed.Popup(
+    if (backend == TrailerPlayerBackend.YouTube && YouTubeEmbed.supported) {
+        YouTubeEmbed.Popup(
             playbackSource?.videoUrl, trailerTitle, trailerType, contentTitle,
             isLoading, errorMessage, onDismiss, onRetry,
         )
@@ -79,7 +84,7 @@ fun TrailerPlayerPopup(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
-    val playbackState = remember(playbackSource) { TrailerPlaybackState() }
+    val playbackState = remember(playbackSource, playbackRequestId) { TrailerPlaybackState() }
     var fullscreen by remember { mutableStateOf(false) }
     var releasing by remember { mutableStateOf(false) }
     fun releasePlayerThen(
@@ -145,7 +150,8 @@ fun TrailerPlayerPopup(
                 isLoading = isLoading,
                 errorMessage = errorMessage,
                 onRetry = onRetry,
-                modifier = Modifier.fillMaxSize(),
+                // Details content and floating headers use z=1/2; expanded playback owns input above them.
+                modifier = Modifier.fillMaxSize().zIndex(3f),
                 title = headerSubtitle.ifBlank { headerType },
                 onExitFullscreen = exitFullscreen,
                 onBack = {
@@ -155,6 +161,7 @@ fun TrailerPlayerPopup(
                     }
                 },
                 onToggleFullscreen = exitFullscreen,
+                onEscapeFullscreen = exitFullscreen,
             )
         }
         return
@@ -231,6 +238,7 @@ fun TrailerPlayerPopup(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(18.dp))
                     .aspectRatio(16f / 9f),
+                title = headerSubtitle.ifBlank { headerType },
                 onBack = dismissSheet,
                 onToggleFullscreen = toggleFullscreen,
                 onEscapeFullscreen = dismissSheet,

@@ -12,9 +12,6 @@ actual object TrailerPlaybackResolver {
 
     actual suspend fun resolveFromYouTubeUrl(youtubeUrl: String, forceRefresh: Boolean, target: TrailerPlaybackTarget): TrailerPlaybackSource? {
         if (youtubeUrl.isBlank()) return null
-        if (YouTubeEmbed.supported && target == TrailerPlaybackTarget.NATIVE_PLAYER) {
-            return youtubeEmbedVideoId(youtubeUrl)?.let { TrailerPlaybackSource("https://www.youtube.com/watch?v=$it") }
-        }
         val cacheKey = "$target:$youtubeUrl"
         cacheMutex.lock()
         try {

@@ -1,5 +1,7 @@
 package com.nuvio.app.features.trailer
 
+import androidx.compose.foundation.lazy.LazyColumn
+import com.nuvio.app.features.settings.metaScreenSettingsContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
@@ -37,13 +39,16 @@ fun main() {
     application {
         Window(onCloseRequest = ::exitApplication, title = "Nuvio Trailer QA", state = rememberWindowState(width = 1280.dp, height = (System.getenv("NUVIO_QA_HEIGHT")?.toIntOrNull() ?: 1000).dp)) {
             AppEnvironment {
-                var cards by remember { mutableStateOf(false) }
+                var page by remember { mutableStateOf("details") }
+                val settings by MetaScreenSettingsRepository.uiState.collectAsState()
                 Column(Modifier.fillMaxSize().background(Color(0xff182b3d))) {
                     Row {
-                        Button(onClick = { cards = false }) { Text("Details and hero") }
-                        Button(onClick = { cards = true }) { Text("Hover preview") }
+                        Button(onClick = { page = "details" }) { Text("Details and hero") }
+                        Button(onClick = { page = "cards" }) { Text("Hover preview") }
+                        Button(onClick = { page = "settings" }) { Text("Detail Page settings") }
                     }
-                    if (!cards) MetaDetailsScreen("movie", meta.id, onBack = {}, modifier = Modifier.weight(1f))
+                    if (page == "settings") LazyColumn(Modifier.weight(1f)) { metaScreenSettingsContent(isTablet = true, uiState = settings) }
+                    else if (page == "details") MetaDetailsScreen("movie", meta.id, onBack = {}, modifier = Modifier.weight(1f))
                     else Box(Modifier.fillMaxSize().padding(100.dp)) {
                         HomePosterHoverPreview(item = MetaPreview(meta.id, "movie", "Hope"), isWatched = false, onClick = {}, onLongClick = null) { modifier ->
                             Box(modifier.width(240.dp).height(160.dp).background(Color.DarkGray)) { Text("Hover Hope", color = Color.White) }

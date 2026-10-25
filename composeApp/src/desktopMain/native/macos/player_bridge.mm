@@ -14,6 +14,7 @@
 #include <mpv/render_gl.h>
 
 #include <atomic>
+#include <array>
 #include <cmath>
 #include <dlfcn.h>
 #include <mutex>
@@ -130,6 +131,11 @@ static constexpr double kMaxVolumePercent = 200.0;
                         eventSink:(jobject)eventSink
                       eventMethod:(jmethodID)eventMethod;
 - (void)shutdown;
+- (void)adoptEmbeddedContainer:(NSView *)container;
+- (void)updateEmbeddedBounds:(const double *)bounds visible:(BOOL)visible;
+- (NSRect)embeddedFrame;
+- (uint64_t)videoFrameSignature;
+- (void)setNativeControlsVisible:(BOOL)visible;
 - (void)updateControlsJson:(NSString *)controlsJson;
 - (void)requestFocus;
 - (void)beginWindowDrag;
@@ -1083,6 +1089,8 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 
 @implementation MpvWebPlayer {
     NSView *_hostView;
+    NSView *_embeddedContainer;
+    BOOL _nativeControlsVisible;
     PlayerMetalView *_videoView;
     WKWebView *_webView;
     PlayerScriptHandler *_scriptHandler;
@@ -1191,6 +1199,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     _eventMethod = eventMethod;
 
     _hostView = hostView;
+    _nativeControlsVisible = YES;
     _hostView.wantsLayer = YES;
     _hostView.layer.backgroundColor = NSColor.blackColor.CGColor;
     [_hostView setPostsFrameChangedNotifications:YES];
@@ -1275,6 +1284,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 }
 
 - (void)focusControlsWebViewIfNeeded {
+    if (!_nativeControlsVisible) return;
     if (_didFocusControlsWebView || !_webView || !_webView.window) {
         return;
     }
@@ -1297,6 +1307,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 - (void)reparentSurfaceToHostView:(NSView *)newHostView {
     if (!newHostView || !newHostView.window) return;
     [self endWindowTracking];
+    if (_embeddedContainer && newHostView == _embeddedContainer.superview) newHostView = _embeddedContainer;
     NSView *oldHostView = _hostView;
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                       name:NSViewFrameDidChangeNotification
@@ -1335,6 +1346,68 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     [_videoView updateMetalLayerLayout];
     [_videoView scheduleRenderUpdate];
     [self requestFocus];
+}
+
+- (void)adoptEmbeddedContainer:(NSView *)container {
+    _embeddedContainer = container;
+}
+
+- (void)updateEmbeddedBounds:(const double *)bounds visible:(BOOL)visible {
+    NSView *container = _embeddedContainer;
+    NSView *parent = container.superview;
+    if (!container || !parent) return;
+    CGFloat width = fmax(0.0, bounds[2]);
+    CGFloat height = fmax(0.0, bounds[3]);
+    CGFloat y = parent.isFlipped ? bounds[1] : parent.bounds.size.height - bounds[1] - height;
+    container.frame = NSMakeRect(bounds[0], y, width, height);
+    container.hidden = !visible || width <= 1.0 || height <= 1.0;
+    container.layer.cornerRadius = fmax(0.0, bounds[4]);
+    if (_hostView == container) [self layoutNativeSubviews];
+}
+
+- (uint64_t)videoFrameSignature {
+    if (!_mpv) return 0;
+    const char *command[] = {"screenshot-raw", "video", NULL};
+    mpv_node result = {};
+    if (mpv_command_ret(_mpv, command, &result) < 0) return 0;
+    uint64_t hash = 1469598103934665603ULL;
+    uint64_t brightness = 0;
+    mpv_byte_array *bytes = nullptr;
+    int64_t width = 0, height = 0, stride = 0;
+    if (result.format == MPV_FORMAT_NODE_MAP && result.u.list) {
+        mpv_node_list *map = result.u.list;
+        for (int i = 0; i < map->num; ++i) {
+            const char *key = map->keys[i]; mpv_node value = map->values[i];
+            if (!strcmp(key, "data") && value.format == MPV_FORMAT_BYTE_ARRAY) bytes = value.u.ba;
+            if (!strcmp(key, "w") && value.format == MPV_FORMAT_INT64) width = value.u.int64;
+            if (!strcmp(key, "h") && value.format == MPV_FORMAT_INT64) height = value.u.int64;
+            if (!strcmp(key, "stride") && value.format == MPV_FORMAT_INT64) stride = value.u.int64;
+        }
+    }
+    if (bytes && width > 0 && height > 0 && stride >= width * 3) {
+        const unsigned char *pixels = (const unsigned char *)bytes->data;
+        const int channels = stride >= width * 4 ? 4 : 3;
+        const int64_t step = fmax(1, width * height / 4096);
+        for (int64_t pixel = 0; pixel < width * height; pixel += step) {
+            const int64_t offset = (pixel / width) * stride + (pixel % width) * channels;
+            if ((uint64_t)(offset + 2) >= bytes->size) break;
+            for (int c = 0; c < 3; ++c) {
+                brightness += pixels[offset + c];
+                hash = (hash ^ pixels[offset + c]) * 1099511628211ULL;
+            }
+        }
+    }
+    mpv_free_node_contents(&result);
+    return brightness > 1000 ? hash : 0;
+}
+
+- (NSRect)embeddedFrame {
+    return _embeddedContainer ? _embeddedContainer.frame : NSZeroRect;
+}
+
+- (void)setNativeControlsVisible:(BOOL)visible {
+    _nativeControlsVisible = visible;
+    _webView.hidden = !visible;
 }
 
 - (void)layoutControlsWebViewToBounds:(NSRect)bounds immediate:(BOOL)immediate {
@@ -1754,7 +1827,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
         "stream-lavf-o",
         "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=%23%408,429,500,502,503,504,reconnect_delay_max=15"
     );
-    setMpvOptionString(_mpv, "hr-seek", "no");
+    setMpvOptionString(_mpv, "hr-seek", [_hostView.identifier isEqualToString:@"nuvio-embedded-player"] ? "yes" : "no");
 
     if (headerLines.count > 0) {
         NSMutableArray *escaped = [NSMutableArray arrayWithCapacity:headerLines.count];
@@ -2105,6 +2178,8 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     [_videoView removeFromSuperview];
     _webView = nil;
     _videoView = nil;
+    [_embeddedContainer removeFromSuperview];
+    _embeddedContainer = nil;
     _scriptHandler = nil;
     if (_eventSink) {
         BOOL didAttach = NO;
@@ -2143,7 +2218,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 - (void)seekToMilliseconds:(long long)positionMs {
     if (!_mpv) return;
     std::string seconds = std::to_string((double)positionMs / 1000.0);
-    const char *command[] = {"seek", seconds.c_str(), "absolute+keyframes", NULL};
+    const char *command[] = {"seek", seconds.c_str(), _embeddedContainer ? "absolute+exact" : "absolute+keyframes", NULL};
     mpv_command(_mpv, command);
     [self storeCachedPosition:(double)positionMs / 1000.0 at:CACurrentMediaTime()];
 }
@@ -2151,7 +2226,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 - (void)seekByMilliseconds:(long long)offsetMs {
     if (!_mpv) return;
     std::string seconds = std::to_string((double)offsetMs / 1000.0);
-    const char *command[] = {"seek", seconds.c_str(), "relative+keyframes", NULL};
+    const char *command[] = {"seek", seconds.c_str(), _embeddedContainer ? "relative+exact" : "relative+keyframes", NULL};
     mpv_command(_mpv, command);
     [self storeCachedPosition:[self estimatedPositionSeconds] + ((double)offsetMs / 1000.0) at:CACurrentMediaTime()];
 }
@@ -2846,10 +2921,12 @@ static void nuvioMpvWakeup(void *ctx) {
         [self beginFullscreenTransitionWithReason:@"control-toggle"];
     }
     if ([type isEqualToString:@"dragWindow"]) {
+        if (_embeddedContainer) return;
         [self beginWindowTrackingWithEdge:0];
         return;
     }
     if ([type isEqualToString:@"resizeWindow"] && value) {
+        if (_embeddedContainer) return;
         NSInteger edge = (NSInteger)llround(value.doubleValue);
         if (edge >= 10 && edge <= 17) {
             [self beginWindowTrackingWithEdge:edge];
@@ -3200,8 +3277,7 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setMacosWindowFull
     });
 }
 
-extern "C" JNIEXPORT jlong JNICALL
-Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
+static jlong createNativePlayer(
     JNIEnv *env,
     jobject /* bridge */,
     jlong hostViewPtr,
@@ -3212,7 +3288,8 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
     jstring controlsPageUrl,
     jint decoderPriority,
     jboolean nvidiaRtxSuperResolutionEnabled,
-    jobject eventSink
+    jobject eventSink,
+    jdoubleArray embeddedBounds
 ) {
     NSView *hostView = (__bridge NSView *)(void *)(intptr_t)hostViewPtr;
     if (!hostView) {
@@ -3241,12 +3318,26 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
     std::string source = jstringToString(env, sourceUrl);
     std::string controls = jstringToString(env, controlsPageUrl);
     NSArray<NSString *> *headers = jstringArrayToNSArray(env, headerLines);
+    std::array<double, 5> bounds = {0, 0, 1, 1, 0};
+    if (embeddedBounds && env->GetArrayLength(embeddedBounds) >= 5) env->GetDoubleArrayRegion(embeddedBounds, 0, 5, bounds.data());
+    __block NSView *embeddedContainer = nil;
     __block MpvWebPlayer *player = nil;
     __block NSString *error = nil;
     runOnMainSync(^{
         @try {
+            NSView *playerHost = hostView;
+            if (embeddedBounds) {
+                CGFloat y = hostView.isFlipped ? bounds[1] : hostView.bounds.size.height - bounds[1] - bounds[3];
+                embeddedContainer = [[NSView alloc] initWithFrame:NSMakeRect(bounds[0], y, bounds[2], bounds[3])];
+                embeddedContainer.identifier = @"nuvio-embedded-player";
+                embeddedContainer.wantsLayer = YES;
+                embeddedContainer.layer.masksToBounds = YES;
+                embeddedContainer.layer.cornerRadius = bounds[4];
+                [hostView addSubview:embeddedContainer];
+                playerHost = embeddedContainer;
+            }
             player = [[MpvWebPlayer alloc]
-                initWithHostView:hostView
+                initWithHostView:playerHost
                     sourceUrl:[NSString stringWithUTF8String:source.c_str()]
                     headerLines:headers
                    playWhenReady:playWhenReady == JNI_TRUE
@@ -3256,7 +3347,9 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
                           javaVm:javaVm
                        eventSink:eventSinkRef
                      eventMethod:eventMethod];
+            if (embeddedContainer) [player adoptEmbeddedContainer:embeddedContainer];
         } @catch (NSException *exception) {
+            [embeddedContainer removeFromSuperview];
             error = exception.reason ?: exception.name;
         }
     });
@@ -3270,6 +3363,68 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
     }
 
     return (jlong)(intptr_t)CFBridgingRetain(player);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
+    JNIEnv *env, jobject bridge, jlong hostViewPtr, jstring sourceUrl, jobjectArray headerLines,
+    jboolean playWhenReady, jlong initialPositionMs, jstring controlsPageUrl, jint decoderPriority,
+    jboolean rtx, jobject eventSink
+) {
+    return createNativePlayer(env, bridge, hostViewPtr, sourceUrl, headerLines, playWhenReady,
+        initialPositionMs, controlsPageUrl, decoderPriority, rtx, eventSink, nullptr);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_createEmbedded(
+    JNIEnv *env, jobject bridge, jlong hostViewPtr, jstring sourceUrl, jobjectArray headerLines,
+    jboolean playWhenReady, jlong initialPositionMs, jstring controlsPageUrl, jint decoderPriority,
+    jboolean rtx, jobject eventSink, jdoubleArray bounds
+) {
+    return createNativePlayer(env, bridge, hostViewPtr, sourceUrl, headerLines, playWhenReady,
+        initialPositionMs, controlsPageUrl, decoderPriority, rtx, eventSink, bounds);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_updateEmbeddedBounds(
+    JNIEnv *env, jobject, jlong handle, jdoubleArray input, jboolean visible
+) {
+    if (!handle || !input || env->GetArrayLength(input) < 5) return;
+    double values[5]; env->GetDoubleArrayRegion(input, 0, 5, values);
+    // Copy into block storage; the JNI array is no longer valid when the UI block runs.
+    NSArray<NSNumber *> *bounds = @[@(values[0]), @(values[1]), @(values[2]), @(values[3]), @(values[4])];
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    runOnMainAsync(^{
+        double copied[5]; for (int i = 0; i < 5; ++i) copied[i] = bounds[i].doubleValue;
+        [player updateEmbeddedBounds:copied visible:visible == JNI_TRUE];
+    });
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_videoFrameSignature(JNIEnv *, jobject, jlong handle) {
+    if (!handle) return 0;
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    return (jlong)[player videoFrameSignature];
+}
+
+extern "C" JNIEXPORT jdoubleArray JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_embeddedBounds(JNIEnv *env, jobject, jlong handle) {
+    __block NSRect frame = NSZeroRect;
+    if (handle) {
+        MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+        runOnMainSync(^{ frame = [player embeddedFrame]; });
+    }
+    double values[] = {frame.origin.x, frame.origin.y, frame.size.width, frame.size.height};
+    jdoubleArray result = env->NewDoubleArray(4); env->SetDoubleArrayRegion(result, 0, 4, values); return result;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setNativeControlsVisible(JNIEnv *, jobject, jlong handle, jboolean visible) {
+    if (!handle) return;
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    // Compose invokes this from the EDT. Cocoa accessibility can be waiting for
+    // that same EDT, so a synchronous main-thread dispatch would deadlock it.
+    runOnMainAsync(^{ [player setNativeControlsVisible:visible == JNI_TRUE]; });
 }
 
 extern "C" JNIEXPORT void JNICALL

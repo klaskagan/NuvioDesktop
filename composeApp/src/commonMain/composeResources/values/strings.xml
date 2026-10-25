@@ -2595,4 +2595,9 @@
     <string name="calendar_load_later">Load later dates</string>
     <string name="calendar_choose_date">Choose date</string>
     <string name="trailer_open_youtube">Open in YouTube</string>
+    <string name="trailer_playback_timeout">The video did not start. Please try again.</string>
+    <string name="settings_trailer_player">Trailer Player</string>
+    <string name="settings_trailer_player_description">Choose the player for videos opened from the Trailers section.</string>
+    <string name="settings_trailer_player_youtube">YouTube</string>
+    <string name="settings_trailer_player_native">Native</string>
 </resources>
