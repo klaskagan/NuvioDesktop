@@ -69,6 +69,13 @@ Expose setup once in Settings and the frequent action in context when that match
 the feature. Avoid transient captions that briefly shift layout before data is
 ready; reserve space only when it is needed by the intended design.
 
+For Details trailer playback, follow [the trailer contract](../../../docs/trailer-playback.md).
+Resolve and cache trailer sources for the actual renderer: AVPlayer previews and
+mpv playback have different requirements. A macOS window view is not a bounded
+component host. Verify native bounds and changing decoded/rendered pixels, plus
+all shared hero/card consumers; timestamps alone do not prove correct playback.
+Retry and presentation changes must not reopen or auto-expand a dismissed overlay.
+
 ## Verify the changed experience
 
 Run the smallest meaningful behavioral checks plus compilation appropriate to the

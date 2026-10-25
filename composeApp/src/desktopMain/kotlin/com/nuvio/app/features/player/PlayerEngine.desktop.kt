@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.ui.AppPresenceState
 import com.nuvio.app.core.ui.LocalNuvioPlatformDensity
 import com.nuvio.app.core.ui.PresenceSnapshot
+import com.nuvio.app.features.player.desktop.DesktopPlaybackSource
+import com.nuvio.app.features.trailer.TrailerExtractionPlatform
 import com.nuvio.app.features.player.desktop.DesktopHostOs
 import com.nuvio.app.features.player.desktop.DesktopPlayerPictureInPicture
 import com.nuvio.app.features.player.desktop.NativePlayerController
@@ -72,6 +74,9 @@ actual fun PlatformPlayerSurface(
     ) {
         NativePlayerSurface(
             sourceUrl = sourceUrl,
+            useNativeController = useNativeController,
+            sourceAudioUrl = sourceAudioUrl,
+            useYoutubeChunkedPlayback = useYoutubeChunkedPlayback,
             sourceAvailable = sourceAvailable,
             sourceHeaders = sourceHeaders,
             modifier = modifier,
@@ -104,6 +109,9 @@ actual fun PlatformPlayerSurface(
 @Composable
 private fun NativePlayerSurface(
     sourceUrl: String,
+    useNativeController: Boolean,
+    sourceAudioUrl: String?,
+    useYoutubeChunkedPlayback: Boolean,
     sourceAvailable: Boolean,
     sourceHeaders: Map<String, String>,
     modifier: Modifier,
@@ -122,11 +130,27 @@ private fun NativePlayerSurface(
     onError: (String?) -> Unit,
 ) {
     val platformDensity = LocalNuvioPlatformDensity.current
-    val host = remember { NativePlayerHost() }
+    val host = remember(useYoutubeChunkedPlayback) { NativePlayerHost(embedded = useYoutubeChunkedPlayback) }
     val controller = remember(host) { NativePlayerController(host) }
     val hostFirstPaintComplete = remember { mutableStateOf(false) }
     val hostFirstFullSizePaintComplete = remember { mutableStateOf(false) }
-    val playbackHeaders = remember(sourceHeaders) { sanitizePlaybackHeaders(sourceHeaders) }
+    val playbackHeaders = remember(sourceHeaders, useYoutubeChunkedPlayback) {
+        sanitizePlaybackHeaders(
+            if (useYoutubeChunkedPlayback) TrailerExtractionPlatform.defaultHeaders + sourceHeaders else sourceHeaders,
+        )
+    }
+    val playbackSource = remember(sourceUrl, sourceAudioUrl, useYoutubeChunkedPlayback, playbackHeaders) {
+        DesktopPlaybackSource(sourceUrl, sourceAudioUrl, useYoutubeChunkedPlayback, playbackHeaders)
+    }
+    DisposableEffect(playbackSource) {
+        onDispose { playbackSource.close() }
+    }
+    SideEffect {
+        host.presentationFullscreen = playerControlsState.presentationFullscreen == true
+        host.cornerRadius = if (playerControlsState.presentationFullscreen == true) 0.0 else 18.0
+        controller.setNativeControlsEnabled(useNativeController)
+        controller.setPresentationFullscreen(playerControlsState.presentationFullscreen)
+    }
     val latestOnPlayerControlsAction = rememberUpdatedState(onPlayerControlsAction)
     val latestOnPlayerControlsEvent = rememberUpdatedState(onPlayerControlsEvent)
     val latestOnPlayerControlsScrubChange = rememberUpdatedState(onPlayerControlsScrubChange)
@@ -151,6 +175,7 @@ private fun NativePlayerSurface(
                 hostFirstFullSizePaintComplete.value = false
             }
         }
+        host.onBoundsChanged = { controller.updateEmbeddedLayout() }
         host.onFirstPaint = {
             hostFirstPaintComplete.value = true
         }
@@ -160,6 +185,7 @@ private fun NativePlayerSurface(
         onDispose {
             DesktopPlayerPictureInPicture.release()
             host.onDisplayableChanged = null
+            host.onBoundsChanged = null
             host.onFirstPaint = null
             host.onFirstFullSizePaint = null
         }
@@ -174,7 +200,7 @@ private fun NativePlayerSurface(
         )
     }
 
-    DisposableEffect(controller, sourceAvailable, sourceUrl, playbackHeaders) {
+    DisposableEffect(controller, sourceAvailable, playbackSource, playbackHeaders) {
         onDispose { controller.dispose() }
     }
 
@@ -194,7 +220,7 @@ private fun NativePlayerSurface(
     LaunchedEffect(
         controller,
         sourceAvailable,
-        sourceUrl,
+        playbackSource,
         playbackHeaders,
         decoderPriority,
         nvidiaRtxSuperResolutionEnabled,
@@ -207,7 +233,8 @@ private fun NativePlayerSurface(
         }
         delay(16L)
         controller.attach(
-            sourceUrl = sourceUrl,
+            sourceUrl = playbackSource.videoUrl,
+            sourceAudioUrl = playbackSource.audioUrl,
             sourceHeaders = playbackHeaders,
             playWhenReady = playWhenReady,
             initialPositionMs = initialPositionMs,

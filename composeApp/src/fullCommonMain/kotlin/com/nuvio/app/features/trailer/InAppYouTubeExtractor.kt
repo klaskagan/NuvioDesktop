@@ -1,6 +1,8 @@
 package com.nuvio.app.features.trailer
 
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -139,12 +141,16 @@ class InAppYouTubeExtractor {
     suspend fun extractPlaybackSource(youtubeUrl: String): TrailerPlaybackSource? =
         extract(youtubeUrl, singleUrl = false)
 
+    suspend fun extractPreviewPlaybackSource(youtubeUrl: String): TrailerPlaybackSource? =
+        extract(youtubeUrl, singleUrl = true, previewFallback = true)
+
     suspend fun extractSingleUrl(youtubeUrl: String): String? =
         extract(youtubeUrl, singleUrl = true)?.videoUrl
 
     private suspend fun extract(
         youtubeUrl: String,
         singleUrl: Boolean,
+        previewFallback: Boolean = false,
     ): TrailerPlaybackSource? = withContext(Dispatchers.Default) {
         if (youtubeUrl.isBlank()) {
             TrailerExtractionPlatform.diagnostic("blocked stage=input reason=blank_url")
@@ -153,19 +159,21 @@ class InAppYouTubeExtractor {
 
         runCatching {
             withTimeout(EXTRACTOR_TIMEOUT_MS) {
-                extractPlaybackSourceInternal(youtubeUrl, singleUrl)
+                extractPlaybackSourceInternal(youtubeUrl, singleUrl, previewFallback)
             }
         }.onFailure {
+            currentCoroutineContext().ensureActive()
             TrailerExtractionPlatform.diagnostic(
-                "blocked stage=extraction error=${it::class.simpleName} message=${it.message.orEmpty()}",
+                "blocked stage=extraction error=${it::class.simpleName}",
             )
-            log.w { "Trailer extractor failed for $youtubeUrl: ${it.message}" }
+            log.w { "Trailer extractor failed: ${it::class.simpleName}" }
         }.getOrNull()
     }
 
     private suspend fun extractPlaybackSourceInternal(
         youtubeUrl: String,
         singleUrl: Boolean,
+        previewFallback: Boolean,
     ): TrailerPlaybackSource? {
         val videoId = extractVideoId(youtubeUrl)
         if (videoId == null) {
@@ -350,10 +358,13 @@ class InAppYouTubeExtractor {
 
         val bestProgressive = sortCandidates(progressive).firstOrNull()
         if (singleUrl) {
-            return singleUrlSource(bestManifest, bestProgressive)
+            val combined = singleUrlSource(bestManifest, bestProgressive)
+            if (combined != null || !previewFallback) return combined
         }
         val supportedVideo = adaptiveVideo.filter(TrailerExtractionPlatform::supportsSeparateVideo)
+            .filter { !previewFallback || it.mimeType.contains("avc1", ignoreCase = true) }
         val supportedAudio = adaptiveAudio.filter(TrailerExtractionPlatform::supportsSeparateAudio)
+            .filter { !previewFallback || it.mimeType.contains("mp4a", ignoreCase = true) }
         val bestVideo = pickBestForClient(
             supportedVideo,
             PREFERRED_SEPARATE_CLIENT,

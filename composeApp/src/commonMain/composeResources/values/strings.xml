@@ -2594,4 +2594,5 @@
     <string name="calendar_load_earlier">Load earlier dates</string>
     <string name="calendar_load_later">Load later dates</string>
     <string name="calendar_choose_date">Choose date</string>
+    <string name="trailer_playback_timeout">The video did not start. Please try again.</string>
 </resources>

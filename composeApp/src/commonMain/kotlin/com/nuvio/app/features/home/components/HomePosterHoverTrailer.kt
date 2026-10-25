@@ -15,6 +15,7 @@ import com.nuvio.app.features.details.components.HeroTrailerPlayerSurface
 import com.nuvio.app.features.details.selectHeroTrailer
 import com.nuvio.app.features.details.youtubePlaybackUrl
 import com.nuvio.app.features.home.MetaPreview
+import com.nuvio.app.features.trailer.TrailerPlaybackTarget
 import com.nuvio.app.features.trailer.TrailerPlaybackResolver
 import com.nuvio.app.features.trailer.TrailerPlaybackSource
 import kotlinx.coroutines.CancellationException
@@ -81,7 +82,7 @@ internal suspend fun resolveHomePosterHoverTrailerPlaybackSource(
     val trailer = selectHeroTrailer(meta?.trailers.orEmpty())
         ?: return null
     return try {
-        TrailerPlaybackResolver.resolveFromYouTubeUrl(trailer.youtubePlaybackUrl())
+        TrailerPlaybackResolver.resolveFromYouTubeUrl(trailer.youtubePlaybackUrl(), target = TrailerPlaybackTarget.FRAME_PREVIEW)
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (_: Throwable) {

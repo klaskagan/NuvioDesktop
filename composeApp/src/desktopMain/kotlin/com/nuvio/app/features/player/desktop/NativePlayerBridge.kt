@@ -61,6 +61,18 @@ internal object NativePlayerBridge {
         eventSink: NativePlayerEventSink,
     ): Long
 
+    // macOS embedded media: the window resolver stays valid for window operations.
+    external fun createEmbedded(
+        hostViewPtr: Long, sourceUrl: String, headerLines: Array<String>, playWhenReady: Boolean,
+        initialPositionMs: Long, controlsPageUrl: String, decoderPriority: Int,
+        nvidiaRtxSuperResolutionEnabled: Boolean, eventSink: NativePlayerEventSink, bounds: DoubleArray,
+    ): Long
+    external fun updateEmbeddedBounds(handle: Long, bounds: DoubleArray, visible: Boolean)
+    external fun embeddedBounds(handle: Long): DoubleArray
+    /** Hash decoded RGB pixels, returning zero before a nonblack frame is available. */
+    external fun videoFrameSignature(handle: Long): Long
+    external fun setNativeControlsVisible(handle: Long, visible: Boolean)
+
     external fun dispose(handle: Long)
     external fun updateControls(handle: Long, controlsJson: String)
 

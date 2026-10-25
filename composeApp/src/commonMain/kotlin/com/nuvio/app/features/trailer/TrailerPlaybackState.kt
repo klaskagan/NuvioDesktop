@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import com.nuvio.app.features.player.PlayerEngineController
 import com.nuvio.app.features.player.PlayerPlaybackSnapshot
+import com.nuvio.app.features.player.PlayerResizeMode
 
 @Stable
 internal class TrailerPlaybackState {
@@ -15,16 +16,29 @@ internal class TrailerPlaybackState {
         private set
     var error by mutableStateOf<String?>(null)
     var scrubPositionMs by mutableStateOf<Long?>(null)
+    var playbackSpeed by mutableStateOf(1f)
+    var resizeMode by mutableStateOf(PlayerResizeMode.Fit)
+    var controlsVisible by mutableStateOf(true)
+    var audioTrackIndex: Int? = null
+    var subtitleTrackIndex: Int? = null
     var controller: PlayerEngineController? = null
     var presentationId by mutableIntStateOf(0)
         private set
 
     fun changePresentation() {
-        controller?.pause()
+        controller?.let { player ->
+            audioTrackIndex = player.getAudioTracks().firstOrNull { it.isSelected }?.index
+            subtitleTrackIndex = player.getSubtitleTracks().firstOrNull { it.isSelected }?.index ?: -1
+            player.pause()
+        }
         controller = null
         scrubPositionMs = null
         snapshot = snapshot.copy(isLoading = true)
         presentationId += 1
+    }
+
+    fun setPlaybackIntent(play: Boolean) {
+        playWhenReady = play
     }
 
     fun togglePlayback() {

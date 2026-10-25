@@ -2403,6 +2403,14 @@ const syncHiddenCursor = () => {
 };
 
 const noteCursorActivity = () => {
+  // Hidden controls cannot receive hover events (pointer-events:none). Reveal
+  // from the player surface itself, including the first movement after re-entry.
+  if (!state.controlsVisible && !playbackErrorText()) {
+    state = { ...state, controlsVisible: true };
+    chromeAutoHideActivity += 1;
+    renderChrome();
+    send("keepChromeVisible", 0);
+  }
   if (!shouldHideCursorForIdleChrome()) {
     syncHiddenCursor();
     return;
