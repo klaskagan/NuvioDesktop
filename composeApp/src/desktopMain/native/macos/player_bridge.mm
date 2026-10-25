@@ -136,6 +136,7 @@ static constexpr double kMaxVolumePercent = 200.0;
 - (NSRect)embeddedFrame;
 - (uint64_t)videoFrameSignature;
 - (void)setNativeControlsVisible:(BOOL)visible;
+- (BOOL)controlsOverlayAvailable;
 - (void)updateControlsJson:(NSString *)controlsJson;
 - (void)requestFocus;
 - (void)beginWindowDrag;
@@ -1403,6 +1404,11 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 
 - (NSRect)embeddedFrame {
     return _embeddedContainer ? _embeddedContainer.frame : NSZeroRect;
+}
+
+- (BOOL)controlsOverlayAvailable {
+    return _webView && !_webView.isHiddenOrHasHiddenAncestor && _webView.window
+        && _webView.bounds.size.width > 0 && _webView.bounds.size.height > 0;
 }
 
 - (void)setNativeControlsVisible:(BOOL)visible {
@@ -3416,6 +3422,15 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_embeddedBounds(JNI
     }
     double values[] = {frame.origin.x, frame.origin.y, frame.size.width, frame.size.height};
     jdoubleArray result = env->NewDoubleArray(4); env->SetDoubleArrayRegion(result, 0, 4, values); return result;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_controlsOverlayAvailable(JNIEnv *, jobject, jlong handle) {
+    if (!handle) return JNI_FALSE;
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    __block BOOL available = NO;
+    runOnMainSync(^{ available = [player controlsOverlayAvailable]; });
+    return available ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL

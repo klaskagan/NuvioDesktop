@@ -74,6 +74,17 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   their date. Distinguish today from selection/focus; skipping an empty date does
   not make the next visible date today. Follow locale week boundaries and labels.
 
+## Playback control ownership
+
+Desktop movie playback suppresses Compose controls, so its actual
+`PlayerScreenRuntimeUi` caller must explicitly enable native controls. Honoring a
+previously ignored `useNativeController=false` default for trailers hid the movie
+WebView too, leaving video with no controls. Preserve one visible control owner
+in every caller when changing the shared surface contract. Verify the actual
+movie screen and native view availability (`MoviePlayerControlsLiveTest`), then
+exercise visible pause/seek/menu buttons in the packaged UI. A lower-level test
+that explicitly passes `true` or only checks decoding cannot catch this regression.
+
 ## Verify transitions, not only settled screens
 
 - Use isolated profiles and in-memory authentication/preferences as required by

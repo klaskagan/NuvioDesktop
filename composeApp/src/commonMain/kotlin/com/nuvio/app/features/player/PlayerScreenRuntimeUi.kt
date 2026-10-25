@@ -540,6 +540,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                 initialPositionRequestKey = surfaceSource?.initialPositionRequestKey,
                 resizeMode = resizeMode,
                 playbackEngine = playbackEngineOverride,
+                useNativeController = isDesktop,
                 playerControlsState = playerControlsState,
                 onPlayerControlsAction = { action -> handlePlayerControlsAction(action) },
                 onPlayerControlsEvent = { type, value -> handlePlayerControlsEvent(type, value) },

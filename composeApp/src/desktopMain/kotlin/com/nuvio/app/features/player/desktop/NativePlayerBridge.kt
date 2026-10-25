@@ -72,6 +72,8 @@ internal object NativePlayerBridge {
     /** Hash decoded RGB pixels, returning zero before a nonblack frame is available. */
     external fun videoFrameSignature(handle: Long): Long
     external fun setNativeControlsVisible(handle: Long, visible: Boolean)
+    /** Actual native view visibility/attachment, for player diagnostics and regression checks. */
+    external fun controlsOverlayAvailable(handle: Long): Boolean
 
     external fun dispose(handle: Long)
     external fun updateControls(handle: Long, controlsJson: String)

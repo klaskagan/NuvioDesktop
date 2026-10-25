@@ -123,6 +123,11 @@ These integration tests skip without the isolation flag supplied by that script;
 a skipped run does not verify the navigation regression. Do not use a real user
 profile as a full-app test fixture.
 
+Before handoff, remove task-created temporary QA `.app` bundles, intermediate
+app copies and superseded review builds. Keep the latest standalone review app,
+its verification results and small reusable test fixtures. Check temporary apps
+are no longer running; never clean the installed application or unrelated builds.
+
 At handoff, report the behavior changed, tests run, and any visual or hardware
 checks that remain unverified. Follow `AGENTS.md`'s automatic documentation
 maintenance rule: capture newly confirmed reusable failures in the appropriate
