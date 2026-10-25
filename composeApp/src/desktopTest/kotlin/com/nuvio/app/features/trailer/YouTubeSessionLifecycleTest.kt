@@ -18,6 +18,15 @@ class YouTubeSessionLifecycleTest {
         }
     }
 
+    @Test fun intentionallyPausedPreparedVideoIsReady() {
+        val session = YouTubeSession("R5jcEBVBEbQ", true, true, 0)
+        try {
+            deliver(session, "state", 2.0)
+            assertTrue(session.ready)
+            assertFalse(session.isPlaying)
+        } finally { session.close() }
+    }
+
     @Test fun retryHasAnIndependentLifetime() {
         val old = YouTubeSession("R5jcEBVBEbQ", true, true, 0)
         old.fail("Startup timeout")
@@ -29,6 +38,22 @@ class YouTubeSessionLifecycleTest {
             assertTrue(fresh.isPlaying)
             assertNull(fresh.error)
         } finally { fresh.close() }
+    }
+
+    @Test fun presentationEscapeSurvivesPlaybackFailureButNotDismissal() {
+        val keyboard = YouTubeEscapeSession()
+        val player = YouTubeSession("R5jcEBVBEbQ", true, true, 0)
+        var escapes = 0
+        keyboard.onEscape = { escapes++ }
+        val sink = keyboard.javaClass.getDeclaredField("sink").apply { isAccessible = true }.get(keyboard) as NativePlayerEventSink
+        player.fail("Embedding disabled")
+        sink.onPlayerEvent("escape", 0.0)
+        SwingUtilities.invokeAndWait { }
+        assertEquals(1, escapes)
+        keyboard.close()
+        sink.onPlayerEvent("escape", 0.0)
+        SwingUtilities.invokeAndWait { }
+        assertEquals(1, escapes)
     }
 
     private fun deliver(session: YouTubeSession, type: String, value: Double) {

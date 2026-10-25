@@ -26,7 +26,8 @@ fun main() {
     PosterCardStyleRepository.setHoverPreviewTrailerEnabled(true)
     PosterCardStyleRepository.setHoverPreviewTrailerSoundEnabled(false)
     PosterCardStyleRepository.setHoverPreviewTrailerStartSeconds(0)
-    val names = listOf("Official Trailer" to "R5jcEBVBEbQ", "BTS" to "Wf0UgltketI", "Who Found That?" to "WBpIxTMjYsc")
+    val primaryVideo = System.getenv("NUVIO_QA_VIDEO")?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) } ?: "R5jcEBVBEbQ"
+    val names = listOf("Official Trailer" to primaryVideo, "BTS" to "Wf0UgltketI", "Who Found That?" to "WBpIxTMjYsc")
     val trailers = names.map { (name, key) -> MetaTrailer(key, key, name, "YouTube", type = if (name == "BTS") "Behind the Scenes" else if (name.startsWith("Who")) "Clip" else "Trailer", official = true) }
     val meta = MetaDetails("trailer-qa-fixture", "movie", "Hope", releaseInfo = "2026", trailers = trailers)
     val field = MetaDetailsRepository.javaClass.getDeclaredField("cachedMetaByRequestKey").apply { isAccessible = true }
@@ -34,7 +35,7 @@ fun main() {
     val ctor = Class.forName("com.nuvio.app.features.details.MetaDetailsRepository\$CachedMetaEntry").declaredConstructors.first { it.parameterCount == 3 }.apply { isAccessible = true }
     cache["movie:${meta.id}"] = ctor.newInstance(meta, null, null)
     application {
-        Window(onCloseRequest = ::exitApplication, title = "Nuvio Trailer QA", state = rememberWindowState(width = 1280.dp, height = 1000.dp)) {
+        Window(onCloseRequest = ::exitApplication, title = "Nuvio Trailer QA", state = rememberWindowState(width = 1280.dp, height = (System.getenv("NUVIO_QA_HEIGHT")?.toIntOrNull() ?: 1000).dp)) {
             AppEnvironment {
                 var cards by remember { mutableStateOf(false) }
                 Column(Modifier.fillMaxSize().background(Color(0xff182b3d))) {

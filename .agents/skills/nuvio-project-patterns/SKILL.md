@@ -75,6 +75,10 @@ uses the actual bundle identity as its HTTPS base URL. Keep YouTube controls
 inside the bounded media view and Nuvio's expand/close header outside it. Hero/card
 previews retain their Compose frame renderer; a child WebView cannot honor their
 Compose fades or text layering. Verify both native bounds and visible video.
+Read its **Expected embedded-player interactions** before implementation. Treat
+browser/new-window links, recommendations, keyboard focus and
+Escape, and double-click expansion as baseline behavior. Advancing video alone
+is not completion; verify actions and destinations, and state API limitations.
 
 ## Verify the changed experience
 
