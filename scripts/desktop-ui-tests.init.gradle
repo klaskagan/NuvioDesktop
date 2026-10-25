@@ -6,5 +6,11 @@ allprojects {
         systemProperty 'nuvio.test.isolatedHome', 'true'
         // macOS Java preferences ignore user.home; isolate auth and other preference stores too.
         systemProperty 'java.util.prefs.PreferencesFactory', 'com.nuvio.app.core.storage.IsolatedPreferencesFactory'
+        // Real Swing/native player fixtures need the same AWT access as the packaged desktop app.
+        jvmArgs '--add-opens=java.desktop/java.awt=ALL-UNNAMED',
+            '--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED',
+            '--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED',
+            '--add-opens=java.desktop/sun.awt.windows=ALL-UNNAMED',
+            '--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED'
     }
 }

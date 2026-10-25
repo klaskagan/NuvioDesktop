@@ -182,6 +182,7 @@ class MacVideoPlayerState : VideoPlayerState {
     private var _currentFrame: Bitmap? by mutableStateOf(null)
     private val bitmapLock = ReentrantReadWriteLock()
     internal val currentFrameState = mutableStateOf<ImageBitmap?>(null)
+    override val hasVideoFrame: Boolean get() = currentFrameState.value != null
 
     // Aspect ratio — driven by the live frame (see syncAspectRatioToFrame).
     private var _aspectRatio by mutableStateOf(16f / 9f)

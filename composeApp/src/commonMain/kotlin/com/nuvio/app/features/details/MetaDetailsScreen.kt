@@ -771,7 +771,7 @@ fun MetaDetailsScreen(
                         return@LaunchedEffect
                     }
                     val resolvedSource = runCatching {
-                        TrailerPlaybackResolver.resolveFromYouTubeUrl(heroTrailerCandidate.youtubePlaybackUrl())
+                        TrailerPlaybackResolver.resolveFromYouTubeUrl(heroTrailerCandidate.youtubePlaybackUrl(), target = com.nuvio.app.features.trailer.TrailerPlaybackTarget.FRAME_PREVIEW)
                     }.getOrNull()
                     if (resolvedSource == null) {
                         heroTrailerFinished = true
@@ -1054,6 +1054,7 @@ fun MetaDetailsScreen(
                     ?.audioUrl
                     ?.takeIf { heroTrailerSourceUrl != null && it.isNotBlank() }
                 val heroTrailerPlayWhenReady = heroTrailerSourceUrl != null &&
+                    selectedTrailer == null &&
                     !isLeavingDetails &&
                     !isHeroCollapsed.value
                 val headerTarget = if (isHeroCollapsed.value) 1f else 0f

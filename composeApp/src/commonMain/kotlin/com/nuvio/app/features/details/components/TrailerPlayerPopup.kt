@@ -59,6 +59,13 @@ fun TrailerPlayerPopup(
     onRetry: (() -> Unit)? = null,
 ) {
     if (!visible) return
+    if (com.nuvio.app.features.trailer.YouTubeEmbed.supported) {
+        com.nuvio.app.features.trailer.YouTubeEmbed.Popup(
+            playbackSource?.videoUrl, trailerTitle, trailerType, contentTitle,
+            isLoading, errorMessage, onDismiss, onRetry,
+        )
+        return
+    }
 
     val headerType = trailerType.trim().ifBlank { stringResource(Res.string.detail_tab_trailer) }
     val headerSubtitle = buildList {

@@ -12,7 +12,12 @@ import java.awt.event.MouseEvent
 import java.awt.event.MouseMotionAdapter
 import java.awt.image.BufferedImage
 
-internal class NativePlayerHost : Canvas() {
+internal class NativePlayerHost(val embedded: Boolean = false) : Canvas() {
+    var onBoundsChanged: (() -> Unit)? = null
+    var presentationFullscreen: Boolean = false
+    var cornerRadius: Double = 18.0
+    @Volatile var embeddedBounds: DoubleArray = doubleArrayOf(0.0, 0.0, 1.0, 1.0, 18.0)
+        private set
     var onPeerReady: (() -> Unit)? = null
     var onDisplayableChanged: ((Boolean) -> Unit)? = null
     var onFirstPaint: (() -> Unit)? = null
@@ -31,6 +36,18 @@ internal class NativePlayerHost : Canvas() {
     }
 
     init {
+        if (embedded && DesktopHostOs.current == DesktopHostOs.MACOS) {
+            addComponentListener(object : ComponentAdapter() {
+                override fun componentResized(event: ComponentEvent) = updateEmbeddedBounds()
+                override fun componentMoved(event: ComponentEvent) = updateEmbeddedBounds()
+                override fun componentShown(event: ComponentEvent) = updateEmbeddedBounds()
+                override fun componentHidden(event: ComponentEvent) = updateEmbeddedBounds()
+            })
+            addHierarchyBoundsListener(object : java.awt.event.HierarchyBoundsAdapter() {
+                override fun ancestorMoved(event: java.awt.event.HierarchyEvent) = updateEmbeddedBounds()
+                override fun ancestorResized(event: java.awt.event.HierarchyEvent) = updateEmbeddedBounds()
+            })
+        }
         background = Color.BLACK
         ignoreRepaint = false
         addMouseMotionListener(object : MouseMotionAdapter() {
@@ -60,6 +77,21 @@ internal class NativePlayerHost : Canvas() {
                 }
             })
         }
+    }
+
+    fun updateEmbeddedBounds() {
+        if (!embedded) return
+        val window = javax.swing.SwingUtilities.getWindowAncestor(this) ?: return
+        val origin = javax.swing.SwingUtilities.convertPoint(this, 0, 0, window)
+        embeddedBounds = if (presentationFullscreen) doubleArrayOf(
+            0.0, 0.0,
+            (window.width - window.insets.left - window.insets.right).toDouble(),
+            (window.height - window.insets.top - window.insets.bottom).toDouble(), 0.0,
+        ) else doubleArrayOf(
+            (origin.x - window.insets.left).toDouble(), (origin.y - window.insets.top).toDouble(),
+            width.toDouble(), height.toDouble(), cornerRadius,
+        )
+        onBoundsChanged?.invoke()
     }
 
     private fun notifyFirstPaints() {
@@ -100,6 +132,7 @@ internal class NativePlayerHost : Canvas() {
     override fun paint(graphics: Graphics) {
         graphics.color = Color.BLACK
         graphics.fillRect(0, 0, width, height)
+        updateEmbeddedBounds()
         notifyFirstPaints()
     }
 

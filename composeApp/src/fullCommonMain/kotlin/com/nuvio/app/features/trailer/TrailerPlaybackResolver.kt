@@ -10,14 +10,19 @@ actual object TrailerPlaybackResolver {
     private val cacheMutex = Mutex()
     private var playbackCache = emptyMap<String, CachedPlaybackSource>()
 
-    actual suspend fun resolveFromYouTubeUrl(youtubeUrl: String): TrailerPlaybackSource? {
+    actual suspend fun resolveFromYouTubeUrl(youtubeUrl: String, forceRefresh: Boolean, target: TrailerPlaybackTarget): TrailerPlaybackSource? {
         if (youtubeUrl.isBlank()) return null
+        if (YouTubeEmbed.supported && target == TrailerPlaybackTarget.NATIVE_PLAYER) {
+            return youtubeEmbedVideoId(youtubeUrl)?.let { TrailerPlaybackSource("https://www.youtube.com/watch?v=$it") }
+        }
+        val cacheKey = "$target:$youtubeUrl"
         cacheMutex.lock()
         try {
             playbackCache = playbackCache.filterValues { entry ->
                 entry.cachedAt.elapsedNow() < PlaybackCacheTtl
             }
-            playbackCache[youtubeUrl]?.let { cached ->
+            if (forceRefresh) playbackCache = playbackCache - cacheKey
+            playbackCache[cacheKey]?.let { cached ->
                 TrailerExtractionPlatform.diagnostic(
                     "cache hit ageMs=${cached.cachedAt.elapsedNow().inWholeMilliseconds}",
                 )
@@ -27,12 +32,14 @@ actual object TrailerPlaybackResolver {
             cacheMutex.unlock()
         }
 
-        val source = extractor.extractPlaybackSource(youtubeUrl)
+        val source = if (target == TrailerPlaybackTarget.FRAME_PREVIEW) {
+            extractor.extractPreviewPlaybackSource(youtubeUrl)
+        } else extractor.extractPlaybackSource(youtubeUrl)
         if (source != null) {
             cacheMutex.lock()
             try {
                 playbackCache = playbackCache + (
-                    youtubeUrl to CachedPlaybackSource(
+                    cacheKey to CachedPlaybackSource(
                         source = source,
                         cachedAt = TimeSource.Monotonic.markNow(),
                     )

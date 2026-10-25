@@ -48,3 +48,4 @@ iosApp/Configuration/DeviceSigning.local.json
 
 # Local MPVKit iOS build environment (sparse APFS image, see MPVKit docs)
 .mpvkit-build.sparseimage
+![Dd]ocs/trailer-player-comparison.md
