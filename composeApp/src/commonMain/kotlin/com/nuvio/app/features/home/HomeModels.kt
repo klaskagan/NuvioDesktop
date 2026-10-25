@@ -21,9 +21,10 @@ data class MetaPreview(
     val rawPosterUrl: String? = null,
     val landscapePoster: String? = null,
     val rawLandscapePosterUrl: String? = null,
+    val calendarCard: com.nuvio.app.features.trakt.CalendarCard? = null,
 )
 
-fun MetaPreview.stableKey(): String = "$type:$id"
+fun MetaPreview.stableKey(): String = calendarCard?.key ?: "$type:$id"
 
 enum class PosterShape {
     Poster,
@@ -40,10 +41,12 @@ data class HomeCatalogSection(
     val items: List<MetaPreview>,
     val availableItemCount: Int = items.size,
     val hasMore: Boolean = false,
+    val canExpand: Boolean = true,
+    val calendarState: com.nuvio.app.features.trakt.CalendarState? = null,
 )
 
 fun HomeCatalogSection.canOpenCatalog(previewLimit: Int): Boolean =
-    availableItemCount > previewLimit || hasMore
+    canExpand && (availableItemCount > previewLimit || hasMore)
 
 data class HomeUiState(
     val isLoading: Boolean = false,

@@ -1,0 +1,21 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Trakt calendar tests (isolated)" type="GradleRunConfiguration" factoryName="Gradle">
+    <ExternalSystemSettings>
+      <option name="externalProjectPath" value="$PROJECT_DIR$" />
+      <option name="externalSystemIdString" value="GRADLE" />
+      <option name="scriptParameters" value="-I &quot;$PROJECT_DIR$/scripts/desktop-ui-tests.init.gradle&quot; --console=plain" />
+      <option name="taskNames">
+        <list>
+          <option value=":composeApp:desktopTest" />
+          <option value="--tests &quot;com.nuvio.app.features.trakt.TraktCalendarLocalTimeTest&quot;" />
+          <option value="--tests &quot;com.nuvio.app.features.trakt.TraktCalendarTest&quot;" />
+          <option value="--tests &quot;com.nuvio.app.TraktCalendarUiTest&quot;" />
+        </list>
+      </option>
+    </ExternalSystemSettings>
+    <ExternalSystemDebugServerProcess>false</ExternalSystemDebugServerProcess>
+    <ExternalSystemReattachDebugProcess>true</ExternalSystemReattachDebugProcess>
+    <RunAsTest>true</RunAsTest>
+    <method v="2" />
+  </configuration>
+</component>

@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.outlined.CalendarMonth
+import nuvio.composeapp.generated.resources.calendar_screen_title
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.runtime.Composable
@@ -145,6 +147,12 @@ internal fun DetailNavigationFrame(
                             onClick = { onTabSelected(AppScreenTab.Library) },
                             drawable = Res.drawable.sidebar_library,
                             label = stringResource(Res.string.compose_nav_library),
+                        ),
+                        FloatingNavigationItem(
+                            selected = selectedTab == AppScreenTab.Calendar,
+                            onClick = { onTabSelected(AppScreenTab.Calendar) },
+                            icon = Icons.Outlined.CalendarMonth,
+                            label = stringResource(Res.string.calendar_screen_title),
                         ),
                         FloatingNavigationItem(
                             selected = selectedTab == AppScreenTab.Settings,

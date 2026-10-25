@@ -27,6 +27,7 @@ private data class StoredPosterCardStylePreferences(
     val heightDp: Int = DefaultPosterCardHeightDp,
     val cornerRadiusDp: Int = DefaultPosterCardCornerRadiusDp,
     val catalogLandscapeModeEnabled: Boolean = false,
+    val calendarLandscapeModeEnabled: Boolean = false,
     val hideLabelsEnabled: Boolean = false,
     val hoverPreviewEnabled: Boolean = true,
     val hoverPreviewOpenDelayMillis: Int = DefaultHoverPreviewOpenDelayMillis,
@@ -41,6 +42,7 @@ data class PosterCardStyleUiState(
     val heightDp: Int = DefaultPosterCardHeightDp,
     val cornerRadiusDp: Int = DefaultPosterCardCornerRadiusDp,
     val catalogLandscapeModeEnabled: Boolean = false,
+    val calendarLandscapeModeEnabled: Boolean = false,
     val hideLabelsEnabled: Boolean = false,
     val hoverPreviewEnabled: Boolean = true,
     val hoverPreviewOpenDelayMillis: Int = DefaultHoverPreviewOpenDelayMillis,
@@ -91,6 +93,13 @@ object PosterCardStyleRepository {
         ensureLoaded()
         if (_uiState.value.cornerRadiusDp == cornerRadiusDp) return
         _uiState.value = _uiState.value.copy(cornerRadiusDp = cornerRadiusDp)
+        persist()
+    }
+
+    fun setCalendarLandscapeModeEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (_uiState.value.calendarLandscapeModeEnabled == enabled) return
+        _uiState.value = _uiState.value.copy(calendarLandscapeModeEnabled = enabled)
         persist()
     }
 
@@ -190,6 +199,7 @@ object PosterCardStyleRepository {
                 heightDp = heightDp,
                 cornerRadiusDp = cornerRadiusDp,
                 catalogLandscapeModeEnabled = stored.catalogLandscapeModeEnabled,
+                calendarLandscapeModeEnabled = stored.calendarLandscapeModeEnabled,
                 hideLabelsEnabled = stored.hideLabelsEnabled,
                 hoverPreviewEnabled = stored.hoverPreviewEnabled,
                 hoverPreviewOpenDelayMillis = normalizeHoverPreviewOpenDelayMillis(
@@ -215,6 +225,7 @@ object PosterCardStyleRepository {
                     heightDp = _uiState.value.heightDp,
                     cornerRadiusDp = _uiState.value.cornerRadiusDp,
                     catalogLandscapeModeEnabled = _uiState.value.catalogLandscapeModeEnabled,
+                    calendarLandscapeModeEnabled = _uiState.value.calendarLandscapeModeEnabled,
                     hideLabelsEnabled = _uiState.value.hideLabelsEnabled,
                     hoverPreviewEnabled = _uiState.value.hoverPreviewEnabled,
                     hoverPreviewOpenDelayMillis = _uiState.value.hoverPreviewOpenDelayMillis,

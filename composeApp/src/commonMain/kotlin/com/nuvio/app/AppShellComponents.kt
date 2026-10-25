@@ -33,6 +33,9 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.CalendarMonth
+import com.nuvio.app.features.calendar.CalendarScreen
+import nuvio.composeapp.generated.resources.calendar_screen_title
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.rounded.Settings
@@ -286,6 +289,10 @@ internal fun AppTabHost(
                     onDownloadsClick = actions.onDownloadsClick,
                     disintegrationRequest = state.libraryDisintegrationRequest,
                 )
+            }
+
+            AppScreenTab.Calendar -> {
+                CalendarScreen(topChromePadding = state.topChromePadding, onPosterClick = actions.onPosterClick)
             }
 
             AppScreenTab.Settings -> {
@@ -869,6 +876,15 @@ internal fun DesktopHoverSidebar(
                         modifier = Modifier.size(DesktopSidebarIconSize),
                         tint = color,
                     )
+                }
+                DesktopSidebarItem(
+                    label = stringResource(Res.string.calendar_screen_title),
+                    selected = selectedTab == AppScreenTab.Calendar,
+                    expanded = sidebarExpanded,
+                    onClick = { selectTab(AppScreenTab.Calendar) },
+                ) { color ->
+                    Icon(Icons.Outlined.CalendarMonth, stringResource(Res.string.calendar_screen_title),
+                        modifier = Modifier.size(DesktopSidebarIconSize), tint = color)
                 }
                 DesktopSidebarItem(
                     label = stringResource(Res.string.compose_settings_page_root),

@@ -17,6 +17,9 @@ skill is not in the session catalog, read that file directly.
   explicit user request.
 - Match the current reference's radius, spacing, typography, icons, selection,
   focus, and dismissal behavior. Avoid parallel styling for the same interaction.
+- For layout, loading, scrolling, gestures, and date presentation, read
+  `.agents/ui-consistency.md`. Apply its shared invariants; keep feature-specific
+  choices in the feature's documentation.
 - Use the shared media viewport/shelf prefetch and row-readiness components for
   every movie/series shelf or grid, including portrait and square styles. Do not
   opt individual catalog identities into loading behavior. Keep collection cover
@@ -59,6 +62,29 @@ skill is not in the session catalog, read that file directly.
 - After an ambiguous or failed write, read the actual state before retrying.
   Restore unintended changes from the backup and verify IDs, contents, order,
   and counts. Check whether imports append or replace to avoid duplicates.
+
+## Maintain agent guidance automatically
+
+When a confirmed bug or accepted design correction exposes a reusable failure
+pattern or changes a cross-feature convention, update the relevant agent
+documentation in the same task, without waiting for a separate user request.
+Treat this as part of completing the fix.
+
+- Record the trigger/root cause, the behavior to preserve, an existing reference,
+  and the regression check that would catch a repeat. Prefer a regression test
+  and shared-component fix where appropriate; documentation alone is not proof.
+- Put cross-screen UI invariants in `.agents/ui-consistency.md`, other shared
+  lessons in the closest relevant agent reference, routing/workflow guidance in
+  the applicable skill, and local behavior in feature documentation. Keep
+  `AGENTS.md` short. Do not make a feature preference a global rule.
+- Update or replace an existing rule before adding another. Remove contradictory
+  or obsolete guidance and verify referenced files/tests still exist.
+- Document confirmed findings, not speculative review concerns. If reproduction
+  or verification is blocked, state that limitation in the task handoff rather
+  than presenting an unverified fix as a project convention.
+- Mention documentation changes in the handoff. This rule authorizes maintaining
+  repository guidance during the task, not unrelated UI changes, live-account
+  mutations, or background monitoring.
 
 ## Repository boundaries
 

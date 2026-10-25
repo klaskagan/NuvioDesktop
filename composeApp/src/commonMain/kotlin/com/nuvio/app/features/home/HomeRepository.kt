@@ -146,6 +146,7 @@ object HomeRepository {
     }
 
     fun applyCurrentSettings() {
+        currentDefinitions = currentDefinitions.filterNot { it.key == com.nuvio.app.features.trakt.TRAKT_CALENDAR_KEY } + traktCalendarDefinitions()
         publishCurrentState(
             isLoading = _uiState.value.isLoading,
             requestKey = currentRequestKey,
@@ -188,12 +189,18 @@ object HomeRepository {
         fun HomeCatalogSection.withPosterOverlay(): HomeCatalogSection =
             copy(items = items.reapplyCustomPosterUrls(posterPattern))
 
+        val calendarState = com.nuvio.app.features.trakt.TraktCalendarRepository.uiState.value
         val sections = currentDefinitions
             .sortedBy { definition -> preferences[definition.key]?.order ?: Int.MAX_VALUE }
             .mapNotNull { definition ->
                 val preference = preferences[definition.key]
                 if (preference?.enabled == false) return@mapNotNull null
 
+                if (definition.key == com.nuvio.app.features.trakt.TRAKT_CALENDAR_KEY) {
+                    return@mapNotNull definition.calendarSection(calendarState).copy(
+                        title = preference?.customTitle?.ifBlank { definition.catalogName } ?: definition.catalogName,
+                    )
+                }
                 val section = cachedSections[definition.cacheKey]
                     ?.withPosterOverlay()
                     ?.withReleaseFilter()
@@ -208,6 +215,7 @@ object HomeRepository {
         val catalogHeroItems = if (snapshot.heroEnabled) {
             val heroRandom = Random((requestKey?.hashCode() ?: 0).absoluteValue + 1)
             currentDefinitions
+                .filter { it.supportsHero }
                 .filter { definition -> preferences[definition.key]?.heroSourceEnabled != false }
                 .mapNotNull { definition -> cachedSections[definition.cacheKey] }
                 .map { section -> section.withPosterOverlay().withReleaseFilter() }
@@ -235,6 +243,11 @@ object HomeRepository {
     }
 
     private suspend fun HomeCatalogDefinition.toSection(forceRefresh: Boolean): HomeCatalogSection {
+        if (key == com.nuvio.app.features.trakt.TRAKT_CALENDAR_KEY) {
+            if (forceRefresh && HomeCatalogSettingsRepository.snapshot().preferences[key]?.enabled != false)
+                com.nuvio.app.features.trakt.TraktCalendarRepository.load(force = true)
+            return calendarSection(com.nuvio.app.features.trakt.TraktCalendarRepository.uiState.value)
+        }
         serverConnectionId?.let { connectionId -> return toServerSection(connectionId) }
         CustomPosterUrlRepository.ensureLoaded()
         val pattern = CustomPosterUrlRepository.patternForScreen(com.nuvio.app.core.poster.CustomPosterScreen.HOME)
@@ -516,3 +529,9 @@ private fun prioritizeDefinitions(
     }
     return priority + remainder
 }
+
+private fun HomeCatalogDefinition.calendarSection(state: com.nuvio.app.features.trakt.CalendarState) = HomeCatalogSection(
+    key = key, title = catalogName, subtitle = "Trakt", addonName = "Trakt",
+    target = CatalogTarget.Addon(manifestUrl = "", contentType = "calendar", catalogId = "calendar", supportsPagination = false),
+    items = state.cards.map { it.toPreview() }, canExpand = false, calendarState = state,
+)

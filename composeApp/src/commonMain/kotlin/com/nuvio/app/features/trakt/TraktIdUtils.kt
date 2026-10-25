@@ -8,6 +8,7 @@ internal data class TraktExternalIds(
     val imdb: String? = null,
     val tmdb: Int? = null,
     val slug: String? = null,
+    val tvdb: Int? = null,
 )
 
 internal fun parseTraktContentIds(contentId: String?): TraktExternalIds {

@@ -1,0 +1,16 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Desktop tests (isolated)" type="GradleRunConfiguration" factoryName="Gradle">
+    <ExternalSystemSettings>
+      <option name="externalProjectPath" value="$PROJECT_DIR$" />
+      <option name="externalSystemIdString" value="GRADLE" />
+      <option name="scriptParameters" value="-I &quot;$PROJECT_DIR$/scripts/desktop-ui-tests.init.gradle&quot; --console=plain" />
+      <option name="taskNames">
+        <list><option value=":composeApp:desktopTest" /></list>
+      </option>
+    </ExternalSystemSettings>
+    <ExternalSystemDebugServerProcess>false</ExternalSystemDebugServerProcess>
+    <ExternalSystemReattachDebugProcess>true</ExternalSystemReattachDebugProcess>
+    <RunAsTest>true</RunAsTest>
+    <method v="2" />
+  </configuration>
+</component>

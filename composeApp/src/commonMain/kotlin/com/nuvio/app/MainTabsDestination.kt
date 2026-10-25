@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.outlined.CalendarMonth
+import nuvio.composeapp.generated.resources.calendar_screen_title
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -161,6 +163,12 @@ internal fun MainTabsDestination(
                 drawable = Res.drawable.sidebar_library,
                 label = stringResource(Res.string.compose_nav_library),
             ),
+            *if (isDesktop) arrayOf(FloatingNavigationItem(
+                selected = selectedTab == AppScreenTab.Calendar,
+                onClick = { onTabSelected(AppScreenTab.Calendar) },
+                icon = Icons.Outlined.CalendarMonth,
+                label = stringResource(Res.string.calendar_screen_title),
+            )) else emptyArray(),
             FloatingNavigationItem(
                 selected = selectedTab == AppScreenTab.Settings,
                 onClick = { onTabSelected(AppScreenTab.Settings) },

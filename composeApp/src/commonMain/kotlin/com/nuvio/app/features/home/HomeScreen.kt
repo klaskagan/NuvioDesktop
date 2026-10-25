@@ -140,6 +140,7 @@ fun HomeScreen(
     onFolderClick: ((collectionId: String, folderId: String) -> Unit)? = null,
     onFirstCatalogRendered: (() -> Unit)? = null,
 ) {
+    TraktCalendarHomeBinding()
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
             AddonRepository.initialize()
@@ -1246,7 +1247,7 @@ fun HomeScreen(
                             }
                         } else {
                             val section = sectionsMap[settingsItem.key]
-                            if (section != null && section.items.isNotEmpty()) {
+                            if (section != null && (section.items.isNotEmpty() || section.calendarState != null)) {
                                 item(key = keyedSettingsItem.lazyKey, contentType = "catalog") {
                                     CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prefetchedArtwork) {
                                     HomeCatalogRowSection(

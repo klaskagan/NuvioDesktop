@@ -35,6 +35,7 @@ enum class TraktConnectionMode {
 }
 
 data class TraktAuthUiState(
+    val calendarAccountKey: String? = null,
     val mode: TraktConnectionMode = TraktConnectionMode.DISCONNECTED,
     val credentialsConfigured: Boolean = true,
     val isLoading: Boolean = false,

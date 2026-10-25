@@ -242,6 +242,9 @@ fun NuvioPosterCard(
     fallbackImageUrl: String? = null,
     shape: NuvioPosterShape = NuvioPosterShape.Poster,
     detailLine: String? = null,
+    secondaryDetailLine: String? = null,
+    artworkBadge: String? = null,
+    requiredLabels: Boolean = false,
     showTitleBelow: Boolean = true,
     bottomLeftLogoUrl: String? = null,
     bottomLeftText: String? = null,
@@ -266,7 +269,7 @@ fun NuvioPosterCard(
         basePosterWidthDp = effectiveBasePosterWidthDp,
         shape = shape,
     )
-    val shouldShowTitleBelow = showTitleBelow && !posterCardStyle.hideLabelsEnabled
+    val shouldShowTitleBelow = showTitleBelow && (requiredLabels || !posterCardStyle.hideLabelsEnabled)
     val platformContext = coil3.compose.LocalPlatformContext.current
     val imageModel = remember(imageUrl, fallbackImageUrl, platformContext, revealArtworkTogether, shape) {
         if (imageUrl == null) null
@@ -405,6 +408,17 @@ fun NuvioPosterCard(
                     }
                 }
 
+                if (!artworkBadge.isNullOrBlank() && artworkReady) {
+                    Text(
+                        text = artworkBadge,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
+                            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = .78f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 7.dp, vertical = 4.dp),
+                        color = androidx.compose.ui.graphics.Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 2,
+                    )
+                }
                 NuvioPosterWatchedOverlay(isWatched = isWatched)
             }
         }
@@ -431,6 +445,11 @@ fun NuvioPosterCard(
             } else {
                 Box(modifier = Modifier.height(NuvioTokens.Space.none))
             }
+            if (!secondaryDetailLine.isNullOrBlank()) Text(
+                text = secondaryDetailLine, modifier = labelVisibility,
+                style = MaterialTheme.typography.labelSmall, color = tokens.colors.textMuted,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
         } else {
             Box(modifier = Modifier.height(NuvioTokens.Space.none))
         }

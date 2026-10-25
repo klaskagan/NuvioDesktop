@@ -27,9 +27,10 @@ fun HomePosterCard(
     fillWidth: Boolean = false,
     respectGlobalPosterStyle: Boolean = true,
 ) {
+    val calendar = item.calendarCard
     val posterCardStyle = rememberPosterCardStyleUiState()
-    val isLandscapeMode = useLandscapeBackdropMode || (respectGlobalPosterStyle && posterCardStyle.catalogLandscapeModeEnabled) || (enhanceLandscapeTitles && isTitleArtworkMedia(item.type) && item.posterShape == PosterShape.Landscape)
-    val enhance = enhanceLandscapeTitles && showLandscapeOverlay && isLandscapeMode && isTitleArtworkMedia(item.type)
+    val isLandscapeMode = if (calendar != null) posterCardStyle.catalogLandscapeModeEnabled else useLandscapeBackdropMode || (respectGlobalPosterStyle && posterCardStyle.catalogLandscapeModeEnabled) || (enhanceLandscapeTitles && isTitleArtworkMedia(item.type) && item.posterShape == PosterShape.Landscape)
+    val enhance = calendar == null && enhanceLandscapeTitles && showLandscapeOverlay && isLandscapeMode && isTitleArtworkMedia(item.type)
     val artworkState = rememberLandscapeMediaArtwork(item.id, item.type, enhance && !alwaysShowLandscapeTitle)
     val artwork = artworkState.artwork
     val rowReveal = LocalLandscapeRowReveal.current.takeIf { isTitleArtworkMedia(item.type) }
@@ -50,7 +51,7 @@ fun HomePosterCard(
 
     // Unknown supplied art is never classified as textless. A failed/absent clean lookup keeps it intact.
     val imageUrl = if ((enhance && artworkState.isLoading) || rowPending) null else cleanBackdrop ?: originalImageUrl
-    val drawLandscapeTitle = if (enhance && !alwaysShowLandscapeTitle) cleanBackdrop != null
+    val drawLandscapeTitle = if (calendar != null) false else if (enhance && !alwaysShowLandscapeTitle) cleanBackdrop != null
         else isLandscapeMode && showLandscapeOverlay && effectiveLandscapePoster.isNullOrBlank() && imageUrl != null
 
     HomePosterHoverPreview(
@@ -69,8 +70,11 @@ fun HomePosterCard(
             fillWidth = fillWidth,
             basePosterWidthDp = desktopCatalogShelfPosterBaseWidthDp(posterCardStyle.widthDp),
             shape = if (isLandscapeMode) NuvioPosterShape.Landscape else item.posterShape.toNuvioPosterShape(),
-            detailLine = if (isLandscapeMode || posterCardStyle.hideLabelsEnabled) null else item.releaseInfo?.let { formatReleaseDateForDisplay(it) },
-            showTitleBelow = showTitleBelow && !posterCardStyle.hideLabelsEnabled && !(enhance && isLandscapeMode),
+            artworkBadge = calendar?.let { calendarBadge(it) },
+            requiredLabels = calendar != null,
+            secondaryDetailLine = if (isLandscapeMode) calendar?.let { calendarReleaseLabel(it) } else null,
+            detailLine = if (calendar != null) calendar.episodeLabel ?: calendarMovieLabel(calendar.media.year) else if (isLandscapeMode || posterCardStyle.hideLabelsEnabled) null else item.releaseInfo?.let { formatReleaseDateForDisplay(it) },
+            showTitleBelow = calendar != null || (showTitleBelow && !posterCardStyle.hideLabelsEnabled && !(enhance && isLandscapeMode)),
             bottomLeftLogoUrl = if (drawLandscapeTitle && !artworkState.logoFailed) artwork?.logo ?: item.logo else null,
             bottomLeftText = if (drawLandscapeTitle && (enhance || alwaysShowLandscapeTitle || !posterCardStyle.hideLabelsEnabled)) item.name else null,
             logoTextFallback = enhance || alwaysShowLandscapeTitle,

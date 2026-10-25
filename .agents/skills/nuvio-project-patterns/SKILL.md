@@ -38,6 +38,12 @@ Paths below are relative to the NuvioDesktop repository root.
 Confirm these references still exist and represent the current design. Search for
 an updated implementation if the repository has moved; do not copy obsolete code.
 
+For changes to layout, loading states, scrolling, gestures, or date presentation,
+read [UI consistency](../../ui-consistency.md). It records confirmed cross-screen
+failure patterns and the behavior/tests that prevent recurrence. For Calendar
+work, also read [the Calendar contract](../../../CALENDAR.md); its six-row grid,
+orientation setting, and navigation choices are feature-specific.
+
 ## Integrate state and behavior
 
 Keep shared feature state and contracts in their existing commonMain layer;
@@ -97,5 +103,6 @@ a skipped run does not verify the navigation regression. Do not use a real user
 profile as a full-app test fixture.
 
 At handoff, report the behavior changed, tests run, and any visual or hardware
-checks that remain unverified. Improve this guidance from demonstrated recurring
-issues, not speculative restrictions.
+checks that remain unverified. Follow `AGENTS.md`'s automatic documentation
+maintenance rule: capture newly confirmed reusable failures in the appropriate
+reference as part of the fix, and mention the documentation update in the handoff.
