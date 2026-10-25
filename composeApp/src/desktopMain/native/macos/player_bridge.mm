@@ -14,6 +14,7 @@
 #include <mpv/render_gl.h>
 
 #include <atomic>
+#include <array>
 #include <cmath>
 #include <dlfcn.h>
 #include <mutex>
@@ -130,6 +131,11 @@ static constexpr double kMaxVolumePercent = 200.0;
                         eventSink:(jobject)eventSink
                       eventMethod:(jmethodID)eventMethod;
 - (void)shutdown;
+- (void)adoptEmbeddedContainer:(NSView *)container;
+- (void)updateEmbeddedBounds:(const double *)bounds visible:(BOOL)visible;
+- (NSRect)embeddedFrame;
+- (uint64_t)videoFrameSignature;
+- (void)setNativeControlsVisible:(BOOL)visible;
 - (void)updateControlsJson:(NSString *)controlsJson;
 - (void)requestFocus;
 - (void)beginWindowDrag;
@@ -1083,6 +1089,8 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 
 @implementation MpvWebPlayer {
     NSView *_hostView;
+    NSView *_embeddedContainer;
+    BOOL _nativeControlsVisible;
     PlayerMetalView *_videoView;
     WKWebView *_webView;
     PlayerScriptHandler *_scriptHandler;
@@ -1191,6 +1199,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     _eventMethod = eventMethod;
 
     _hostView = hostView;
+    _nativeControlsVisible = YES;
     _hostView.wantsLayer = YES;
     _hostView.layer.backgroundColor = NSColor.blackColor.CGColor;
     [_hostView setPostsFrameChangedNotifications:YES];
@@ -1275,6 +1284,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 }
 
 - (void)focusControlsWebViewIfNeeded {
+    if (!_nativeControlsVisible) return;
     if (_didFocusControlsWebView || !_webView || !_webView.window) {
         return;
     }
@@ -1297,6 +1307,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 - (void)reparentSurfaceToHostView:(NSView *)newHostView {
     if (!newHostView || !newHostView.window) return;
     [self endWindowTracking];
+    if (_embeddedContainer && newHostView == _embeddedContainer.superview) newHostView = _embeddedContainer;
     NSView *oldHostView = _hostView;
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                       name:NSViewFrameDidChangeNotification
@@ -1335,6 +1346,68 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     [_videoView updateMetalLayerLayout];
     [_videoView scheduleRenderUpdate];
     [self requestFocus];
+}
+
+- (void)adoptEmbeddedContainer:(NSView *)container {
+    _embeddedContainer = container;
+}
+
+- (void)updateEmbeddedBounds:(const double *)bounds visible:(BOOL)visible {
+    NSView *container = _embeddedContainer;
+    NSView *parent = container.superview;
+    if (!container || !parent) return;
+    CGFloat width = fmax(0.0, bounds[2]);
+    CGFloat height = fmax(0.0, bounds[3]);
+    CGFloat y = parent.isFlipped ? bounds[1] : parent.bounds.size.height - bounds[1] - height;
+    container.frame = NSMakeRect(bounds[0], y, width, height);
+    container.hidden = !visible || width <= 1.0 || height <= 1.0;
+    container.layer.cornerRadius = fmax(0.0, bounds[4]);
+    if (_hostView == container) [self layoutNativeSubviews];
+}
+
+- (uint64_t)videoFrameSignature {
+    if (!_mpv) return 0;
+    const char *command[] = {"screenshot-raw", "video", NULL};
+    mpv_node result = {};
+    if (mpv_command_ret(_mpv, command, &result) < 0) return 0;
+    uint64_t hash = 1469598103934665603ULL;
+    uint64_t brightness = 0;
+    mpv_byte_array *bytes = nullptr;
+    int64_t width = 0, height = 0, stride = 0;
+    if (result.format == MPV_FORMAT_NODE_MAP && result.u.list) {
+        mpv_node_list *map = result.u.list;
+        for (int i = 0; i < map->num; ++i) {
+            const char *key = map->keys[i]; mpv_node value = map->values[i];
+            if (!strcmp(key, "data") && value.format == MPV_FORMAT_BYTE_ARRAY) bytes = value.u.ba;
+            if (!strcmp(key, "w") && value.format == MPV_FORMAT_INT64) width = value.u.int64;
+            if (!strcmp(key, "h") && value.format == MPV_FORMAT_INT64) height = value.u.int64;
+            if (!strcmp(key, "stride") && value.format == MPV_FORMAT_INT64) stride = value.u.int64;
+        }
+    }
+    if (bytes && width > 0 && height > 0 && stride >= width * 3) {
+        const unsigned char *pixels = (const unsigned char *)bytes->data;
+        const int channels = stride >= width * 4 ? 4 : 3;
+        const int64_t step = fmax(1, width * height / 4096);
+        for (int64_t pixel = 0; pixel < width * height; pixel += step) {
+            const int64_t offset = (pixel / width) * stride + (pixel % width) * channels;
+            if ((uint64_t)(offset + 2) >= bytes->size) break;
+            for (int c = 0; c < 3; ++c) {
+                brightness += pixels[offset + c];
+                hash = (hash ^ pixels[offset + c]) * 1099511628211ULL;
+            }
+        }
+    }
+    mpv_free_node_contents(&result);
+    return brightness > 1000 ? hash : 0;
+}
+
+- (NSRect)embeddedFrame {
+    return _embeddedContainer ? _embeddedContainer.frame : NSZeroRect;
+}
+
+- (void)setNativeControlsVisible:(BOOL)visible {
+    _nativeControlsVisible = visible;
+    _webView.hidden = !visible;
 }
 
 - (void)layoutControlsWebViewToBounds:(NSRect)bounds immediate:(BOOL)immediate {
@@ -1754,7 +1827,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
         "stream-lavf-o",
         "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=%23%408,429,500,502,503,504,reconnect_delay_max=15"
     );
-    setMpvOptionString(_mpv, "hr-seek", "no");
+    setMpvOptionString(_mpv, "hr-seek", [_hostView.identifier isEqualToString:@"nuvio-embedded-player"] ? "yes" : "no");
 
     if (headerLines.count > 0) {
         NSMutableArray *escaped = [NSMutableArray arrayWithCapacity:headerLines.count];
@@ -2105,6 +2178,8 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     [_videoView removeFromSuperview];
     _webView = nil;
     _videoView = nil;
+    [_embeddedContainer removeFromSuperview];
+    _embeddedContainer = nil;
     _scriptHandler = nil;
     if (_eventSink) {
         BOOL didAttach = NO;
@@ -2143,7 +2218,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 - (void)seekToMilliseconds:(long long)positionMs {
     if (!_mpv) return;
     std::string seconds = std::to_string((double)positionMs / 1000.0);
-    const char *command[] = {"seek", seconds.c_str(), "absolute+keyframes", NULL};
+    const char *command[] = {"seek", seconds.c_str(), _embeddedContainer ? "absolute+exact" : "absolute+keyframes", NULL};
     mpv_command(_mpv, command);
     [self storeCachedPosition:(double)positionMs / 1000.0 at:CACurrentMediaTime()];
 }
@@ -2151,7 +2226,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 - (void)seekByMilliseconds:(long long)offsetMs {
     if (!_mpv) return;
     std::string seconds = std::to_string((double)offsetMs / 1000.0);
-    const char *command[] = {"seek", seconds.c_str(), "relative+keyframes", NULL};
+    const char *command[] = {"seek", seconds.c_str(), _embeddedContainer ? "relative+exact" : "relative+keyframes", NULL};
     mpv_command(_mpv, command);
     [self storeCachedPosition:[self estimatedPositionSeconds] + ((double)offsetMs / 1000.0) at:CACurrentMediaTime()];
 }
@@ -2846,10 +2921,12 @@ static void nuvioMpvWakeup(void *ctx) {
         [self beginFullscreenTransitionWithReason:@"control-toggle"];
     }
     if ([type isEqualToString:@"dragWindow"]) {
+        if (_embeddedContainer) return;
         [self beginWindowTrackingWithEdge:0];
         return;
     }
     if ([type isEqualToString:@"resizeWindow"] && value) {
+        if (_embeddedContainer) return;
         NSInteger edge = (NSInteger)llround(value.doubleValue);
         if (edge >= 10 && edge <= 17) {
             [self beginWindowTrackingWithEdge:edge];
@@ -3200,8 +3277,7 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setMacosWindowFull
     });
 }
 
-extern "C" JNIEXPORT jlong JNICALL
-Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
+static jlong createNativePlayer(
     JNIEnv *env,
     jobject /* bridge */,
     jlong hostViewPtr,
@@ -3212,7 +3288,8 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
     jstring controlsPageUrl,
     jint decoderPriority,
     jboolean nvidiaRtxSuperResolutionEnabled,
-    jobject eventSink
+    jobject eventSink,
+    jdoubleArray embeddedBounds
 ) {
     NSView *hostView = (__bridge NSView *)(void *)(intptr_t)hostViewPtr;
     if (!hostView) {
@@ -3241,12 +3318,26 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
     std::string source = jstringToString(env, sourceUrl);
     std::string controls = jstringToString(env, controlsPageUrl);
     NSArray<NSString *> *headers = jstringArrayToNSArray(env, headerLines);
+    std::array<double, 5> bounds = {0, 0, 1, 1, 0};
+    if (embeddedBounds && env->GetArrayLength(embeddedBounds) >= 5) env->GetDoubleArrayRegion(embeddedBounds, 0, 5, bounds.data());
+    __block NSView *embeddedContainer = nil;
     __block MpvWebPlayer *player = nil;
     __block NSString *error = nil;
     runOnMainSync(^{
         @try {
+            NSView *playerHost = hostView;
+            if (embeddedBounds) {
+                CGFloat y = hostView.isFlipped ? bounds[1] : hostView.bounds.size.height - bounds[1] - bounds[3];
+                embeddedContainer = [[NSView alloc] initWithFrame:NSMakeRect(bounds[0], y, bounds[2], bounds[3])];
+                embeddedContainer.identifier = @"nuvio-embedded-player";
+                embeddedContainer.wantsLayer = YES;
+                embeddedContainer.layer.masksToBounds = YES;
+                embeddedContainer.layer.cornerRadius = bounds[4];
+                [hostView addSubview:embeddedContainer];
+                playerHost = embeddedContainer;
+            }
             player = [[MpvWebPlayer alloc]
-                initWithHostView:hostView
+                initWithHostView:playerHost
                     sourceUrl:[NSString stringWithUTF8String:source.c_str()]
                     headerLines:headers
                    playWhenReady:playWhenReady == JNI_TRUE
@@ -3256,7 +3347,9 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
                           javaVm:javaVm
                        eventSink:eventSinkRef
                      eventMethod:eventMethod];
+            if (embeddedContainer) [player adoptEmbeddedContainer:embeddedContainer];
         } @catch (NSException *exception) {
+            [embeddedContainer removeFromSuperview];
             error = exception.reason ?: exception.name;
         }
     });
@@ -3270,6 +3363,68 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
     }
 
     return (jlong)(intptr_t)CFBridgingRetain(player);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
+    JNIEnv *env, jobject bridge, jlong hostViewPtr, jstring sourceUrl, jobjectArray headerLines,
+    jboolean playWhenReady, jlong initialPositionMs, jstring controlsPageUrl, jint decoderPriority,
+    jboolean rtx, jobject eventSink
+) {
+    return createNativePlayer(env, bridge, hostViewPtr, sourceUrl, headerLines, playWhenReady,
+        initialPositionMs, controlsPageUrl, decoderPriority, rtx, eventSink, nullptr);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_createEmbedded(
+    JNIEnv *env, jobject bridge, jlong hostViewPtr, jstring sourceUrl, jobjectArray headerLines,
+    jboolean playWhenReady, jlong initialPositionMs, jstring controlsPageUrl, jint decoderPriority,
+    jboolean rtx, jobject eventSink, jdoubleArray bounds
+) {
+    return createNativePlayer(env, bridge, hostViewPtr, sourceUrl, headerLines, playWhenReady,
+        initialPositionMs, controlsPageUrl, decoderPriority, rtx, eventSink, bounds);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_updateEmbeddedBounds(
+    JNIEnv *env, jobject, jlong handle, jdoubleArray input, jboolean visible
+) {
+    if (!handle || !input || env->GetArrayLength(input) < 5) return;
+    double values[5]; env->GetDoubleArrayRegion(input, 0, 5, values);
+    // Copy into block storage; the JNI array is no longer valid when the UI block runs.
+    NSArray<NSNumber *> *bounds = @[@(values[0]), @(values[1]), @(values[2]), @(values[3]), @(values[4])];
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    runOnMainAsync(^{
+        double copied[5]; for (int i = 0; i < 5; ++i) copied[i] = bounds[i].doubleValue;
+        [player updateEmbeddedBounds:copied visible:visible == JNI_TRUE];
+    });
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_videoFrameSignature(JNIEnv *, jobject, jlong handle) {
+    if (!handle) return 0;
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    return (jlong)[player videoFrameSignature];
+}
+
+extern "C" JNIEXPORT jdoubleArray JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_embeddedBounds(JNIEnv *env, jobject, jlong handle) {
+    __block NSRect frame = NSZeroRect;
+    if (handle) {
+        MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+        runOnMainSync(^{ frame = [player embeddedFrame]; });
+    }
+    double values[] = {frame.origin.x, frame.origin.y, frame.size.width, frame.size.height};
+    jdoubleArray result = env->NewDoubleArray(4); env->SetDoubleArrayRegion(result, 0, 4, values); return result;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setNativeControlsVisible(JNIEnv *, jobject, jlong handle, jboolean visible) {
+    if (!handle) return;
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    // Compose invokes this from the EDT. Cocoa accessibility can be waiting for
+    // that same EDT, so a synchronous main-thread dispatch would deadlock it.
+    runOnMainAsync(^{ [player setNativeControlsVisible:visible == JNI_TRUE]; });
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -3736,4 +3891,389 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_applySubtitleStyle
                                        useLibass:useLibass == JNI_TRUE
                                         stripSdh:stripSdh == JNI_TRUE];
     });
+}
+
+// Experimental YouTube backend: owns only a bounded WebView, never an mpv
+// instance. App identity follows YouTube's documented desktop Referer contract.
+// WKDownload owns the transfer independently of the trailer's WebView lifetime.
+static NSMutableSet *nuvioYouTubeDownloads;
+@interface NuvioYouTubeDownload : NSObject <WKDownloadDelegate>
+@property(nonatomic, strong) WKDownload *download;
+@property(nonatomic, strong) NSURL *testDestination;
++ (void)adopt:(WKDownload *)download destination:(NSURL *)destination;
++ (void)adopt:(WKDownload *)download;
+@end
+@implementation NuvioYouTubeDownload
++ (void)adopt:(WKDownload *)download { [self adopt:download destination:nil]; }
++ (void)adopt:(WKDownload *)download destination:(NSURL *)destination {
+    if (!nuvioYouTubeDownloads) nuvioYouTubeDownloads = [NSMutableSet new];
+    NuvioYouTubeDownload *owner = [NuvioYouTubeDownload new];
+    owner.download = download; owner.testDestination = destination; download.delegate = owner;
+    [nuvioYouTubeDownloads addObject:owner];
+}
+- (void)download:(WKDownload *)download decideDestinationUsingResponse:(NSURLResponse *)response suggestedFilename:(NSString *)filename completionHandler:(void (^)(NSURL *))completionHandler {
+    if (_testDestination) { completionHandler(_testDestination); return; }
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    panel.nameFieldStringValue = filename.lastPathComponent.length ? filename.lastPathComponent : @"download";
+    panel.canCreateDirectories = YES;
+    void (^finish)(NSModalResponse) = ^(NSModalResponse result) {
+        completionHandler(result == NSModalResponseOK ? panel.URL : nil);
+        if (result != NSModalResponseOK) [nuvioYouTubeDownloads removeObject:self];
+    };
+    if (download.webView.window) [panel beginSheetModalForWindow:download.webView.window completionHandler:finish];
+    else [panel beginWithCompletionHandler:finish];
+}
+- (void)downloadDidFinish:(WKDownload *)download {
+    download.delegate = nil; [nuvioYouTubeDownloads removeObject:self];
+}
+- (void)download:(WKDownload *)download didFailWithError:(NSError *)error resumeData:(NSData *)resumeData {
+    NSWindow *window = download.webView.window;
+    if (window && error.code != NSURLErrorCancelled) {
+        NSAlert *alert = [NSAlert new]; alert.messageText = @"Download failed";
+        alert.informativeText = error.localizedDescription;
+        [alert beginSheetModalForWindow:window completionHandler:nil];
+    }
+    download.delegate = nil; [nuvioYouTubeDownloads removeObject:self];
+}
+@end
+
+@interface NuvioYouTubePlayer : NSObject <WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate>
+@property(nonatomic, strong) NSView *container;
+@property(nonatomic, strong) WKWebView *webView;
+@property(nonatomic, strong) id keyMonitor;
+@property(nonatomic) JavaVM *javaVm;
+@property(nonatomic) jobject sink;
+@property(nonatomic) jmethodID eventMethod;
+@property(nonatomic) BOOL closed;
+@property(nonatomic) BOOL editing;
+@property(nonatomic) NSTimeInterval lastUserInteraction;
+@property(nonatomic) NSTimeInterval contextTime;
+@property(nonatomic, copy) NSString *contextLink;
+@property(nonatomic, copy) NSString *contextImage;
+- (void)focusPlayer;
+- (void)routeURL:(NSURL *)url external:(BOOL)external;
+- (void)emit:(NSString *)type value:(double)value;
+- (void)close;
+@end
+
+@implementation NuvioYouTubePlayer
+- (void)emit:(NSString *)type value:(double)value {
+    if (_closed || !_sink || !_javaVm) return;
+    JNIEnv *env = nullptr;
+    bool attached = _javaVm->GetEnv((void **)&env, JNI_VERSION_1_6) != JNI_OK;
+    if (attached && _javaVm->AttachCurrentThread((void **)&env, nullptr) != JNI_OK) return;
+    std::vector<jchar> characters(type.length);
+    [type getCharacters:(unichar *)characters.data() range:NSMakeRange(0, type.length)];
+    jstring event = env->NewString(characters.data(), (jsize)characters.size());
+    env->CallVoidMethod(_sink, _eventMethod, event, (jdouble)value);
+    env->DeleteLocalRef(event);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (attached) _javaVm->DetachCurrentThread();
+}
+- (void)focusPlayer {
+    if (_closed || _container.hidden || !_container.window.isKeyWindow) return;
+    [_container.window makeFirstResponder:_webView];
+    [_webView evaluateJavaScript:@"window.focusYouTube && window.focusYouTube()" completionHandler:nil];
+}
+- (void)routeURL:(NSURL *)url external:(BOOL)external {
+    if (_closed || !url || !([url.scheme.lowercaseString isEqual:@"https"] || [url.scheme.lowercaseString isEqual:@"http"])) return;
+    if (getenv("NUVIO_YOUTUBE_DEBUG")) NSLog(@"[YouTubeEmbed] navigate host=%@ external=%d", url.host, external);
+    [self emit:[@"link:" stringByAppendingString:url.absoluteString] value:external ? 1 : 0];
+}
+- (BOOL)isContextURL:(NSURL *)url {
+    return [NSDate timeIntervalSinceReferenceDate] - _contextTime < 30 &&
+        ([url.absoluteString isEqual:_contextLink] || [url.absoluteString isEqual:_contextImage]);
+}
+- (void)userContentController:(WKUserContentController *)controller didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (_closed || ![message.body isKindOfClass:NSDictionary.class]) return;
+    NSDictionary *body = (NSDictionary *)message.body;
+    NSString *type = body[@"type"];
+    NSNumber *value = body[@"value"];
+    if (![type isKindOfClass:NSString.class]) return;
+    if (getenv("NUVIO_YOUTUBE_DEBUG") && ![type isEqual:@"time"]) NSLog(@"[YouTubeEmbed] message=%@", [type componentsSeparatedByString:@":"].firstObject);
+    if (getenv("NUVIO_YOUTUBE_DEBUG") && ([type hasPrefix:@"interactionReady:"] || [type hasPrefix:@"gestureDebug:"])) NSLog(@"[YouTubeEmbed] %@",type);
+    BOOL recentUser = [NSDate timeIntervalSinceReferenceDate] - _lastUserInteraction < 1.0;
+    if (([type isEqual:@"link"] || [type isEqual:@"menuContext"] || [type isEqual:@"toggleFullscreen"]) && !recentUser) return;
+    if ([type isEqual:@"link"] && [body[@"url"] isKindOfClass:NSString.class]) {
+        NSURL *url = [NSURL URLWithString:body[@"url"]];
+        if ([url.scheme.lowercaseString isEqual:@"https"] || [url.scheme.lowercaseString isEqual:@"http"])
+            [self emit:[@"link:" stringByAppendingString:url.absoluteString] value:value.doubleValue];
+        return;
+    }
+    if ([type isEqual:@"menuContext"]) {
+        _contextLink = [body[@"link"] isKindOfClass:NSString.class] ? body[@"link"] : nil;
+        _contextImage = [body[@"image"] isKindOfClass:NSString.class] ? body[@"image"] : nil;
+        _contextTime = [NSDate timeIntervalSinceReferenceDate]; return;
+    }
+    if ([type isEqual:@"editing"]) { _editing = value.boolValue; return; }
+    if ([type isEqual:@"apiReady"]) [self focusPlayer];
+    if ([value isKindOfClass:NSNumber.class]) [self emit:type value:value.doubleValue];
+}
+- (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (error.code != NSURLErrorCancelled) [self emit:@"error" value:5];
+}
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)action decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    if (@available(macOS 11.3, *)) {
+        if (action.shouldPerformDownload) { decisionHandler(WKNavigationActionPolicyDownload); return; }
+    }
+    // A nil target is routed once by WKUIDelegate's new-window callback.
+    if (!action.targetFrame) { decisionHandler(WKNavigationActionPolicyAllow); return; }
+    BOOL context = [self isContextURL:action.request.URL];
+    BOOL user = context || [NSDate timeIntervalSinceReferenceDate] - _lastUserInteraction < 1.0;
+    NSString *host = action.request.URL.host.lowercaseString;
+    BOOL watchPage = ([host isEqual:@"youtube.com"] || [host hasSuffix:@".youtube.com"]) && [action.request.URL.path isEqual:@"/watch"];
+    if (action.navigationType == WKNavigationTypeLinkActivated || context || watchPage) {
+        if (user) [self routeURL:action.request.URL external:context];
+        decisionHandler(WKNavigationActionPolicyCancel); return;
+    }
+    decisionHandler(WKNavigationActionPolicyAllow);
+}
+- (WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)action windowFeatures:(WKWindowFeatures *)features {
+    BOOL context = [self isContextURL:action.request.URL];
+    // WebKit classifies native context-menu Open Image/Link actions as link
+    // activations even when no DOM anchor/image supplied context information.
+    BOOL user = context || action.navigationType == WKNavigationTypeLinkActivated || [NSDate timeIntervalSinceReferenceDate] - _lastUserInteraction < 1.0;
+    if (user) {
+        if (@available(macOS 11.3, *)) {
+            if (action.shouldPerformDownload) {
+                [webView startDownloadUsingRequest:action.request completionHandler:^(WKDownload *download) { [NuvioYouTubeDownload adopt:download]; }];
+                return nil;
+            }
+        }
+        [self routeURL:action.request.URL external:context];
+    }
+    return nil;
+}
+- (void)webView:(WKWebView *)webView navigationAction:(WKNavigationAction *)action didBecomeDownload:(WKDownload *)download {
+    [NuvioYouTubeDownload adopt:download];
+}
+- (void)webView:(WKWebView *)webView navigationResponse:(WKNavigationResponse *)response didBecomeDownload:(WKDownload *)download {
+    [NuvioYouTubeDownload adopt:download];
+}
+- (void)close {
+    if (_closed) return;
+    _closed = YES;
+    if (_keyMonitor) [NSEvent removeMonitor:_keyMonitor];
+    _keyMonitor = nil;
+    // Removing a focused WKContentView leaves Cocoa's responder outside AWT.
+    // Return focus before detaching it so Compose receives Escape in the error UI.
+    NSWindow *window = _container.window;
+    NSResponder *responder = window.firstResponder;
+    if ([responder isKindOfClass:NSView.class] && [(NSView *)responder isDescendantOf:_container]) {
+        [window makeFirstResponder:_container.superview];
+    }
+    [_webView stopLoading];
+    [_webView.configuration.userContentController removeScriptMessageHandlerForName:@"youtube"];
+    _webView.navigationDelegate = nil; _webView.UIDelegate = nil;
+    [_webView loadHTMLString:@"" baseURL:nil];
+    [_webView removeFromSuperview]; _webView = nil;
+    [_container removeFromSuperview]; _container = nil;
+    if (_sink && _javaVm) {
+        JNIEnv *env = nullptr;
+        bool attached = _javaVm->GetEnv((void **)&env, JNI_VERSION_1_6) != JNI_OK;
+        if (!attached || _javaVm->AttachCurrentThread((void **)&env, nullptr) == JNI_OK) {
+            env->DeleteGlobalRef(_sink);
+            if (attached) _javaVm->DetachCurrentThread();
+        }
+    }
+    _sink = nullptr; _javaVm = nullptr;
+}
+@end
+
+static void layoutYouTube(NuvioYouTubePlayer *player, NSView *parent, NSArray<NSNumber *> *bounds, BOOL visible) {
+    if (player.closed || !parent) return;
+    BOOL refocus = player.container.hidden || player.container.superview != parent;
+    if (player.container.superview != parent) {
+        [player.container removeFromSuperview];
+        [parent addSubview:player.container positioned:NSWindowAbove relativeTo:nil];
+    }
+    double x = bounds[0].doubleValue, y = bounds[1].doubleValue;
+    double w = MAX(1, bounds[2].doubleValue), h = MAX(1, bounds[3].doubleValue);
+    if (!parent.isFlipped) y = parent.bounds.size.height - y - h;
+    player.container.frame = NSMakeRect(x, y, w, h);
+    player.container.layer.cornerRadius = bounds[4].doubleValue;
+    player.container.hidden = !visible;
+    player.webView.frame = player.container.bounds;
+    if (visible && refocus) [player focusPlayer];
+}
+static NSArray<NSNumber *> *youtubeBoundsArray(JNIEnv *env, jdoubleArray input) {
+    double values[5] = {0,0,1,1,0};
+    if (input && env->GetArrayLength(input) >= 5) env->GetDoubleArrayRegion(input,0,5,values);
+    return @[@(values[0]),@(values[1]),@(values[2]),@(values[3]),@(values[4])];
+}
+
+// Keep Escape scoped to the presentation window even after a failed WebView
+// retires its native view and playback monitor. No view or product window is made.
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_trailer_YouTubeNativeBridge_createEscapeMonitor(JNIEnv *env, jobject, jlong parentPtr, jobject sink) {
+    JavaVM *javaVm; env->GetJavaVM(&javaVm);
+    jobject globalSink = env->NewGlobalRef(sink);
+    jclass cls = env->GetObjectClass(sink);
+    jmethodID method = env->GetMethodID(cls, "onPlayerEvent", "(Ljava/lang/String;D)V");
+    env->DeleteLocalRef(cls);
+    __block NuvioYouTubePlayer *owner;
+    runOnMainSync(^{
+        owner = [NuvioYouTubePlayer new];
+        owner.javaVm = javaVm; owner.sink = globalSink; owner.eventMethod = method;
+        NSView *parent = (__bridge NSView *)(void *)(intptr_t)parentPtr;
+        __weak NSWindow *window = parent.window;
+        __weak NuvioYouTubePlayer *weakOwner = owner;
+        owner.keyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
+            NuvioYouTubePlayer *strongOwner = weakOwner;
+            if (strongOwner && !strongOwner.closed && window && event.window == window && event.keyCode == 53) {
+                [strongOwner emit:@"escape" value:0]; return nil;
+            }
+            return event;
+        }];
+    });
+    return (jlong)(intptr_t)(__bridge_retained void *)owner;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_trailer_YouTubeNativeBridge_create(JNIEnv *env, jobject, jlong parentPtr, jdoubleArray input, jstring videoId, jboolean controls, jboolean muted, jdouble startSeconds, jstring interactionsScript, jobject sink) {
+    JavaVM *javaVm; env->GetJavaVM(&javaVm);
+    jobject globalSink = env->NewGlobalRef(sink);
+    jclass cls = env->GetObjectClass(sink);
+    jmethodID eventMethod = env->GetMethodID(cls, "onPlayerEvent", "(Ljava/lang/String;D)V");
+    env->DeleteLocalRef(cls);
+    NSString *key = [NSString stringWithUTF8String:jstringToString(env,videoId).c_str()];
+    NSArray<NSNumber *> *bounds = youtubeBoundsArray(env,input);
+    NSString *interactions = [NSString stringWithUTF8String:jstringToString(env,interactionsScript).c_str()];
+    __block NuvioYouTubePlayer *player;
+    runOnMainSync(^{
+        player = [NuvioYouTubePlayer new];
+        player.javaVm = javaVm; player.sink = globalSink; player.eventMethod = eventMethod;
+        player.container = [NSView new];
+        player.container.identifier = @"nuvio-youtube-embed";
+        player.container.wantsLayer = YES; player.container.layer.masksToBounds = YES;
+        WKWebViewConfiguration *config = [WKWebViewConfiguration new];
+        config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+        config.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
+        config.preferences.javaScriptCanOpenWindowsAutomatically = NO;
+        [config.userContentController addScriptMessageHandler:player name:@"youtube"];
+        NSString *interactionSource = [[NSString stringWithFormat:@"window.__nuvioDoubleClickInterval=%f;\n",NSEvent.doubleClickInterval*1000] stringByAppendingString:interactions];
+        if (getenv("NUVIO_YOUTUBE_DEBUG")) interactionSource = [@"window.__nuvioYouTubeDebug=true;\n" stringByAppendingString:interactionSource];
+        [config.userContentController addUserScript:[[WKUserScript alloc] initWithSource:interactionSource injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:NO]];
+        player.webView = [[WKWebView alloc] initWithFrame:NSZeroRect configuration:config];
+        player.webView.navigationDelegate = player; player.webView.UIDelegate = player;
+        [player.container addSubview:player.webView];
+        NSView *parent = (__bridge NSView *)(void *)(intptr_t)parentPtr;
+        layoutYouTube(player,parent,bounds,YES);
+        NSString *identity = [NSString stringWithFormat:@"https://%@", NSBundle.mainBundle.bundleIdentifier ?: @"com.nuvio.media"];
+        NSString *html = @R"HTML(<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body,#player{margin:0;width:100%;height:100%;background:#000;overflow:hidden}</style></head><body><div id="player"></div><script>
+var player,apiReady=false,wantsPlay=true,wantsMute=__MUTE__;
+function send(type,value){window.webkit.messageHandlers.youtube.postMessage({type:type,value:Number(value)||0});}
+function publishVideo(){var d=player.getVideoData();if(d.video_id)send('video:'+d.video_id,0);if(d.title)send('title:'+d.title,0);}
+window.focusYouTube=function(){if(apiReady)player.getIframe().focus();};
+window.configureYouTube=function(play,mute){wantsPlay=play;wantsMute=mute;if(apiReady){mute?player.mute():player.unMute();play?player.playVideo():player.pauseVideo();}};
+window.pauseYouTube=function(){wantsPlay=false;if(apiReady)player.pauseVideo();};
+window.loadYouTubeVideo=function(id){if(apiReady){wantsPlay=true;send('video:'+id,0);player.loadVideoById(id);}};
+window.youTubeShortcut=function(key){
+ if(key==='space'){wantsPlay=apiReady?![1,3].includes(player.getPlayerState()):!wantsPlay;if(apiReady)wantsPlay?player.playVideo():player.pauseVideo();}
+ else if(apiReady){var delta=key==='left'?-5:5;player.seekTo(Math.max(0,Math.min(player.getDuration(),player.getCurrentTime()+delta)),true);}
+};
+function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:'__VIDEO__',width:'100%',height:'100%',playerVars:{autoplay:1,controls:__CONTROLS__,playsinline:1,fs:0,cc_load_policy:0,origin:'__ORIGIN__',start:__START__},events:{onReady:function(){apiReady=true;configureYouTube(wantsPlay,wantsMute);publishVideo();focusYouTube();send('apiReady',1);},onStateChange:function(e){if(e.data===1)publishVideo();send('state',e.data);},onError:function(e){send('error',e.data);},onAutoplayBlocked:function(){send('blocked',1);}}});}
+setInterval(function(){if(apiReady)send('time',player.getCurrentTime());},250);
+</script><script src="https://www.youtube.com/iframe_api"></script></body></html>)HTML";
+        html = [html stringByReplacingOccurrencesOfString:@"__VIDEO__" withString:key];
+        html = [html stringByReplacingOccurrencesOfString:@"__MUTE__" withString:muted ? @"true" : @"false"];
+        html = [html stringByReplacingOccurrencesOfString:@"__CONTROLS__" withString:controls ? @"1" : @"0"];
+        html = [html stringByReplacingOccurrencesOfString:@"__ORIGIN__" withString:identity];
+        html = [html stringByReplacingOccurrencesOfString:@"__START__" withString:[NSString stringWithFormat:@"%d", (int)MAX(0,startSeconds)]];
+        [player.webView loadHTMLString:html baseURL:[NSURL URLWithString:identity]];
+        if (controls) {
+            __weak NuvioYouTubePlayer *weakPlayer = player;
+            player.keyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:(NSEventMaskKeyDown | NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown) handler:^NSEvent *(NSEvent *event) {
+                NuvioYouTubePlayer *strongPlayer = weakPlayer;
+                if (!strongPlayer || strongPlayer.closed || strongPlayer.container.hidden || event.window != strongPlayer.container.window) return event;
+                if (event.type != NSEventTypeKeyDown) {
+                    NSPoint point = [strongPlayer.container convertPoint:event.locationInWindow fromView:nil];
+                    BOOL inside = NSPointInRect(point,strongPlayer.container.bounds);
+                    if (getenv("NUVIO_YOUTUBE_DEBUG")) NSLog(@"[YouTubeEmbed] mouse inside=%d clicks=%ld", inside, (long)event.clickCount);
+                    if (inside) strongPlayer.lastUserInteraction = [NSDate timeIntervalSinceReferenceDate];
+                    return event;
+                }
+                strongPlayer.lastUserInteraction = [NSDate timeIntervalSinceReferenceDate];
+                if (event.keyCode == 53) { [strongPlayer emit:@"escape" value:0]; return nil; }
+                if (strongPlayer.editing || (event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption))) return event;
+                NSString *key = event.keyCode == 49 ? @"space" : event.keyCode == 123 ? @"left" : event.keyCode == 124 ? @"right" : nil;
+                if ([event.charactersIgnoringModifiers.lowercaseString isEqual:@"f"]) {
+                    if (!event.isARepeat) [strongPlayer emit:@"toggleFullscreen" value:0];
+                    return nil;
+                }
+                if (key) {
+                    if (![key isEqual:@"space"] || !event.isARepeat) {
+                        NSString *script = [NSString stringWithFormat:@"window.youTubeShortcut && window.youTubeShortcut('%@')",key];
+                        [strongPlayer.webView evaluateJavaScript:script completionHandler:nil];
+                    }
+                    return nil;
+                }
+                return event;
+            }];
+        }
+    });
+    return (jlong)(intptr_t)(__bridge_retained void *)player;
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_trailer_YouTubeNativeBridge_layout(JNIEnv *env,jobject,jlong handle,jlong parentPtr,jdoubleArray input,jboolean visible) {
+    if (!handle) return;
+    NuvioYouTubePlayer *player = (__bridge NuvioYouTubePlayer *)(void *)(intptr_t)handle;
+    NSArray<NSNumber *> *bounds = youtubeBoundsArray(env,input);
+    NSView *parent = (__bridge NSView *)(void *)(intptr_t)parentPtr;
+    runOnMainAsync(^{layoutYouTube(player,parent,bounds,visible);});
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_trailer_YouTubeNativeBridge_configure(JNIEnv *,jobject,jlong handle,jboolean play,jboolean muted) {
+    if (!handle) return;
+    NuvioYouTubePlayer *player = (__bridge NuvioYouTubePlayer *)(void *)(intptr_t)handle;
+    NSString *script = [NSString stringWithFormat:@"window.configureYouTube && window.configureYouTube(%@,%@)",play ? @"true":@"false",muted ? @"true":@"false"];
+    runOnMainAsync(^{if (!player.closed) [player.webView evaluateJavaScript:script completionHandler:nil];});
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_trailer_YouTubeNativeBridge_close(JNIEnv *,jobject,jlong handle) {
+    if (!handle) return;
+    NuvioYouTubePlayer *player = (__bridge_transfer NuvioYouTubePlayer *)(void *)(intptr_t)handle;
+    runOnMainAsync(^{[player close];});
+}
+extern "C" JNIEXPORT jdoubleArray JNICALL
+Java_com_nuvio_app_features_trailer_YouTubeNativeBridge_bounds(JNIEnv *env,jobject,jlong handle) {
+    __block NSRect rect = NSZeroRect;
+    if (handle) {
+        NuvioYouTubePlayer *player = (__bridge NuvioYouTubePlayer *)(void *)(intptr_t)handle;
+        runOnMainSync(^{rect=player.container.frame;});
+    }
+    double values[]={rect.origin.x,rect.origin.y,rect.size.width,rect.size.height};
+    jdoubleArray result=env->NewDoubleArray(4);env->SetDoubleArrayRegion(result,0,4,values);return result;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_trailer_YouTubeNativeBridge_loadVideo(JNIEnv *env,jobject,jlong handle,jstring videoId) {
+    if (!handle) return;
+    NuvioYouTubePlayer *player = (__bridge NuvioYouTubePlayer *)(void *)(intptr_t)handle;
+    NSString *key = [NSString stringWithUTF8String:jstringToString(env,videoId).c_str()];
+    if (key.length != 11 || [key rangeOfCharacterFromSet:[[NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"] invertedSet]].location != NSNotFound) return;
+    NSString *script = [NSString stringWithFormat:@"window.loadYouTubeVideo && window.loadYouTubeVideo('%@')",key];
+    runOnMainAsync(^{if (!player.closed) [player.webView evaluateJavaScript:script completionHandler:nil];});
+}
+
+// Native integration fixture: invokes WebKit's real download engine and delegate,
+// using a test-selected destination instead of interacting with a save panel.
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_trailer_YouTubeNativeBridge_downloadFixture(JNIEnv *env,jobject,jlong handle,jstring sourceUrl,jstring destinationPath) {
+    if (!handle) return;
+    NuvioYouTubePlayer *player = (__bridge NuvioYouTubePlayer *)(void *)(intptr_t)handle;
+    NSURL *url = [NSURL URLWithString:[NSString stringWithUTF8String:jstringToString(env,sourceUrl).c_str()]];
+    NSURL *destination = [NSURL fileURLWithPath:[NSString stringWithUTF8String:jstringToString(env,destinationPath).c_str()]];
+    runOnMainAsync(^{
+        if (!player.closed) [player.webView startDownloadUsingRequest:[NSURLRequest requestWithURL:url] completionHandler:^(WKDownload *download) {
+            [NuvioYouTubeDownload adopt:download destination:destination];
+        }];
+    });
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_trailer_YouTubeNativeBridge_pause(JNIEnv *,jobject,jlong handle) {
+    if (!handle) return;
+    NuvioYouTubePlayer *player = (__bridge NuvioYouTubePlayer *)(void *)(intptr_t)handle;
+    runOnMainAsync(^{if (!player.closed) [player.webView evaluateJavaScript:@"window.pauseYouTube && window.pauseYouTube()" completionHandler:nil];});
 }

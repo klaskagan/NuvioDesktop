@@ -55,7 +55,9 @@ internal class NativePlayerController(
     private val host: NativePlayerHost,
     private val nativeCreate: NativePlayerCreate = { hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, sink ->
         NativePlayerBridge.ensureLoaded()
-        NativePlayerBridge.create(hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, sink)
+        if (host.embedded && DesktopHostOs.current == DesktopHostOs.MACOS) {
+            NativePlayerBridge.createEmbedded(hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, sink, host.embeddedBounds)
+        } else NativePlayerBridge.create(hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, sink)
     },
     private val nativeDispose: (Long) -> Unit = NativePlayerBridge::dispose,
     private val nativeSeekTo: (Long, Long) -> Unit = NativePlayerBridge::seekTo,
@@ -85,6 +87,8 @@ internal class NativePlayerController(
     )
 
     private val lifecycleLock = Any()
+    private var nativeControlsEnabled = true
+    private var fullscreenOverride: Boolean? = null
     private var currentNowPlayingTitle: String = ""
     private var currentNowPlayingSubtitle: String = ""
     private var currentArtworkUrl: String = ""
@@ -133,9 +137,11 @@ internal class NativePlayerController(
         decoderPriority: Int,
         nvidiaRtxSuperResolutionEnabled: Boolean,
         onError: (String?) -> Unit,
+        sourceAudioUrl: String? = null,
     ) {
         val pending = PendingSource(
             sourceUrl = sourceUrl,
+            sourceAudioUrl = sourceAudioUrl,
             headerLines = sourceHeaders.toHeaderLines(),
             playWhenReady = playWhenReady,
             initialPositionMs = initialPositionMs.coerceAtLeast(0L),
@@ -283,6 +289,7 @@ internal class NativePlayerController(
             return
         }
         // Resolving the AWT peer must happen on the EDT; everything after it must not.
+        host.updateEmbeddedBounds()
         val hostViewPtr = runCatching { resolveHostView() }
             .getOrElse { error ->
                 log.w(error) { "attach failed to resolve host source=${pending.sourceUrl.toPlaybackLogKey()}" }
@@ -308,14 +315,18 @@ internal class NativePlayerController(
                 runCatching {
                     nativeCreate(
                         hostViewPtr,
-                        resolvedSource,
+                        nativePlaybackUrl(resolvedSource, pending.sourceAudioUrl),
                         pending.headerLines.toTypedArray(),
                         pending.playWhenReady,
                         pending.initialPositionMs,
                         NativePlayerBridge.controlsPageUrl,
                         pending.decoderPriority,
                         pending.nvidiaRtxSuperResolutionEnabled,
-                        eventSink,
+                        NativePlayerEventSink { type, value ->
+                            SwingUtilities.invokeLater {
+                                if (pendingSource === pending && !releaseRequested) handlePlayerEvent(type, value)
+                            }
+                        },
                     ).also { if (it == 0L) error("Native player did not return a handle.") }
                 }.onSuccess { created ->
                     val accepted = synchronized(lifecycleLock) {
@@ -350,6 +361,8 @@ internal class NativePlayerController(
                                 "initialPositionMs=${pending.initialPositionMs}"
                         }
                         applyRememberedVolume()
+                        setNativeControlsEnabled(nativeControlsEnabled)
+                        updateEmbeddedLayout()
                         updateControls(controlsState)
                         setResizeMode(rememberedResizeMode)
                         if (currentNowPlayingTitle.isNotEmpty() || currentArtworkUrl.isNotEmpty()) {
@@ -449,7 +462,7 @@ internal class NativePlayerController(
         )
         currentVolumeLevel = stateWithVolume.volumeLevel ?: currentVolumeLevel
         controlsState = stateWithVolume
-        val isFullscreen = isDesktopAppFullscreen(SwingUtilities.getWindowAncestor(host))
+        val isFullscreen = fullscreenOverride ?: isDesktopAppFullscreen(SwingUtilities.getWindowAncestor(host))
         val structureKey = NativeControlsStructureKey(
             state = stateWithVolume.nativeControlsStructureKey(),
             isFullscreen = isFullscreen,
@@ -487,6 +500,31 @@ internal class NativePlayerController(
             .onFailure { error -> log.w(error) { "failed to resolve PiP native host ${host.javaClass.name}" } }
             .getOrNull() ?: return false
         return NativePlayerBridge.reparentSurface(current, pointer)
+    }
+
+    fun setNativeControlsEnabled(enabled: Boolean) {
+        nativeControlsEnabled = enabled
+        if (DesktopHostOs.current == DesktopHostOs.MACOS) {
+            handle.takeIf { it != 0L }?.let { NativePlayerBridge.setNativeControlsVisible(it, enabled) }
+        }
+    }
+
+    fun setPresentationFullscreen(fullscreen: Boolean?) {
+        if (fullscreenOverride == fullscreen) return
+        fullscreenOverride = fullscreen
+        lastSentControlsStructureKey = null
+        updateControls(controlsState)
+    }
+
+    fun updateEmbeddedLayout() {
+        synchronized(lifecycleLock) {
+            if (releaseRequested) return
+            if (host.embedded && DesktopHostOs.current == DesktopHostOs.MACOS) {
+                handle.takeIf { it != 0L }?.let {
+                    NativePlayerBridge.updateEmbeddedBounds(it, host.embeddedBounds, host.isShowing)
+                }
+            }
+        }
     }
 
     fun layoutNativeSubviews() {
@@ -573,7 +611,7 @@ internal class NativePlayerController(
                     onDesktopFullscreenChanged()
                 }
             }
-            "dragWindow" -> NativePlayerBridge.beginWindowDrag(handle)
+            "dragWindow" -> if (!host.embedded) NativePlayerBridge.beginWindowDrag(handle)
             "volumeChange" -> setFallbackVolume(value.toFloat())
             "volumeChangeTemporary" -> setTemporaryVolume(value.toFloat())
             "setPlaybackSpeed" -> {
@@ -986,6 +1024,7 @@ internal class NativePlayerController(
         val pending = pendingSource ?: return
         attach(
             sourceUrl = pending.sourceUrl,
+            sourceAudioUrl = pending.sourceAudioUrl,
             sourceHeaders = pending.headerLines.toHeaderMap(),
             playWhenReady = pending.playWhenReady,
             initialPositionMs = pending.initialPositionMs,
@@ -1213,6 +1252,7 @@ private fun Int.toHexByte(): String {
 
 private data class PendingSource(
     val sourceUrl: String,
+    val sourceAudioUrl: String?,
     val headerLines: List<String>,
     val playWhenReady: Boolean,
     val initialPositionMs: Long,

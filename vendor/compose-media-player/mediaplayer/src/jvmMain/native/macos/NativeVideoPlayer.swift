@@ -696,7 +696,7 @@ class MacVideoPlayer {
         let url = resolveUrl(uri)
         isHLSStream = isHLSUrl(url)
         if isHLSStream {
-            print("Detected HLS stream: \(url)")
+            print("Detected HLS stream")
         }
 
         var asset = makeAsset(url: url, fallbackMimeType: nil)

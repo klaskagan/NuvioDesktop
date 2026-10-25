@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import com.nuvio.app.features.player.desktop.DesktopPlaybackSource
 import com.nuvio.app.features.trailer.TrailerExtractionPlatform
 import io.github.kdroidfilter.composemediaplayer.InitialPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
@@ -70,6 +71,10 @@ private fun DesktopTrailerPlayerSession(
     onError: () -> Unit,
 ) {
     val player = rememberVideoPlayerState()
+    val preparedSource = remember(sourceUrl, sourceAudioUrl) {
+        DesktopPlaybackSource(sourceUrl, sourceAudioUrl, true, TrailerExtractionPlatform.defaultHeaders)
+    }
+    DisposableEffect(preparedSource) { onDispose { preparedSource.close() } }
     val callbackScope = rememberCoroutineScope()
     val latestOnReady = rememberUpdatedState(onReady)
     val latestOnEnded = rememberUpdatedState(onEnded)
@@ -104,14 +109,14 @@ private fun DesktopTrailerPlayerSession(
                 "separateAudio=${!sourceAudioUrl.isNullOrBlank()} startMs=$startPositionMillis",
         )
         player.openUri(
-            uri = sourceUrl,
-            audioUri = sourceAudioUrl,
+            uri = preparedSource.videoUrl,
+            audioUri = preparedSource.audioUrl,
             initializeplayerState = InitialPlayerState.PAUSE,
         )
 
         val opened = withTimeoutOrNull(12_000L) {
-            snapshotFlow { player.hasMedia to player.error }
-                .first { (hasMedia, error) -> hasMedia || error != null }
+            snapshotFlow { (player.hasMedia && player.hasVideoFrame) to player.error }
+                .first { (hasFrame, error) -> hasFrame || error != null }
         }
         val error = opened?.second ?: player.error
         if (opened == null || error != null) {

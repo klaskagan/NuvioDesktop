@@ -98,10 +98,8 @@ internal object TrailerExtractionPlatform {
         bestVideo: StreamCandidate?,
         bestAudio: StreamCandidate?,
     ): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
-        val bestCombinedIsManifest = bestManifest != null &&
-            (bestProgressive == null || bestManifest.height > bestProgressive.height)
-        val preferManifestPlayback = bestManifest != null &&
-            (bestVideo == null || bestManifest.height >= bestVideo.height)
+        val bestCombinedIsManifest = bestManifest != null && bestProgressive == null
+        val preferManifestPlayback = bestManifest != null && bestVideo == null && bestProgressive == null
         val combinedUrl = if (bestCombinedIsManifest) {
             bestManifest.manifestUrl
         } else {
@@ -151,8 +149,8 @@ internal object TrailerExtractionPlatform {
         diagnostic(
             "selected mode=$mode video=[$videoSummary] audio=[${bestAudio.takeIf { useSeparatedStreams }.diagnosticSummary()}]",
         )
-        diagnostic("source videoUrl=$videoUrl")
-        diagnostic("source audioUrl=${audioUrl ?: "none"}")
+        diagnostic("source video ${describeUrl(videoUrl)}")
+        diagnostic("source audio ${audioUrl?.let(::describeUrl) ?: "none"}")
         TrailerPlaybackSource(
             videoUrl = videoUrl,
             audioUrl = audioUrl,
@@ -228,15 +226,18 @@ internal object TrailerExtractionPlatform {
         } ?: listOf(0L to 0L)
 
         ranges.all { (rangeStart, rangeEnd) ->
+            val queryRange = parsedUrl?.encodedPath == "/videoplayback" && sourceSize != null
             val request = Request.Builder()
-                .url(url)
+                .url(if (queryRange) parsedUrl!!.newBuilder().setQueryParameter("range", "$rangeStart-$rangeEnd").build().toString() else url)
                 .headers(buildHeaders(defaultHeaders))
-                .header("Range", "bytes=$rangeStart-$rangeEnd")
+                .apply { if (!queryRange) header("Range", "bytes=$rangeStart-$rangeEnd") }
                 .get()
                 .build()
 
             probeClient.newCall(request).execute().use { response ->
-                val reachable = response.code == 206 ||
+                val reachable = if (queryRange) {
+                    response.isSuccessful && response.body?.contentLength() == rangeEnd - rangeStart + 1
+                } else response.code == 206 ||
                     (sourceSize == null && rangeStart == 0L && response.code in 200..299)
                 if (!reachable) {
                     diagnostic(

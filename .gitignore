@@ -23,6 +23,7 @@ logs/
 analysis/
 [Dd]ocs/*
 ![Dd]ocs/continue-on-tv.md
+![Dd]ocs/trailer-playback.md
 ![Dd]ocs/tv-handoff/
 SUPPORTER_COSMETICS.md
 supabase/migrations/
@@ -48,3 +49,4 @@ iosApp/Configuration/DeviceSigning.local.json
 
 # Local MPVKit iOS build environment (sparse APFS image, see MPVKit docs)
 .mpvkit-build.sparseimage
+![Dd]ocs/trailer-player-comparison.md

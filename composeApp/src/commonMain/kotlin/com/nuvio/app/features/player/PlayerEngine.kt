@@ -81,6 +81,8 @@ enum class PlayerControlsAction {
 data class PlayerControlTvDevice(val name: String, val platform: String)
 
 data class PlayerControlsState(
+    /** Embedded presentations can expand independently of the app window. */
+    val presentationFullscreen: Boolean? = null,
     val title: String = "",
     val episodeText: String = "",
     val streamTitle: String = "",

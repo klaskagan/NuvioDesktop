@@ -1,5 +1,6 @@
 package com.nuvio.app.features.details
 
+import com.nuvio.app.features.trailer.TrailerPlayerBackend
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -80,6 +81,7 @@ data class MetaScreenSettingsUiState(
     val backgroundMode: MetaScreenBackgroundMode = MetaScreenBackgroundMode.Default,
     val cinematicBackground: Boolean = MetaScreenBackgroundMode.Default.usesBackdropBackground,
     val heroTrailerPlayback: Boolean = false,
+    val trailerPlayerBackend: TrailerPlayerBackend = TrailerPlayerBackend.YouTube,
     val tabLayout: Boolean = false,
     val episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal,
     val blurUnwatchedEpisodes: Boolean = false,
@@ -133,6 +135,8 @@ private data class StoredMetaScreenSettingsPayload(
     val cinematicBackground: Boolean = false,
     @SerialName("hero_trailer_playback")
     val heroTrailerPlayback: Boolean = false,
+    @SerialName("trailer_player_backend")
+    val trailerPlayerBackend: String = TrailerPlayerBackend.YouTube.storedValue,
     @SerialName("tvStyleLayout")
     val tabLayout: Boolean = false,
     val episodeCardStyle: String = "horizontal",
@@ -217,6 +221,7 @@ object MetaScreenSettingsRepository {
     private var hasLoaded = false
     private var preferences: MutableMap<MetaScreenSectionKey, StoredMetaScreenSectionPreference> = mutableMapOf()
     private var backgroundMode: MetaScreenBackgroundMode = MetaScreenBackgroundMode.Default
+    private var trailerPlayerBackend = TrailerPlayerBackend.YouTube
     private var heroTrailerPlayback: Boolean = false
     private var tabLayout: Boolean = false
     private var episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal
@@ -239,6 +244,7 @@ object MetaScreenSettingsRepository {
                 backgroundMode = MetaScreenBackgroundMode.parse(parsed.backgroundMode)
                     ?: MetaScreenBackgroundMode.fromLegacyCinematic(parsed.cinematicBackground)
                 heroTrailerPlayback = parsed.heroTrailerPlayback
+                trailerPlayerBackend = TrailerPlayerBackend.parse(parsed.trailerPlayerBackend)
                 tabLayout = parsed.tabLayout
                 episodeCardStyle = MetaEpisodeCardStyle.parse(parsed.episodeCardStyle)
                     ?: MetaEpisodeCardStyle.Horizontal
@@ -263,6 +269,7 @@ object MetaScreenSettingsRepository {
         preferences.clear()
         backgroundMode = MetaScreenBackgroundMode.Default
         heroTrailerPlayback = false
+        trailerPlayerBackend = TrailerPlayerBackend.YouTube
         tabLayout = false
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
@@ -280,6 +287,13 @@ object MetaScreenSettingsRepository {
     fun setBackgroundMode(mode: MetaScreenBackgroundMode) {
         ensureLoaded()
         backgroundMode = mode
+        publish()
+        persist()
+    }
+
+    fun setTrailerPlayerBackend(backend: TrailerPlayerBackend) {
+        ensureLoaded()
+        trailerPlayerBackend = backend
         publish()
         persist()
     }
@@ -351,6 +365,7 @@ object MetaScreenSettingsRepository {
         preferences.clear()
         backgroundMode = MetaScreenBackgroundMode.Default
         heroTrailerPlayback = false
+        trailerPlayerBackend = TrailerPlayerBackend.YouTube
         tabLayout = false
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
@@ -405,6 +420,7 @@ object MetaScreenSettingsRepository {
         preferences.clear()
         backgroundMode = MetaScreenBackgroundMode.Default
         heroTrailerPlayback = false
+        trailerPlayerBackend = TrailerPlayerBackend.YouTube
         tabLayout = false
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
@@ -479,6 +495,7 @@ object MetaScreenSettingsRepository {
             backgroundMode = backgroundMode,
             cinematicBackground = backgroundMode.usesBackdropBackground,
             heroTrailerPlayback = heroTrailerPlayback,
+            trailerPlayerBackend = trailerPlayerBackend,
             tabLayout = tabLayout,
             episodeCardStyle = episodeCardStyle,
             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
@@ -496,6 +513,7 @@ object MetaScreenSettingsRepository {
                     backgroundMode = MetaScreenBackgroundMode.persist(backgroundMode),
                     cinematicBackground = backgroundMode.usesBackdropBackground,
                     heroTrailerPlayback = heroTrailerPlayback,
+                    trailerPlayerBackend = trailerPlayerBackend.storedValue,
                     tabLayout = tabLayout,
                     episodeCardStyle = MetaEpisodeCardStyle.persist(episodeCardStyle),
                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,

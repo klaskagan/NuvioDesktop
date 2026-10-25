@@ -7,6 +7,36 @@ import kotlin.test.assertNull
 class HeroTrailerSelectorTest {
 
     @Test
+    fun `prefers older HD to newer SD within the same category`() {
+        assertEquals("hd", selectHeroTrailer(listOf(
+            trailer("sd", official = true, size = 480, publishedAt = "2026-01-01"),
+            trailer("hd", official = true, size = 1080, publishedAt = "2008-01-01"),
+        ))?.id)
+    }
+
+    @Test
+    fun `ranks intermediate and larger resolutions correctly`() {
+        val hd = trailer("hd", size = 1080)
+        val qhd = trailer("qhd", size = 1440)
+        val uhd = trailer("uhd", size = 2160)
+        assertEquals("qhd", selectHeroTrailer(listOf(hd, qhd))?.id)
+        assertEquals("uhd", selectHeroTrailer(listOf(hd, qhd, uhd))?.id)
+        assertEquals("larger", selectHeroTrailer(listOf(hd, trailer("larger", size = 4320)))?.id)
+    }
+
+    @Test
+    fun `retains official category preference and supports HD season trailers`() {
+        assertEquals("official", selectHeroTrailer(listOf(
+            trailer("official", official = true, size = 480),
+            trailer("unofficial", size = 1080),
+        ))?.id)
+        assertEquals("hd", selectHeroTrailer(listOf(
+            trailer("sd", seasonNumber = 1, size = 480, publishedAt = "2026-01-01"),
+            trailer("hd", seasonNumber = 1, size = 1080, publishedAt = "2025-01-01"),
+        ))?.id)
+    }
+
+    @Test
     fun `selects official non-season YouTube trailer first`() {
         val trailers = listOf(
             trailer(id = "teaser", type = "Teaser", official = true, publishedAt = "2026-02-01"),
@@ -62,6 +92,7 @@ class HeroTrailerSelectorTest {
         official: Boolean = false,
         publishedAt: String? = null,
         seasonNumber: Int? = null,
+        size: Int? = null,
     ): MetaTrailer =
         MetaTrailer(
             id = id,
@@ -72,5 +103,6 @@ class HeroTrailerSelectorTest {
             official = official,
             publishedAt = publishedAt,
             seasonNumber = seasonNumber,
+            size = size,
         )
 }

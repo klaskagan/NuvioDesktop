@@ -69,6 +69,27 @@ Expose setup once in Settings and the frequent action in context when that match
 the feature. Avoid transient captions that briefly shift layout before data is
 ready; reserve space only when it is needed by the intended design.
 
+For Details trailer playback, follow [the trailer contract](../../../docs/trailer-playback.md).
+Resolve and cache trailer sources for the actual renderer: AVPlayer previews and
+mpv playback have different requirements. A macOS window view is not a bounded
+component host. Verify native bounds and changing decoded/rendered pixels, plus
+all shared hero/card consumers; timestamps alone do not prove correct playback.
+Retry and presentation changes must not reopen or auto-expand a dismissed overlay.
+
+For the selectable macOS trailer players, read [the player-selection contract](../../../docs/trailer-player-comparison.md).
+YouTube is the default in Settings → Detail Page → Trailer Player; Native remains
+available. Snapshot the effective choice per opened request; retry and
+presentation changes keep it. Hero/card preview settings stay independent.
+The YouTube player keeps its WebView session across presentation changes and
+uses the actual bundle identity as its HTTPS base URL. Keep YouTube controls
+inside the bounded media view and Nuvio's expand/close header outside it. Hero/card
+previews retain their Compose frame renderer; a child WebView cannot honor their
+Compose fades or text layering. Verify both native bounds and visible video.
+Read its **Expected embedded-player interactions** before implementation. Treat
+browser/new-window links, recommendations, keyboard focus and
+Escape, and double-click expansion as baseline behavior. Advancing video alone
+is not completion; verify actions and destinations, and state API limitations.
+
 ## Verify the changed experience
 
 Run the smallest meaningful behavioral checks plus compilation appropriate to the

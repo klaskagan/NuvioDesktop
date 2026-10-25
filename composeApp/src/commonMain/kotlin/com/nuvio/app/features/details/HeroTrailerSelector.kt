@@ -8,6 +8,7 @@ internal fun selectHeroTrailer(trailers: List<MetaTrailer>): MetaTrailer? =
         .maxWithOrNull(
             compareBy<MetaTrailer>(
                 { it.heroTrailerPriority() },
+                { it.heroTrailerSizePriority() },
                 { it.publishedAt.orEmpty() },
                 { it.size ?: 0 },
                 { it.name },
@@ -35,3 +36,12 @@ private fun MetaTrailer.heroTrailerPriority(): Int {
         else -> 0
     }
 }
+
+private fun MetaTrailer.heroTrailerSizePriority(): Int =
+    when {
+        (size ?: 0) >= 2160 -> 4
+        (size ?: 0) >= 1440 -> 3
+        (size ?: 0) >= 1080 -> 2
+        (size ?: 0) >= 720 -> 1
+        else -> 0
+    }

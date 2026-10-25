@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -47,7 +48,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -87,6 +91,8 @@ import com.nuvio.app.core.network.NetworkStatusRepository
 import com.nuvio.app.core.i18n.localizedSeasonEpisodeCode
 import com.nuvio.app.core.ui.NuvioBackButton
 import com.nuvio.app.core.ui.NuvioDesktopVerticalScrollbar
+import com.nuvio.app.core.ui.LocalVerticalBarPadding
+import com.nuvio.app.core.ui.verticalBarWidth
 import com.nuvio.app.core.ui.NuvioCardDepthSurface
 import com.nuvio.app.core.ui.NuvioPosterZoomActionOverlay
 import com.nuvio.app.core.ui.NuvioToastController
@@ -152,6 +158,8 @@ import com.nuvio.app.features.tracking.TrackingMembershipApplyResult
 import com.nuvio.app.features.tracking.toggleTrackingLibraryMembership
 import com.nuvio.app.features.tracking.TrackingSettingsRepository
 import com.nuvio.app.features.tracking.TrackingProviderId
+import com.nuvio.app.features.trailer.TrailerPlaybackRequest
+import com.nuvio.app.features.trailer.TrailerPlaybackTarget
 import com.nuvio.app.features.trailer.TrailerPlaybackResolver
 import com.nuvio.app.features.trailer.TrailerPlaybackSource
 import com.nuvio.app.features.watched.WatchedRepository
@@ -739,10 +747,11 @@ fun MetaDetailsScreen(
                 val inAppTrailerPlaybackEnabled = trailerPlaybackMode == TrailerPlaybackMode.IN_APP
                 val trailerScope = rememberCoroutineScope()
                 var selectedTrailer by remember(meta.id) { mutableStateOf<MetaTrailer?>(null) }
-                var trailerPlaybackSource by remember(meta.id) { mutableStateOf<TrailerPlaybackSource?>(null) }
-                var trailerLoading by remember(meta.id) { mutableStateOf(false) }
-                var trailerErrorMessage by remember(meta.id) { mutableStateOf<String?>(null) }
-                var trailerRequestToken by remember(meta.id) { mutableIntStateOf(0) }
+                val preferredTrailerBackend by rememberUpdatedState(metaScreenSettingsUiState.trailerPlayerBackend)
+                val trailerRequest = remember(meta.id) { TrailerPlaybackRequest(trailerScope) }
+                DisposableEffect(trailerRequest) {
+                    onDispose { trailerRequest.cancel() }
+                }
                 var isLeavingDetails by remember(meta.id) { mutableStateOf(false) }
                 val heroTrailerCandidate = remember(meta.trailers) {
                     selectHeroTrailer(meta.trailers)
@@ -767,7 +776,7 @@ fun MetaDetailsScreen(
                         return@LaunchedEffect
                     }
                     val resolvedSource = runCatching {
-                        TrailerPlaybackResolver.resolveFromYouTubeUrl(heroTrailerCandidate.youtubePlaybackUrl())
+                        TrailerPlaybackResolver.resolveFromYouTubeUrl(heroTrailerCandidate.youtubePlaybackUrl(), target = TrailerPlaybackTarget.FRAME_PREVIEW)
                     }.getOrNull()
                     if (resolvedSource == null) {
                         heroTrailerFinished = true
@@ -788,26 +797,9 @@ fun MetaDetailsScreen(
                             TrailerPlaybackMode.EXTERNAL -> runCatching { uriHandler.openUri(youtubeUrl) }
                             TrailerPlaybackMode.IN_APP -> {
                                 selectedTrailer = trailer
-                                trailerPlaybackSource = null
-                                trailerErrorMessage = null
-                                trailerLoading = true
-                                trailerRequestToken += 1
-                                val currentRequestToken = trailerRequestToken
-                                trailerScope.launch {
-                                    val resolvedSource = runCatching {
-                                        TrailerPlaybackResolver.resolveFromYouTubeUrl(youtubeUrl)
-                                    }.getOrNull()
-                                    if (currentRequestToken != trailerRequestToken) {
-                                        return@launch
-                                    }
-                                    trailerPlaybackSource = resolvedSource
-                                    trailerErrorMessage = if (resolvedSource == null) {
-                                        getString(Res.string.trailer_no_playable_stream)
-                                    } else {
-                                        null
-                                    }
-                                    trailerLoading = false
-                                }
+                                trailerRequest.start(youtubeUrl, backend = com.nuvio.app.features.trailer.effectiveTrailerPlayerBackend(
+                                    preferredTrailerBackend, com.nuvio.app.features.trailer.YouTubeEmbed.supported,
+                                ))
                             }
                         }
                     }
@@ -1050,6 +1042,7 @@ fun MetaDetailsScreen(
                     ?.audioUrl
                     ?.takeIf { heroTrailerSourceUrl != null && it.isNotBlank() }
                 val heroTrailerPlayWhenReady = heroTrailerSourceUrl != null &&
+                    selectedTrailer == null &&
                     !isLeavingDetails &&
                     !isHeroCollapsed.value
                 val headerTarget = if (isHeroCollapsed.value) 1f else 0f
@@ -1811,18 +1804,17 @@ fun MetaDetailsScreen(
                                 trailerTitle = selectedTrailer?.displayName ?: selectedTrailer?.name.orEmpty(),
                                 trailerType = selectedTrailer?.type.orEmpty(),
                                 contentTitle = meta.name,
-                                playbackSource = trailerPlaybackSource,
-                                isLoading = trailerLoading,
-                                errorMessage = trailerErrorMessage,
+                                playbackSource = trailerRequest.source,
+                                playbackRequestId = trailerRequest.id,
+                                backend = trailerRequest.backend,
+                                isLoading = trailerRequest.loading,
+                                errorMessage = trailerRequest.error,
                                 onDismiss = {
-                                    trailerRequestToken += 1
-                                    trailerLoading = false
-                                    trailerPlaybackSource = null
-                                    trailerErrorMessage = null
+                                    trailerRequest.cancel()
                                     selectedTrailer = null
                                 },
                                 onRetry = selectedTrailer?.let { trailer ->
-                                    { resolveTrailer(trailer) }
+                                    { trailerRequest.start(trailer.youtubePlaybackUrl(), forceRefresh = true, backend = trailerRequest.backend) }
                                 },
                             )
                         }
@@ -2480,7 +2472,7 @@ private fun DetailSectionContainer(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            content()
+            CompositionLocalProvider(LocalVerticalBarPadding provides PaddingValues(), content)
         }
     }
 }

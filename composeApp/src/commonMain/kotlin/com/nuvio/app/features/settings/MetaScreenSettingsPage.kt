@@ -57,6 +57,12 @@ import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.core.build.TrailerPlaybackMode
 import com.nuvio.app.core.ui.Chip
 import com.nuvio.app.core.ui.NuvioActionLabel
+import com.nuvio.app.features.trailer.TrailerPlayerBackend
+import com.nuvio.app.features.trailer.YouTubeEmbed
+import nuvio.composeapp.generated.resources.settings_trailer_player
+import nuvio.composeapp.generated.resources.settings_trailer_player_description
+import nuvio.composeapp.generated.resources.settings_trailer_player_youtube
+import nuvio.composeapp.generated.resources.settings_trailer_player_native
 import com.nuvio.app.features.details.MetaEpisodeCardStyle
 import com.nuvio.app.features.details.MetaScreenBackgroundMode
 import com.nuvio.app.features.details.MetaScreenSectionItem
@@ -148,6 +154,22 @@ internal fun LazyListScope.metaScreenSettingsContent(
                             selected = uiState.backgroundMode == mode,
                             onClick = { MetaScreenSettingsRepository.setBackgroundMode(mode) },
                         )
+                    }
+                }
+                if (YouTubeEmbed.supported && AppFeaturePolicy.trailerPlaybackMode == TrailerPlaybackMode.IN_APP) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsChipRow(
+                        title = stringResource(Res.string.settings_trailer_player),
+                        description = stringResource(Res.string.settings_trailer_player_description),
+                        isTablet = isTablet,
+                    ) {
+                        TrailerPlayerBackend.entries.forEach { backend ->
+                            Chip(
+                                label = stringResource(if (backend == TrailerPlayerBackend.YouTube) Res.string.settings_trailer_player_youtube else Res.string.settings_trailer_player_native),
+                                selected = uiState.trailerPlayerBackend == backend,
+                                onClick = { MetaScreenSettingsRepository.setTrailerPlayerBackend(backend) },
+                            )
+                        }
                     }
                 }
                 if (supportsPosterNavigationMotion) {

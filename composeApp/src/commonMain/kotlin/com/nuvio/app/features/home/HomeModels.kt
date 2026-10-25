@@ -2,6 +2,7 @@ package com.nuvio.app.features.home
 
 import com.nuvio.app.features.addons.ManagedAddon
 import com.nuvio.app.features.catalog.CatalogTarget
+import com.nuvio.app.features.details.MetaExternalRating
 
 data class MetaPreview(
     val id: String,
@@ -22,6 +23,11 @@ data class MetaPreview(
     val landscapePoster: String? = null,
     val rawLandscapePosterUrl: String? = null,
     val calendarCard: com.nuvio.app.features.trakt.CalendarCard? = null,
+    val runtime: String? = null,
+    val status: String? = null,
+    val ageRating: String? = null,
+    val language: String? = null,
+    val externalRatings: List<MetaExternalRating> = emptyList(),
 )
 
 fun MetaPreview.stableKey(): String = calendarCard?.key ?: "$type:$id"

@@ -1,5 +1,6 @@
 package com.nuvio.app.features.home.components
 
+import com.nuvio.app.core.ui.rememberAnimatedArtworkAnimation
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -210,6 +211,7 @@ private fun PosterGridTile(
                             onSuccess = { imageResolved = true },
                             onError = { imageResolved = true },
                             contentScale = ContentScale.Crop,
+                            desktopAnimation = rememberAnimatedArtworkAnimation(),
                         )
                     } else {
                         AsyncImage(

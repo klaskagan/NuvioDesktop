@@ -1,5 +1,6 @@
 package com.nuvio.app.features.home.components
 
+import com.nuvio.app.core.ui.NuvioDesktopAnimation
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -143,8 +144,6 @@ internal fun HomePosterHoverPreview(
     var previewVisible by remember(item.type, item.id) { mutableStateOf(false) }
     var popupMounted by remember(item.type, item.id) { mutableStateOf(false) }
     var previewDismissedByScroll by remember(item.type, item.id) { mutableStateOf(false) }
-    var trailerRequestId by remember(item.type, item.id) { mutableIntStateOf(0) }
-    var trailerResolutionPending by remember(item.type, item.id) { mutableStateOf(false) }
     var trailerPlaybackSource by remember(item.type, item.id) {
         mutableStateOf<TrailerPlaybackSource?>(null)
     }
@@ -190,36 +189,15 @@ internal fun HomePosterHoverPreview(
         }
     }
 
-    LaunchedEffect(anchorHovered, trailerPlaybackEnabled) {
-        if (
-            anchorHovered &&
-            trailerPlaybackEnabled &&
-            trailerPlaybackSource == null &&
-            !trailerResolutionPending
-        ) {
-            delay(HoverTrailerExtractionDebounceMillis)
-            trailerResolutionPending = true
-            trailerRequestId += 1
-        }
-    }
-
-    LaunchedEffect(
-        trailerRequestId,
-        trailerPlaybackEnabled,
-        item.type,
-        item.id,
-    ) {
-        if (!trailerPlaybackEnabled) {
+    val trailerSessionActive = trailerPlaybackEnabled && !previewDismissedByScroll &&
+        (anchorHovered || previewHovered || popupMounted)
+    LaunchedEffect(trailerSessionActive, item.type, item.id) {
+        if (!trailerSessionActive) {
             trailerPlaybackSource = null
-            trailerResolutionPending = false
             return@LaunchedEffect
         }
-        if (trailerRequestId == 0) return@LaunchedEffect
-        try {
-            trailerPlaybackSource = resolveHomePosterHoverTrailerPlaybackSource(item)
-        } finally {
-            trailerResolutionPending = false
-        }
+        delay(HoverTrailerExtractionDebounceMillis)
+        trailerPlaybackSource = resolveHomePosterHoverTrailerPlaybackSource(item)
     }
 
     LaunchedEffect(popupMounted, item.type, item.id) {
@@ -399,6 +377,7 @@ private fun HomePosterPreviewCard(
                     contentDescription = item.name,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
+                    desktopAnimation = NuvioDesktopAnimation.Always,
                 )
             }
 

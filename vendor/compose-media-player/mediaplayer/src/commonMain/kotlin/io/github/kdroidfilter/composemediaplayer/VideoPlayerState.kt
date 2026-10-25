@@ -25,6 +25,9 @@ interface VideoPlayerState {
     // Properties related to media state
     val hasMedia: Boolean
 
+    /** True after a video frame is available; platforms without a frame pump retain media readiness. */
+    val hasVideoFrame: Boolean get() = hasMedia
+
     /**
      * Indicates whether the video is currently playing.
      */
