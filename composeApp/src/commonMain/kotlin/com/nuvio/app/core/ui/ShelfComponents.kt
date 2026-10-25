@@ -119,8 +119,10 @@ fun <T> NuvioShelfSection(
         }
         LazyRow(
             state = state,
-            modifier = rowModifier.nuvioDesktopDragScroll(state),
-            contentPadding = rowContentPadding,
+            modifier = rowModifier
+                .nuvioHorizontalScrollBleed(LocalVerticalBarPadding.current)
+                .nuvioDesktopDragScroll(state),
+            contentPadding = rowContentPadding.withVerticalBar(),
             horizontalArrangement = Arrangement.spacedBy(itemSpacing),
         ) {
             if (duplicateSafeEntries != null) {
@@ -345,6 +347,7 @@ fun NuvioPosterCard(
                         onSuccess = { imageResolved = true },
                         onError = { imageResolved = true; if (cachedImage == null) onImageError?.invoke() },
                         contentScale = ContentScale.Crop,
+                        desktopAnimation = posterCardStyle.animatedArtworkMode.toDesktopAnimation(),
                     )
                 } else {
                     Text(
