@@ -105,6 +105,19 @@ require the packaged app: the development `:composeApp:run` controls have shown
 behavior differing from the DMG build. Do not silently replace the user's installed
 app or trigger TV/network activity as part of an unrelated UI check.
 
+Native mpv initialization must set `LC_NUMERIC` to `C` immediately before
+`mpv_create`, following the Linux and macOS bridges. A regional numeric locale
+in a Gradle debug run can make creation fail before the stream opens. When
+changing initialization, check a comma-decimal locale (such as `lt_LT.UTF-8`)
+and confirm a player handle is created without the non-C locale warning.
+
+For skip-intro lookup failures, inspect the generated `IntroDbConfig.URL` before
+changing popup or auto-skip behavior. An empty generated URL gates off repository
+fetches entirely. Configure `INTRODB_API_URL=https://api.introdb.app` in the ignored
+`local.properties` for local runs; release builds receive their properties from CI.
+Verify runtime config generation produces the configured endpoint, then check the
+episode lookup. Do not commit local properties or other configuration secrets.
+
 For navigation regressions, exercise the real `MainAppContent` screens and click
 handlers, not only the history model or colored placeholder panes. Assert the
 shown destination as well as selection. `MainAppTabNavigationTest` covers Home →
