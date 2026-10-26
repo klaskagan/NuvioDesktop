@@ -16,6 +16,7 @@
 #include <atomic>
 #include <array>
 #include <cmath>
+#include <clocale>
 #include <dlfcn.h>
 #include <mutex>
 #include <string>
@@ -1793,6 +1794,9 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
               playWhenReady:(BOOL)playWhenReady
            initialPositionMs:(long long)initialPositionMs
             decoderPriority:(int)decoderPriority {
+    // Match the Linux bridge: libmpv requires C numeric parsing even when
+    // the JVM/AppKit has initialized a regional process locale.
+    std::setlocale(LC_NUMERIC, "C");
     _mpv = mpv_create();
     if (!_mpv) {
         @throw [NSException exceptionWithName:@"PlayerBridgeError"
