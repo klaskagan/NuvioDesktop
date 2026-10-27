@@ -9,6 +9,13 @@ take precedence; feature-specific contracts remain in feature documentation.
 - Loading must not move controls, resize content, or change a scroll anchor.
   Reserve a predictable indicator slot or use an overlay that preserves readable
   content. Removing an indicator must preserve the same geometry as showing it.
+- A sticky header's own focusable controls can trigger parent scrolling: the
+  framework's sticky-header focus adjustment also applies to those descendants.
+  Test dropdown opening as well as selection. `PinnedFilterBringIntoViewSpec` in
+  `ConfiguredFolderContent.kt` exempts visible control-sized requests, while
+  preserving normal popup scrolling and offscreen/card focus requests, including
+  wrapped headers. `ConfiguredCollectionHeroTest` and
+  `SeasonalCollectionNavigationTest` cover those boundaries.
 - Keep toolbar control positions stable across related modes and label changes.
   Reserve the slots of temporarily unavailable controls without leaving invisible
   controls focusable. Account for localized labels when reserving label width.
@@ -39,6 +46,19 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
 - Treat the selected item/date, visible anchor, and fetched range as distinct
   state. Browsing an empty range must still communicate date/range progression;
   switching views or reselecting a filter must not silently jump to a stale anchor.
+- For a combined grid of server-sorted catalogs, refill each source head before
+  choosing the next item. Sorting only fetched page unions breaks global order at
+  page boundaries. Preserve source filters and identify unsupported provider sorts
+  explicitly. `SeasonalGridPagerTest` covers later-page ordering and retry rollback.
+- Grid row readiness must include displayed image/logo readiness, not just finished
+  metadata requests. Preserve a revealed row when pagination appends members to a
+  partial row, and let later visible rows wait for earlier image gates. Shared
+  `PreparedArtworkStore`/`rememberGridArtworkGates` own this behavior;
+  `PreparedArtworkStorePinningTest` covers both regressions.
+- When two settings surfaces edit the same relative order, reconcile their persisted
+  state explicitly. A drag that updates only one list can leave Home unchanged.
+  Preserve unrelated catalog slots and reconcile pre-fix saved state once, without
+  repeatedly undoing later Home edits. `SeasonalMigrationTest` covers this path.
 - Keep retained callbacks and observers current, and cancel/invalidate work when
   selection, account, profile, or screen activity changes. An older response or
   restore operation must not override a newer user navigation choice.

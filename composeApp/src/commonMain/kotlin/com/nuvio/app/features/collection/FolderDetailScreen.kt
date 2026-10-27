@@ -423,7 +423,7 @@ private fun TabbedGridContent(
                 onLoadMore = FolderDetailRepository::loadMoreSelectedTab,
                 visibleKeys = { gridState.layoutInfo.visibleItemsInfo.map { it.key } },
             )
-            val gates = com.nuvio.app.features.home.components.rememberGridArtworkGates(mediaRows, listOf(uiState.collectionId, selectedTab.sourceKey, mediaColumns))
+            val gates = com.nuvio.app.features.home.components.rememberGridArtworkGates(mediaRows, listOf(uiState.collectionId, selectedTab.sourceKey, mediaColumns), prepared)
             CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
             when {
                 selectedTab.isLoading && selectedTab.items.isEmpty() -> LoadingIndicator()

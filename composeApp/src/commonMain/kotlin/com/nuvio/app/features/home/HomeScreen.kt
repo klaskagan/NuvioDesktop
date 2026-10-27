@@ -866,31 +866,28 @@ fun HomeScreen(
         }
     }
 
+    val seasonalAccount by AuthRepository.state.collectAsStateWithLifecycle()
     val seasonalTmdbSettings by TmdbSettingsRepository.uiState.collectAsStateWithLifecycle()
     var seasonalTheme by remember { mutableStateOf(SeasonalTheme.forDate(CurrentDateProvider.todayIsoDate())) }
-    var seasonalSection by remember(activeProfileId, seasonalTmdbSettings.language, seasonalTmdbSettings.apiKey) {
+    var seasonalSection by remember(activeProfileId, seasonalAccount, collections, seasonalTmdbSettings.language, seasonalTmdbSettings.apiKey) {
         mutableStateOf<HomeCatalogSection?>(null)
     }
-    ScreenActivityEffect(homeSettingsUiState.seasonalCollectionsEnabled, activeProfileId, seasonalTmdbSettings, networkStatusUiState.condition) { active ->
-        if (!active || !homeSettingsUiState.seasonalCollectionsEnabled) return@ScreenActivityEffect
+    val seasonalCollection = collections.firstOrNull { it.id == com.nuvio.app.features.collection.SeasonalCollection.ID }
+    val seasonalEnabled = homeSettingsUiState.items.any { it.key == com.nuvio.app.features.collection.SeasonalCollection.HOME_KEY && it.enabled }
+    ScreenActivityEffect(seasonalEnabled, activeProfileId, seasonalAccount, seasonalCollection, addonsUiState.addons, seasonalTmdbSettings, networkStatusUiState.condition) { active ->
+        if (!active || !seasonalEnabled) return@ScreenActivityEffect
         TmdbSettingsRepository.ensureLoaded()
         while (true) {
             val currentTheme = SeasonalTheme.forDate(CurrentDateProvider.todayIsoDate())
-            if (seasonalTheme != currentTheme) {
-                seasonalSection = null
-                seasonalTheme = currentTheme
-            }
-            try {
-                seasonalSection = SeasonalSpotlightRepository.section(currentTheme)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                // Seasonal discovery must never block the rest of Home; retry while active.
-            }
+            if (seasonalTheme != currentTheme) { seasonalSection = null; seasonalTheme = currentTheme }
+            val folder = com.nuvio.app.features.collection.SeasonalCollection.activeFolder(seasonalCollection, currentTheme)
+            if (folder == null || folder.resolvedSources.isEmpty()) seasonalSection = null
+            else SeasonalSpotlightRepository.sections(currentTheme, folder).collect { seasonalSection = it }
             delay(60_000)
         }
     }
-    val visibleSeasonalSection = seasonalSection.takeIf { homeSettingsUiState.seasonalCollectionsEnabled }
+    val visibleSeasonalSection = seasonalSection.takeIf { seasonalEnabled &&
+        com.nuvio.app.features.collection.SeasonalCollection.activeFolder(seasonalCollection, seasonalTheme) != null }
 
     val hasActiveAddons = enabledAddons.any { it.manifest != null }
     val serversUiState by remember {
@@ -948,7 +945,7 @@ fun HomeScreen(
     }
     val hasRenderableCollectionRows = remember(enabledHomeItems, collectionsMap) {
         enabledHomeItems.any { item ->
-            item.isCollection && collectionsMap[item.key] != null
+            item.isCollection && item.key != com.nuvio.app.features.collection.SeasonalCollection.HOME_KEY && collectionsMap[item.key] != null
         }
     }
     val hasRenderableHomeRows = homeUiState.sections.isNotEmpty() || hasRenderableCollectionRows || visibleSeasonalSection != null
@@ -1223,25 +1220,27 @@ fun HomeScreen(
                         disintegrationRequest = continueWatchingDisintegrationRequest,
                     )
 
-                    visibleSeasonalSection?.let { section ->
-                        item(key = "seasonal_spotlight_${seasonalTheme.id}", contentType = "seasonal") {
-                            SeasonalSpotlightSection(
-                                theme = seasonalTheme,
-                                section = section,
-                                sectionPadding = homeSectionPadding,
-                                modifier = Modifier.padding(top = 12.dp, bottom = 24.dp),
-                                watchedKeys = watchedUiState.watchedKeys,
-                                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                                onExplore = onCatalogClick?.let { { it(section) } },
-                                onPosterClick = onPosterClick,
-                                onPosterLongClick = onPosterLongClick,
-                            )
-                        }
-                    }
-
                     keyedEnabledHomeItems.forEach { keyedSettingsItem ->
                         val settingsItem = keyedSettingsItem.value
-                        if (settingsItem.isCollection) {
+                        if (settingsItem.key == com.nuvio.app.features.collection.SeasonalCollection.HOME_KEY) {
+                            visibleSeasonalSection?.let { section ->
+                                item(key = "seasonal_spotlight_${seasonalTheme.id}", contentType = "seasonal") {
+                                    SeasonalSpotlightSection(
+                                        theme = seasonalTheme,
+                                        artworkFolder = com.nuvio.app.features.collection.SeasonalCollection.activeFolder(seasonalCollection, seasonalTheme),
+                                        section = section,
+                                        sectionPadding = homeSectionPadding,
+                                        modifier = Modifier.padding(top = 12.dp, bottom = 24.dp),
+                                        watchedKeys = watchedUiState.watchedKeys,
+                                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                                        onExplore = onCatalogClick?.let { { it(section) } },
+                                        onPosterClick = onPosterClick,
+                                        onPosterLongClick = onPosterLongClick,
+                                    )
+                                }
+                            }
+
+                        } else if (settingsItem.isCollection) {
                             val collection = collectionsMap[settingsItem.key]
                             if (collection != null) {
                                 item(key = keyedSettingsItem.lazyKey, contentType = "collection") {

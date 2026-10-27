@@ -266,7 +266,7 @@ internal fun CatalogContent(
             enabled = onLoadMore != null, onLoadMore = { onLoadMore?.invoke() },
             visibleKeys = { gridState.layoutInfo.visibleItemsInfo.map { it.key } },
         )
-        val artworkGates = com.nuvio.app.features.home.components.rememberGridArtworkGates(artworkRows, listOf(target, artworkColumns))
+        val artworkGates = com.nuvio.app.features.home.components.rememberGridArtworkGates(artworkRows, listOf(target, artworkColumns), prepared)
         CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
         Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
             if (seasonalTheme != null) {

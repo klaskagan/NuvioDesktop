@@ -45,13 +45,23 @@ class SeasonalSpotlightSectionTest {
         compose.runOnIdle { assertTrue(selected) }
     }
 
+    @Test fun emptySpotlightKeepsItsIdentityAndExploreAction() {
+        var explored = false
+        show(440, onExplore = { explored = true }, empty = true)
+        compose.onNodeWithText("Halloween Nights").assertIsDisplayed()
+        compose.onNodeWithText("No titles available. Explore the collection to review its catalogs.").assertIsDisplayed()
+        compose.onNodeWithText("Explore collection").performClick()
+        compose.runOnIdle { assertTrue(explored) }
+        savePreview("empty")
+    }
+
     private fun savePreview(name: String) {
         val directory = File("build/reports/seasonal-spotlight").apply { mkdirs() }
         ImageIO.write(compose.onRoot().captureToImage().toAwtImage(), "png", File(directory, "$name.png"))
     }
 
-    private fun show(width: Int, onExplore: () -> Unit = {}, onPosterClick: () -> Unit = {}) {
-        val movies = (1..5).map { MetaPreview("tmdb:$it", "movie", if (it == 1) "Sample movie" else "Movie $it") }
+    private fun show(width: Int, onExplore: () -> Unit = {}, onPosterClick: () -> Unit = {}, empty: Boolean = false) {
+        val movies = (if (empty) emptyList() else (1..5).toList()).map { MetaPreview("tmdb:$it", "movie", if (it == 1) "Sample movie" else "Movie $it") }
         compose.setContent {
             NuvioTheme {
                 Column(Modifier.width(width.dp)) {

@@ -46,12 +46,16 @@ object CollectionRepository {
     private var rawCollectionsJson: JsonElement = JsonArray(emptyList())
 
     private var hasLoaded = false
+    private var seasonalMigrationPending = false
 
     fun initialize() {
         if (hasLoaded) return
         hasLoaded = true
         val payload = CollectionStorage.loadPayload()
-        if (payload.isNullOrBlank()) return
+        if (payload.isNullOrBlank()) {
+            seedSeasonalCollection()
+            return
+        }
 
         runCatching {
             val parsed = json.parseToJsonElement(payload)
@@ -62,19 +66,43 @@ object CollectionRepository {
             if (normalized.size != decoded.size) {
                 persist(sync = false)
             }
-        }.onFailure { e ->
+        }.onSuccess { seedSeasonalCollection() }.onFailure { e ->
             log.e(e) { "Failed to load collections from storage" }
         }
     }
 
+    private fun seedSeasonalCollection() {
+        val version = CollectionStorage.seasonalSeedVersion()
+        if (kotlin.math.abs(version) >= SeasonalCollection.VERSION) {
+            seasonalMigrationPending = version < 0 && _collections.value.any { it.id == SeasonalCollection.ID }
+            return
+        }
+        if (_collections.value.none { it.id == SeasonalCollection.ID }) {
+            _collections.value = _collections.value + SeasonalCollection.defaults()
+            seasonalMigrationPending = true
+            if (!persist(sync = false)) return
+        }
+        // A negative version durably records that the new default still needs its first sync.
+        CollectionStorage.saveSeasonalSeedVersion(if (seasonalMigrationPending) -SeasonalCollection.VERSION else SeasonalCollection.VERSION)
+    }
+
+    internal fun hasPendingSeasonalMigration(): Boolean = seasonalMigrationPending
+
+    internal fun acknowledgeSeasonalMigration() {
+        seasonalMigrationPending = false
+        CollectionStorage.saveSeasonalSeedVersion(SeasonalCollection.VERSION)
+    }
+
     fun onProfileChanged() {
         hasLoaded = false
+        seasonalMigrationPending = false
         _collections.value = emptyList()
         rawCollectionsJson = JsonArray(emptyList())
     }
 
     fun clearLocalState() {
         hasLoaded = false
+        seasonalMigrationPending = false
         _collections.value = emptyList()
         rawCollectionsJson = JsonArray(emptyList())
     }
@@ -101,6 +129,7 @@ object CollectionRepository {
     fun removeCollection(collectionId: String) {
         ensureLoaded()
         _collections.value = _collections.value.filter { it.id != collectionId }
+        if (collectionId == SeasonalCollection.ID) acknowledgeSeasonalMigration()
         persist()
     }
 
@@ -128,6 +157,7 @@ object CollectionRepository {
         list.add(toIndex, item)
         _collections.value = list
         persist()
+        com.nuvio.app.features.home.HomeCatalogSettingsRepository.reorderCollections(list)
     }
 
     fun exportToJson(): String {
@@ -204,9 +234,11 @@ object CollectionRepository {
 
     internal fun applyFromRemote(collections: List<Collection>, rawJson: JsonElement) {
         rawCollectionsJson = rawJson
-        val normalized = normalizeCollections(collections, source = "remote sync")
+        val seasonal = _collections.value.firstOrNull { it.id == SeasonalCollection.ID }
+        val incoming = if (seasonalMigrationPending && seasonal != null && collections.none { it.id == seasonal.id }) collections + seasonal else collections
+        val normalized = normalizeCollections(incoming, source = "remote sync")
         _collections.value = CollectionMobileSettingsRepository.applyToCollections(normalized)
-        persist(sync = false)
+        if (persist(sync = false) && collections.any { it.id == SeasonalCollection.ID }) acknowledgeSeasonalMigration()
     }
 
     internal fun onMobileSettingsChanged() {
@@ -230,16 +262,17 @@ object CollectionRepository {
         if (!hasLoaded) initialize()
     }
 
-    private fun persist(sync: Boolean = true) {
+    private fun persist(sync: Boolean = true): Boolean =
         runCatching {
             CollectionStorage.savePayload(mergedCollectionsJson().toString())
             if (sync) {
                 _localChangeEvents.tryEmit(Unit)
             }
-        }.onFailure { e ->
+            true
+        }.getOrElse { e ->
             log.e(e) { "Failed to persist collections" }
+            false
         }
-    }
 
     private fun mergedCollectionsJson(): JsonArray =
         CollectionJsonPreserver.merge(json, rawCollectionsJson, _collections.value).also {

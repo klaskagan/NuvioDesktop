@@ -6,6 +6,33 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PreparedArtworkStorePinningTest {
+    @Test fun preparedMetadataCannotRevealLaterGridRowBeforeEarlierImagesAreReady() {
+        val first = com.nuvio.app.features.home.MetaPreview("first", "movie", "First")
+        val second = com.nuvio.app.features.home.MetaPreview("second", "movie", "Second")
+        val store = PreparedArtworkStore()
+        store.rows(listOf(ArtworkPrefetchRow("first-row", listOf(first)), ArtworkPrefetchRow("second-row", listOf(second))))
+        store.visibleRows = listOf("first-row", "second-row")
+        store.complete("movie:first", LandscapeMediaArtworkState())
+        store.complete("movie:second", LandscapeMediaArtworkState())
+        val gate = LandscapeRowRevealState(setOf("movie:first"))
+        store.revealRows(mapOf("first-row" to gate))
+        assertFalse(store.mayReveal("movie:second"), "Metadata readiness does not imply the image painter is ready")
+        gate.report("movie:first", true)
+        assertTrue(store.mayReveal("movie:second"))
+    }
+
+    @Test fun paginationKeepsRevealedPartialRowsVisible() {
+        val gate = LandscapeRowRevealState(setOf("movie:first"))
+        gate.report("movie:first", true)
+        assertTrue(gate.revealed)
+        gate.updateExpectedKeys(setOf("movie:first", "movie:appended"))
+        assertTrue(gate.revealed, "Appending the next page must not hide existing artwork")
+        val pending = LandscapeRowRevealState(setOf("movie:first", "movie:removed"))
+        pending.report("movie:first", true)
+        pending.updateExpectedKeys(setOf("movie:first"))
+        assertTrue(pending.revealed, "Removed members cannot hold a pending row forever")
+    }
+
     @Test fun offscreenHorizontalLookaheadCannotBlockFollowingVisibleRow() {
         val first = (0..6).map { com.nuvio.app.features.home.MetaPreview("cohort-$it", "movie", "Cohort $it") }
         val second = com.nuvio.app.features.home.MetaPreview("next", "movie", "Next")

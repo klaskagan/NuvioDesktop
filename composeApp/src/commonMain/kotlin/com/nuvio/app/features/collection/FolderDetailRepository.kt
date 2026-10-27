@@ -67,12 +67,14 @@ data class FolderDetailUiState(
     val selectedTabIndex: Int = 0,
     val isLoading: Boolean = true,
     val showAllTab: Boolean = true,
+    val seasonalGrid: SeasonalGridState? = null,
 ) {
     val selectedTab: FolderTab?
         get() = tabs.getOrNull(selectedTabIndex)
 
     val selectedTabCanLoadMore: Boolean
         get() {
+            if (seasonalGrid != null && viewMode == FolderViewMode.TABBED_GRID) return seasonalGrid.hasMore && seasonalGrid.error == null
             val currentTab = selectedTab ?: return false
             return if (currentTab.isAllTab) {
                 tabs.any { !it.isAllTab && it.canLoadMore }
@@ -83,6 +85,7 @@ data class FolderDetailUiState(
 
     val selectedTabIsLoadingMore: Boolean
         get() {
+            if (seasonalGrid != null && viewMode == FolderViewMode.TABBED_GRID) return seasonalGrid.isLoading
             val currentTab = selectedTab ?: return false
             return if (currentTab.isAllTab) {
                 tabs.any { !it.isAllTab && it.isLoadingMore }
@@ -103,6 +106,9 @@ object FolderDetailRepository {
     private var activeCollectionId: String? = null
     private var activeFolderId: String? = null
     private var loadGeneration = 0
+    private var gridGeneration = 0
+    private var gridJob: Job? = null
+    private var gridPager: SeasonalGridPager? = null
 
     fun initialize(collectionId: String, folderId: String) {
         val current = _uiState.value
@@ -110,8 +116,12 @@ object FolderDetailRepository {
             activeCollectionId == collectionId &&
             activeFolderId == folderId &&
             current.folder?.id == folderId &&
+            current.folder == CollectionRepository.getCollection(collectionId)?.folders?.firstOrNull { it.id == folderId } &&
             current.tabs.isNotEmpty()
         ) {
+            val viewMode = CollectionRepository.getCollection(collectionId)?.folderViewMode ?: current.viewMode
+            _uiState.update { it.copy(viewMode = viewMode) }
+            if (current.seasonalGrid != null && viewMode == FolderViewMode.TABBED_GRID && gridPager == null) reloadSeasonalGrid()
             return
         }
 
@@ -225,7 +235,10 @@ object FolderDetailRepository {
             selectedTabIndex = 0,
             isLoading = true,
             showAllTab = showAll,
+            seasonalGrid = if (folder.seasonalThemeId != null) SeasonalGridState() else null,
         )
+
+        if (folder.seasonalThemeId != null && collection.folderViewMode == FolderViewMode.TABBED_GRID) reloadSeasonalGrid()
 
         // Load catalog data for each source
         sources.forEachIndexed { sourceIndex, source ->
@@ -254,10 +267,69 @@ object FolderDetailRepository {
     }
 
     fun selectTab(index: Int) {
+        if (index !in _uiState.value.tabs.indices) return
         _uiState.value = _uiState.value.copy(selectedTabIndex = index)
+        if (_uiState.value.seasonalGrid != null) reloadSeasonalGrid()
+    }
+
+    fun setSeasonalViewMode(mode: FolderViewMode) {
+        val current = _uiState.value
+        if (current.seasonalGrid == null) return
+        val collection = CollectionRepository.getCollection(current.collectionId) ?: return
+        CollectionRepository.updateCollection(collection.copy(viewMode = mode.name))
+        _uiState.update { it.copy(viewMode = mode) }
+        if (mode == FolderViewMode.TABBED_GRID && gridPager == null) reloadSeasonalGrid()
+    }
+
+    fun setSeasonalQuery(query: SeasonalGridQuery) {
+        _uiState.update { it.copy(seasonalGrid = it.seasonalGrid?.copy(query = query)) }
+        reloadSeasonalGrid()
+    }
+
+    fun retrySeasonalRows() {
+        _uiState.value.tabs.forEachIndexed { index, tab -> if (!tab.isAllTab && tab.error != null) loadTabPage(index, reset = true) }
+    }
+
+    fun retrySeasonalGrid() = reloadSeasonalGrid()
+
+    private fun reloadSeasonalGrid() {
+        gridJob?.cancel()
+        gridGeneration++
+        val current = _uiState.value
+        val grid = current.seasonalGrid ?: return
+        val selected = current.selectedTab
+        val sources = if (selected?.isAllTab == true) current.folder?.resolvedSources.orEmpty()
+            else listOfNotNull(selected?.source)
+        gridPager = SeasonalGridPager(sources, grid.query)
+        _uiState.update { it.copy(seasonalGrid = grid.copy(items = emptyList(), error = null, hasMore = true, isLoading = false)) }
+        loadSeasonalGridPage()
+    }
+
+    private fun loadSeasonalGridPage() {
+        val grid = _uiState.value.seasonalGrid ?: return
+        if (grid.isLoading || !grid.hasMore) return
+        val pager = gridPager ?: return
+        val generation = gridGeneration
+        _uiState.update { it.copy(seasonalGrid = it.seasonalGrid?.copy(isLoading = true, error = null)) }
+        gridJob = scope.launch {
+            try {
+                val items = pager.nextPage()
+                if (generation != gridGeneration) return@launch
+                _uiState.update { state -> state.copy(seasonalGrid = state.seasonalGrid?.let {
+                    it.copy(items = it.items + items, isLoading = false, hasMore = pager.hasMore, error = null)
+                }) }
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error
+            } catch (error: Exception) {
+                if (generation != gridGeneration) return@launch
+                _uiState.update { it.copy(seasonalGrid = it.seasonalGrid?.copy(isLoading = false, error = error.message)) }
+            }
+        }
     }
 
     fun clear() {
+        gridGeneration++
+        gridJob?.cancel()
+        gridPager = null
         loadGeneration++
         loadJobs.values.forEach { it.cancel() }
         loadJobs.clear()
@@ -268,6 +340,10 @@ object FolderDetailRepository {
 
     fun loadMoreSelectedTab() {
         val current = _uiState.value
+        if (current.seasonalGrid != null && current.viewMode == FolderViewMode.TABBED_GRID) {
+            loadSeasonalGridPage()
+            return
+        }
         val selectedTab = current.selectedTab ?: return
         if (selectedTab.isAllTab) {
             current.tabs.forEachIndexed { index, tab ->

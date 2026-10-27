@@ -57,6 +57,7 @@ object CollectionSyncService {
 
             if (blob == null) {
                 log.i { "pullFromServer — no remote collections found" }
+                if (CollectionRepository.hasPendingSeasonalMigration()) triggerPush()
                 return
             }
 
@@ -71,6 +72,7 @@ object CollectionSyncService {
 
             if (remoteJson == localJson) {
                 log.d { "pullFromServer — remote matches local, no update needed" }
+                if (CollectionRepository.hasPendingSeasonalMigration()) CollectionRepository.acknowledgeSeasonalMigration()
                 return
             }
 
@@ -83,6 +85,7 @@ object CollectionSyncService {
                 isSyncingFromRemote = true
                 CollectionRepository.applyFromRemote(remoteCollections, remoteCollectionsJson)
                 isSyncingFromRemote = false
+                if (CollectionRepository.hasPendingSeasonalMigration()) triggerPush()
                 log.i { "pullFromServer — applied ${remoteCollections.size} collections from remote" }
             } else {
                 log.w { "pullFromServer — failed to parse remote collections JSON" }
@@ -121,6 +124,9 @@ object CollectionSyncService {
                 putSyncOriginClientId()
             }
             SupabaseProvider.client.postgrest.rpc("sync_push_collections", params)
+            if (ProfileRepository.activeProfileId == profileId && CollectionRepository.exportToJson() == collectionsJson) {
+                CollectionRepository.acknowledgeSeasonalMigration()
+            }
             log.d { "pushToRemote — success" }
         }.onFailure { e ->
             log.e(e) { "pushToRemote — FAILED" }

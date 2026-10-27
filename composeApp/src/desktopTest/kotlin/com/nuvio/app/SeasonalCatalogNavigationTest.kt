@@ -21,44 +21,6 @@ import kotlin.test.assertTrue
 /** Real Home and catalog navigation, with in-memory provider cache fixtures and isolated app data. */
 @OptIn(ExperimentalTestApi::class)
 class SeasonalCatalogNavigationTest {
-    @Test fun exploreCollectionUsesSelectedSeasonAndRestoresScrollAfterDetails() = runDesktopComposeUiTest(width = 1440, height = 1000) {
-        requireIsolation()
-        prepare()
-        val theme = SeasonalTheme.forDate(CurrentDateProvider.todayIsoDate())
-        setContent {
-            AppEnvironment { MainAppContent(ownsAppRuntime = false, showLaunchOverlay = false) }
-        }
-        waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("Explore collection").fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithText("Explore collection").performClick()
-        waitUntil(timeoutMillis = 10_000) { onAllNodesWithTag("seasonal_catalog_background_${theme.id}").fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithTag("seasonal_catalog_background_${theme.id}").assertIsDisplayed()
-        val title = runBlocking { org.jetbrains.compose.resources.getString(theme.title) }
-        onNodeWithText(title).assertIsDisplayed()
-        save("home-explore-${theme.id}")
-        onNodeWithTag("catalog_grid").performScrollToIndex(57)
-        waitUntil(timeoutMillis = 10_000) { CatalogRepository.uiState.value.items.size == 120 }
-        onNodeWithTag("catalog_grid").performScrollToIndex(15)
-        waitForIdle()
-        val position = CatalogRepository.scrollPosition(CatalogTarget.Seasonal(theme.id))
-        assertTrue(position.firstVisibleItemIndex > 0)
-        onNodeWithTag("seasonal_catalog_background_${theme.id}").assertIsNotDisplayed()
-        val visibleMovie = onAllNodes(hasText("Seasonal movie", substring = true) and hasClickAction()).onFirst()
-        visibleMovie.performClick()
-        waitUntil(timeoutMillis = 10_000) { onAllNodesWithTag("catalog_grid").fetchSemanticsNodes().isEmpty() }
-        waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Seasonal movie details fixture").fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithText("Seasonal movie details fixture").assertExists()
-        onAllNodesWithContentDescription("Back").onLast().performClick()
-        waitUntil(timeoutMillis = 10_000) { onAllNodesWithTag("catalog_grid").fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithTag("catalog_back").assertIsDisplayed()
-        onNodeWithTag("seasonal_catalog_background_${theme.id}").assertIsNotDisplayed()
-        val restored = CatalogRepository.scrollPosition(CatalogTarget.Seasonal(theme.id))
-        assertTrue(restored.firstVisibleItemIndex >= position.firstVisibleItemIndex)
-        save("restored-${theme.id}")
-        onNodeWithTag("catalog_back").performClick()
-        waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Explore collection").fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithText("Explore collection").assertIsDisplayed()
-    }
-
     @Test fun christmasNavigationKeepsChristmasArtworkRegardlessOfCurrentMonth() = runDesktopComposeUiTest(width = 1440, height = 1000) {
         requireIsolation()
         prepare()

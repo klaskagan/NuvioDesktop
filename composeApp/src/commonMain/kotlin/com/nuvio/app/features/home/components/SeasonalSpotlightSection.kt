@@ -41,17 +41,17 @@ internal fun SeasonalSpotlightSection(
     onPosterClick: ((MetaPreview) -> Unit)?,
     onPosterLongClick: ((MetaPreview) -> Unit)?,
     modifier: Modifier = Modifier,
+    artworkFolder: com.nuvio.app.features.collection.CollectionFolder? = null,
 ) {
-    if (section.items.isEmpty()) return
     val pageBackground = MaterialTheme.colorScheme.background
     val listState = remember(theme.id) { LazyListState() }
     val scope = rememberCoroutineScope()
     BoxWithConstraints(modifier.fillMaxWidth().clipToBounds()) {
         val wide = maxWidth >= 900.dp
         val editorialWidth = (maxWidth * 0.32f).coerceAtMost(480.dp)
-        val backdrop = section.items.firstOrNull { !it.banner.isNullOrBlank() }?.banner
+        val backdrop = artworkFolder?.heroBackdropUrl ?: section.items.firstOrNull { !it.banner.isNullOrBlank() }?.banner
         Box(Modifier.matchParentSize().background(theme.tint)) {
-            val artwork = theme.backgroundArtwork
+            val artwork = theme.backgroundArtwork.takeIf { artworkFolder?.heroBackdropUrl.isNullOrBlank() }
             if (artwork != null) {
                 Image(
                     painter = painterResource(artwork),
@@ -86,9 +86,9 @@ internal fun SeasonalSpotlightSection(
                     style = MaterialTheme.typography.labelLarge,
                     color = Color.White.copy(alpha = 0.8f),
                 )
-                Text(stringResource(theme.title), style = MaterialTheme.typography.headlineLarge, color = Color.White)
+                Text(section.title, style = MaterialTheme.typography.headlineLarge, color = Color.White)
                 Text(
-                    stringResource(theme.description),
+                    section.subtitle,
                     style = MaterialTheme.typography.bodyLarge,
                     color = Color.White.copy(alpha = 0.9f),
                 )
@@ -106,7 +106,13 @@ internal fun SeasonalSpotlightSection(
             }
         }
         val movies: @Composable (Modifier) -> Unit = { rowModifier ->
-            Box(rowModifier) {
+            if (section.items.isEmpty()) {
+                Box(rowModifier.height(144.dp), contentAlignment = Alignment.Center) {
+                    if (section.hasMore) com.nuvio.app.core.ui.NuvioLoadingIndicator(Modifier.size(32.dp))
+                    else Text(stringResource(Res.string.seasonal_no_titles), color = Color.White.copy(alpha = 0.8f),
+                        modifier = Modifier.padding(horizontal = sectionPadding))
+                }
+            } else Box(rowModifier) {
                 val prepared = rememberShelfArtworkPrefetch(listState, section.items, listOf("seasonal", section.key), enhanceTitles = false, forceShape = com.nuvio.app.features.home.PosterShape.Landscape, allowPortraitFallback = false, alwaysShowLandscapeTitle = true)
                 val gate = rememberMediaShelfGate(listState, section.items, listOf(section.key, prepared))
                 androidx.compose.runtime.CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared, LocalLandscapeRowReveal provides gate) {

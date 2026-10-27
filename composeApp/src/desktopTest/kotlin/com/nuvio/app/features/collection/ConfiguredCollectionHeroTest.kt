@@ -15,6 +15,19 @@ import kotlin.test.*
 
 @OptIn(ExperimentalTestApi::class)
 class ConfiguredCollectionHeroTest {
+    @Test fun pinnedControlsDoNotScrollButOffscreenCardsAndKeyboardTargetsStillDo() {
+        val normal = object : androidx.compose.foundation.gestures.BringIntoViewSpec {}
+        val wide = PinnedFilterBringIntoViewSpec(normal, { 66 }, 54f)
+        assertEquals(0f, wide.calculateScrollDistance(-7f, 38f, 800f))
+        assertEquals(0f, wide.calculateScrollDistance(-52f, 38f, 800f))
+        assertEquals(138f, wide.calculateScrollDistance(900f, 38f, 800f))
+        val wrapped = PinnedFilterBringIntoViewSpec(normal, { 160 }, 54f)
+        assertEquals(-20f, wrapped.calculateScrollDistance(-20f, 153f, 800f),
+            "A poster partially covered by a wrapped header must still scroll into view")
+        val absent = PinnedFilterBringIntoViewSpec(normal, { 0 }, 54f)
+        assertEquals(-7f, absent.calculateScrollDistance(-7f, 38f, 800f))
+    }
+
     @Test fun homeCardOpensTheMatchingFolderAndGridScrollsAway() = runDesktopComposeUiTest(width = 1440, height = 900) {
         PosterCardStyleRepository.setCatalogLandscapeModeEnabled(true)
         var opened by mutableStateOf(false)

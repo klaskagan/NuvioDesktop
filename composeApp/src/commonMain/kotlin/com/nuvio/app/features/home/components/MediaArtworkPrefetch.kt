@@ -49,7 +49,7 @@ internal fun artworkGridRows(items: List<MetaPreview>, keys: List<Any>, columns:
 
 /** Individual grid cells share readiness with the other media in their visual row. */
 @Composable
-internal fun rememberGridArtworkGates(rows: List<ArtworkPrefetchRow>, identity: Any): Map<Any, LandscapeRowRevealState> {
+internal fun rememberGridArtworkGates(rows: List<ArtworkPrefetchRow>, identity: Any, prepared: PreparedArtworkStore? = null): Map<Any, LandscapeRowRevealState> {
     val settings by remember {
         com.nuvio.app.features.tmdb.TmdbSettingsRepository.ensureLoaded()
         com.nuvio.app.features.tmdb.TmdbSettingsRepository.uiState
@@ -58,17 +58,16 @@ internal fun rememberGridArtworkGates(rows: List<ArtworkPrefetchRow>, identity: 
     val landscape = com.nuvio.app.core.ui.rememberPosterCardStyleUiState().catalogLandscapeModeEnabled
     val profile by com.nuvio.app.features.profiles.ProfileRepository.state.collectAsState()
     val gates = remember(identity, settings.language, settings.apiKey, loader, landscape, profile.activeProfile?.id) {
-        mutableMapOf<Pair<Any, List<Pair<String, PosterShape>>>, LandscapeRowRevealState>()
+        mutableMapOf<Any, LandscapeRowRevealState>()
     }
-    val memberships = rows.associate { row -> row.key to row.items.map { it.stableKey() to it.posterShape } }
     val result = rows.associate { row ->
-        val gateKey = row.key to memberships.getValue(row.key)
-        row.key to gates.getOrPut(gateKey) {
-            LandscapeRowRevealState(row.items.filter { isTitleArtworkMedia(it.type) }
-                .map(MetaPreview::stableKey).toSet())
-        }
+        val expected = row.items.filter { isTitleArtworkMedia(it.type) }.map(MetaPreview::stableKey).toSet()
+        row.key to gates.getOrPut(row.key) { LandscapeRowRevealState(expected) }.also { it.updateExpectedKeys(expected) }
     }
-    SideEffect { gates.keys.retainAll(rows.map { it.key to memberships.getValue(it.key) }.toSet()) }
+    SideEffect {
+        gates.keys.retainAll(rows.map { it.key }.toSet())
+    }
+    prepared?.revealRows(result.mapKeys { it.key.toString() })
     return rows.flatMap { row -> row.itemKeys.map { it to result.getValue(row.key) } }.toMap()
 }
 
