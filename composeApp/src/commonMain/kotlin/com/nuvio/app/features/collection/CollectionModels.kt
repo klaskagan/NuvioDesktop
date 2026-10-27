@@ -47,6 +47,8 @@ data class CollectionSource(
     val sortBy: String? = null,
     val sortHow: String? = null,
     val filters: TmdbCollectionFilters? = null,
+    val seasonalKeywords: List<String> = emptyList(),
+    val seasonalCatalog: Boolean = false,
 ) {
     val isTmdb: Boolean
         get() = provider.equals("tmdb", ignoreCase = true)
@@ -71,7 +73,7 @@ data class CollectionSource(
 internal fun CollectionSource.catalogRouteKey(): String =
     when {
         isTmdb -> {
-            "tmdb_${tmdbSourceType}_${tmdbId}_${mediaType}_${sortBy}_${filters.hashCode()}"
+            "tmdb_${tmdbSourceType}_${tmdbId}_${mediaType}_${sortBy}_${filters.hashCode()}_${seasonalKeywords.hashCode()}"
         }
 
         isTrakt -> {
@@ -201,6 +203,7 @@ data class CollectionFolder(
     val heroBackdropUrl: String? = null,
     val heroVideoUrl: String? = null,
     val titleLogoUrl: String? = null,
+    val seasonalThemeId: String? = null,
 ) {
     val posterShape: PosterShape
         get() = when (tileShape.lowercase()) {

@@ -10,6 +10,8 @@ import com.nuvio.app.features.tmdb.buildTmdbUrl
 import com.nuvio.app.features.tmdb.normalizeTmdbLanguage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -32,8 +34,24 @@ import kotlin.math.roundToInt
 object TmdbCollectionSourceResolver {
     private val log = Logger.withTag("TmdbCollectionSource")
     private val json = Json { ignoreUnknownKeys = true }
+    private val keywordMutex = Mutex()
+    private val seasonalKeywordCache = mutableMapOf<String, Int>()
+
+    private suspend fun seasonalKeywordId(keyword: String): Int = keywordMutex.withLock {
+        seasonalKeywordIds[keyword.lowercase()] ?: seasonalKeywordCache[keyword] ?: searchKeywords(keyword).entries
+            .firstOrNull { it.value.equals(keyword, ignoreCase = true) }?.key
+            ?.also { seasonalKeywordCache[keyword] = it }
+            ?: error("Seasonal keyword unavailable: $keyword")
+    }
 
     suspend fun resolve(source: CollectionSource, page: Int = 1): CatalogPage = withContext(Dispatchers.Default) {
+        if (source.mediaType.equals("BOTH", true)) {
+            val movie = resolve(source.copy(mediaType = "movie"), page)
+            val series = resolve(source.copy(mediaType = "tv"), page)
+            return@withContext CatalogPage(items = (movie.items + series.items).distinctBy { "${it.type}:${it.id}" },
+                rawItemCount = movie.rawItemCount + series.rawItemCount,
+                nextSkip = listOfNotNull(movie.nextSkip, series.nextSkip).maxOrNull())
+        }
         val settings = TmdbSettingsRepository.snapshot()
         val apiKey = TmdbSettingsRepository.effectiveApiKey()
         val language = normalizeTmdbLanguage(settings.language)
@@ -289,7 +307,21 @@ object TmdbCollectionSourceResolver {
         } else {
             source.tmdbMediaType()
         }
-        val filters = source.filters ?: TmdbCollectionFilters()
+        val originalFilters = source.filters ?: TmdbCollectionFilters()
+        val tv = mediaType == TmdbCollectionMediaType.TV && source.seasonalCatalog
+        val tvKeywords = if (!tv) emptyList() else originalFilters.withGenres.orEmpty().split(',', '|').mapNotNull {
+            when (it) { "27" -> "horror"; "53" -> "thriller"; "10749" -> "romance"; "10402" -> "music"; else -> null }
+        }
+        val baseFilters = if (tv) originalFilters.copy(withGenres = originalFilters.withGenres?.let(::seasonalTvGenres)) else originalFilters
+        val keywordIds = (source.seasonalKeywords + tvKeywords).distinct().map { keyword ->
+            seasonalKeywordId(keyword)
+        }
+        val today = com.nuvio.app.features.watchprogress.CurrentDateProvider.todayIsoDate()
+        val filters = baseFilters.copy(
+            withKeywords = if (keywordIds.isEmpty()) baseFilters.withKeywords else
+                listOfNotNull(baseFilters.withKeywords, keywordIds.joinToString(",")).joinToString(","),
+            releaseDateLte = if (source.seasonalCatalog) minOf(baseFilters.releaseDateLte ?: today, today) else baseFilters.releaseDateLte,
+        )
         val query = buildDiscoverQuery(
             source = source,
             sourceType = sourceType,
@@ -414,6 +446,7 @@ object TmdbCollectionSourceResolver {
             ?: return null
         return MetaPreview(
             id = "tmdb:$id",
+            canonicalMediaKey = "${if (mediaType == TmdbCollectionMediaType.TV) "series" else "movie"}:tmdb:$id",
             type = if (mediaType == TmdbCollectionMediaType.TV) "series" else "movie",
             name = title,
             poster = imageUrl(posterPath, "w500") ?: imageUrl(backdropPath, "w780"),
@@ -430,6 +463,7 @@ object TmdbCollectionSourceResolver {
             },
             popularity = popularity,
             voteCount = voteCount,
+            sortRating = voteAverage,
             imdbRating = voteAverage?.let { ((it * 10).roundToInt() / 10.0).toString() },
         )
     }
@@ -438,6 +472,7 @@ object TmdbCollectionSourceResolver {
         val title = title?.takeIf { it.isNotBlank() } ?: return null
         return MetaPreview(
             id = "tmdb:$id",
+            canonicalMediaKey = "${if (mediaType == TmdbCollectionMediaType.TV) "series" else "movie"}:tmdb:$id",
             type = if (mediaType == TmdbCollectionMediaType.TV) "series" else "movie",
             name = title,
             poster = imageUrl(posterPath, "w500") ?: imageUrl(backdropPath, "w780"),
@@ -448,6 +483,7 @@ object TmdbCollectionSourceResolver {
             rawReleaseDate = releaseDate,
             popularity = popularity,
             voteCount = voteCount,
+            sortRating = voteAverage,
             imdbRating = voteAverage?.let { ((it * 10).roundToInt() / 10.0).toString() },
         )
     }
@@ -461,6 +497,7 @@ object TmdbCollectionSourceResolver {
             ?: return null
         return MetaPreview(
             id = "tmdb:$id",
+            canonicalMediaKey = "${if (mediaType == TmdbCollectionMediaType.TV) "series" else "movie"}:tmdb:$id",
             type = if (mediaType == TmdbCollectionMediaType.TV) "series" else "movie",
             name = title,
             poster = imageUrl(posterPath, "w500") ?: imageUrl(backdropPath, "w780"),
@@ -477,6 +514,7 @@ object TmdbCollectionSourceResolver {
             },
             popularity = popularity,
             voteCount = voteCount,
+            sortRating = voteAverage,
             imdbRating = voteAverage?.let { ((it * 10).roundToInt() / 10.0).toString() },
         )
     }
@@ -490,6 +528,7 @@ object TmdbCollectionSourceResolver {
             ?: return null
         return MetaPreview(
             id = "tmdb:$id",
+            canonicalMediaKey = "${if (mediaType == TmdbCollectionMediaType.TV) "series" else "movie"}:tmdb:$id",
             type = if (mediaType == TmdbCollectionMediaType.TV) "series" else "movie",
             name = title,
             poster = imageUrl(posterPath, "w500") ?: imageUrl(backdropPath, "w780"),
@@ -506,6 +545,7 @@ object TmdbCollectionSourceResolver {
             },
             popularity = popularity,
             voteCount = voteCount,
+            sortRating = voteAverage,
             imdbRating = voteAverage?.let { ((it * 10).roundToInt() / 10.0).toString() },
         )
     }
@@ -542,6 +582,16 @@ object TmdbCollectionSourceResolver {
         sortBy = TmdbCollectionSort.POPULAR_DESC.value,
     )
 
+    private fun seasonalTvGenres(genres: String): String? = genres.split(',').mapNotNull { andGroup ->
+        andGroup.split('|').mapNotNull { id -> when (id) {
+            "12", "28" -> "10759"
+            "14", "878" -> "10765"
+            "27", "53", "10402" -> null
+            "10749" -> "18"
+            else -> id.takeIf { it.isNotBlank() }
+        } }.distinct().takeIf { it.isNotEmpty() }?.joinToString("|")
+    }.distinct().takeIf { it.isNotEmpty() }?.joinToString(",")
+
     private fun movieSort(sortBy: String?): String =
         when (sortBy) {
             TmdbCollectionSort.FIRST_AIR_DATE_DESC.value -> TmdbCollectionSort.RELEASE_DATE_DESC.value
@@ -553,6 +603,7 @@ object TmdbCollectionSourceResolver {
 
     private fun tvSort(sortBy: String?): String =
         when (sortBy) {
+            "primary_release_date.asc" -> "first_air_date.asc"
             TmdbCollectionSort.RELEASE_DATE_DESC.value -> TmdbCollectionSort.FIRST_AIR_DATE_DESC.value
             TmdbCollectionSort.ORIGINAL.value -> TmdbCollectionSort.POPULAR_DESC.value
             TmdbCollectionSort.VOTE_COUNT_DESC.value -> TmdbCollectionSort.VOTE_COUNT_DESC.value

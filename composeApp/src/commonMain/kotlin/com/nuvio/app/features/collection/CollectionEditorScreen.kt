@@ -1,5 +1,8 @@
 package com.nuvio.app.features.collection
 
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -263,11 +266,15 @@ fun CollectionEditorScreen(
             }
 
             item {
+                if (state.collectionId == SeasonalCollection.ID) {
+                    SeasonalCollectionBackdropSettings(state.folders)
+                } else {
                 NuvioInputField(
                     value = state.backdropImageUrl,
                     onValueChange = { CollectionEditorRepository.setBackdropImageUrl(it) },
                     placeholder = stringResource(Res.string.collections_editor_placeholder_backdrop),
                 )
+                }
             }
 
             item {
@@ -776,6 +783,19 @@ private fun FolderEditorPage(
                                 }
                             }
 
+                            if (folder.seasonalThemeId != null || CollectionRepository.getCollection(state.collectionId)?.usesConfiguredArtwork() == true) {
+                                if (folder.seasonalThemeId != null) {
+                                    SeasonalBackdropEditor(folder, CollectionEditorRepository::updateFolderHeroBackdrop)
+                                } else {
+                                NuvioInputField(value = folder.heroBackdropUrl.orEmpty(),
+                                    onValueChange = CollectionEditorRepository::updateFolderHeroBackdrop,
+                                    placeholder = stringResource(Res.string.seasonal_backdrop_url))
+                                }
+                                NuvioInputField(value = folder.titleLogoUrl.orEmpty(),
+                                    onValueChange = CollectionEditorRepository::updateFolderTitleLogo,
+                                    placeholder = stringResource(Res.string.seasonal_title_logo_url))
+                            }
+
                             FolderEditorToggleRow(
                                 title = stringResource(Res.string.collections_editor_show_gif_when_configured),
                                 subtitle = stringResource(Res.string.collections_editor_show_gif_when_configured_desc),
@@ -876,10 +896,27 @@ private fun FolderEditorPage(
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             sources.forEachIndexed { index, source ->
+                                if (folder.seasonalThemeId != null) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(Modifier.weight(1f)) { NuvioInputField(value = source.title.orEmpty(),
+                                            onValueChange = { CollectionEditorRepository.updateSeasonalSourceTitle(index, it) },
+                                            placeholder = stringResource(Res.string.seasonal_catalog_name)) }
+                                        IconButton(onClick = { CollectionEditorRepository.moveSeasonalSource(index, -1) }, enabled = index > 0) {
+                                            Icon(Icons.Rounded.KeyboardArrowUp, stringResource(Res.string.seasonal_move_up),
+                                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (index > 0) 1f else 0.38f)) }
+                                        IconButton(onClick = { CollectionEditorRepository.moveSeasonalSource(index, 1) }, enabled = index < sources.lastIndex) {
+                                            Icon(Icons.Rounded.KeyboardArrowDown, stringResource(Res.string.seasonal_move_down),
+                                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (index < sources.lastIndex) 1f else 0.38f)) }
+                                    }
+                                }
                                 val addonSource = source.addonCatalogSource()
                                 if (source.isTmdb) {
                                     FolderTmdbSourceCard(
                                         source = source,
+                                        onEdit = if (folder.seasonalThemeId != null) { {
+                                            CollectionEditorRepository.editTmdbSource(index)
+                                            onNavigateToPage?.invoke(CollectionEditorPage.TmdbSourcePicker, tmdbSourcePickerTitle)
+                                        } } else null,
                                         onRemove = { CollectionEditorRepository.removeCatalogSource(index) },
                                     )
                                 } else if (source.isTrakt) {
@@ -1107,6 +1144,11 @@ private fun TmdbSourcePickerScreen(
                                 placeholder = tmdbInputPlaceholder(state.tmdbBuilderMode),
                                 helper = tmdbInputHelper(state.tmdbBuilderMode),
                             )
+                        }
+                        if (state.editingTmdbSourceIndex != null) {
+                            NuvioInputField(value = state.tmdbSeasonalKeywordsInput,
+                                onValueChange = CollectionEditorRepository::setTmdbSeasonalKeywords,
+                                placeholder = stringResource(Res.string.seasonal_keywords))
                         }
                         TmdbLabeledField(
                             label = stringResource(Res.string.collections_editor_tmdb_display_title),
@@ -2189,6 +2231,7 @@ private fun FolderEditorToggleRow(
 @Composable
 private fun FolderTmdbSourceCard(
     source: CollectionSource,
+    onEdit: (() -> Unit)? = null,
     onRemove: () -> Unit,
 ) {
     NuvioSurfaceCard {
@@ -2208,6 +2251,9 @@ private fun FolderTmdbSourceCard(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                if (onEdit != null) IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.Edit, stringResource(Res.string.action_edit), modifier = Modifier.size(20.dp))
                 }
                 IconButton(
                     onClick = onRemove,
@@ -2499,7 +2545,7 @@ private fun traktDirectionLabel(value: String?): String =
 
 @Composable
 private fun traktSourceSubtitle(source: CollectionSource): String {
-    val media = when (TmdbCollectionMediaType.fromString(source.mediaType)) {
+    val media = if (source.mediaType.equals("BOTH", true)) stringResource(Res.string.collections_editor_tmdb_both) else when (TmdbCollectionMediaType.fromString(source.mediaType)) {
         TmdbCollectionMediaType.MOVIE -> stringResource(Res.string.collections_editor_tmdb_movies)
         TmdbCollectionMediaType.TV -> stringResource(Res.string.collections_editor_tmdb_series)
     }
@@ -2513,7 +2559,7 @@ private fun traktSourceSubtitle(source: CollectionSource): String {
 
 @Composable
 private fun tmdbSourceSubtitle(source: CollectionSource): String {
-    val media = when (TmdbCollectionMediaType.fromString(source.mediaType)) {
+    val media = if (source.mediaType.equals("BOTH", true)) stringResource(Res.string.collections_editor_tmdb_both) else when (TmdbCollectionMediaType.fromString(source.mediaType)) {
         TmdbCollectionMediaType.MOVIE -> stringResource(Res.string.collections_editor_tmdb_movies)
         TmdbCollectionMediaType.TV -> stringResource(Res.string.collections_editor_tmdb_series)
     }

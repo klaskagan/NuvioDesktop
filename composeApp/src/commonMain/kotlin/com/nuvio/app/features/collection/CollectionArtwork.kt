@@ -14,18 +14,23 @@ import com.nuvio.app.features.catalog.CatalogHeroBackdrop
 
 /** Only the requested community collections opt into the artwork presentation. */
 internal fun Collection.usesConfiguredArtwork(): Boolean {
+    if (id == SeasonalCollection.ID) return true
     if (!id.endsWith("-community")) return false
     return title.equals("By Decade", true) || title.equals("Studios", true) ||
         (title.replace("ㅤ", "").isBlank() && folders.map { it.title }.containsAll(listOf("Trakt", "Netflix", "Prime Video")))
 }
 
 internal fun Collection.artworkFolder(folderId: String): CollectionFolder? =
-    folders.firstOrNull { it.id == folderId && !it.heroBackdropUrl.isNullOrBlank() }?.takeIf { usesConfiguredArtwork() }
+    folders.firstOrNull { it.id == folderId && (!it.heroBackdropUrl.isNullOrBlank() || it.seasonalThemeId != null) }?.takeIf { usesConfiguredArtwork() }
 
 @Composable
 internal fun CollectionBackdrop(folder: CollectionFolder, minHeight: Dp, measuredHeightPx: Int, scrollTranslation: (Float) -> Float) {
     CatalogHeroBackdrop(minHeight, measuredHeightPx, scrollTranslation, "collection_background_${folder.id}") {
-        NuvioAsyncImage(folder.heroBackdropUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        val theme = SeasonalCollection.theme(folder)
+        if (folder.heroBackdropUrl.isNullOrBlank() && theme?.backgroundArtwork != null) {
+            androidx.compose.foundation.Image(org.jetbrains.compose.resources.painterResource(theme.backgroundArtwork), null,
+                Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else NuvioAsyncImage(folder.heroBackdropUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
     }
 }
 

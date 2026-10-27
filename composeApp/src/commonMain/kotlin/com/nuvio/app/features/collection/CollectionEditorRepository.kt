@@ -50,6 +50,8 @@ data class CollectionEditorUiState(
     val showTmdbSourcePicker: Boolean = false,
     val showTraktSourcePicker: Boolean = false,
     val editingTraktSourceIndex: Int? = null,
+    val editingTmdbSourceIndex: Int? = null,
+    val tmdbSeasonalKeywordsInput: String = "",
     val genrePickerSourceIndex: Int? = null,
     val tmdbBuilderMode: TmdbBuilderMode = TmdbBuilderMode.PRESETS,
     val tmdbInput: String = "",
@@ -196,6 +198,24 @@ object CollectionEditorRepository {
         _uiState.value = _uiState.value.copy(folders = list)
     }
 
+    fun updateSeasonalBackdrop(folderId: String, url: String) {
+        val state = _uiState.value
+        _uiState.value = state.copy(folders = state.folders.map { folder ->
+            if (folder.id == folderId && folder.seasonalThemeId != null)
+                folder.copy(heroBackdropUrl = url.takeIf { it.isNotBlank() }) else folder
+        })
+    }
+
+    fun updateFolderHeroBackdrop(url: String) {
+        val state = _uiState.value
+        _uiState.value = state.copy(editingFolder = state.editingFolder?.copy(heroBackdropUrl = url.takeIf { it.isNotBlank() }))
+    }
+
+    fun updateFolderTitleLogo(url: String) {
+        val state = _uiState.value
+        _uiState.value = state.copy(editingFolder = state.editingFolder?.copy(titleLogoUrl = url.takeIf { it.isNotBlank() }))
+    }
+
     fun updateFolderTitle(title: String) {
         val folder = _uiState.value.editingFolder ?: return
         _uiState.value = _uiState.value.copy(editingFolder = folder.copy(title = title))
@@ -319,8 +339,45 @@ object CollectionEditorRepository {
         _uiState.value = _uiState.value.copy(showCatalogPicker = false)
     }
 
+    fun moveSeasonalSource(index: Int, direction: Int) {
+        val folder = _uiState.value.editingFolder ?: return
+        val sources = folder.resolvedSources.toMutableList()
+        val target = index + direction
+        if (index !in sources.indices || target !in sources.indices) return
+        sources.add(target, sources.removeAt(index))
+        _uiState.value = _uiState.value.copy(editingFolder = folder.withSources(sources))
+    }
+
+    fun updateSeasonalSourceTitle(index: Int, title: String) {
+        val folder = _uiState.value.editingFolder ?: return
+        val sources = folder.resolvedSources.toMutableList()
+        if (index !in sources.indices) return
+        sources[index] = sources[index].copy(title = title)
+        _uiState.value = _uiState.value.copy(editingFolder = folder.withSources(sources))
+    }
+
+    fun setTmdbSeasonalKeywords(value: String) {
+        _uiState.value = _uiState.value.copy(tmdbSeasonalKeywordsInput = value)
+    }
+
+    fun editTmdbSource(index: Int) {
+        val source = _uiState.value.editingFolder?.resolvedSources?.getOrNull(index) ?: return
+        if (!source.isTmdb) return
+        _uiState.value = _uiState.value.copy(showTmdbSourcePicker = true, showCatalogPicker = false,
+            showTraktSourcePicker = false, editingTraktSourceIndex = null, editingTmdbSourceIndex = index,
+            tmdbBuilderMode = when (source.tmdbType()) {
+                TmdbCollectionSourceType.COMPANY -> TmdbBuilderMode.PRODUCTION
+                else -> runCatching { TmdbBuilderMode.valueOf(source.tmdbType().name) }.getOrDefault(TmdbBuilderMode.DISCOVER)
+            },
+            tmdbInput = source.tmdbId?.toString().orEmpty(), tmdbTitleInput = source.title.orEmpty(),
+            tmdbMediaType = TmdbCollectionMediaType.fromString(source.mediaType), tmdbMediaBoth = source.mediaType.equals("BOTH", true),
+            tmdbSortBy = source.sortBy ?: TmdbCollectionSort.POPULAR_DESC.value,
+            tmdbFilters = source.filters ?: TmdbCollectionFilters(),
+            tmdbSeasonalKeywordsInput = source.seasonalKeywords.joinToString(", "), tmdbSearchError = null)
+    }
+
     fun showTmdbSourcePicker() {
-        _uiState.value = _uiState.value.copy(
+        _uiState.value = _uiState.value.copy(editingTmdbSourceIndex = null, tmdbSeasonalKeywordsInput = "",
             showTmdbSourcePicker = true,
             showCatalogPicker = false,
             showTraktSourcePicker = false,
@@ -706,6 +763,18 @@ object CollectionEditorRepository {
 
     private fun addTmdbSources(sources: List<CollectionSource>, coverImageUrl: String? = null) {
         val folder = _uiState.value.editingFolder ?: return
+        val editingIndex = _uiState.value.editingTmdbSourceIndex
+        if (editingIndex != null && editingIndex in folder.resolvedSources.indices && sources.isNotEmpty()) {
+            val old = folder.resolvedSources[editingIndex]
+            val edited = sources.first().copy(mediaType = if (_uiState.value.tmdbMediaBoth) "BOTH" else sources.first().mediaType,
+                seasonalCatalog = old.seasonalCatalog,
+                seasonalKeywords = _uiState.value.tmdbSeasonalKeywordsInput.split(',').map(String::trim).filter(String::isNotBlank))
+            val updated = folder.resolvedSources.toMutableList().apply { set(editingIndex, edited) }
+            _uiState.value = _uiState.value.copy(editingFolder = folder.withSources(updated),
+                editingTmdbSourceIndex = null, showTmdbSourcePicker = false,
+                sourcePickerCompletionGeneration = _uiState.value.sourcePickerCompletionGeneration + 1L)
+            return
+        }
         val existingKeys = folder.resolvedSources.mapTo(mutableSetOf(), ::collectionSourceKey)
         val newSources = sources.filter { existingKeys.add(collectionSourceKey(it)) }
         if (newSources.isEmpty()) return

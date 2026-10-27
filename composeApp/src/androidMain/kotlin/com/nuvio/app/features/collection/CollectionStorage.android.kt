@@ -14,6 +14,9 @@ actual object CollectionStorage {
         preferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
     }
 
+    actual fun seasonalSeedVersion(): Int = preferences?.getInt(ProfileScopedKey.of("seasonal_seed_version"), 0) ?: 0
+    actual fun saveSeasonalSeedVersion(version: Int) { preferences?.edit()?.putInt(ProfileScopedKey.of("seasonal_seed_version"), version)?.apply() }
+
     actual fun loadPayload(): String? =
         preferences?.getString(ProfileScopedKey.of(payloadKey), null)
 

@@ -18,6 +18,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import nuvio.composeapp.generated.resources.seasonal_sort_unavailable
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.collections_editor_trakt_fallback_title
 import nuvio.composeapp.generated.resources.collections_trakt_credentials_missing
@@ -59,7 +60,7 @@ object TraktPublicListSourceResolver {
     private val log = Logger.withTag("TraktPublicListSource")
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun resolve(source: CollectionSource, page: Int = 1): CatalogPage = withContext(Dispatchers.Default) {
+    suspend fun resolve(source: CollectionSource, page: Int = 1, requireAppliedSort: Boolean = false): CatalogPage = withContext(Dispatchers.Default) {
         val listId = source.traktListId?.takeIf { it > 0L } ?: error(getString(Res.string.collections_trakt_missing_list_id))
         val mediaType = TmdbCollectionMediaType.fromString(source.mediaType)
         val type = mediaType.toTraktType()
@@ -77,6 +78,13 @@ object TraktPublicListSourceResolver {
         )
         if (response.status !in 200..299) {
             error(errorMessageFor(response.status, getString(Res.string.collections_editor_trakt_load_failed)))
+        }
+
+        if (requireAppliedSort) {
+            fun header(name: String) = response.headers.entries.firstOrNull { it.key.equals(name, true) }?.value?.trim()?.lowercase()
+            check(header("X-Applied-Sort-By") == sortBy && header("X-Applied-Sort-How") == sortHow) {
+                getString(nuvio.composeapp.generated.resources.Res.string.seasonal_sort_unavailable)
+            }
         }
 
         val rawItems = json.decodeFromString<List<PublicTraktListItemDto>>(response.body)
@@ -208,6 +216,7 @@ object TraktPublicListSourceResolver {
         return MetaPreview(
             id = contentId,
             type = "movie",
+            canonicalMediaKey = ids?.tmdb?.let { "movie:tmdb:$it" },
             name = title,
             poster = images.traktBestPosterUrl(),
             banner = images.traktBestBackdropUrl(),
@@ -217,6 +226,7 @@ object TraktPublicListSourceResolver {
             releaseInfo = year?.toString() ?: released?.take(4),
             rawReleaseDate = released,
             imdbRating = rating?.formatRating(),
+            sortRating = rating,
             genres = genres.orEmpty(),
         )
     }
@@ -233,6 +243,7 @@ object TraktPublicListSourceResolver {
         return MetaPreview(
             id = contentId,
             type = "series",
+            canonicalMediaKey = ids?.tmdb?.let { "series:tmdb:$it" },
             name = title,
             poster = images.traktBestPosterUrl(),
             banner = images.traktBestBackdropUrl(),
@@ -242,6 +253,7 @@ object TraktPublicListSourceResolver {
             releaseInfo = year?.toString() ?: firstAired?.take(4),
             rawReleaseDate = firstAired,
             imdbRating = rating?.formatRating(),
+            sortRating = rating,
             genres = genres.orEmpty(),
         )
     }

@@ -15,7 +15,7 @@ Paths are relative to the repository root:
 - `composeApp/src/commonMain/kotlin/com/nuvio/app/features/home/SeasonalTheme.kt`:
   season identities and bundled background mappings.
 - `composeApp/src/desktopTest/kotlin/com/nuvio/app/features/catalog/SeasonalCatalogHeroTest.kt`
-  and `composeApp/src/desktopTest/kotlin/com/nuvio/app/SeasonalCatalogNavigationTest.kt`:
+  and `composeApp/src/desktopTest/kotlin/com/nuvio/app/SeasonalCollectionNavigationTest.kt`:
   presentation and real navigation regression coverage.
 
 ## Artwork and identity
@@ -23,7 +23,9 @@ Paths are relative to the repository root:
 - A collection page uses the same dedicated artwork as its Home banner. Resolve
   artwork from the selected collection identity, independently of movie results.
   Do not choose the first movie's backdrop as the collection background.
-- Seasonal catalogs resolve `CatalogTarget.Seasonal.themeId` through
+- Seasonal Home Explore opens the configured season folder. Folder `seasonalThemeId`
+  resolves bundled artwork and survives renaming/reordering. Legacy seasonal catalogs resolve
+  `CatalogTarget.Seasonal.themeId` through
   `SeasonalTheme`. Halloween uses the supplied bundled WebP; the remaining eight
   themes use their own bundled backgrounds. Keep the season selected at navigation
   time even if the calendar changes while the page remains open.
@@ -72,13 +74,33 @@ community collections retain their standard presentation.
 
 - Keep existing movie cards, column settings, loading, retry, pagination, click
   handlers, and restoration when returning from details.
-- Key scroll state to the destination and relevant existing filters so changing
-  collections does not inherit an unrelated scroll position. Retained callbacks
-  must observe the current navigation selection.
+- Key scroll state to the destination so changing collections does not inherit an
+  unrelated scroll position. Keep seasonal query changes independent of the scroll
+  state's lifetime: preserve a visible hero and only reset results under pinned
+  controls after it has scrolled away. Capture the anchor before replacement layout.
+  A server request restarting at page one does not mean collapsing the hero.
+  Retained callbacks must observe current selection.
+- Transfer the Rows/Grid anchor in the toggle click handler, before publishing the
+  mode, never in a post-composition effect (the new layout would draw unanchored
+  first). `SeasonalCollectionNavigationTest` checks frames right after the click
+  with a manual clock.
+- Match hero visibility/offset when switching Rows/Grid. Determine visibility from
+  measured bounds, since index zero may remain for the gap after an offscreen hero.
+  Short successful grids and folders with only a few rows need enough trailing
+  space to keep a valid collapsed-hero anchor. `SeasonalCollectionNavigationTest`
+  covers delayed responses, six-title results, two rows, and both hero positions.
+- Reserve and clip the scrolling viewport below fixed navigation chrome. Padding
+  only the sticky filters leaves the scrolling title able to overlap Back and
+  creates an unnecessary gap before filters. `ConfiguredFolderContent.kt` is the
+  reference; `SeasonalCollectionNavigationTest` checks the pinned control bounds.
+- Seasonal artwork is a per-folder override, shared by Home and Explore. Preview
+  the effective bundled/custom image and provide Restore original artwork by
+  clearing that override; do not display an unrelated collection URL as its editor.
 - Preserve navigation contracts, persisted settings, and database schemas unless
   the requested feature specifically requires changing them.
-- The hero reference does not imply new horizontal categories or a replacement
-  for the existing movie grid.
+- Seasonal folders now use the existing collection rows/grid presentation; see
+  `docs/features/seasonal-collections.md`. Other catalog heroes retain their current
+  presentation. Resolve the season from stable folder metadata, never its edited title.
 
 ## Verification
 

@@ -1,19 +1,23 @@
 package com.nuvio.app.features.home
 
+import com.nuvio.app.core.auth.userId
 import com.nuvio.app.features.catalog.CatalogPage
 import com.nuvio.app.features.catalog.CatalogTarget
+import com.nuvio.app.features.collection.seasonalIdentity
 import com.nuvio.app.features.collection.CollectionSource
 import com.nuvio.app.features.collection.TmdbCollectionSourceResolver
 import com.nuvio.app.features.tmdb.TmdbMetadataService
 import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 import com.nuvio.app.features.watchprogress.CurrentDateProvider
 import com.nuvio.app.features.watchprogress.WatchProgressClock
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.seasonal_spotlight_label
 import org.jetbrains.compose.resources.getString
@@ -23,17 +27,57 @@ object SeasonalSpotlightRepository {
     private data class Key(val theme: String, val language: String, val apiKey: String, val page: Int)
     private val cache = SeasonalPageCache<Key>(load = ::loadPage)
 
+    private val sessionMutex = Mutex()
+    private val sourceSlots = kotlinx.coroutines.sync.Semaphore(4)
+    private val sessionSeed = kotlin.random.Random.nextLong()
+    private val sessionOrders = linkedMapOf<String, SeasonalSessionOrder>()
+    private data class SourceKey(val profile: Int, val account: String?, val addons: Int, val source: CollectionSource, val language: String, val apiKey: String)
+    private val sourceCache = SeasonalPageCache<SourceKey>(capacity = 128, load = { key ->
+        com.nuvio.app.features.collection.resolveSeasonalSource(key.source)
+    })
+
+    fun sections(theme: SeasonalTheme, folder: com.nuvio.app.features.collection.CollectionFolder): kotlinx.coroutines.flow.Flow<HomeCatalogSection> = kotlinx.coroutines.flow.channelFlow {
+        val profile = com.nuvio.app.features.profiles.ProfileRepository.activeProfileId
+        val settings = TmdbSettingsRepository.snapshot()
+        val account = com.nuvio.app.core.auth.AuthRepository.state.value.userId
+        val addons = com.nuvio.app.features.addons.AddonRepository.uiState.value.addons.hashCode()
+        val identity = "$account:$profile:${theme.id}:${folder.hashCode()}:${settings.language}:${settings.apiKey}"
+        val order = sessionMutex.withLock { synchronizedOrder(identity) }
+        val mutex = Mutex()
+        fun section(items: List<MetaPreview>) = HomeCatalogSection(
+            key = "seasonal_${theme.id}", title = folder.title, subtitle = getSeasonDescription(theme),
+            addonName = "", target = CatalogTarget.Seasonal(theme.id), items = items, hasMore = true)
+        mutex.withLock { send(section(order.items)) }
+        val jobs = folder.resolvedSources.map { source ->
+            launch {
+                try {
+                    val page = sourceSlots.withPermit {
+                        sourceCache.get(SourceKey(profile, account, addons, source, settings.language, TmdbSettingsRepository.effectiveApiKey()))
+                    }
+                    val sample = page.items.filterReleasedItems(CurrentDateProvider.todayIsoDate())
+                        .shuffled(kotlin.random.Random(sessionSeed xor source.hashCode().toLong())).take(8)
+                    mutex.withLock { send(section(order.append(sample))) }
+                } catch (error: CancellationException) { throw error } catch (_: Exception) {
+                    // A failed source does not erase the successful same-session shelf.
+                }
+            }
+        }
+        jobs.forEach { it.join() }
+        mutex.withLock { send(section(order.items).copy(hasMore = false)) }
+    }
+
+    private fun synchronizedOrder(identity: String): SeasonalSessionOrder = sessionOrders.getOrPut(identity) {
+        if (sessionOrders.size >= 24) sessionOrders.remove(sessionOrders.keys.first())
+        SeasonalSessionOrder(sessionSeed)
+    }
+
+    private fun getSeasonDescription(theme: SeasonalTheme): String = kotlinx.coroutines.runBlocking { getString(theme.description) }
+
     suspend fun section(theme: SeasonalTheme): HomeCatalogSection {
-        val result = page(theme.id)
-        return HomeCatalogSection(
-            key = "seasonal_${theme.id}",
-            title = getString(theme.title),
-            subtitle = getString(theme.description),
-            addonName = getString(Res.string.seasonal_spotlight_label),
-            target = CatalogTarget.Seasonal(theme.id),
-            items = result.items,
-            hasMore = result.nextSkip != null,
-        )
+        val folder = com.nuvio.app.features.collection.SeasonalCollection.activeFolder(
+            com.nuvio.app.features.collection.CollectionRepository.getCollection(com.nuvio.app.features.collection.SeasonalCollection.ID), theme)
+        return HomeCatalogSection("seasonal_${theme.id}", folder?.title ?: getString(theme.title), getString(theme.description), "",
+            CatalogTarget.Seasonal(theme.id), page(theme.id).items, hasMore = true)
     }
 
     suspend fun page(themeId: String, page: Int = 1): CatalogPage {
@@ -97,20 +141,36 @@ internal class SeasonalPageCache<K>(
     private val mutex = Mutex()
     private val entries = linkedMapOf<K, Cached>()
 
-    suspend fun get(key: K): CatalogPage = mutex.withLock {
-        val previous = entries[key]
-        if (previous != null && now() - previous.fetchedAt in 0L until ttlMs) return@withLock previous.page
-        try {
-            val result = load(key)
-            if (result.items.isNotEmpty()) {
-                entries[key] = Cached(result, now())
-                while (entries.size > capacity) entries.remove(entries.keys.first())
-            }
-            result.takeIf { it.items.isNotEmpty() } ?: previous?.page ?: result
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            previous?.page ?: throw error
+    private val keyLocks = mutableMapOf<K, Mutex>()
+
+    suspend fun get(key: K): CatalogPage {
+        val guard = mutex.withLock { keyLocks.getOrPut(key) { Mutex() } }
+        return guard.withLock {
+            val previous = mutex.withLock { entries[key] }
+            if (previous != null && now() - previous.fetchedAt in 0L until ttlMs) return@withLock previous.page
+            try {
+                val result = load(key)
+                if (result.items.isNotEmpty()) mutex.withLock {
+                    entries[key] = Cached(result, now())
+                    while (entries.size > capacity) entries.remove(entries.keys.first())
+                    if (keyLocks.size > capacity * 2) keyLocks.keys.filter { it !in entries && keyLocks[it]?.isLocked == false }
+                        .take(keyLocks.size - capacity).forEach { keyLocks.remove(it) }
+                }
+                result.takeIf { it.items.isNotEmpty() } ?: previous?.page ?: result
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) { previous?.page ?: throw error }
         }
+    }
+}
+
+/** Append-only within a launch: late sources and refreshes cannot move already visible cards. */
+internal class SeasonalSessionOrder(private val seed: Long) {
+    var items: List<MetaPreview> = emptyList()
+        private set
+    fun append(incoming: List<MetaPreview>): List<MetaPreview> {
+        val seen = items.mapTo(mutableSetOf()) { it.seasonalIdentity() }
+        items = items + incoming.distinctBy { it.seasonalIdentity() }.filter { it.seasonalIdentity() !in seen }
+            .shuffled(kotlin.random.Random(seed))
+        return items
     }
 }

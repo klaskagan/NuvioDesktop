@@ -126,23 +126,6 @@ internal fun LazyListScope.homescreenSettingsContent(
         }
     }
     item {
-        val homeSettings by HomeCatalogSettingsRepository.uiState.collectAsStateWithLifecycle()
-        SettingsSection(
-            title = stringResource(Res.string.seasonal_spotlight_label),
-            isTablet = isTablet,
-        ) {
-            SettingsGroup(isTablet = isTablet) {
-                SettingsSwitchRow(
-                    title = stringResource(Res.string.seasonal_spotlight_setting),
-                    description = stringResource(Res.string.seasonal_spotlight_setting_description),
-                    checked = homeSettings.seasonalCollectionsEnabled,
-                    isTablet = isTablet,
-                    onCheckedChange = HomeCatalogSettingsRepository::setSeasonalCollectionsEnabled,
-                )
-            }
-        }
-    }
-    item {
         val catalogOnlyItems = items.filter { !it.isCollection && it.supportsHero }
         if (heroEnabled && catalogOnlyItems.isNotEmpty()) {
             var heroSourcesExpanded by remember { mutableStateOf(false) }

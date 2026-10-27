@@ -58,11 +58,14 @@ internal class PreparedArtworkStore(
         }
     }
     fun rows(rows: List<ArtworkPrefetchRow>) { rowMembers = rows.associate { it.key.toString() to it.items.filter { item -> isTitleArtworkMedia(item.type) }.map(MetaPreview::stableKey) } }
+    private var revealRows: Map<String, LandscapeRowRevealState> = emptyMap()
+    fun revealRows(rows: Map<String, LandscapeRowRevealState>) { revealRows = rows }
     fun mayReveal(key: String): Boolean {
         if (parent?.manages(key) == true) return parent.mayReveal(key)
         val index = visibleRows.indexOfFirst { key in rowMembers[it].orEmpty() }
         if (index < 0) return true
-        return visibleRows.take(index).all { row -> (revealCohorts[row] ?: rowMembers[row]).orEmpty().all { get(it)?.isLoading == false } }
+        return visibleRows.take(index).all { row -> revealRows[row]?.revealed
+            ?: (revealCohorts[row] ?: rowMembers[row]).orEmpty().all { get(it)?.isLoading == false } }
     }
     // Known offscreen items wait for the viewport scheduler rather than racing it with a card lookup.
     fun manage(keys: Set<String>) { managedKeys = keys }
@@ -96,12 +99,16 @@ internal class PreparedArtworkStore(
 internal val LocalPreparedLandscapeArtwork = staticCompositionLocalOf { PreparedArtworkStore() }
 internal data class LandscapeMediaArtworkState(val artwork: TmdbLandscapeArtwork? = null, val isLoading: Boolean = false, val logoFailed: Boolean = false)
 
-internal class LandscapeRowRevealState(private val expectedKeys: Set<String>? = null) {
+internal class LandscapeRowRevealState(private var expectedKeys: Set<String>? = null) {
     val ready = mutableStateMapOf<String, Boolean>()
     var revealed by mutableStateOf(false)
+    fun updateExpectedKeys(keys: Set<String>) {
+        expectedKeys = keys
+        if (!revealed && keys.all { ready[it] == true }) revealed = true
+    }
     fun report(key: String, value: Boolean) {
         if (ready[key] != value) ready[key] = value
-        if (!revealed && expectedKeys != null && expectedKeys.all { ready[it] == true }) revealed = true
+        if (!revealed && expectedKeys?.all { ready[it] == true } == true) revealed = true
     }
 }
 internal val LocalLandscapeRowReveal = staticCompositionLocalOf<LandscapeRowRevealState?> { null }

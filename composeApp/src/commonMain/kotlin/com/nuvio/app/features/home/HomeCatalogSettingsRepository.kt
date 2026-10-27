@@ -94,6 +94,7 @@ private data class StoredHomeCatalogSettingsPayload(
     val showCatalogType: Boolean = true,
     val hideUnreleasedContent: Boolean = false,
     val items: List<StoredHomeCatalogPreference> = emptyList(),
+    val appliedCollectionOrder: List<String>? = null,
 )
 
 object HomeCatalogSettingsRepository {
@@ -127,6 +128,7 @@ object HomeCatalogSettingsRepository {
         set(value) {
             preferencesRef.value = value
         }
+    private var appliedCollectionOrder: List<String>? = null
     private var seasonalCollectionsEnabled = true
     private var heroEnabled = true
     private var showCatalogType = true
@@ -135,6 +137,7 @@ object HomeCatalogSettingsRepository {
     fun onProfileChanged() {
         hasLoaded = false
         preferences = emptyMap()
+        appliedCollectionOrder = null
         seasonalCollectionsEnabled = true
         heroEnabled = true
         showCatalogType = true
@@ -155,6 +158,7 @@ object HomeCatalogSettingsRepository {
         lastCatalogSync = null
         lastCollectionSync = null
         preferences = emptyMap()
+        appliedCollectionOrder = null
         seasonalCollectionsEnabled = true
         heroEnabled = true
         showCatalogType = true
@@ -186,6 +190,7 @@ object HomeCatalogSettingsRepository {
             return
         }
         normalizePreferences()
+        reconcileCollectionOrder()
         enforcePinnedCollectionsAtTop()
         publish()
         persist()
@@ -214,6 +219,7 @@ object HomeCatalogSettingsRepository {
         }
         lastCollectionSync = syncInput
         normalizePreferences()
+        reconcileCollectionOrder()
         enforcePinnedCollectionsAtTop()
         publish()
         persist()
@@ -294,12 +300,15 @@ object HomeCatalogSettingsRepository {
 
     fun resetToDefaults() {
         ensureLoaded()
+        appliedCollectionOrder = null
         seasonalCollectionsEnabled = true
         heroEnabled = true
         showCatalogType = true
         hideUnreleasedContent = false
         preferences = emptyMap()
         normalizePreferences()
+        reconcileCollectionOrder()
+        enforcePinnedCollectionsAtTop()
         publish()
         persist()
         HomeRepository.applyCurrentSettings()
@@ -334,6 +343,34 @@ object HomeCatalogSettingsRepository {
         HomeCatalogSettingsSyncService.triggerPush()
     }
 
+    /** Reorder collection slots while retaining the user's regular-catalog interleaving. */
+    fun reorderCollections(collections: List<Collection>) {
+        ensureLoaded()
+        collectionDefinitions = buildCollectionDefinitions(collections)
+        normalizePreferences()
+        val collectionKeys = collectionDefinitions.map { it.key }
+        applyCollectionOrder(collectionKeys)
+        enforcePinnedCollectionsAtTop()
+        publish()
+        persist()
+        HomeRepository.applyCurrentSettings()
+        HomeCatalogSettingsSyncService.triggerPush()
+    }
+
+    private fun reconcileCollectionOrder() {
+        val keys = collectionDefinitions.map { it.key }
+        if (keys.isNotEmpty() && keys != appliedCollectionOrder) applyCollectionOrder(keys)
+    }
+
+    private fun applyCollectionOrder(collectionKeys: List<String>) {
+        val replacements = collectionKeys.iterator()
+        val ordered = allOrderedKeys().map { if (it in collectionKeys) replacements.next() else it }
+        preferences = preferences.toMutableMap().also { updated ->
+            ordered.forEachIndexed { index, key -> updated[key]?.let { updated[key] = it.copy(order = index) } }
+        }
+        appliedCollectionOrder = collectionKeys
+    }
+
     private fun ensureLoaded() {
         if (hasLoaded) return
         hasLoaded = true
@@ -347,6 +384,7 @@ object HomeCatalogSettingsRepository {
 
         if (parsedPayload != null) {
             lastPersistedPayload = payload
+            appliedCollectionOrder = parsedPayload.appliedCollectionOrder
             seasonalCollectionsEnabled = parsedPayload.seasonalCollectionsEnabled
             heroEnabled = parsedPayload.heroEnabled
             showCatalogType = parsedPayload.showCatalogType
@@ -404,9 +442,9 @@ object HomeCatalogSettingsRepository {
             normalized[entry.key] = StoredHomeCatalogPreference(
                 key = entry.key,
                 customTitle = stored?.customTitle.orEmpty(),
-                enabled = stored?.enabled ?: true,
+                enabled = stored?.enabled ?: if (entry.key == com.nuvio.app.features.collection.SeasonalCollection.HOME_KEY) seasonalCollectionsEnabled else true,
                 heroSourceEnabled = heroSourceEnabled,
-                order = stored?.order ?: nextOrder++,
+                order = stored?.order ?: if (entry.key == com.nuvio.app.features.collection.SeasonalCollection.HOME_KEY) -1 else nextOrder++,
             )
         }
         preferences = normalized.toMap()
@@ -478,6 +516,7 @@ object HomeCatalogSettingsRepository {
                 showCatalogType = showCatalogType,
                 hideUnreleasedContent = hideUnreleasedContent,
                 items = preferences.values.sortedBy { it.order },
+                appliedCollectionOrder = appliedCollectionOrder,
             ),
         )
         if (payload == lastPersistedPayload) return

@@ -1186,20 +1186,31 @@ internal fun MainAppContent(
         }
 
         val onCatalogClick: (HomeCatalogSection) -> Unit = { section ->
-            val launchId = CatalogLaunchStore.put(
-                CatalogLaunch(
-                    title = section.title,
-                    subtitle = section.subtitle,
-                    target = section.target,
-                ),
-            )
-            navController.navigate(
-                CatalogRoute(
-                    launchId = launchId,
-                    title = section.title,
-                    subtitle = section.subtitle,
-                ),
-            )
+            val seasonal = section.target as? CatalogTarget.Seasonal
+            val seasonalFolder = seasonal?.let { target ->
+                CollectionRepository.getCollection(com.nuvio.app.features.collection.SeasonalCollection.ID)
+                    ?.folders?.firstOrNull { it.seasonalThemeId == target.themeId }
+            }
+            if (seasonalFolder != null) {
+                navController.navigate(FolderDetailRoute(
+                    collectionId = com.nuvio.app.features.collection.SeasonalCollection.ID,
+                    folderId = seasonalFolder.id, title = seasonalFolder.title))
+            } else {
+                val launchId = CatalogLaunchStore.put(
+                    CatalogLaunch(
+                        title = section.title,
+                        subtitle = section.subtitle,
+                        target = section.target,
+                    ),
+                )
+                navController.navigate(
+                    CatalogRoute(
+                        launchId = launchId,
+                        title = section.title,
+                        subtitle = section.subtitle,
+                    ),
+                )
+            }
         }
 
         val librarySectionSubtitle = when (libraryUiState.sourceMode) {
