@@ -78,3 +78,7 @@ The shared app is built with Kotlin Multiplatform and Compose Multiplatform.
 ## License
 
 [GNU General Public License v3.0](./LICENSE)
+
+### Desktop movie recommendations
+
+Playback settings include an enabled-by-default Movie Recommendations card for unwatched More Like This titles near the end of a movie. See [behavior and verification](docs/movie-recommendations.md).

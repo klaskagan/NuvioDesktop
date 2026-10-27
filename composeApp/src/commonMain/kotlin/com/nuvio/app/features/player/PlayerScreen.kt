@@ -20,6 +20,8 @@ internal fun PlayerScreen(
     initialBingeGroup: String? = null,
     pauseDescription: String? = null,
     onBack: PlayerBackRequest,
+    onOpenMetaDetails: ((com.nuvio.app.features.home.MetaPreview) -> Unit)? = null,
+
     onSystemBackHandlerChanged: (handler: (() -> Unit)?) -> Unit = {},
     onOpenInExternalPlayer: ((ExternalPlayerPlaybackRequest) -> Unit)? = null,
     onOpenExternalUrl: ((String) -> Unit)? = null,
@@ -64,6 +66,7 @@ internal fun PlayerScreen(
             initialBingeGroup = initialBingeGroup,
             pauseDescription = pauseDescription,
             onBack = onBack,
+            onOpenMetaDetails = onOpenMetaDetails,
             onSystemBackHandlerChanged = onSystemBackHandlerChanged,
             onOpenInExternalPlayer = onOpenInExternalPlayer,
             onOpenExternalUrl = onOpenExternalUrl,

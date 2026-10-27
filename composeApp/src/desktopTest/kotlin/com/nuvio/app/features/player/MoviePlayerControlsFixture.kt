@@ -9,10 +9,10 @@ import java.io.File
 
 /** Uses the actual movie screen, including its production PlatformPlayerSurface caller. */
 internal object MoviePlayerControlsFixture {
-    fun seedMetadata() {
+    fun seedMetadata(recommendations: List<com.nuvio.app.features.home.MetaPreview> = emptyList()) {
         check(System.getProperty("nuvio.test.isolatedHome") == "true")
         check(System.getProperty("java.util.prefs.PreferencesFactory") == "com.nuvio.app.core.storage.IsolatedPreferencesFactory")
-        val meta = MetaDetails("movie-controls-fixture", "movie", "Movie controls regression")
+        val meta = MetaDetails("movie-controls-fixture", "movie", "Movie controls regression", moreLikeThis = recommendations)
         val field = MetaDetailsRepository.javaClass.getDeclaredField("cachedMetaByRequestKey").apply { isAccessible = true }
         @Suppress("UNCHECKED_CAST") val cache = field.get(MetaDetailsRepository) as MutableMap<String, Any>
         val ctor = Class.forName("com.nuvio.app.features.details.MetaDetailsRepository\$CachedMetaEntry")
@@ -20,7 +20,7 @@ internal object MoviePlayerControlsFixture {
         cache["movie:${meta.id}"] = ctor.newInstance(meta, null, null)
     }
 
-    @Composable fun Content(file: File, onBack: () -> Unit = {}) {
+    @Composable fun Content(file: File, onBack: () -> Unit = {}, onOpenMetaDetails: ((com.nuvio.app.features.home.MetaPreview) -> Unit)? = null) {
         AppEnvironment {
             PlayerScreen(
                 profileId = ProfileRepository.activeProfileId,
@@ -28,6 +28,7 @@ internal object MoviePlayerControlsFixture {
                 providerName = "Local fixture", streamTitle = "Ordinary MP4", streamSubtitle = null,
                 parentMetaId = "movie-controls-fixture", parentMetaType = "movie", contentType = "movie",
                 onBack = { release -> release(onBack, {}) },
+                onOpenMetaDetails = onOpenMetaDetails,
             )
         }
     }

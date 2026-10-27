@@ -23,6 +23,8 @@ internal data class PlayerScreenArgs(
     val initialBingeGroup: String?,
     val pauseDescription: String?,
     val onBack: PlayerBackRequest,
+    val onOpenMetaDetails: ((com.nuvio.app.features.home.MetaPreview) -> Unit)? = null,
+
     val onSystemBackHandlerChanged: (handler: (() -> Unit)?) -> Unit = {},
     val onOpenInExternalPlayer: ((ExternalPlayerPlaybackRequest) -> Unit)?,
     val onOpenExternalUrl: ((String) -> Unit)?,

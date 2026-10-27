@@ -3476,3 +3476,38 @@ svg {
   stroke: none;
   pointer-events: none;
 }
+
+/* Movie suggestions share the native next-episode prompt surface; all ten fit without scrolling. */
+.movie-recommendation-card {
+  --recommendation-poster-width: clamp(24px, calc((100vh - var(--overlay-bottom) - 110px) / 3), 72px);
+  position: absolute;
+  right: var(--hp);
+  bottom: calc(var(--overlay-bottom) + env(safe-area-inset-bottom));
+  z-index: 7;
+  width: min(calc(var(--recommendation-poster-width) * 5 + 54px), calc(100vw - (var(--hp) * 2)));
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(25,25,25,.89);
+  backdrop-filter: blur(20px);
+  color: var(--theme-control-foreground);
+  padding: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(50%);
+  transition: opacity 220ms ease, transform 260ms var(--ease-out);
+}
+.movie-recommendation-card.visible { opacity: 1; pointer-events: auto; transform: translateX(0); }
+.movie-recommendation-header { display: flex; align-items: center; padding: 0 0 6px; gap: 8px; }
+.movie-recommendation-header span { flex: 1; font-size: 11px; font-weight: 600; opacity: .8; }
+.movie-recommendation-header button { width: 24px; height: 24px; border-radius: 50%; padding: 4px; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.movie-recommendation-header svg { width: 15px; height: 15px; }
+.movie-recommendation-items { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px 8px; padding: 2px 0 0; }
+.movie-recommendation-item { display: block; width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; border-radius: 9px; }
+.movie-recommendation-item img { display: block; width: 100%; height: auto; aspect-ratio: 2 / 3; border-radius: 9px; object-fit: cover; background: rgba(255,255,255,.08); }
+.movie-recommendation-item span { display: block; margin-top: 4px; font-size: 10px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.movie-recommendation-card button:focus-visible { outline: 2px solid var(--theme-control-foreground); outline-offset: 1px; }
+.player:is(.native-resizing, .opening-active, .error-active, .pip-mode) .movie-recommendation-card { visibility: hidden; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .movie-recommendation-card { transition: none; } }
+
+.player.chrome-hidden .movie-recommendation-card { bottom: calc(24px + env(safe-area-inset-bottom)); }

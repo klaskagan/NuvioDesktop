@@ -220,6 +220,12 @@ data class PlayerControlsState(
     val skipPromptStartMs: Long = 0L,
     val skipPromptEndMs: Long = 0L,
     val skipPromptDismissed: Boolean = false,
+    val movieRecommendationItems: List<PlayerControlMovieRecommendation> = emptyList(),
+    val movieRecommendationSessionKey: String = "",
+    val movieRecommendationStage: Int = 0,
+    val movieRecommendationDismissed: Boolean = false,
+    val movieRecommendationLabel: String = "More Like This",
+    val movieRecommendationCloseLabel: String = "Close",
     val nextEpisodeVisible: Boolean = false,
     val nextEpisodeHeaderLabel: String = "Next episode",
     val nextEpisodeTitle: String = "",
@@ -421,3 +427,6 @@ expect fun PlatformPlayerSurface(
     onError: (String?) -> Unit,
     sourceAvailable: Boolean = true,
 )
+
+/** actionKey identifies both the movie playback session and the recommended title. */
+data class PlayerControlMovieRecommendation(val actionKey: String, val title: String, val poster: String)

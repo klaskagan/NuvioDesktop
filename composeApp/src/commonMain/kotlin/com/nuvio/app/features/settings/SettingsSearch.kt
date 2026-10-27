@@ -610,6 +610,20 @@ internal fun settingsSearchEntries(
                     stringResource(Res.string.settings_playback_pause_overlay_description),
                 ),
             )
+            if (isDesktop) {
+                add(
+                    PlaybackSearchRow(
+                        "movie-recommendations",
+                        stringResource(Res.string.settings_playback_movie_recommendations),
+                        stringResource(Res.string.settings_playback_movie_recommendations_description),
+                    ),
+                )
+                add(PlaybackSearchRow(
+                    "movie-recommendation-timing",
+                    stringResource(Res.string.settings_playback_movie_recommendation_timing),
+                    stringResource(Res.string.settings_playback_movie_recommendation_timing_description),
+                ))
+            }
             if (externalPlayerSupported) {
                 add(
                     PlaybackSearchRow(

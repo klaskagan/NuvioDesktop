@@ -12,6 +12,18 @@ import kotlin.test.assertEquals
 
 class NativePlayerControlsJsonTest {
     @Test
+    fun `movie recommendation payload escapes title and session identities`() {
+        val item = com.nuvio.app.features.player.PlayerControlMovieRecommendation("session:movie:tt1", "A \"movie\"\nTitle", "https://example.com/a.jpg")
+        val controls = PlayerControlsState(movieRecommendationItems = listOf(item), movieRecommendationSessionKey = "session", movieRecommendationStage = 2, movieRecommendationDismissed = true)
+        val payload = Json.parseToJsonElement(controls.toControlsJson(false) {}).jsonObject
+        assertEquals("2", payload.getValue("movieRecommendationStage").jsonPrimitive.content)
+        assertEquals(true, payload.getValue("movieRecommendationDismissed").jsonPrimitive.boolean)
+        val actual = payload.getValue("movieRecommendationItems").jsonArray.single().jsonObject
+        assertEquals(item.title, actual.getValue("title").jsonPrimitive.content)
+        assertEquals(item.actionKey, actual.getValue("actionKey").jsonPrimitive.content)
+    }
+
+    @Test
     fun `controls payload parses with handoff enabled and disabled`() {
         for (enabled in listOf(false, true)) {
             val controls = PlayerControlsState(

@@ -37,8 +37,10 @@ internal actual object PlayerSettingsStorage {
     private const val showLoadingOverlayKey = "show_loading_overlay"
     private const val showPlayerLoadingStatusKey = "show_player_loading_status"
     private const val pauseOverlayEnabledKey = "pause_overlay_enabled"
+    private const val movieRecommendationsEnabledKey = "movie_recommendations_enabled"
     private const val showParentalGuideKey = "show_parental_guide"
     private const val resizeModeKey = "resize_mode"
+    private const val movieRecommendationTimingKey = "movie_recommendation_timing"
     private const val holdToSpeedEnabledKey = "hold_to_speed_enabled"
     private const val holdToSpeedValueKey = "hold_to_speed_value"
     private const val touchGesturesEnabledKey = "touch_gestures_enabled"
@@ -113,8 +115,10 @@ internal actual object PlayerSettingsStorage {
         showLoadingOverlayKey,
         showPlayerLoadingStatusKey,
         pauseOverlayEnabledKey,
+        movieRecommendationsEnabledKey,
         showParentalGuideKey,
         resizeModeKey,
+        movieRecommendationTimingKey,
         holdToSpeedEnabledKey,
         holdToSpeedValueKey,
         nvidiaRtxSuperResolutionEnabledKey,
@@ -239,11 +243,15 @@ internal actual object PlayerSettingsStorage {
     actual fun loadShowPlayerLoadingStatus(): Boolean? = loadBoolean(showPlayerLoadingStatusKey)
     actual fun saveShowPlayerLoadingStatus(enabled: Boolean) = saveBoolean(showPlayerLoadingStatusKey, enabled)
     actual fun loadPauseOverlayEnabled(): Boolean? = loadBoolean(pauseOverlayEnabledKey)
+    actual fun loadMovieRecommendationsEnabled(): Boolean? = loadBoolean(movieRecommendationsEnabledKey)
     actual fun savePauseOverlayEnabled(enabled: Boolean) = saveBoolean(pauseOverlayEnabledKey, enabled)
+    actual fun saveMovieRecommendationsEnabled(enabled: Boolean) = saveBoolean(movieRecommendationsEnabledKey, enabled)
     actual fun loadShowParentalGuide(): Boolean? = loadBoolean(showParentalGuideKey)
     actual fun saveShowParentalGuide(enabled: Boolean) = saveBoolean(showParentalGuideKey, enabled)
     actual fun loadResizeMode(): String? = loadString(resizeModeKey)
+    actual fun loadMovieRecommendationTiming(): String? = loadString(movieRecommendationTimingKey)
     actual fun saveResizeMode(mode: String) = saveString(resizeModeKey, mode)
+    actual fun saveMovieRecommendationTiming(mode: String) = saveString(movieRecommendationTimingKey, mode)
     actual fun loadHoldToSpeedEnabled(): Boolean? = loadBoolean(holdToSpeedEnabledKey)
     actual fun saveHoldToSpeedEnabled(enabled: Boolean) = saveBoolean(holdToSpeedEnabledKey, enabled)
     actual fun loadHoldToSpeedValue(): Float? = loadFloat(holdToSpeedValueKey)
@@ -407,8 +415,10 @@ internal actual object PlayerSettingsStorage {
         loadShowLoadingOverlay()?.let { put(showLoadingOverlayKey, encodeSyncBoolean(it)) }
         loadShowPlayerLoadingStatus()?.let { put(showPlayerLoadingStatusKey, encodeSyncBoolean(it)) }
         loadPauseOverlayEnabled()?.let { put(pauseOverlayEnabledKey, encodeSyncBoolean(it)) }
+        loadMovieRecommendationsEnabled()?.let { put(movieRecommendationsEnabledKey, encodeSyncBoolean(it)) }
         loadShowParentalGuide()?.let { put(showParentalGuideKey, encodeSyncBoolean(it)) }
         loadResizeMode()?.let { put(resizeModeKey, encodeSyncString(it)) }
+        loadMovieRecommendationTiming()?.let { put(movieRecommendationTimingKey, encodeSyncString(it)) }
         loadHoldToSpeedEnabled()?.let { put(holdToSpeedEnabledKey, encodeSyncBoolean(it)) }
         loadHoldToSpeedValue()?.let { put(holdToSpeedValueKey, encodeSyncFloat(it)) }
         loadTouchGesturesEnabled()?.let { put(touchGesturesEnabledKey, encodeSyncBoolean(it)) }
@@ -491,8 +501,10 @@ internal actual object PlayerSettingsStorage {
         payload.decodeSyncBoolean(showLoadingOverlayKey)?.let(::saveShowLoadingOverlay)
         payload.decodeSyncBoolean(showPlayerLoadingStatusKey)?.let(::saveShowPlayerLoadingStatus)
         payload.decodeSyncBoolean(pauseOverlayEnabledKey)?.let(::savePauseOverlayEnabled)
+        payload.decodeSyncBoolean(movieRecommendationsEnabledKey)?.let(::saveMovieRecommendationsEnabled)
         payload.decodeSyncBoolean(showParentalGuideKey)?.let(::saveShowParentalGuide)
         payload.decodeSyncString(resizeModeKey)?.let(::saveResizeMode)
+        payload.decodeSyncString(movieRecommendationTimingKey)?.let(::saveMovieRecommendationTiming)
         payload.decodeSyncBoolean(holdToSpeedEnabledKey)?.let(::saveHoldToSpeedEnabled)
         payload.decodeSyncFloat(holdToSpeedValueKey)?.let(::saveHoldToSpeedValue)
         payload.decodeSyncBoolean(touchGesturesEnabledKey)?.let(::saveTouchGesturesEnabled)

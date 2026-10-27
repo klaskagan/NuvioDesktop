@@ -50,6 +50,27 @@ import org.jetbrains.compose.resources.getString
 
 @Composable
 internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
+    LaunchedEffect(movieRecommendationLookupKey) {
+        val requestKey = movieRecommendationLookupKey
+        movieRecommendationCreditsRequest = requestKey
+        movieRecommendationCreditsStartMs = null
+        movieRecommendationCreditsLoaded = false
+        if (playerSettingsUiState.movieRecommendationsEnabled &&
+            playerSettingsUiState.movieRecommendationTiming == MovieRecommendationTiming.INTRODB &&
+            parentMetaType.equals("movie", true) && (contentType ?: parentMetaType).equals("movie", true) &&
+            args.onOpenMetaDetails != null && playbackSnapshot.durationMs > 0
+        ) {
+            val start = kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                SkipIntroRepository.getMovieEndCreditsStartMs(parentMetaId, activeVideoId, playbackSnapshot.durationMs)
+            }
+            if (requestKey != movieRecommendationLookupKey) return@LaunchedEffect
+            movieRecommendationCreditsStartMs = start
+        }
+        movieRecommendationCreditsLoaded = true
+    }
+    LaunchedEffect(movieRecommendationSessionKey, movieRecommendationStage) {
+        syncMovieRecommendationDismissal()
+    }
     val currentFeedback = liveGestureFeedback ?: gestureFeedback
     LaunchedEffect(currentFeedback) {
         if (currentFeedback != null) {
@@ -61,7 +82,10 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         playerMeta = MetaDetailsRepository.peek(parentMetaType, parentMetaId)
         playerMetaVideos = playerMeta?.videos.orEmpty()
         if (playerMetaVideos.isEmpty()) {
-            MetaDetailsRepository.fetch(parentMetaType, parentMetaId)?.let { meta ->
+            val requestedType = parentMetaType
+            val requestedId = parentMetaId
+            MetaDetailsRepository.fetch(requestedType, requestedId)?.let { meta ->
+                if (parentMetaType != requestedType || parentMetaId != requestedId) return@LaunchedEffect
                 playerMeta = meta
                 playerMetaVideos = meta.videos
             }

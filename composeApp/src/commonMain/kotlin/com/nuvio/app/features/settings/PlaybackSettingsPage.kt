@@ -433,6 +433,46 @@ private fun PlaybackSettingsSection(
                     isTablet = isTablet,
                     onCheckedChange = PlayerSettingsRepository::setPauseOverlayEnabled,
                 )
+                if (isDesktop) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_playback_movie_recommendations),
+                        description = stringResource(Res.string.settings_playback_movie_recommendations_description),
+                        checked = autoPlayPlayerSettings.movieRecommendationsEnabled,
+                        isTablet = isTablet,
+                        onCheckedChange = PlayerSettingsRepository::setMovieRecommendationsEnabled,
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    var showMovieRecommendationTiming by remember { mutableStateOf(false) }
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_playback_movie_recommendation_timing),
+                        description = stringResource(autoPlayPlayerSettings.movieRecommendationTiming.labelRes),
+                        isTablet = isTablet,
+                        onClick = { showMovieRecommendationTiming = true },
+                    )
+                    if (showMovieRecommendationTiming) {
+                        DialogSurface(
+                            onDismissRequest = { showMovieRecommendationTiming = false },
+                            title = stringResource(Res.string.settings_playback_movie_recommendation_timing),
+                        ) {
+                            com.nuvio.app.features.player.MovieRecommendationTiming.entries.forEach { timing ->
+                                DialogOption(
+                                    text = stringResource(timing.labelRes),
+                                    selected = timing == autoPlayPlayerSettings.movieRecommendationTiming,
+                                    onClick = {
+                                        PlayerSettingsRepository.setMovieRecommendationTiming(timing)
+                                        showMovieRecommendationTiming = false
+                                    },
+                                )
+                            }
+                            Text(
+                                text = stringResource(Res.string.settings_playback_movie_recommendation_timing_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
                     title = stringResource(Res.string.settings_playback_parental_guide),
@@ -2955,4 +2995,10 @@ private val com.nuvio.app.features.player.skip.NextEpisodeThresholdMode.labelRes
             Res.string.settings_playback_threshold_mode_percentage
         com.nuvio.app.features.player.skip.NextEpisodeThresholdMode.MINUTES_BEFORE_END ->
             Res.string.settings_playback_threshold_mode_minutes_before_end
+    }
+
+private val com.nuvio.app.features.player.MovieRecommendationTiming.labelRes: StringResource
+    get() = when (this) {
+        com.nuvio.app.features.player.MovieRecommendationTiming.INTRODB -> Res.string.settings_playback_movie_recommendation_introdb
+        com.nuvio.app.features.player.MovieRecommendationTiming.FINAL_FOUR_MINUTES -> Res.string.settings_playback_movie_recommendation_four_minutes
     }

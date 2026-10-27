@@ -8,11 +8,21 @@ import kotlinx.coroutines.coroutineScope
 object SkipIntroRepository {
 
     private val cache = HashMap<String, List<SkipInterval>>()
+    private val movieEndCreditsLookup = MovieEndCreditsLookup()
     private val animeSkipShowIdCache = HashMap<String, String>()
     private const val NO_ID = "__none__"
 
     private val introDbConfigured: Boolean
         get() = IntroDbConfig.URL.isNotBlank()
+
+    suspend fun getMovieEndCreditsStartMs(contentId: String?, videoId: String?, durationMs: Long): Long? {
+        val imdbId = resolveMovieSkipImdbId(
+            contentId, videoId,
+            resolveTmdb = { TmdbService.tmdbToImdb(it, "movie") },
+            resolveAnime = { source, id -> SimklIdResolver.resolveIds(source, id)?.imdb },
+        ) ?: return null
+        return movieEndCreditsLookup.startMs(imdbId, durationMs)
+    }
 
     suspend fun getMovieSkipIntervals(
         contentId: String?,

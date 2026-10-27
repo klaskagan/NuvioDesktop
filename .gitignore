@@ -50,3 +50,7 @@ iosApp/Configuration/DeviceSigning.local.json
 # Local MPVKit iOS build environment (sparse APFS image, see MPVKit docs)
 .mpvkit-build.sparseimage
 ![Dd]ocs/trailer-player-comparison.md
+
+# Movie recommendation behavior and native overlay regression fixture.
+!docs/movie-recommendations.md
+!scripts/test-movie-recommendation-controls.cjs

@@ -37,6 +37,8 @@ data class PlayerSettingsUiState(
     val showLoadingOverlay: Boolean = true,
     val showPlayerLoadingStatus: Boolean = true,
     val pauseOverlayEnabled: Boolean = true,
+    val movieRecommendationsEnabled: Boolean = true,
+    val movieRecommendationTiming: MovieRecommendationTiming = MovieRecommendationTiming.INTRODB,
     val showParentalGuide: Boolean = true,
     val resizeMode: PlayerResizeMode = PlayerResizeMode.Fit,
     val holdToSpeedEnabled: Boolean = true,
@@ -121,6 +123,8 @@ object PlayerSettingsRepository {
     private var showLoadingOverlay = true
     private var showPlayerLoadingStatus = true
     private var pauseOverlayEnabled = true
+    private var movieRecommendationsEnabled = true
+    private var movieRecommendationTiming = MovieRecommendationTiming.INTRODB
     private var showParentalGuide = true
     private var resizeMode = PlayerResizeMode.Fit
     private var holdToSpeedEnabled = true
@@ -210,6 +214,8 @@ object PlayerSettingsRepository {
         showLoadingOverlay = true
         showPlayerLoadingStatus = true
         pauseOverlayEnabled = true
+        movieRecommendationsEnabled = true
+        movieRecommendationTiming = MovieRecommendationTiming.INTRODB
         showParentalGuide = true
         resizeMode = PlayerResizeMode.Fit
         holdToSpeedEnabled = true
@@ -293,6 +299,10 @@ object PlayerSettingsRepository {
         showLoadingOverlay = PlayerSettingsStorage.loadShowLoadingOverlay() ?: true
         showPlayerLoadingStatus = PlayerSettingsStorage.loadShowPlayerLoadingStatus() ?: true
         pauseOverlayEnabled = PlayerSettingsStorage.loadPauseOverlayEnabled() ?: true
+        movieRecommendationsEnabled = PlayerSettingsStorage.loadMovieRecommendationsEnabled() ?: true
+        movieRecommendationTiming = PlayerSettingsStorage.loadMovieRecommendationTiming()
+            ?.let { runCatching { MovieRecommendationTiming.valueOf(it) }.getOrNull() }
+            ?: MovieRecommendationTiming.INTRODB
         showParentalGuide = PlayerSettingsStorage.loadShowParentalGuide() ?: true
         resizeMode = PlayerSettingsStorage.loadResizeMode()
             ?.let { runCatching { PlayerResizeMode.valueOf(it) }.getOrNull() }
@@ -491,6 +501,22 @@ object PlayerSettingsRepository {
         pauseOverlayEnabled = enabled
         publish()
         PlayerSettingsStorage.savePauseOverlayEnabled(enabled)
+    }
+
+    fun setMovieRecommendationTiming(timing: MovieRecommendationTiming) {
+        ensureLoaded()
+        if (movieRecommendationTiming == timing) return
+        movieRecommendationTiming = timing
+        publish()
+        PlayerSettingsStorage.saveMovieRecommendationTiming(timing.name)
+    }
+
+    fun setMovieRecommendationsEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (movieRecommendationsEnabled == enabled) return
+        movieRecommendationsEnabled = enabled
+        publish()
+        PlayerSettingsStorage.saveMovieRecommendationsEnabled(enabled)
     }
 
     fun setShowParentalGuide(enabled: Boolean) {
@@ -1197,6 +1223,8 @@ object PlayerSettingsRepository {
             showLoadingOverlay = showLoadingOverlay,
             showPlayerLoadingStatus = showPlayerLoadingStatus,
             pauseOverlayEnabled = pauseOverlayEnabled,
+            movieRecommendationsEnabled = movieRecommendationsEnabled,
+            movieRecommendationTiming = movieRecommendationTiming,
             showParentalGuide = showParentalGuide,
             resizeMode = resizeMode,
             holdToSpeedEnabled = holdToSpeedEnabled,

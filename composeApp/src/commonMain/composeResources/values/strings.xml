@@ -2737,4 +2737,10 @@
     <string name="seasonal_custom_artwork">Custom artwork</string>
     <string name="seasonal_background_help">Used on Home and inside this season. Leave the URL empty to use the original bundled image.</string>
     <string name="seasonal_restore_artwork">Restore original artwork</string>
+    <string name="settings_playback_movie_recommendations">Movie Recommendations</string>
+    <string name="settings_playback_movie_recommendations_description">Suggest unwatched More Like This titles when a movie reaches its end credits.</string>
+    <string name="settings_playback_movie_recommendation_timing">Movie Recommendation Timing</string>
+    <string name="settings_playback_movie_recommendation_introdb">IntroDB API</string>
+    <string name="settings_playback_movie_recommendation_four_minutes">Final 4 minutes</string>
+    <string name="settings_playback_movie_recommendation_timing_description">IntroDB API uses introdb.app end credits, with theintrodb.org as backup. If timestamps are unavailable, the final four minutes are used.</string>
 </resources>

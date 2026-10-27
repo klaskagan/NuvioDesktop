@@ -457,6 +457,15 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         skipPromptStartMs = ((nativeSkipInterval?.startTime ?: 0.0) * 1000).toLong().coerceAtLeast(0L),
         skipPromptEndMs = nativeSkipAction?.targetMs?.coerceAtLeast(0L) ?: 0L,
         skipPromptDismissed = skipIntervalDismissed,
+        movieRecommendationItems = movieRecommendationCandidates.map {
+            PlayerControlMovieRecommendation(movieRecommendationActionKey(it.id, it.type), it.name, (it.poster ?: it.banner).orEmpty())
+        },
+        movieRecommendationSessionKey = movieRecommendationSessionKey,
+        movieRecommendationStage = if (playerControlsLocked) 0 else movieRecommendationStage,
+        movieRecommendationDismissed = movieRecommendationDismissedSession == movieRecommendationSessionKey &&
+            movieRecommendationStage <= movieRecommendationDismissedStage,
+        movieRecommendationLabel = stringResource(Res.string.details_more_like_this),
+        movieRecommendationCloseLabel = stringResource(Res.string.action_close),
         nextEpisodeVisible = nextEpisodeForControls != null && !playerControlsLocked,
         nextEpisodeHeaderLabel = stringResource(Res.string.player_next_episode),
         nextEpisodeTitle = nextEpisodeForControls?.let {
@@ -804,7 +813,7 @@ internal fun releaseRetainedPlayerBeforeNavigation(
     }
 }
 
-internal fun PlayerScreenRuntime.requestBack() {
+internal fun PlayerScreenRuntime.requestBack(afterBack: () -> Unit = {}) {
     flushWatchProgress()
     val exitingController = playerLifecycleController
     args.onBack { afterRelease, releaseFailed ->
@@ -823,6 +832,7 @@ internal fun PlayerScreenRuntime.requestBack() {
                         playerController = null
                     }
                     afterRelease()
+                    afterBack()
                 },
                 onReleaseFailed = { message ->
                     if (!playerReleaseSurfaceRetention.finish(releaseAttemptId)) {
@@ -906,9 +916,26 @@ private fun PlayerScreenRuntime.handlePlayerControlsAction(action: PlayerControl
     return true
 }
 
-private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: Double): Boolean {
+internal fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: Double): Boolean {
     if (type.shouldLogPlayerControlsEvent()) {
         playerControlsLog.d { "event type=$type value=$value ${playerControlLogContext()}" }
+    }
+    if (type.startsWith("openMovieRecommendation:")) {
+        val key = type.removePrefix("openMovieRecommendation:")
+        val preview = movieRecommendationCandidates.firstOrNull { movieRecommendationActionKey(it.id, it.type) == key }
+        if (preview != null && movieRecommendationStage > 0) {
+            val open = args.onOpenMetaDetails
+            val session = movieRecommendationSessionKey
+            requestBack { if (session == movieRecommendationSessionKey) open?.invoke(preview) }
+        }
+        return true
+    }
+    if (type.startsWith("dismissMovieRecommendations:")) {
+        if (type.removePrefix("dismissMovieRecommendations:") == movieRecommendationSessionKey) {
+            movieRecommendationDismissedSession = movieRecommendationSessionKey
+            movieRecommendationDismissedStage = movieRecommendationStage
+        }
+        return true
     }
     when (type) {
         "dismissTvHandoff" -> {

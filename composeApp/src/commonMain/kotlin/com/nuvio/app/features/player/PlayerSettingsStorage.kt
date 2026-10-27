@@ -14,11 +14,15 @@ internal expect object PlayerSettingsStorage {
     fun loadShowPlayerLoadingStatus(): Boolean?
     fun saveShowPlayerLoadingStatus(enabled: Boolean)
     fun loadPauseOverlayEnabled(): Boolean?
+    fun loadMovieRecommendationsEnabled(): Boolean?
     fun savePauseOverlayEnabled(enabled: Boolean)
+    fun saveMovieRecommendationsEnabled(enabled: Boolean)
     fun loadShowParentalGuide(): Boolean?
     fun saveShowParentalGuide(enabled: Boolean)
     fun loadResizeMode(): String?
+    fun loadMovieRecommendationTiming(): String?
     fun saveResizeMode(mode: String)
+    fun saveMovieRecommendationTiming(mode: String)
     fun loadHoldToSpeedEnabled(): Boolean?
     fun saveHoldToSpeedEnabled(enabled: Boolean)
     fun loadHoldToSpeedValue(): Float?

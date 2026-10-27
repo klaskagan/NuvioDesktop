@@ -43,6 +43,7 @@ internal fun PlayerDestination(
         Box(modifier = Modifier.fillMaxSize())
         return
     }
+    val recommendationReturnRoute = remember(route) { navController.routes.dropLast(1).lastOrNull() }
     val currentFullscreen = com.nuvio.app.core.ui.isFullscreenActionActive()
     val initialFullscreen = remember { currentFullscreen }
     val onBackBase = rememberGuardedPlayerPopBackStack(
@@ -101,6 +102,12 @@ internal fun PlayerDestination(
         sourceFilename = launch.sourceFilename,
         stream = launch.stream,
         onBack = onBack,
+        onOpenMetaDetails = { preview ->
+            // The player releases and pops before this callback is invoked.
+            if (navController.currentRoute == recommendationReturnRoute) {
+                navController.navigate(com.nuvio.app.navigation.DetailRoute(preview.type, preview.id, preview.name))
+            }
+        },
         onSystemBackHandlerChanged = registerSystemBack,
         onOpenInExternalPlayer = if (externalPlayerSupported) { { request ->
             val playerLaunch = PlayerLaunch(

@@ -66,6 +66,10 @@ const parentalGuideList = document.getElementById("parentalGuideList");
 const skipPrompt = document.getElementById("skipPrompt");
 const skipPromptLabel = document.getElementById("skipPromptLabel");
 const skipPromptProgress = document.getElementById("skipPromptProgress");
+const movieRecommendationCard = document.getElementById("movieRecommendationCard");
+const movieRecommendationItems = document.getElementById("movieRecommendationItems");
+const movieRecommendationLabel = document.getElementById("movieRecommendationLabel");
+const movieRecommendationClose = document.getElementById("movieRecommendationClose");
 const nextEpisodeCard = document.getElementById("nextEpisodeCard");
 const nextEpisodeThumb = document.getElementById("nextEpisodeThumb");
 const nextEpisodeHeader = document.getElementById("nextEpisodeHeader");
@@ -295,6 +299,12 @@ let state = {
   skipPromptStartMs: 0,
   skipPromptEndMs: 0,
   skipPromptDismissed: false,
+  movieRecommendationItems: [],
+  movieRecommendationSessionKey: "",
+  movieRecommendationStage: 0,
+  movieRecommendationDismissed: false,
+  movieRecommendationLabel: "More Like This",
+  movieRecommendationCloseLabel: "Close",
   nextEpisodeVisible: false,
   nextEpisodeHeaderLabel: "Next episode",
   nextEpisodeTitle: "",
@@ -484,6 +494,7 @@ const chromeInteractionSelector = [
   ".modal-layer",
   ".skip-prompt",
   ".next-episode-card",
+  ".movie-recommendation-card",
 ].join(",");
 
 const send = (type, value = 0) => {
@@ -2295,6 +2306,96 @@ const syncSkipPromptPlacement = showSkip => {
   }
 };
 
+let movieRecommendationKey = "";
+let movieRecommendationListKey = "";
+let movieRecommendationAutoHidden = false;
+let movieRecommendationTimer = 0;
+
+const dismissMovieRecommendations = () => {
+  state = { ...state, movieRecommendationDismissed: true };
+  send(`dismissMovieRecommendations:${state.movieRecommendationSessionKey}`);
+  renderMovieRecommendations();
+  focusShortcutRoot();
+};
+
+const renderMovieRecommendations = () => {
+  const stage = Number(state.movieRecommendationStage) || 0;
+  const key = `${state.movieRecommendationSessionKey}:${stage}`;
+  if (key !== movieRecommendationKey) {
+    movieRecommendationKey = key;
+    movieRecommendationAutoHidden = false;
+    window.clearTimeout(movieRecommendationTimer);
+    movieRecommendationTimer = 0;
+  }
+  const items = state.movieRecommendationItems || [];
+  const listKey = JSON.stringify(items);
+  if (listKey !== movieRecommendationListKey) {
+    const focusedKey = document.activeElement?.dataset?.recommendationKey;
+    movieRecommendationListKey = listKey;
+    movieRecommendationItems.replaceChildren();
+    items.forEach(item => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "movie-recommendation-item";
+      button.dataset.recommendationKey = item.actionKey;
+      button.setAttribute("aria-label", item.title);
+      const image = document.createElement("img");
+      image.alt = "";
+      setImageSource(image, item.poster);
+      image.addEventListener("error", () => image.removeAttribute("src"), { once: true });
+      const title = document.createElement("span");
+      title.textContent = item.title;
+      button.append(image, title);
+      button.addEventListener("click", event => {
+        event.stopPropagation();
+        send(`openMovieRecommendation:${item.actionKey}`);
+      });
+      movieRecommendationItems.append(button);
+      if (focusedKey === item.actionKey) button.focus({ preventScroll: true });
+    });
+    if (focusedKey && !movieRecommendationItems.contains(document.activeElement)) focusShortcutRoot();
+  }
+  movieRecommendationLabel.textContent = state.movieRecommendationLabel || "More Like This";
+  movieRecommendationClose.setAttribute("aria-label", state.movieRecommendationCloseLabel || "Close");
+  const ended = stage >= 3;
+  const eligible = stage > 0 && items.length > 0 && !state.isInPip &&
+    !activeModal && !playbackErrorText() && !isOpeningOverlayActive();
+  const shouldShow = eligible && (!state.movieRecommendationDismissed || state.controlsVisible);
+  const visible = shouldShow && (ended || !movieRecommendationAutoHidden || state.controlsVisible);
+  if (!visible || ended || state.controlsVisible) {
+    window.clearTimeout(movieRecommendationTimer);
+    movieRecommendationTimer = 0;
+  } else if (!movieRecommendationTimer) {
+    movieRecommendationTimer = window.setTimeout(() => {
+      movieRecommendationTimer = 0;
+      movieRecommendationAutoHidden = true;
+      renderMovieRecommendations();
+    }, 10000);
+  }
+  if (!visible && movieRecommendationCard.contains(document.activeElement)) focusShortcutRoot();
+  movieRecommendationCard.inert = !visible;
+  movieRecommendationCard.setAttribute("aria-hidden", visible ? "false" : "true");
+  movieRecommendationCard.classList.toggle("visible", visible);
+};
+
+movieRecommendationClose.addEventListener("click", event => {
+  event.stopPropagation();
+  dismissMovieRecommendations();
+});
+// Preserve native button activation; keep player shortcuts from swallowing Enter/Space/Escape.
+movieRecommendationCard.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    dismissMovieRecommendations();
+  } else if (event.key === "Enter" || event.code === "Space") {
+    event.stopPropagation();
+  }
+});
+movieRecommendationCard.addEventListener("keyup", event => {
+  if (event.key === "Enter" || event.code === "Space") event.stopPropagation();
+});
+
 const renderNativePlaybackPrompts = () => {
   const nextSkipKey = [
     state.skipPromptStartMs || 0,
@@ -2571,6 +2672,7 @@ const renderChrome = () => {
   } else {
     renderNativePlaybackPrompts();
   }
+  renderMovieRecommendations();
   renderPartyChrome();
   syncChromeAutoHideTimer(showOpening);
 };
@@ -3382,7 +3484,7 @@ window.playerControls = nextState => {
 
 const isControlsSurfaceEvent = event => {
   if (activeModal) return true;
-  if (event.target.closest("button, input, textarea, select, a, .action-pill, .volume-control, .modal-layer, .skip-prompt, .next-episode-card")) {
+  if (event.target.closest("button, input, textarea, select, a, .action-pill, .volume-control, .modal-layer, .skip-prompt, .next-episode-card, .movie-recommendation-card")) {
     return true;
   }
 

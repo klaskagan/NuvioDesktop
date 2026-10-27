@@ -14,11 +14,15 @@ internal object SkipIntroApi {
 
     // --- IntroDb ---
 
-    suspend fun getIntroDbMovieSegments(imdbId: String): IntroDbSegmentsResponse? {
-        val baseUrl = IntroDbConfig.URL.trimEnd('/')
+    suspend fun getIntroDbMovieSegments(
+        imdbId: String,
+        baseUrl: String = IntroDbConfig.URL.trimEnd('/'),
+        fetchText: (suspend (String) -> String)? = null,
+    ): IntroDbSegmentsResponse? {
         if (baseUrl.isBlank()) return null
         return try {
-            val text = httpGetText(introDbMovieSegmentsUrl(baseUrl, imdbId))
+            val url = introDbMovieSegmentsUrl(baseUrl, imdbId)
+            val text = if (fetchText != null) fetchText(url) else httpGetText(url)
             json.decodeFromString<IntroDbSegmentsResponse>(text)
         } catch (cancelled: CancellationException) {
             throw cancelled
