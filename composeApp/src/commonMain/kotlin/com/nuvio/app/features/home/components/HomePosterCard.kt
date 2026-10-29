@@ -27,6 +27,7 @@ fun HomePosterCard(
     fillWidth: Boolean = false,
     respectGlobalPosterStyle: Boolean = true,
 ) {
+    val providerEvent = item.id.startsWith("go3:programme:")
     val calendar = item.calendarCard
     val posterCardStyle = rememberPosterCardStyleUiState()
     val isLandscapeMode = if (calendar != null) posterCardStyle.catalogLandscapeModeEnabled else useLandscapeBackdropMode || (respectGlobalPosterStyle && posterCardStyle.catalogLandscapeModeEnabled) || (enhanceLandscapeTitles && isTitleArtworkMedia(item.type) && item.posterShape == PosterShape.Landscape)
@@ -70,11 +71,12 @@ fun HomePosterCard(
             fillWidth = fillWidth,
             basePosterWidthDp = desktopCatalogShelfPosterBaseWidthDp(posterCardStyle.widthDp),
             shape = if (isLandscapeMode) NuvioPosterShape.Landscape else item.posterShape.toNuvioPosterShape(),
-            artworkBadge = calendar?.let { calendarBadge(it) },
-            requiredLabels = calendar != null,
+            artworkBadge = calendar?.let { calendarBadge(it) } ?: item.status?.takeIf { providerEvent }?.uppercase(),
+            placeholderTitle = if (providerEvent) "Go3" else item.name,
+            requiredLabels = calendar != null || providerEvent,
             secondaryDetailLine = if (isLandscapeMode) calendar?.let { calendarReleaseLabel(it) } else null,
             detailLine = if (calendar != null) calendar.episodeLabel ?: calendarMovieLabel(calendar.media.year) else if (isLandscapeMode || posterCardStyle.hideLabelsEnabled) null else item.releaseInfo?.let { formatReleaseDateForDisplay(it) },
-            showTitleBelow = calendar != null || (showTitleBelow && !posterCardStyle.hideLabelsEnabled && !(enhance && isLandscapeMode)),
+            showTitleBelow = providerEvent || calendar != null || (showTitleBelow && !posterCardStyle.hideLabelsEnabled && !(enhance && isLandscapeMode)),
             bottomLeftLogoUrl = if (drawLandscapeTitle && !artworkState.logoFailed) artwork?.logo ?: item.logo else null,
             bottomLeftText = if (drawLandscapeTitle && (enhance || alwaysShowLandscapeTitle || !posterCardStyle.hideLabelsEnabled)) item.name else null,
             logoTextFallback = enhance || alwaysShowLandscapeTitle,

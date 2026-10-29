@@ -26,6 +26,11 @@ Paths below are relative to the NuvioDesktop repository root.
   including keyboard focus, outside-click/Escape dismissal, scrolling, selected
   state, and hidden empty status areas. Inspect the linked stylesheet rather
   than approximating the appearance with Compose or a native system dialog.
+- **Provider details:** reuse `DesktopDetailBackdrop`, `DetailActionButtons` and
+  the desktop `NuvioBackButton` configuration in `MetaDetailsScreen.kt`. Keep
+  viewport-filling artwork and the existing circular 48 dp back control; do not
+  substitute capped thumbnails or a text arrow. Scope native navigation ownership
+  when necessary so the actual shared button remains visible.
 - **Compose appearance:** `composeApp/src/commonMain/kotlin/com/nuvio/app/core/ui/Tokens.kt`,
   `Theme.kt`, and `AppTheme.kt`. Prefer `MaterialTheme.nuvio` tokens and existing
   typography/shapes. Follow the reference's responsive layout; do not assume
@@ -100,7 +105,11 @@ dismissal if changed. Do not claim visual verification from source inspection.
 
 Use `./gradlew :composeApp:desktopTest --tests '<affected test class>'` for focused
 JVM tests. See the repository's build scripts and `composeApp/build.gradle.kts`
-for the current JDK and packaging requirements. Use the MainKt desktop entry point (`Main.kt`) for runtime checks. Do not build
+for the current JDK and packaging requirements. After implementation, launch the
+actual MainKt application with `./gradlew :composeApp:run` and leave its development
+window open for user review before handoff. Tests, screenshots and probe windows
+do not substitute for this launch. Skip only on explicit user opt-out or a concrete
+blocker reported in the handoff. Do not build
 a standalone app or DMG unless explicitly requested. Development controls have
 shown behavior differing from packaged builds; report that validation limitation. Do not silently replace the user's installed
 app or trigger TV/network activity as part of an unrelated UI check.

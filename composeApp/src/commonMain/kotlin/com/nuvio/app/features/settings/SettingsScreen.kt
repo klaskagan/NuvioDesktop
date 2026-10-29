@@ -837,8 +837,10 @@ private fun MobileSettingsScreen(
                     onAddonsClick = onAddonsClick,
                     onPluginsClick = onPluginsClick,
                     onMediaServersClick = { onPageChange(SettingsPage.MediaServers) },
+                    onGo3Click = { onPageChange(SettingsPage.Go3) },
                 )
-                SettingsPage.Addons -> addonsSettingsContent()
+                SettingsPage.Go3 -> go3SettingsContent(isTablet = false)
+                            SettingsPage.Addons -> addonsSettingsContent()
                 SettingsPage.MediaServers -> mediaServersSettingsContent(
                     isTablet = false,
                     onServerClick = { onPageChange(SettingsPage.MediaServer) },
@@ -1326,7 +1328,9 @@ private fun TabletSettingsScreen(
                                 onAddonsClick = { openInlinePage(SettingsPage.Addons) },
                                 onPluginsClick = { openInlinePage(SettingsPage.Plugins) },
                                 onMediaServersClick = { openInlinePage(SettingsPage.MediaServers) },
+                                onGo3Click = { openInlinePage(SettingsPage.Go3) },
                             )
+                            SettingsPage.Go3 -> go3SettingsContent(isTablet = true)
                             SettingsPage.Addons -> addonsSettingsContent()
                             SettingsPage.MediaServers -> mediaServersSettingsContent(
                                 isTablet = true,

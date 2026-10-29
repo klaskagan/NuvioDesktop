@@ -2744,4 +2744,5 @@
     <string name="seasonal_custom_artwork">Custom artwork</string>
     <string name="seasonal_background_help">Used on Home and inside this season. Leave the URL empty to use the original bundled image.</string>
     <string name="seasonal_restore_artwork">Restore original artwork</string>
+    <string name="settings_go3_title">Go3</string>
 </resources>

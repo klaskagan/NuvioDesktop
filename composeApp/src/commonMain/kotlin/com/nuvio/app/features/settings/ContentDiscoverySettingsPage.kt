@@ -26,6 +26,7 @@ internal fun LazyListScope.contentDiscoveryContent(
     onAddonsClick: () -> Unit,
     onPluginsClick: () -> Unit,
     onMediaServersClick: () -> Unit,
+    onGo3Click: () -> Unit,
 ) {
     item {
         val recentSearchesEnabled by remember {
@@ -73,6 +74,9 @@ internal fun LazyListScope.contentDiscoveryContent(
                     isTablet = isTablet,
                     onClick = onMediaServersClick,
                 )
+                if (com.nuvio.app.features.go3.Go3Catalog.loader != null) {
+                    SettingsNavigationRow(title="Go3",description="Sports catalogues and local Go3 sign-in",isTablet=isTablet,onClick=onGo3Click)
+                }
                 if (showPluginsEntry) {
                     SettingsNavigationRow(
                         title = stringResource(Res.string.compose_settings_page_plugins),

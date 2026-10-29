@@ -22,6 +22,7 @@ node_modules/
 logs/
 analysis/
 [Dd]ocs/*
+![Dd]ocs/playback-quality-capabilities.md
 ![Dd]ocs/continue-on-tv.md
 ![Dd]ocs/trailer-playback.md
 ![Dd]ocs/tv-handoff/
@@ -47,6 +48,13 @@ scripts/tv-handoff/**/venv/
 !scripts/sign-ios-device-app.py
 iosApp/Configuration/DeviceSigning.local.json
 
+# Go3 browser state and local DRM runtime are private development artifacts.
+/go3-feasibility/local-session/
+/go3-feasibility/runtime/
+
 # Local MPVKit iOS build environment (sparse APFS image, see MPVKit docs)
 .mpvkit-build.sparseimage
 ![Dd]ocs/trailer-player-comparison.md
+![Dd]ocs/go3-live-probe.md
+!scripts/go3-live-probe/
+!scripts/go3-live-probe/**

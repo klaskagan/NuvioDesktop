@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
+import nuvio.composeapp.generated.resources.settings_go3_title
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.compose_settings_category_about
 import nuvio.composeapp.generated.resources.compose_settings_category_general
@@ -129,6 +130,11 @@ internal enum class SettingsPage(
         titleRes = Res.string.compose_settings_page_content_discovery,
         category = SettingsCategory.General,
         parentPage = Root,
+    ),
+    Go3(
+        titleRes = Res.string.settings_go3_title,
+        category = SettingsCategory.General,
+        parentPage = ContentDiscovery,
     ),
     Addons(
         titleRes = Res.string.compose_settings_page_addons,
