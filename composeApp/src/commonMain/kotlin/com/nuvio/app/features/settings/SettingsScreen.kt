@@ -395,6 +395,7 @@ fun SettingsScreen(
                 androidLibmpvVideoOutput = playerSettingsUiState.androidLibmpvVideoOutput,
                 androidLibmpvHardwareDecodingEnabled = playerSettingsUiState.androidLibmpvHardwareDecodingEnabled,
                 androidLibmpvYuv420pEnabled = playerSettingsUiState.androidLibmpvYuv420pEnabled,
+                androidExoChaptersEnabled = playerSettingsUiState.androidExoChaptersEnabled,
                 decoderPriority = playerSettingsUiState.decoderPriority,
                 mapDV7ToHevc = playerSettingsUiState.mapDV7ToHevc,
                 tunnelingEnabled = playerSettingsUiState.tunnelingEnabled,
@@ -465,6 +466,7 @@ fun SettingsScreen(
                 androidLibmpvVideoOutput = playerSettingsUiState.androidLibmpvVideoOutput,
                 androidLibmpvHardwareDecodingEnabled = playerSettingsUiState.androidLibmpvHardwareDecodingEnabled,
                 androidLibmpvYuv420pEnabled = playerSettingsUiState.androidLibmpvYuv420pEnabled,
+                androidExoChaptersEnabled = playerSettingsUiState.androidExoChaptersEnabled,
                 decoderPriority = playerSettingsUiState.decoderPriority,
                 mapDV7ToHevc = playerSettingsUiState.mapDV7ToHevc,
                 tunnelingEnabled = playerSettingsUiState.tunnelingEnabled,
@@ -547,6 +549,7 @@ private fun MobileSettingsScreen(
     androidLibmpvVideoOutput: AndroidLibmpvVideoOutput,
     androidLibmpvHardwareDecodingEnabled: Boolean,
     androidLibmpvYuv420pEnabled: Boolean,
+    androidExoChaptersEnabled: Boolean,
     decoderPriority: Int,
     mapDV7ToHevc: Boolean,
     tunnelingEnabled: Boolean,
@@ -760,6 +763,7 @@ private fun MobileSettingsScreen(
                     androidLibmpvVideoOutput = androidLibmpvVideoOutput,
                     androidLibmpvHardwareDecodingEnabled = androidLibmpvHardwareDecodingEnabled,
                     androidLibmpvYuv420pEnabled = androidLibmpvYuv420pEnabled,
+                    androidExoChaptersEnabled = androidExoChaptersEnabled,
                     decoderPriority = decoderPriority,
                     mapDV7ToHevc = mapDV7ToHevc,
                     tunnelingEnabled = tunnelingEnabled,
@@ -833,8 +837,10 @@ private fun MobileSettingsScreen(
                     onAddonsClick = onAddonsClick,
                     onPluginsClick = onPluginsClick,
                     onMediaServersClick = { onPageChange(SettingsPage.MediaServers) },
+                    onGo3Click = { onPageChange(SettingsPage.Go3) },
                 )
-                SettingsPage.Addons -> addonsSettingsContent()
+                SettingsPage.Go3 -> go3SettingsContent(isTablet = false)
+                            SettingsPage.Addons -> addonsSettingsContent()
                 SettingsPage.MediaServers -> mediaServersSettingsContent(
                     isTablet = false,
                     onServerClick = { onPageChange(SettingsPage.MediaServer) },
@@ -955,6 +961,7 @@ private fun TabletSettingsScreen(
     androidLibmpvVideoOutput: AndroidLibmpvVideoOutput,
     androidLibmpvHardwareDecodingEnabled: Boolean,
     androidLibmpvYuv420pEnabled: Boolean,
+    androidExoChaptersEnabled: Boolean,
     decoderPriority: Int,
     mapDV7ToHevc: Boolean,
     tunnelingEnabled: Boolean,
@@ -1247,6 +1254,7 @@ private fun TabletSettingsScreen(
                                 androidLibmpvVideoOutput = androidLibmpvVideoOutput,
                                 androidLibmpvHardwareDecodingEnabled = androidLibmpvHardwareDecodingEnabled,
                                 androidLibmpvYuv420pEnabled = androidLibmpvYuv420pEnabled,
+                                androidExoChaptersEnabled = androidExoChaptersEnabled,
                                 decoderPriority = decoderPriority,
                                 mapDV7ToHevc = mapDV7ToHevc,
                                 tunnelingEnabled = tunnelingEnabled,
@@ -1320,7 +1328,9 @@ private fun TabletSettingsScreen(
                                 onAddonsClick = { openInlinePage(SettingsPage.Addons) },
                                 onPluginsClick = { openInlinePage(SettingsPage.Plugins) },
                                 onMediaServersClick = { openInlinePage(SettingsPage.MediaServers) },
+                                onGo3Click = { openInlinePage(SettingsPage.Go3) },
                             )
+                            SettingsPage.Go3 -> go3SettingsContent(isTablet = true)
                             SettingsPage.Addons -> addonsSettingsContent()
                             SettingsPage.MediaServers -> mediaServersSettingsContent(
                                 isTablet = true,

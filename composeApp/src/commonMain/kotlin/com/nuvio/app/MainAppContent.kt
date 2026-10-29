@@ -187,10 +187,9 @@ import com.nuvio.app.features.watchprogress.toContinueWatchingItem
 import com.nuvio.app.navigation.*
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import com.nuvio.app.features.servers.ServerRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import com.nuvio.app.features.servers.ServerMatcher
-import com.nuvio.app.features.servers.ServerRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -453,7 +452,6 @@ internal fun MainAppContent(
         if (enabledAddons.isWaitingForFirstEnabledManifest()) return@LaunchedEffect
         HomeCatalogSettingsRepository.syncCatalogs(enabledAddons)
         HomeRepository.refresh(enabledAddons)
-        ServerMatcher.warm()
     }
 
     fun activateTab(tab: AppScreenTab) {
@@ -951,6 +949,11 @@ internal fun MainAppContent(
         }
 
         fun openExternalStreamUrl(url: String): Boolean {
+            if (Go3Playback.isWatchUrl(url) && Go3Playback.open != null) {
+                val opened = Go3Playback.open?.invoke(url) == true
+                if (!opened) NuvioToastController.show("Go3 player unavailable. Check the Go3 runtime configuration.")
+                return opened
+            }
             val opened = runCatching {
                 uriHandler.openUri(url)
             }.isSuccess

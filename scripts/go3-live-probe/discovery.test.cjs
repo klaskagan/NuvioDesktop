@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');
+const {safeChannel,toEntry,chooseLive}=require('./discovery.cjs');
+assert.equal(safeChannel('https://evil.example/watch/sport,live-42'),null);
+assert.equal(safeChannel('https://go3.lt.evil.example/watch/sport,live-42'),null);
+assert.equal(safeChannel('https://go3.lt/watch/film,vod-42'),null);
+assert.deepEqual(safeChannel('https://go3.lt/live_tv/sport,live-42/match,programme-7?token=SECRET'),{id:'42',url:'https://go3.lt/watch/sport,live-42'});
+const upcoming=toEntry({url:'https://go3.lt/live_tv/sport,live-42',title:'Tennis GREITAI'},'fixture');
+const archive=toEntry({url:'https://go3.lt/live_tv/sport,live-42',title:'Tennis ARCHYVAS'},'fixture');
+const live=toEntry({url:'https://go3.lt/live_tv/sport,live-42',title:'Tennis TIESIOGIAI'},'fixture');
+assert.equal(chooseLive([upcoming,archive],'42'),undefined);
+assert.equal(chooseLive([upcoming,live],'42'),live);
+assert.equal(chooseLive([live],'99'),undefined);
+assert.equal(toEntry({url:live.url,title:''},'fixture'),null);
+console.log('Discovery routing checks passed');

@@ -126,3 +126,19 @@ that explicitly passes `true` or only checks decoding cannot catch this regressi
 Maintain these rules under `AGENTS.md`'s automatic documentation maintenance
 policy. Add only demonstrated reusable lessons; link feature details instead of
 accumulating a history of individual bugs here.
+
+
+## Custom detail routes and native navigation
+
+Provider details must reuse the actual desktop detail components, not approximate
+screenshots with generic buttons or typed arrow characters. Use
+`DesktopDetailBackdrop`, `DetailActionButtons`, and `NuvioBackButton` as in
+`MetaDetailsScreen`: viewport-filling art/gradients and the 48 dp circular arrow
+control with a 24 dp icon, 0.34 black container and existing page inset.
+
+The Go3 review exposed both a hidden shared back button and an incorrect fix
+using a text Back button and capped poster. Resolve native-header ownership with
+a scoped navigation local so the shared back component remains visible; do not
+replace it with an ad hoc control. Explicit user references take precedence over
+prior feature-specific layout choices. `Go3IntegrationTest` checks the viewport
+backdrop, 48 dp Back control, and actual navigation actions.

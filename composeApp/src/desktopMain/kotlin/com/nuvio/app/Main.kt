@@ -1,5 +1,6 @@
 package com.nuvio.app
 
+import com.nuvio.app.features.autosync.AutoSyncPreferencesDesktop
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.awt.SwingWindow
@@ -51,6 +52,7 @@ private const val MacosDarkAquaAppearance = "NSAppearanceNameDarkAqua"
 
 @OptIn(ExperimentalComposeUiApi::class)
 fun main(args: Array<String>) {
+    com.nuvio.app.features.go3.Go3PlayerLauncher.install()
     // On Linux, initialize GTK BEFORE AWT/Compose/Skia to prevent GdkDisplayManager
     // type registration conflict (Skiko partially loads GDK without full GTK init).
     if (System.getProperty("os.name", "").lowercase().contains("linux")) {
@@ -68,6 +70,7 @@ fun main(args: Array<String>) {
     // on the very first Compose frame (matching Android's SharedPreferences behavior).
     ProfileRepository.loadCachedProfiles()
     AppIconRepository.ensureLoaded()
+    AutoSyncPreferencesDesktop.initialize()
     DiscordPresenceManager.start()
 
     application {

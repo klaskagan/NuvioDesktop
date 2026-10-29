@@ -261,6 +261,7 @@ fun NuvioPosterCard(
     isWatched: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    placeholderTitle: String = title,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
     val tokens = MaterialTheme.nuvio
@@ -351,7 +352,7 @@ fun NuvioPosterCard(
                     )
                 } else {
                     Text(
-                        text = title,
+                        text = placeholderTitle,
                         modifier = Modifier.padding(horizontal = NuvioTokens.Space.s14),
                         style = MaterialTheme.typography.titleMedium,
                         color = tokens.colors.textMuted,

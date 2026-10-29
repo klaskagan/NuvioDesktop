@@ -55,7 +55,7 @@ data class DiscoverUiState(
         get() = catalogOptions.firstOrNull { it.key == selectedCatalogKey }
 
     val genreOptions: List<String>
-        get() = selectedCatalog?.genreOptions.orEmpty()
+        get() = selectedCatalog?.let { if(it.key.startsWith("go3:")) com.nuvio.app.features.go3.Go3Catalog.filters(it.catalogId) else it.genreOptions }.orEmpty()
 
     val canLoadMore: Boolean
         get() = nextSkip != null

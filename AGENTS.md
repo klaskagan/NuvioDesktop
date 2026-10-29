@@ -15,8 +15,10 @@ skill is not in the session catalog, read that file directly.
 - Settings subpages belong in the existing Settings navigation. Playback selectors
   belong in the existing player overlay. New windows need a product reason or an
   explicit user request.
-- Match the current reference's radius, spacing, typography, icons, selection,
-  focus, and dismissal behavior. Avoid parallel styling for the same interaction.
+- Reuse the reference's actual shared components before matching radius, spacing,
+  typography, icons, selection, focus and dismissal. Do not approximate a shared
+  control with generic buttons or text glyphs. Fix ownership/context if a shared
+  control is hidden; do not invent a replacement. Verify against the named reference.
 - For layout, loading, scrolling, gestures, and date presentation, read
   `.agents/ui-consistency.md`. Apply its shared invariants; keep feature-specific
   choices in the feature's documentation.
@@ -35,12 +37,13 @@ skill is not in the session catalog, read that file directly.
   or unit test alone is not visual validation. State any unverified behavior.
 - For collection hero/backdrop work, read `.agents/collection-backdrops.md` and
   reuse the seasonal catalog implementation as the reference.
-- After completing an implementation, build a standalone macOS review `.app`
-  that the user can open by double-clicking in Finder, without installing a DMG
-  or running Gradle. Keep it in the project's build output, separate from the
-  installed app; never overwrite or replace the installed app. Verify the bundle
-  exists and provide its absolute path/link in the final handoff. A DMG alone is
-  not a sufficient review deliverable. Report any build blocker explicitly.
+- After implementing a desktop feature or visible fix, launch the actual MainKt
+  application with `./gradlew :composeApp:run` and leave its development window
+  open for the user's review before handing off. Compilation, automated UI tests,
+  screenshots and probe windows do not substitute for this launch. Skip only if
+  the user explicitly opts out or a concrete build/runtime blocker prevents it;
+  report that blocker. Run focused tests as appropriate. Do not package a standalone
+  `.app` or DMG unless explicitly requested; never replace the installed app.
 
 ## Addon, collection, and catalog recovery
 

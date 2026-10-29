@@ -151,6 +151,15 @@ fun SearchScreen(
         }
     }
 
+    ScreenActivityEffect(discoverUiState.selectedCatalogKey) { screenActive ->
+        if (!screenActive || discoverUiState.selectedCatalogKey?.startsWith("go3:") != true) return@ScreenActivityEffect
+        SearchRepository.refreshGo3IfStale()
+        while (true) {
+            delay(120_000)
+            SearchRepository.refreshGo3IfStale()
+        }
+    }
+
     val addonRefreshKey = remember(addonsUiState.addons) {
         buildAddonCatalogRefreshSignature(addonsUiState.addons)
     }

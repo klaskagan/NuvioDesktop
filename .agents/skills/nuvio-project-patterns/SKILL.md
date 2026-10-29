@@ -26,6 +26,11 @@ Paths below are relative to the NuvioDesktop repository root.
   including keyboard focus, outside-click/Escape dismissal, scrolling, selected
   state, and hidden empty status areas. Inspect the linked stylesheet rather
   than approximating the appearance with Compose or a native system dialog.
+- **Provider details:** reuse `DesktopDetailBackdrop`, `DetailActionButtons` and
+  the desktop `NuvioBackButton` configuration in `MetaDetailsScreen.kt`. Keep
+  viewport-filling artwork and the existing circular 48 dp back control; do not
+  substitute capped thumbnails or a text arrow. Scope native navigation ownership
+  when necessary so the actual shared button remains visible.
 - **Compose appearance:** `composeApp/src/commonMain/kotlin/com/nuvio/app/core/ui/Tokens.kt`,
   `Theme.kt`, and `AppTheme.kt`. Prefer `MaterialTheme.nuvio` tokens and existing
   typography/shapes. Follow the reference's responsive layout; do not assume
@@ -100,9 +105,13 @@ dismissal if changed. Do not claim visual verification from source inspection.
 
 Use `./gradlew :composeApp:desktopTest --tests '<affected test class>'` for focused
 JVM tests. See the repository's build scripts and `composeApp/build.gradle.kts`
-for the current JDK and packaging requirements. Native macOS player checks may
-require the packaged app: the development `:composeApp:run` controls have shown
-behavior differing from the DMG build. Do not silently replace the user's installed
+for the current JDK and packaging requirements. After implementation, launch the
+actual MainKt application with `./gradlew :composeApp:run` and leave its development
+window open for user review before handoff. Tests, screenshots and probe windows
+do not substitute for this launch. Skip only on explicit user opt-out or a concrete
+blocker reported in the handoff. Do not build
+a standalone app or DMG unless explicitly requested. Development controls have
+shown behavior differing from packaged builds; report that validation limitation. Do not silently replace the user's installed
 app or trigger TV/network activity as part of an unrelated UI check.
 
 Native mpv initialization must set `LC_NUMERIC` to `C` immediately before
@@ -136,10 +145,11 @@ These integration tests skip without the isolation flag supplied by that script;
 a skipped run does not verify the navigation regression. Do not use a real user
 profile as a full-app test fixture.
 
-Before handoff, remove task-created temporary QA `.app` bundles, intermediate
-app copies and superseded review builds. Keep the latest standalone review app,
-its verification results and small reusable test fixtures. Check temporary apps
-are no longer running; never clean the installed application or unrelated builds.
+If packaging was explicitly requested, remove task-created temporary QA `.app`
+bundles, intermediate copies and superseded review builds before handoff. Keep
+the requested review app, verification results and small reusable test fixtures.
+Check temporary apps are no longer running; never clean the installed application
+or unrelated builds.
 
 At handoff, report the behavior changed, tests run, and any visual or hardware
 checks that remain unverified. Follow `AGENTS.md`'s automatic documentation
