@@ -100,9 +100,9 @@ dismissal if changed. Do not claim visual verification from source inspection.
 
 Use `./gradlew :composeApp:desktopTest --tests '<affected test class>'` for focused
 JVM tests. See the repository's build scripts and `composeApp/build.gradle.kts`
-for the current JDK and packaging requirements. Native macOS player checks may
-require the packaged app: the development `:composeApp:run` controls have shown
-behavior differing from the DMG build. Do not silently replace the user's installed
+for the current JDK and packaging requirements. Use the MainKt desktop entry point (`Main.kt`) for runtime checks. Do not build
+a standalone app or DMG unless explicitly requested. Development controls have
+shown behavior differing from packaged builds; report that validation limitation. Do not silently replace the user's installed
 app or trigger TV/network activity as part of an unrelated UI check.
 
 Native mpv initialization must set `LC_NUMERIC` to `C` immediately before
@@ -136,10 +136,11 @@ These integration tests skip without the isolation flag supplied by that script;
 a skipped run does not verify the navigation regression. Do not use a real user
 profile as a full-app test fixture.
 
-Before handoff, remove task-created temporary QA `.app` bundles, intermediate
-app copies and superseded review builds. Keep the latest standalone review app,
-its verification results and small reusable test fixtures. Check temporary apps
-are no longer running; never clean the installed application or unrelated builds.
+If packaging was explicitly requested, remove task-created temporary QA `.app`
+bundles, intermediate copies and superseded review builds before handoff. Keep
+the requested review app, verification results and small reusable test fixtures.
+Check temporary apps are no longer running; never clean the installed application
+or unrelated builds.
 
 At handoff, report the behavior changed, tests run, and any visual or hardware
 checks that remain unverified. Follow `AGENTS.md`'s automatic documentation

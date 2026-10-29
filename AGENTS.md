@@ -35,12 +35,10 @@ skill is not in the session catalog, read that file directly.
   or unit test alone is not visual validation. State any unverified behavior.
 - For collection hero/backdrop work, read `.agents/collection-backdrops.md` and
   reuse the seasonal catalog implementation as the reference.
-- After completing an implementation, build a standalone macOS review `.app`
-  that the user can open by double-clicking in Finder, without installing a DMG
-  or running Gradle. Keep it in the project's build output, separate from the
-  installed app; never overwrite or replace the installed app. Verify the bundle
-  exists and provide its absolute path/link in the final handoff. A DMG alone is
-  not a sufficient review deliverable. Report any build blocker explicitly.
+- Verify implementations through the MainKt desktop entry point (`Main.kt`) and
+  focused tests. Do not build or package a full standalone `.app` or DMG unless
+  the user explicitly requests one. Report any build or runtime blocker and
+  unverified behavior in the handoff; never replace the installed app.
 
 ## Addon, collection, and catalog recovery
 
