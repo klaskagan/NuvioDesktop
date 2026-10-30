@@ -302,6 +302,7 @@ data class PlayerControlsState(
     val chaptersLabel: String = "Chapters",
     val chaptersPanelTitle: String = "Chapters",
     val chapterRemainingTemplate: String = "{time} left",
+    val autoSyncedLabel: String = "Auto synced",
     val streamInfoLabel: String = "Stream info",
     val streamInfoSections: List<PlayerControlInfoSection> = emptyList(),
 )
@@ -383,6 +384,7 @@ data class PlayerControlSubtitleOptionItem(
     val title: String = "",
     val metadata: String = "",
     val isSelected: Boolean = false,
+    val isAutoSynced: Boolean = false,
 )
 
 data class PlayerControlSubtitleCueItem(
