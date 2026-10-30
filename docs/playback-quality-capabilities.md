@@ -159,3 +159,79 @@ network-shaping, builds or device tests were run. Runtime codec/display probing,
 bundled mpv property availability and seamless switching remain unverified.
 No automatic quality changes were enabled. Existing unrelated working-tree edits
 were left intact.
+
+## Desktop quick quality implementation (2026-10-30)
+
+This section supersedes the desktop gaps in the historical audit and the earlier
+strict-probing design. Quality is a fast shortcut over the already-known source
+list. It does not inspect every media file or reject language/timeline differences.
+
+- Cache stream-picker results for the current type/video/season/episode when
+  playback starts. If no matching selection cache exists, fetch once in the
+  background at playback start. Opening Quality never fetches sources or probes
+  tracks/manifests. Source-list updates refresh the in-memory quality choices.
+- Show one entry per reported resolution, descending. Preserve provider/source
+  order within a tier and prefer the currently playing source for its own tier.
+  Omit unknown quality metadata. Keep every original entry, including duplicates,
+  in the cloud Sources menu and preserve its explicit Reload action.
+- Use a separate dynamic quality badge, following Mobile Enhanced's quality pill.
+  Display 4K, 1080p, 720p and other standard tiers. Classify cropped frames using
+  width and height together: 1280x688 is 720p, never a new 688p tier.
+- Resolve a selected debrid/server source only when needed after selection.
+  Reuse the controlled reload, cancellation, and load-failure rollback path.
+  Preserve position, pause, speed, volume/mute, and subtitle delay; restore matching
+  track languages where available and otherwise retain the new source's defaults.
+  Language, track-role and release-duration differences do not block selection.
+  The user can choose a specific release through the original cloud picker.
+- No automatic quality changes. Actual media loading/buffering still depends on
+  the selected provider; the selector itself has no network preflight.
+
+The old headless probing, rewritten HLS masters, and temporary manifest leases
+have been removed from this feature. Resume/external/shared source URLs remain
+ordinary source URLs.
+
+Regression coverage includes cached grouping/deduplication, standard resolution
+labels, source-cache ownership, synchronous reopening, playback-state restoration,
+and cancellation/failure recovery. Native fixtures use synthetic media under
+isolated profile/authentication storage; never use an existing watched title as
+a fixture. Generate native media with `scripts/create-quality-test-fixtures.sh`.
+
+Use `QuickQualitySourcesTest`, `PlayerRuntimeQualityTest`,
+`QualitySwitchTransactionTest`, and `NativeQualityRestoreLiveTest` for focused
+verification, with `scripts/desktop-ui-tests.init.gradle`. The native renderer
+check is enabled by `NUVIO_QUALITY_NATIVE_TEST=1`. Windows/Linux runtime behavior
+still requires separate validation.
+
+Validation: 83 focused and existing player regressions passed with no skips on
+macOS, including repeated cached menu opening, preserving the full manual list,
+rejecting another title's cache, cropped-frame tier labels, and native best-effort
+restoration with an unavailable previous language and a different duration.
+The production HTML controls were visually checked with synthetic 720p and 4K
+state: Quality shows three deduplicated tiers while the cloud picker retains all
+five fixture streams and its Reload/Close controls. No real library title was
+played by these checks.
+
+## Buffered handover (accepted 2026-10-31)
+
+macOS prepares replacement playback while the current source keeps playing. The
+selected tier is seeded in the hidden controls document before loading, preventing
+a stale-quality frame during promotion. The user verified successful switching
+and the badge transition. See [the handover contract](buffered-quality-handover.md)
+for behavior, test coverage, and platform boundaries. Windows/Linux keep the
+controlled reload path; their native runtime verification remains outstanding.
+
+### Torrentio-only configuration
+
+Direct addon URLs qualify independently of native debrid credentials. Torrentio
+labels such as `[TB+] Torrentio 4k DV | HDR` and `1080p` are grouped using the
+same provider-independent parser. No addon configuration is changed. The active
+source also contributes its decoded tier when its metadata is unlabeled (for
+example WEB-DL at 1024×512 contributes 480p). Unknown unplayed sources remain
+in Sources; WEB-DL alone does not prove a resolution. Background preparation
+lets the candidate fill its cache before seeking again to follow live playback.
+
+Real Torrentio QA: duplicate tiers now prefer addon-marked cached/ready releases
+over `[TB download]` entries. A download-only alternative is disabled with an
+explanation and remains selectable in Sources. Current playback is proof of
+availability even if its original addon label still says download. This is based
+on returned metadata, without inspecting/changing native debrid configuration.

@@ -219,7 +219,7 @@ private fun NativePlayerSurface(
         )
     }
 
-    DisposableEffect(controller, sourceAvailable, playbackSource, playbackHeaders) {
+    DisposableEffect(controller, sourceAvailable) {
         onDispose { controller.dispose() }
     }
 
@@ -251,7 +251,7 @@ private fun NativePlayerSurface(
             return@LaunchedEffect
         }
         delay(16L)
-        controller.attach(
+        if (!controller.consumeBufferedSource(playbackSource.videoUrl, playbackHeaders)) controller.attach(
             sourceUrl = playbackSource.videoUrl,
             sourceAudioUrl = playbackSource.audioUrl,
             sourceHeaders = playbackHeaders,

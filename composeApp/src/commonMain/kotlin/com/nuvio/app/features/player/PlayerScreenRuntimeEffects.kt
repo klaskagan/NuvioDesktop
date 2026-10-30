@@ -141,24 +141,26 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         accumulatedSeekResetJob = null
         accumulatedSeekState = null
         speedBoostRestoreSpeed = null
-        preferredAudioSelectionApplied = false
-        appliedAudioPreferences = null
-        preferredSubtitleSelectionApplied = false
-        isUserExplicitAudioSelection = false
-        isUserExplicitSubtitleSelection = false
-        hasScannedTextTracksOnce = false
-        selectedSubtitleIndex = -1
-        selectedAddonSubtitleId = null
-        useCustomSubtitles = false
-        showSourcesPanel = false
-        showEpisodesPanel = false
-        showChaptersPanel = false
-        chapters = emptyList()
-        chaptersLoadedForSourceUrl = null
-        episodeStreamsPanelState = EpisodeStreamsPanelState()
-        PlayerStreamsRepository.clearEpisodeStreams()
-        SubtitleRepository.clear()
-        autoFetchedAddonSubtitlesForKey = null
+        if (!qualityReplacing) {
+            preferredAudioSelectionApplied = false
+            appliedAudioPreferences = null
+            preferredSubtitleSelectionApplied = false
+            isUserExplicitAudioSelection = false
+            isUserExplicitSubtitleSelection = false
+            hasScannedTextTracksOnce = false
+            selectedSubtitleIndex = -1
+            selectedAddonSubtitleId = null
+            useCustomSubtitles = false
+            showSourcesPanel = false
+            showEpisodesPanel = false
+            showChaptersPanel = false
+            chapters = emptyList()
+            chaptersLoadedForSourceUrl = null
+            episodeStreamsPanelState = EpisodeStreamsPanelState()
+            PlayerStreamsRepository.clearEpisodeStreams()
+            SubtitleRepository.clear()
+            autoFetchedAddonSubtitlesForKey = null
+        }
         WatchProgressRepository.ensureLoaded()
     }
 
@@ -491,7 +493,10 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
         showParentalGuide,
         errorMessage,
     ) {
+        // Desktop WebView owns chrome idle timing and knows hover/focus/modal state.
+        // A second Compose timer must not hide controls underneath that interaction.
         if (
+            isDesktop ||
             !controlsVisible ||
             isScrubbingTimeline ||
             !playbackSnapshot.isPlaying ||
@@ -535,7 +540,10 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
         snapshotSignals.isLoading,
         snapshotSignals.isEnded,
         snapshotSignals.durationMs,
+        qualityReplacing,
+        activeSourceUrl,
     ) {
+        if (qualityReplacing) return@LaunchedEffect
         ServerPlayback.onPlaybackSnapshot(
             url = activeSourceUrl,
             positionMs = playbackSnapshot.positionMs,

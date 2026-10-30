@@ -120,6 +120,14 @@ in a Gradle debug run can make creation fail before the stream opens. When
 changing initialization, check a comma-decimal locale (such as `lt_LT.UTF-8`)
 and confirm a player handle is created without the non-C locale warning.
 
+For desktop quality reloads, read the implementation contract in
+[the playback capability report](../../../docs/playback-quality-capabilities.md).
+It records cached source ownership, fast deduplication, standard quality labels,
+and best-effort playback-state restoration. Quality must reuse known sources
+without fetching/probing on menu open; the cloud Sources picker keeps all entries.
+Language and release-duration differences are user-recoverable through Sources,
+not compatibility gates for quick quality selection.
+
 For skip-intro lookup failures, inspect the generated `IntroDbConfig.URL` before
 changing popup or auto-skip behavior. An empty generated URL gates off repository
 fetches entirely. Configure `INTRODB_API_URL=https://api.introdb.app` in the ignored

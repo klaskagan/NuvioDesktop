@@ -266,6 +266,7 @@
             <button class="action" data-command="speed"><svg><use href="#icon-speed"></use></svg><span id="speedLabel">1x</span></button>
             <button class="action" data-command="subtitles"><svg><use href="#icon-subs"></use></svg><span id="subtitlesLabel">Subs</span></button>
             <button class="action" data-command="audio"><svg><use href="#icon-audio"></use></svg><span id="audioLabel">Audio</span></button>
+            <button class="action" data-command="quality" aria-label="Playback quality"><svg viewBox="0 0 40 24" aria-hidden="true"><rect x="1" y="1" width="38" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text id="qualityIconText" x="20" y="16" text-anchor="middle" fill="currentColor" font-size="10" font-weight="700">HD</text></svg><span id="qualityLabel">Quality</span></button>
             <button class="action optional" id="sourcesButton" data-command="sources"><svg><use href="#icon-source"></use></svg><span id="sourcesLabel">Sources</span></button>
             <button class="action optional" id="tvHandoffButton" data-command="continueOnTv" style="display:none"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v2h8v-2h5a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m0 14H3V5h18z"/></svg><span id="tvHandoffLabel">Continue on TV</span></button>
             <button class="action optional" id="episodesButton" data-command="episodes"><svg><use href="#icon-episodes"></use></svg><span id="episodesLabel">Episodes</span></button>
@@ -286,6 +287,13 @@
       <section class="player-toast" id="playerToast" aria-live="polite" aria-atomic="true" aria-hidden="true">
         <svg class="player-toast-icon" id="playerToastIcon" aria-hidden="true" hidden><use id="playerToastIconUse" href="#icon-speed"></use></svg>
         <span class="player-toast-text" id="playerToastText"></span>
+      </section>
+      <section class="modal-layer player-rail-modal" id="qualityModal" aria-label="Playback quality" hidden>
+        <div class="track-panel audio-rail-panel">
+          <div class="track-header"><span id="qualityPanelTitle">Quality</span> <span id="qualityActualLabel"></span></div>
+          <div class="track-list" id="qualityOptionList"></div>
+          <div class="track-status" id="qualityStatus" role="status" aria-live="polite"></div>
+        </div>
       </section>
       <section class="modal-layer player-rail-modal" id="speedModal" aria-label="Playback speed" hidden>
         <div class="track-panel audio-rail-panel">

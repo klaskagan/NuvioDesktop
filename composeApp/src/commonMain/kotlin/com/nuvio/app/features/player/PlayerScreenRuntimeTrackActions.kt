@@ -204,6 +204,7 @@ internal fun PlayerScreenRuntime.refreshTracks() {
         preferredSubtitleSelectionApplied = false
     }
 
+    if (qualityReplacing) return
     val subtitlePreferenceReady = restorePersistedTrackPreferenceIfNeeded()
 
     val preferredAudioTargets = preferredAudioLanguageTargets
