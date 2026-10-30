@@ -31,6 +31,7 @@ import com.nuvio.app.features.player.SubtitleStyleState
 import com.nuvio.app.features.player.SubtitleTrack
 import com.nuvio.app.features.player.inferForcedSubtitleTrack
 import com.nuvio.app.features.player.toStorageHexString
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -68,6 +69,7 @@ internal class NativePlayerController(
     private val createWaitTimeoutMs: Long = 5_000L,
     private val releaseTimeoutMs: Long = 10_000L,
     private val onCreateWaitCompleted: () -> Unit = {},
+    private val nativeEventForwarder: ((String, Double) -> Unit)? = null,
 ) : PlayerEngineController {
     private companion object {
         val json = Json { ignoreUnknownKeys = true }
@@ -115,6 +117,7 @@ internal class NativePlayerController(
     private var releaseTimedOut: Boolean = false
     private var terminalReleaseFailure: String? = null
     private var controlsState = PlayerControlsState()
+    private var bufferedSourceToAdopt: Pair<String, Map<String, String>>? = null
     @Volatile
     private var currentVolumeLevel = rememberedVolumeLevel.coerceDesktopPlayerVolumeLevel()
     private var pendingSubtitleDelayMs: Int? = null
@@ -326,7 +329,9 @@ internal class NativePlayerController(
                         pending.nvidiaRtxSuperResolutionEnabled,
                         NativePlayerEventSink { type, value ->
                             SwingUtilities.invokeLater {
-                                if (pendingSource === pending && !releaseRequested) handlePlayerEvent(type, value)
+                                if (pendingSource === pending && !releaseRequested) {
+                                    if (nativeEventForwarder != null) nativeEventForwarder.invoke(type, value) else handlePlayerEvent(type, value)
+                                }
                             }
                         },
                     ).also { if (it == 0L) error("Native player did not return a handle.") }
@@ -756,6 +761,8 @@ internal class NativePlayerController(
                 positionMs = NativePlayerBridge.positionMs(current),
                 bufferedPositionMs = NativePlayerBridge.bufferedPositionMs(current),
                 playbackSpeed = NativePlayerBridge.speed(current),
+                videoWidth = NativePlayerBridge.stringProperty(current, "video-params/w").toIntOrNull() ?: 0,
+                videoHeight = NativePlayerBridge.stringProperty(current, "video-params/h").toIntOrNull() ?: 0,
             )
         }.getOrDefault(PlayerPlaybackSnapshot(isLoading = true))
     }
@@ -1039,6 +1046,245 @@ internal class NativePlayerController(
     override fun setPlaybackSpeed(speed: Float) {
         log.d { "setPlaybackSpeed speed=$speed handle=$handle" }
         handle.takeIf { it != 0L }?.let { NativePlayerBridge.setSpeed(it, speed) }
+    }
+
+    private fun qualityGet(name: String): String = synchronized(lifecycleLock) {
+        if (handle == 0L || releaseRequested) "" else NativePlayerBridge.qualityProperty(handle, false, name)
+    }
+    private fun qualitySet(name: String, value: String): Boolean = synchronized(lifecycleLock) {
+        handle != 0L && !releaseRequested && NativePlayerBridge.qualitySet(handle, false, name, value)
+    }
+    private fun qualityCommand(vararg args: String): Boolean = synchronized(lifecycleLock) {
+        handle != 0L && !releaseRequested && NativePlayerBridge.qualityCommand(handle, false, arrayOf(*args))
+    }
+    override fun qualityCheckpoint(): com.nuvio.app.features.player.PlayerQualityCheckpoint? {
+        if (handle == 0L || releaseRequested) return null
+        return com.nuvio.app.features.player.PlayerQualityCheckpoint(
+            ((qualityGet("time-pos").toDoubleOrNull() ?: return null) * 1000).toLong(), qualityGet("pause") == "yes", qualityGet("speed").toFloatOrNull() ?: snapshot().playbackSpeed,
+            qualityGet("volume").toFloatOrNull() ?: 100f, qualityGet("mute") == "yes",
+            ((qualityGet("sub-delay").toDoubleOrNull() ?: 0.0) * 1000).toInt(),
+            readQualityTracks(::qualityGet), snapshot().durationMs, qualityGet("seekable") == "yes",
+        )
+    }
+    override suspend fun prepareBufferedQuality(
+        choice: com.nuvio.app.features.player.PlayerQualityChoice,
+        checkpoint: com.nuvio.app.features.player.PlayerQualityCheckpoint,
+    ): com.nuvio.app.features.player.BufferedPlayerQuality? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (DesktopHostOs.current != DesktopHostOs.MACOS || host.embedded || DesktopPlayerPictureInPicture.isEnabled) return@withContext null
+        val originalHandle = handle.takeIf { it != 0L } ?: error("Player unavailable")
+        val originalPending = pendingSource ?: error("Source unavailable")
+        val adoptedHandle = java.util.concurrent.atomic.AtomicLong(0)
+        val failure = java.util.concurrent.atomic.AtomicReference<String?>(null)
+        lateinit var stage: NativePlayerController
+        val window = qualityOnEdt {
+            val container = javax.swing.JWindow()
+            try { container.apply {
+                focusableWindowState = false
+                setBounds(-20_000, -20_000, 320, 180)
+                val stagingHost = NativePlayerHost()
+                add(stagingHost)
+                isVisible = true
+                check(java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices.none { it.defaultConfiguration.bounds.intersects(bounds) }) {
+                    "Cannot create an offscreen staging host"
+                }
+                stage = NativePlayerController(
+                    host = stagingHost,
+                    nativeCreate = { view, source, headers, play, position, controls, decoder, rtx, sink ->
+                        NativePlayerBridge.createStaging(view, source, headers, play, position, controls, decoder, rtx, sink)
+                    },
+                    nativeEventForwarder = { type, value ->
+                        if (adoptedHandle.get() != 0L && handle == adoptedHandle.get()) handlePlayerEvent(type, value)
+                    },
+                )
+                stage.setNativeControlsEnabled(false)
+                stage.pendingSubtitleStyle = pendingSubtitleStyle
+                stage.pendingUseLibass = pendingUseLibass
+                stage.pendingSubtitleDelayMs = checkpoint.subtitleDelayMs
+                // The staging document can be painted before a promotion-time JS update
+                // completes. Its very first snapshot must already describe this choice.
+                stage.updateControls(bufferedQualityPreparationControls(controlsState, choice.height))
+                stage.attach(choice.url, choice.headers, false, 0L,
+                    originalPending.decoderPriority, originalPending.nvidiaRtxSuperResolutionEnabled,
+                    { message -> if (message != null) failure.set(message) })
+            } } catch (error: Throwable) { container.dispose(); throw error }
+        }
+        var promoted = false
+        var lastPrepared = checkpoint
+        val cleaned = java.util.concurrent.atomic.AtomicBoolean(false)
+        val session = object : com.nuvio.app.features.player.BufferedPlayerQuality {
+            override fun promote(): com.nuvio.app.features.player.PlayerQualityCheckpoint = qualityOnEdt {
+                synchronized(lifecycleLock) {
+                    check(!releaseRequested && !DesktopPlayerPictureInPicture.isEnabled && handle == originalHandle && pendingSource === originalPending) { "Source changed during buffering" }
+                    val live = qualityCheckpoint() ?: error("Player unavailable")
+                    val position = ((stage.qualityGet("time-pos").toDoubleOrNull() ?: -1.0) * 1000).toLong()
+                    val target = bufferedQualityTarget(live.positionMs, stage.snapshot().durationMs,
+                        live.seekable && stage.qualityGet("seekable") == "yes")
+                    check(kotlin.math.abs(position - target) <= 750) { "Prepared quality is no longer aligned" }
+                    check(live.tracks.filter { it.selected } == lastPrepared.tracks.filter { it.selected }) { "Track selection changed during buffering" }
+                    val next = stage.handle.takeIf { it != 0L } ?: error("Prepared player was released")
+                    val view = resolveHostView().takeIf { it != 0L } ?: error("Player view unavailable")
+                    // The old player remains alive until the buffered renderer has joined its host.
+                    check(NativePlayerBridge.reparentSurface(next, view)) { "Cannot promote prepared quality" }
+                    NativePlayerBridge.setPaused(originalHandle, true)
+                    NativePlayerBridge.setStaging(originalHandle, true)
+                    NativePlayerBridge.setStaging(next, false)
+                    handle = next
+                    stage.handle = 0L
+                    pendingSource = stage.pendingSource?.copy(onError = originalPending.onError, playWhenReady = !live.paused, initialPositionMs = position)
+                    bufferedSourceToAdopt = choice.url to choice.headers
+                    adoptedHandle.set(next)
+                    promoted = true
+                    currentVolumeLevel = (live.volume / 100f).coerceDesktopPlayerVolumeLevel()
+                    qualitySet("volume", live.volume.toString())
+                    qualitySet("mute", if (live.muted) "yes" else "no")
+                    qualitySet("speed", live.speed.toString())
+                    setPlaybackSpeed(live.speed)
+                    qualitySet("sub-delay", (live.subtitleDelayMs / 1000.0).toString())
+                    lastSentControlsStructureKey = null
+                    // Seed the prepared document before revealing it. Main controls can
+                    // still contain the outgoing tier until Compose publishes its next state.
+                    updateControls(bufferedQualityPromotionControls(controlsState, choice.height))
+                    setNativeControlsEnabled(nativeControlsEnabled)
+                    setResizeMode(rememberedResizeMode)
+                    setNowPlayingMetadata(currentNowPlayingTitle, currentNowPlayingSubtitle, currentArtworkUrl)
+                    NativePlayerBridge.setPaused(next, live.paused)
+                    requestKeyboardFocus()
+                    startTrackedDisposeLocked(originalHandle)
+                    stage.host.onPeerReady = null
+                    window.dispose()
+                    live
+                }
+            }
+            override suspend fun cancel() {
+                if (!cleaned.compareAndSet(false, true) || promoted) return
+                val released = kotlinx.coroutines.CompletableDeferred<Unit>()
+                qualityOnEdt {
+                    stage.releaseBeforeNavigation(
+                        onReleased = { window.dispose(); released.complete(Unit) },
+                        onReleaseFailed = { message ->
+                            // Do not destroy a host still owned by a native create/dispose worker.
+                            log.e { "background quality cleanup failed: $message" }
+                            released.complete(Unit)
+                        },
+                    )
+                }
+                // A network-backed native dispose can outlive the switch timeout.
+                // Its callback still owns the hidden host until release actually completes.
+                kotlinx.coroutines.withTimeoutOrNull(5_000) { released.await() }
+            }
+        }
+        try {
+            var appliedSettings: com.nuvio.app.features.player.PlayerQualityCheckpoint? = null
+            var bufferFilled = false
+            while (true) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                check(handle == originalHandle && pendingSource === originalPending && !releaseRequested && !DesktopPlayerPictureInPicture.isEnabled) { "Source changed during buffering" }
+                failure.get()?.let { error("Background player failed to load") }
+                val live = qualityCheckpoint() ?: error("Player unavailable")
+                val snapshot = stage.snapshot()
+                val stagePosition = ((stage.qualityGet("time-pos").toDoubleOrNull() ?: -1.0) * 1000).toLong()
+                val seeking = stage.qualityGet("seeking") == "yes"
+                val canSeek = live.seekable && stage.qualityGet("seekable") == "yes"
+                val target = bufferedQualityTarget(live.positionMs, snapshot.durationMs, canSeek)
+                val settings = live.copy(positionMs = 0, seekable = canSeek)
+                if (!snapshot.isLoading && stagePosition >= 0 && !seeking &&
+                    (appliedSettings != settings || (bufferFilled && kotlin.math.abs(stagePosition - target) > 500))) {
+                    stage.restoreQuickQuality(live.copy(seekable = canSeek))
+                    // Preparation must stay silent and paused, irrespective of the source's defaults.
+                    stage.qualitySet("pause", "yes")
+                    stage.qualitySet("mute", "yes")
+                    appliedSettings = settings
+                    lastPrepared = live
+                } else if (appliedSettings != null) {
+                    val ahead = ((stage.qualityGet("demuxer-cache-duration").toDoubleOrNull() ?: 0.0) * 1000).toLong()
+                    val buffered = maxOf(snapshot.bufferedPositionMs, stagePosition + ahead)
+                    bufferFilled = buffered - stagePosition >= 1900 || (snapshot.durationMs > 0 && buffered >= snapshot.durationMs - 100)
+                    if (bufferedQualityReady(stagePosition, target, buffered, snapshot.durationMs,
+                            stage.qualityGet("video-out-params/w").toIntOrNull()?.let { it > 0 } == true,
+                            seeking, snapshot.isLoading)) {
+                        lastPrepared = live
+                        return@withContext session
+                    }
+                }
+                kotlinx.coroutines.delay(100)
+            }
+            @Suppress("UNREACHABLE_CODE") null
+        } catch (error: Throwable) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { session.cancel() }
+            throw error
+        }
+    }
+
+    fun consumeBufferedSource(url: String, headers: Map<String, String>): Boolean = synchronized(lifecycleLock) {
+        if (handle != 0L && bufferedSourceToAdopt == (url to headers)) {
+            bufferedSourceToAdopt = null
+            true
+        } else false
+    }
+
+    override suspend fun restoreQuickQuality(checkpoint: com.nuvio.app.features.player.PlayerQualityCheckpoint): Boolean {
+        if (handle == 0L || qualityGet("time-pos").toDoubleOrNull() == null) return false
+        val tracks = readQualityTracks(::qualityGet)
+        for (type in listOf("audio", "sub")) {
+            val selected = checkpoint.tracks.firstOrNull { it.selected && it.type == type }
+            if (selected == null) {
+                qualitySet(if (type == "audio") "aid" else "sid", "no")
+                continue
+            }
+            if (selected.externalUrl != null && type == "sub") {
+                qualityCommand("sub-add", selected.externalUrl, "select", selected.title, selected.language.orEmpty())
+                continue
+            }
+            val matching = qualityTrackMatch(selected, tracks) ?: tracks.firstOrNull {
+                it.type == type && selected.language != null &&
+                    com.nuvio.app.features.player.normalizeLanguageCode(it.language) == com.nuvio.app.features.player.normalizeLanguageCode(selected.language)
+            }
+            // Missing language/role uses the new stream's defaults; the cloud picker remains available.
+            matching?.let { qualitySet(if (type == "audio") "aid" else "sid", it.id.toString()) }
+        }
+        setPlaybackSpeed(checkpoint.speed)
+        qualitySet("volume", checkpoint.volume.toString())
+        currentVolumeLevel = (checkpoint.volume / 100f).coerceDesktopPlayerVolumeLevel()
+        qualitySet("mute", if (checkpoint.muted) "yes" else "no")
+        qualitySet("sub-delay", (checkpoint.subtitleDelayMs / 1000.0).toString())
+        val duration = qualityGet("duration").toDoubleOrNull()?.let { (it * 1000).toLong() }
+        val target = checkpoint.positionMs.coerceAtMost((duration?.minus(1000) ?: checkpoint.positionMs).coerceAtLeast(0))
+        if (checkpoint.seekable && target > 0) qualityCommand("seek", (target / 1000.0).toString(), "absolute+exact")
+        return true
+    }
+
+    override suspend fun restoreQuality(checkpoint: com.nuvio.app.features.player.PlayerQualityCheckpoint): Boolean {
+        val current = qualityCheckpoint() ?: return false
+        if (current.durationMs <= 0) return false
+        val external = checkpoint.tracks.filter { it.selected && it.externalUrl != null }
+        external.forEach { track ->
+            if (current.tracks.none { it.externalUrl == track.externalUrl })
+                qualityCommand("sub-add", track.externalUrl!!, when (track.role) { "forced" -> "select+forced"; "forced+hearing-impaired" -> "select+forced+hearing-impaired"; "hearing-impaired" -> "select+hearing-impaired"; else -> "select" }, track.title, track.language.orEmpty())
+        }
+        val tracks = readQualityTracks(::qualityGet)
+        if (qualityCompatibility(checkpoint, tracks, current.durationMs) != null) error("Selected tracks cannot be preserved")
+        for (type in listOf("audio", "sub")) {
+            val selected = checkpoint.tracks.firstOrNull { it.type == type && it.selected }
+            val property = if (type == "audio") "aid" else "sid"
+            val match = selected?.let { qualityTrackMatch(it, tracks) ?: error("Track unavailable") }
+            check(qualitySet(property, match?.id?.toString() ?: "no"))
+        }
+        setPlaybackSpeed(checkpoint.speed)
+        check(qualitySet("speed", checkpoint.speed.toString()))
+        check(qualitySet("volume", checkpoint.volume.toString()))
+        currentVolumeLevel = (checkpoint.volume / 100f).coerceDesktopPlayerVolumeLevel()
+        check(qualitySet("mute", if (checkpoint.muted) "yes" else "no"))
+        check(qualitySet("sub-delay", (checkpoint.subtitleDelayMs / 1000.0).toString()))
+        val position = ((qualityGet("time-pos").toDoubleOrNull() ?: return false) * 1000).toLong()
+        if (kotlin.math.abs(position - checkpoint.positionMs) > 1500) {
+            qualityCommand("seek", (checkpoint.positionMs / 1000.0).toString(), "absolute+exact")
+            return false
+        }
+        if (kotlin.math.abs(snapshot().playbackSpeed - checkpoint.speed) > .01f) return false
+        val restored = readQualityTracks(::qualityGet)
+        return checkpoint.tracks.filter { it.selected }.all { selected ->
+            qualityTrackMatch(selected, restored.filter { it.selected }) != null
+        } && (checkpoint.tracks.any { it.type == "sub" && it.selected } || restored.none { it.type == "sub" && it.selected })
     }
 
     override fun getAudioTracks(): List<AudioTrack> =
@@ -1648,6 +1894,26 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
         appendJsonField("sourceIsLoading", sourceIsLoading)
         append(',')
         appendJsonArrayField("sourceFilters", sourceFilters) { appendFilterItemJson(it) }
+        append(',')
+        appendJsonField("qualityLabel", qualityLabel)
+        append(',')
+        appendJsonField("qualityPlayingLabelFormat", qualityPlayingLabelFormat)
+        append(',')
+        appendJsonField("qualityBusy", qualityBusy)
+        append(',')
+        appendJsonField("qualityStatus", qualityStatus)
+        append(',')
+        appendJsonField("qualityRequestedHeight", qualityRequestedHeight.toLong())
+        append(',')
+        appendJsonField("qualityActualHeight", qualityActualHeight.toLong())
+        append(',')
+        appendJsonArrayField("qualityItems", qualityItems) { item ->
+            append('{')
+            appendJsonField("height", item.height.toLong()); append(',')
+            appendJsonField("enabled", item.enabled); append(',')
+            appendJsonField("reason", item.reason)
+            append('}')
+        }
         append(',')
         appendJsonArrayField("sourceItems", sourceItems) { appendSourceItemJson(it) }
         append(',')

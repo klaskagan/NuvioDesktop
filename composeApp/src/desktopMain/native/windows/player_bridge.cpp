@@ -1210,6 +1210,8 @@ public:
         return flagProperty("eof-reached", false);
     }
 
+    mpv_handle *qualityHandle() { return mpv; }
+
     std::string mpvStringProperty(const char *name) {
         return stringProperty(name, "");
     }
@@ -3003,3 +3005,16 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_applySubtitleStyle
         stripSdh == JNI_TRUE
     );
 }
+
+static mpv_handle *qualityActiveMpv(jlong handle) { auto p = playerFromHandle(handle); return p ? p->qualityHandle() : nullptr; }
+#define Q_CREATE mpvApi().create
+#define Q_OPTION mpvApi().setOptionString
+#define Q_INITIALIZE mpvApi().initialize
+#define Q_DESTROY mpvApi().terminateDestroy
+#define Q_GET mpvApi().getProperty
+#define Q_SET mpvApi().setPropertyString
+#define Q_FREE mpvApi().freeValue
+#define Q_COMMAND mpvApi().command
+#define Q_WAIT mpvApi().waitEvent
+#define Q_PREPARE() mpvApi().ensureLoaded()
+#include "../shared/quality_bridge.h"

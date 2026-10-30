@@ -61,6 +61,14 @@ internal object NativePlayerBridge {
         eventSink: NativePlayerEventSink,
     ): Long
 
+    // macOS experiment: silent renderer with no media-key or focus ownership until promotion.
+    external fun createStaging(
+        hostViewPtr: Long, sourceUrl: String, headerLines: Array<String>, playWhenReady: Boolean,
+        initialPositionMs: Long, controlsPageUrl: String, decoderPriority: Int,
+        nvidiaRtxSuperResolutionEnabled: Boolean, eventSink: NativePlayerEventSink,
+    ): Long
+    external fun setStaging(handle: Long, staging: Boolean)
+
     // macOS embedded media: the window resolver stays valid for window operations.
     external fun createEmbedded(
         hostViewPtr: Long, sourceUrl: String, headerLines: Array<String>, playWhenReady: Boolean,
@@ -107,6 +115,9 @@ internal object NativePlayerBridge {
     external fun audioTracksJson(handle: Long): String
     external fun subtitleTracksJson(handle: Long): String
     external fun stringProperty(handle: Long, name: String): String
+    external fun qualityProperty(handle: Long, probe: Boolean, name: String): String
+    external fun qualitySet(handle: Long, probe: Boolean, name: String, value: String): Boolean
+    external fun qualityCommand(handle: Long, probe: Boolean, args: Array<String>): Boolean
     external fun selectAudioTrack(handle: Long, trackId: Int)
     external fun setAudioLanguages(handle: Long, languages: String)
     external fun selectSubtitleTrack(handle: Long, trackId: Int)

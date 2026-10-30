@@ -2061,3 +2061,15 @@ JNIEXPORT void JNICALL NP(reparentSurfaceNative)(JNIEnv *, jobject, jlong, jlong
 
 #undef NP
 } // extern "C"
+
+static mpv_handle *qualityActiveMpv(jlong handle) { auto p = asPlayer(handle); return p ? p->mpv : nullptr; }
+#define Q_CREATE mpv_create
+#define Q_OPTION mpv_set_option_string
+#define Q_INITIALIZE mpv_initialize
+#define Q_DESTROY mpv_terminate_destroy
+#define Q_GET mpv_get_property
+#define Q_SET mpv_set_property_string
+#define Q_FREE mpv_free
+#define Q_COMMAND mpv_command
+#define Q_WAIT mpv_wait_event
+#include "../shared/quality_bridge.h"

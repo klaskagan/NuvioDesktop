@@ -39,6 +39,7 @@ AGENTS.md
 PERFORMANCE_FINDINGS.md
 scripts/*
 !scripts/desktop-ui-tests.init.gradle
+!scripts/create-quality-test-fixtures.sh
 !scripts/tv-handoff/
 !scripts/tv-handoff/**
 scripts/tv-handoff/**/__pycache__/
@@ -58,3 +59,5 @@ iosApp/Configuration/DeviceSigning.local.json
 ![Dd]ocs/go3-live-probe.md
 !scripts/go3-live-probe/
 !scripts/go3-live-probe/**
+
+!docs/buffered-quality-handover.md

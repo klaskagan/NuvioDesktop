@@ -491,6 +491,9 @@ const chromeInteractionSelector = [
   "select",
   "[contenteditable='true']",
   ".header-actions",
+  ".action-row",
+  ".action-pill",
+  ".volume-control",
   ".center-controls",
   ".progress",
   ".modal-layer",
@@ -992,6 +995,7 @@ const modalByName = {
   audio: audioModal,
   subtitles: subtitleModal,
   speed: speedModal,
+  quality: document.getElementById("qualityModal"),
   sources: sourceModal,
   episodes: episodesModal,
   chapters: chaptersModal,
@@ -1040,6 +1044,8 @@ const setModalVisibility = (modal, visible, animated = true) => {
   modalCloseTimers.set(modal, timer);
 };
 
+let qualityFocusPending = false;
+
 const closePlayerModal = (notifyDismiss = false, animated = true) => {
   const closingModal = activeModal;
   activeModal = "";
@@ -1050,6 +1056,7 @@ const closePlayerModal = (notifyDismiss = false, animated = true) => {
   if (notifyDismiss && closingModal === "p2pConsent") {
     send("cancelP2pForPlayerControls", 0);
   }
+  if (closingModal === "quality") document.querySelector('[data-command="quality"]')?.focus({ preventScroll: true });
   if (closingModal === "episodes") onEpisodesModalClosed();
   if (closingModal === "party") onPartyModalClosed();
   renderChrome();
@@ -1065,6 +1072,7 @@ const openPlayerModal = modal => {
   if (activeModal === "party" && modal !== "party") onPartyModalClosed();
   if (modal === "party" && activeModal !== "party") onPartyModalOpened();
   activeModal = modal;
+  if (modal === "quality") qualityFocusPending = true;
   if (modal === "submitIntro") {
     const contentKey = state.submitIntroContentKey || "";
     if (submitIntroDraft.contentKey !== contentKey) {
@@ -1084,6 +1092,7 @@ const openPlayerModal = modal => {
   modalElements.forEach(modalElement => {
     setModalVisibility(modalElement, modalElement === targetModal);
   });
+  if (modal === "quality") renderQualityOptionList();
   renderChrome();
 };
 
@@ -1129,6 +1138,40 @@ const speedOptions = [
   { value: 1.75, label: "1.75x" },
   { value: 2.0, label: "2x" },
 ];
+
+let qualityLoadingTarget = 0;
+const qualityName = height => Number(height) >= 4320 ? "8K" : Number(height) >= 2160 ? "4K" : `${height}p`;
+
+const renderQualityOptionList = () => {
+  const list = document.getElementById("qualityOptionList");
+  const focusedHeight = document.activeElement?.dataset?.qualityHeight;
+  list.textContent = "";
+  const actual = Number(state.qualityActualHeight) || 0;
+  document.getElementById("qualityPanelTitle").textContent = state.qualityLabel || "Quality";
+  document.getElementById("qualityActualLabel").textContent = actual > 0 ? ` · ${(state.qualityPlayingLabelFormat || "Playing {quality}").replace("{quality}", qualityName(actual)).replace("{height}", String(actual))}` : "";
+  const status = document.getElementById("qualityStatus");
+  status.textContent = state.qualityStatus || "";
+  status.hidden = !status.textContent;
+  (state.qualityItems || []).forEach(item => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `track-row${Number(state.qualityActualHeight || state.qualityRequestedHeight) === item.height ? " selected" : ""}`;
+    row.dataset.qualityHeight = String(item.height);
+    row.disabled = !item.enabled || !!state.qualityBusy;
+    row.title = item.reason || "";
+    const label = document.createElement("span");
+    label.className = "track-label";
+    label.textContent = `${qualityName(item.height)}${item.reason ? ` · ${item.reason}` : ""}`;
+    row.append(label, buildCheckIcon());
+    row.addEventListener("click", event => { event.stopPropagation(); qualityLoadingTarget = item.height; closePlayerModal(false); send("selectQuality", item.height); });
+    list.appendChild(row);
+    if (focusedHeight === String(item.height) && !row.disabled) row.focus({ preventScroll: true });
+  });
+  if (qualityFocusPending && !state.qualityBusy && !modalByName.quality.hidden) {
+    const target = list.querySelector("button.selected:not(:disabled)") || list.querySelector("button:not(:disabled)");
+    if (target) { target.focus({ preventScroll: true }); target.scrollIntoView({ block: "nearest" }); qualityFocusPending = false; }
+  }
+};
 
 const renderSpeedOptionList = () => {
   if (!speedOptionList) return;
@@ -2362,6 +2405,7 @@ const renderActiveModal = (modalOpened = false) => {
   if (activeModal === "audio") renderAudioTrackList();
   if (activeModal === "subtitles") renderSubtitleModal();
   if (activeModal === "speed") renderSpeedOptionList();
+  if (activeModal === "quality") renderQualityOptionList();
   if (activeModal === "sources") renderSourceModal(modalOpened);
   if (activeModal === "episodes") renderEpisodesModal(modalOpened);
   if (activeModal === "chapters") renderChaptersModal(modalOpened);
@@ -2564,8 +2608,12 @@ const isOpeningOverlayActive = () =>
 const isChromeInteractionTarget = target =>
   Boolean(target && target.closest && target.closest(chromeInteractionSelector));
 
+// Query actual CSS hover as well: native WebView focus changes can clear the
+// cached pointer flag even while the stationary pointer remains over the toolbar.
+const isChromeHovered = () => Array.from(document.querySelectorAll(chromeInteractionSelector))
+  .some(element => element.matches(":hover"));
 const isInteractingWithChrome = () =>
-  Boolean(isChromePointerInside || isChromePointerDown || isChromeFocusInside);
+  Boolean(isChromeHovered() || isChromePointerInside || isChromePointerDown || isChromeFocusInside);
 
 const canAutoHideChrome = showOpening => Boolean(
   state.controlsVisible &&
@@ -2726,6 +2774,15 @@ const renderChrome = () => {
   renderPlayerBadges();
   resizeLabel.textContent = state.resizeModeLabel || "Fit";
   speedLabel.textContent = state.playbackSpeedLabel || "1x";
+  // The badge owns the session selection; decoded dimensions remain in the Quality panel.
+  // A delayed snapshot from the outgoing renderer must not overwrite the committed tier.
+  const currentQuality = Number(state.qualityRequestedHeight || state.qualityActualHeight) || 0;
+  const qualityButton = document.querySelector('[data-command="quality"]');
+  qualityButton.classList.toggle("quality-loading", !!state.qualityBusy);
+  qualityButton.setAttribute("aria-busy", String(!!state.qualityBusy));
+  qualityButton.title = state.qualityBusy ? `Loading ${qualityName(Number(state.qualityRequestedHeight) || qualityLoadingTarget || currentQuality)}` : "Playback quality";
+  document.getElementById("qualityIconText").textContent = state.qualityBusy ? qualityName(Number(state.qualityRequestedHeight) || qualityLoadingTarget || currentQuality) : currentQuality > 0 ? qualityName(currentQuality) : "HD";
+  document.getElementById("qualityLabel").textContent = state.qualityBusy ? qualityName(Number(state.qualityRequestedHeight) || qualityLoadingTarget || currentQuality) : currentQuality > 0 ? qualityName(currentQuality) : (state.qualityLabel || "Quality");
   subtitlesLabel.textContent = state.subtitlesLabel || "Subs";
   audioLabel.textContent = state.audioLabel || "Audio";
   sourcesLabel.textContent = state.sourcesLabel || "Sources";
@@ -2754,6 +2811,7 @@ const renderChrome = () => {
   setVisible(submitIntroButton, Boolean(state.showSubmitIntro));
   setVisible(videoSettingsButton, Boolean(state.showVideoSettings));
   setVisible(sourcesButton, Boolean(state.showSources));
+  setVisible(document.querySelector('[data-command="quality"]'), Boolean(state.showSources));
   setVisible(episodesButton, Boolean(state.showEpisodes));
   const hasChapters = Array.isArray(state.chapters) && state.chapters.length > 0;
   setVisible(chaptersButton, hasChapters);
@@ -3167,6 +3225,11 @@ document.querySelectorAll("[data-command]").forEach(button => {
     }
     if (command === "speed") {
       openPlayerModal("speed");
+      return;
+    }
+    if (command === "quality") {
+      openPlayerModal("quality");
+      send("quality", 0);
       return;
     }
     if (command === "sources") {
@@ -4003,8 +4066,9 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape" && activeModal) {
     clearSpaceHoldTimerAndStopSpeedBoost();
     event.preventDefault();
+    const wasQuality = activeModal === "quality";
     closePlayerModal(true);
-    focusShortcutRoot();
+    if (!wasQuality) focusShortcutRoot();
     return;
   }
   if (event.key === "Escape") {
@@ -4073,6 +4137,16 @@ document.addEventListener("keydown", event => {
     return;
   }
 
+  if (activeModal === "quality" && (event.code === "ArrowUp" || event.code === "ArrowDown")) {
+    event.preventDefault();
+    const rows = Array.from(document.querySelectorAll("#qualityOptionList button:not(:disabled)"));
+    if (rows.length) {
+      const index = rows.indexOf(document.activeElement);
+      const next = index < 0 ? (event.code === "ArrowDown" ? 0 : rows.length - 1) : (event.code === "ArrowDown" ? (index + 1) % rows.length : (index - 1 + rows.length) % rows.length);
+      rows[next].focus(); rows[next].scrollIntoView({ block: "nearest" });
+    }
+    return;
+  }
   if (activeModal === "speed" && (event.code === "ArrowUp" || event.code === "ArrowDown")) {
     event.preventDefault();
     const currentSpeedStr = String(state.playbackSpeedLabel || "1x");

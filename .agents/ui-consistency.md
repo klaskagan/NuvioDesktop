@@ -142,3 +142,19 @@ a scoped navigation local so the shared back component remains visible; do not
 replace it with an ad hoc control. Explicit user references take precedence over
 prior feature-specific layout choices. `Go3IntegrationTest` checks the viewport
 backdrop, 48 dp Back control, and actual navigation actions.
+
+## macOS accessibility and native UI bridges
+
+Do not synchronously dispatch from the AWT event thread to AppKit when registering
+or removing native observers during Compose effects. Accessibility can already
+be waiting on AWT, creating a circular wait (confirmed in history_gestures.mm).
+Queue observer work asynchronously, retain its lifetime, and mark it inactive
+before teardown so cancellation before installation is safe. Verify Home → Search
+under accessibility inspection and confirm keyboard input still works; inspect
+AWT/AppKit stacks if the screen paints once but then stops responding.
+
+Desktop playback chrome idle timing belongs to the native controls WebView, whose
+existing interaction guard sees hover, focus, scrubbing, and open menus. Do not run
+a competing shared Compose hide timer on desktop: it hides stationary hovered
+controls after 3.5 seconds. Verify toolbar hover beyond the idle delay, then pointer
+leave and keyboard menu navigation. Mobile retains its shared timer.

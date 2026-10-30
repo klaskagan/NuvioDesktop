@@ -83,6 +83,18 @@ internal class PlayerScreenRuntime(
     args: PlayerScreenArgs,
 ) {
     var args by mutableStateOf(args)
+    var qualityChoices by mutableStateOf(emptyList<PlayerQualityChoice>())
+    var qualityBusy by mutableStateOf(false)
+    var qualityStatus by mutableStateOf("")
+    var qualityLoadingHeight by mutableStateOf(0)
+    var qualityRequestedHeight by mutableStateOf(0)
+    var qualityJob: kotlinx.coroutines.Job? = null
+    var qualityGeneration = 0L
+    var qualitySwitching = false
+    var qualityReplacing = false
+    var qualityLoadError: String? = null
+    var qualityDisposed = false
+    var qualitySourcesInitializedKey: String? = null
     var tvHandoffTransferred = false
     var cancelTvHandoff: (() -> Unit)? = null
 

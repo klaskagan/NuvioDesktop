@@ -38,7 +38,9 @@ using GestureObserverHandle = std::shared_ptr<Observer>;
 
 void onMain(dispatch_block_t block) {
     if ([NSThread isMainThread]) block();
-    else dispatch_sync(dispatch_get_main_queue(), block);
+    // Accessibility may be waiting for AWT while AWT subscribes during composition.
+    // Never synchronously wait for AppKit from that UI thread.
+    else dispatch_async(dispatch_get_main_queue(), block);
 }
 }
 
@@ -57,6 +59,7 @@ Java_com_nuvio_app_navigation_MacosHistoryGestureBridge_installNative(JNIEnv *en
     observer->callback = env->NewGlobalRef(callback);
     observer->method = method;
     onMain(^{
+        if (!observer->active.load()) return;
         observer->monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel
             handler:^NSEvent *(NSEvent *event) {
                 if (!observer->active.load() || !event.window || event.window != NSApp.keyWindow) return event;
@@ -75,7 +78,6 @@ Java_com_nuvio_app_navigation_MacosHistoryGestureBridge_installNative(JNIEnv *en
                 return event;
             }];
     });
-    if (!observer->monitor) return 0;
     return reinterpret_cast<jlong>(new GestureObserverHandle(observer));
 }
 

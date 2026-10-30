@@ -121,6 +121,7 @@ static constexpr double kMaxVolumePercent = 200.0;
 @end
 
 @interface MpvWebPlayer : NSObject
+- (mpv_handle *)qualityHandle;
 - (instancetype)initWithHostView:(NSView *)hostView
                        sourceUrl:(NSString *)sourceUrl
                     headerLines:(NSArray<NSString *> *)headerLines
@@ -130,8 +131,10 @@ static constexpr double kMaxVolumePercent = 200.0;
                    decoderPriority:(int)decoderPriority
                            javaVm:(JavaVM *)javaVm
                         eventSink:(jobject)eventSink
-                      eventMethod:(jmethodID)eventMethod;
+                      eventMethod:(jmethodID)eventMethod
+                          staging:(BOOL)staging;
 - (void)shutdown;
+- (void)setStaging:(BOOL)staging;
 - (void)adoptEmbeddedContainer:(NSView *)container;
 - (void)updateEmbeddedBounds:(const double *)bounds visible:(BOOL)visible;
 - (NSRect)embeddedFrame;
@@ -1093,6 +1096,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     NSView *_hostView;
     NSView *_embeddedContainer;
     BOOL _nativeControlsVisible;
+    BOOL _isStaging;
     PlayerMetalView *_videoView;
     WKWebView *_webView;
     PlayerScriptHandler *_scriptHandler;
@@ -1177,12 +1181,14 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
                    decoderPriority:(int)decoderPriority
                            javaVm:(JavaVM *)javaVm
                         eventSink:(jobject)eventSink
-                      eventMethod:(jmethodID)eventMethod {
+                      eventMethod:(jmethodID)eventMethod
+                          staging:(BOOL)staging {
     self = [super init];
     if (!self) {
         return nil;
     }
 
+    _isStaging = staging;
     _cachedDurationSeconds.store(0.0);
     _cachedPositionSeconds.store(initialPositionMs > 0 ? (double)initialPositionMs / 1000.0 : 0.0);
     _cachedPositionStamp = CACurrentMediaTime();
@@ -1261,7 +1267,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     _mediaKeyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskSystemDefined
                                                             handler:^NSEvent *(NSEvent *event) {
         MpvWebPlayer *strongSelf = weakSelf;
-        if (!strongSelf) {
+        if (!strongSelf || strongSelf->_isStaging) {
             return event;
         }
         return [strongSelf handleMediaKeyEvent:event];
@@ -1286,6 +1292,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 }
 
 - (void)focusControlsWebViewIfNeeded {
+    if (_isStaging) return;
     if (!_nativeControlsVisible) return;
     if (_didFocusControlsWebView || !_webView || !_webView.window) {
         return;
@@ -1294,6 +1301,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 }
 
 - (void)requestFocus {
+    if (_isStaging) return;
     if (!_webView || !_webView.window) {
         return;
     }
@@ -1832,6 +1840,10 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     setMpvOptionString(_mpv, "hdr-compute-peak", "no");
     setMpvOptionString(_mpv, "dither-depth", "auto");
     setMpvOptionString(_mpv, "demuxer-max-bytes", "150MiB");
+    if (_isStaging) {
+        setMpvOptionString(_mpv, "cache", "yes");
+        setMpvOptionString(_mpv, "cache-secs", "10");
+    }
     setMpvOptionString(
         _mpv,
         "stream-lavf-o",
@@ -2154,6 +2166,16 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
             _pendingControlsJson = nil;
         }
     }];
+}
+
+- (void)setStaging:(BOOL)staging {
+    if (staging) {
+        [self deactivateRemoteCommands];
+        _isStaging = YES;
+    } else {
+        _isStaging = NO;
+        [self activateRemoteCommands];
+    }
 }
 
 - (void)shutdown {
@@ -2709,8 +2731,41 @@ static void nuvioMpvWakeup(void *ctx) {
     return flag != 0;
 }
 
+- (mpv_handle *)qualityHandle { return _mpv; }
+
+static id qualityNodeObject(const mpv_node &node) {
+    switch (node.format) {
+        case MPV_FORMAT_STRING: return node.u.string ? [NSString stringWithUTF8String:node.u.string] : @"";
+        case MPV_FORMAT_FLAG: return @(node.u.flag != 0);
+        case MPV_FORMAT_INT64: return @(node.u.int64);
+        case MPV_FORMAT_DOUBLE: return @(node.u.double_);
+        case MPV_FORMAT_NODE_ARRAY: {
+            NSMutableArray *items = [NSMutableArray array];
+            for (int i=0; node.u.list && i<node.u.list->num; i++) [items addObject:qualityNodeObject(node.u.list->values[i]) ?: NSNull.null];
+            return items;
+        }
+        case MPV_FORMAT_NODE_MAP: {
+            NSMutableDictionary *items = [NSMutableDictionary dictionary];
+            for (int i=0; node.u.list && i<node.u.list->num; i++) {
+                NSString *key = [NSString stringWithUTF8String:node.u.list->keys[i]];
+                items[key] = qualityNodeObject(node.u.list->values[i]) ?: NSNull.null;
+            }
+            return items;
+        }
+        default: return NSNull.null;
+    }
+}
+
 - (NSString *)stringProperty:(const char *)name fallback:(NSString *)fallback {
     if (!_mpv) return fallback ?: @"";
+    if (strcmp(name, "track-list") == 0) {
+        mpv_node node{};
+        if (mpv_get_property(_mpv, name, MPV_FORMAT_NODE, &node) < 0) return @"[]";
+        id object = qualityNodeObject(node);
+        mpv_free_node_contents(&node);
+        NSData *data = [NSJSONSerialization dataWithJSONObject:object options:NSJSONWritingFragmentsAllowed error:nil];
+        return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"[]";
+    }
     char *value = nullptr;
     if (mpv_get_property(_mpv, name, MPV_FORMAT_STRING, &value) < 0 || !value) {
         return fallback ?: @"";
@@ -2757,25 +2812,23 @@ static void nuvioMpvWakeup(void *ctx) {
 - (NSString *)tracksJsonForType:(NSString *)wantedType {
     if (!_mpv) return @"[]";
     NSMutableArray<NSDictionary *> *tracks = [NSMutableArray array];
-    long long count = [self int64Property:"track-list/count" fallback:0];
+    NSData *snapshotData = [[self stringProperty:"track-list" fallback:@"[]"] dataUsingEncoding:NSUTF8StringEncoding];
+    id snapshot = snapshotData ? [NSJSONSerialization JSONObjectWithData:snapshotData options:0 error:nil] : nil;
+    if (![snapshot isKindOfClass:NSArray.class]) return @"[]";
     int logicalIndex = 0;
-
-    for (long long index = 0; index < count; index++) {
-        NSString *prefix = [NSString stringWithFormat:@"track-list/%lld", index];
-        NSString *type = [self stringProperty:[[prefix stringByAppendingString:@"/type"] UTF8String] fallback:@""];
-        if (![type isEqualToString:wantedType]) {
-            continue;
-        }
-
-        long long trackId = [self int64Property:[[prefix stringByAppendingString:@"/id"] UTF8String] fallback:logicalIndex + 1];
-        NSString *title = [self trackStringAtIndex:index field:@"title"];
-        NSString *language = [self trackStringAtIndex:index field:@"lang"];
-        NSString *codec = [self trackStringAtIndex:index field:@"codec"];
-        NSString *decoderDescription = [self trackStringAtIndex:index field:@"decoder-desc"];
-        NSString *channels = [self trackStringAtIndex:index field:@"demux-channels"];
-        long long channelCount = [self int64Property:[[prefix stringByAppendingString:@"/demux-channel-count"] UTF8String] fallback:0];
-        BOOL selected = [self flagProperty:[[prefix stringByAppendingString:@"/selected"] UTF8String] fallback:NO];
-        BOOL forced = [self flagProperty:[[prefix stringByAppendingString:@"/forced"] UTF8String] fallback:NO];
+    for (NSDictionary *item in snapshot) {
+        if (![item isKindOfClass:NSDictionary.class]) continue;
+        NSString *(^text)(NSString *) = ^NSString *(NSString *key) {
+            id value = item[key];
+            return [value isKindOfClass:NSString.class] ? [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] : @"";
+        };
+        NSString *type = text(@"type");
+        if (![type isEqualToString:wantedType]) continue;
+        long long trackId = [item[@"id"] longLongValue];
+        NSString *title = text(@"title"), *language = text(@"lang"), *codec = text(@"codec");
+        NSString *decoderDescription = text(@"decoder-desc"), *channels = text(@"demux-channels");
+        long long channelCount = [item[@"demux-channel-count"] longLongValue];
+        BOOL selected = [item[@"selected"] boolValue], forced = [item[@"forced"] boolValue];
         NSString *label = [self formatTrackTitleWithType:type
                                                    index:logicalIndex
                                                    title:title
@@ -3009,6 +3062,7 @@ static void nuvioMpvWakeup(void *ctx) {
 // While registration is active, the local NSSystemDefined monitor only swallows
 // the raw key events; playback commands arrive through these handlers.
 - (void)activateRemoteCommands {
+    if (_isStaging) return;
     if (_remoteCommandsActive) {
         return;
     }
@@ -3299,7 +3353,8 @@ static jlong createNativePlayer(
     jint decoderPriority,
     jboolean nvidiaRtxSuperResolutionEnabled,
     jobject eventSink,
-    jdoubleArray embeddedBounds
+    jdoubleArray embeddedBounds,
+    bool staging = false
 ) {
     NSView *hostView = (__bridge NSView *)(void *)(intptr_t)hostViewPtr;
     if (!hostView) {
@@ -3356,7 +3411,8 @@ static jlong createNativePlayer(
                  decoderPriority:decoderPriority
                           javaVm:javaVm
                        eventSink:eventSinkRef
-                     eventMethod:eventMethod];
+                     eventMethod:eventMethod
+                         staging:staging];
             if (embeddedContainer) [player adoptEmbeddedContainer:embeddedContainer];
         } @catch (NSException *exception) {
             [embeddedContainer removeFromSuperview];
@@ -3383,6 +3439,23 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
 ) {
     return createNativePlayer(env, bridge, hostViewPtr, sourceUrl, headerLines, playWhenReady,
         initialPositionMs, controlsPageUrl, decoderPriority, rtx, eventSink, nullptr);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_createStaging(
+    JNIEnv *env, jobject bridge, jlong hostViewPtr, jstring sourceUrl, jobjectArray headerLines,
+    jboolean playWhenReady, jlong initialPositionMs, jstring controlsPageUrl, jint decoderPriority,
+    jboolean rtx, jobject eventSink
+) {
+    return createNativePlayer(env, bridge, hostViewPtr, sourceUrl, headerLines, playWhenReady,
+        initialPositionMs, controlsPageUrl, decoderPriority, rtx, eventSink, nullptr, true);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setStaging(JNIEnv *, jobject, jlong handle, jboolean staging) {
+    if (!handle) return;
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    runOnMainSync(^{ [player setStaging:staging == JNI_TRUE]; });
 }
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -4296,3 +4369,18 @@ Java_com_nuvio_app_features_trailer_YouTubeNativeBridge_pause(JNIEnv *,jobject,j
     NuvioYouTubePlayer *player = (__bridge NuvioYouTubePlayer *)(void *)(intptr_t)handle;
     runOnMainAsync(^{if (!player.closed) [player.webView evaluateJavaScript:@"window.pauseYouTube && window.pauseYouTube()" completionHandler:nil];});
 }
+
+static mpv_handle *qualityActiveMpv(jlong handle) {
+    if (!handle) return nullptr;
+    return [(__bridge MpvWebPlayer *)(void *)(intptr_t)handle qualityHandle];
+}
+#define Q_CREATE mpv_create
+#define Q_OPTION mpv_set_option_string
+#define Q_INITIALIZE mpv_initialize
+#define Q_DESTROY mpv_terminate_destroy
+#define Q_GET mpv_get_property
+#define Q_SET mpv_set_property_string
+#define Q_FREE mpv_free
+#define Q_COMMAND mpv_command
+#define Q_WAIT mpv_wait_event
+#include "../shared/quality_bridge.h"

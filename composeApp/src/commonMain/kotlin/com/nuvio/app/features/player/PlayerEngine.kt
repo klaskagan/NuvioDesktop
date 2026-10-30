@@ -6,6 +6,10 @@ import com.nuvio.app.features.streams.StreamBadge
 
 interface PlayerEngineController {
     val playbackEngine: AndroidPlaybackEngine? get() = null
+    suspend fun prepareBufferedQuality(choice: PlayerQualityChoice, checkpoint: PlayerQualityCheckpoint): BufferedPlayerQuality? = null
+    suspend fun restoreQuickQuality(checkpoint: PlayerQualityCheckpoint): Boolean = restoreQuality(checkpoint)
+    fun qualityCheckpoint(): PlayerQualityCheckpoint? = null
+    suspend fun restoreQuality(checkpoint: PlayerQualityCheckpoint): Boolean = false
     fun play()
     fun pause()
     fun seekTo(positionMs: Long)
@@ -260,6 +264,13 @@ data class PlayerControlsState(
     val sourceIsLoading: Boolean = false,
     val sourceFilters: List<PlayerControlFilterItem> = emptyList(),
     val sourceItems: List<PlayerControlSourceItem> = emptyList(),
+    val qualityLabel: String = "Quality",
+    val qualityPlayingLabelFormat: String = "Playing {quality}",
+    val qualityItems: List<PlayerControlQualityItem> = emptyList(),
+    val qualityBusy: Boolean = false,
+    val qualityStatus: String = "",
+    val qualityRequestedHeight: Int = 0,
+    val qualityActualHeight: Int = 0,
     val episodeItems: List<PlayerControlEpisodeItem> = emptyList(),
     val episodeSeasons: List<PlayerControlSeasonItem> = emptyList(),
     val episodeStreamsVisible: Boolean = false,

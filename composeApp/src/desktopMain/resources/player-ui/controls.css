@@ -3719,3 +3719,19 @@ svg {
   align-items: center;
   gap: 6px;
 }
+
+/* Match the existing audio rail; reserve status space throughout inspection/reload. */
+#qualityModal .track-status { min-height: 2.5em; padding: 8px 20px 16px; font-size: 13px; opacity: .75; }
+#qualityModal .track-status[hidden] { display: block !important; visibility: hidden; }
+#qualityModal .track-row:disabled { opacity: .5; cursor: default; }
+#qualityModal .track-label { white-space: normal; }
+#qualityActualLabel { font-size: 13px; opacity: .65; }
+[data-command="quality"] { min-width: 68px; }
+
+[data-command="quality"] svg { width: 34px; height: 24px; flex-shrink: 0; }
+
+/* Keep the existing quality badge geometry while a replacement buffers. */
+.quality-loading svg { animation: qualityBreath 1.4s ease-in-out infinite; }
+@keyframes qualityBreath {
+  50% { opacity: .3; filter: drop-shadow(0 0 6px white); }
+}

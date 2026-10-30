@@ -66,6 +66,26 @@ private val playerControlsLog = Logger.withTag("PlayerControls")
 @Composable
 internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val runtime = this
+    LaunchedEffect(activeVideoId, activeSeasonNumber, activeEpisodeNumber) { cancelPlayerQuality() }
+    LaunchedEffect(activeVideoId, activeSeasonNumber, activeEpisodeNumber, initialLoadCompleted) {
+        val videoId = activeVideoId
+        if (initialLoadCompleted && videoId != null) {
+            val type = contentType ?: parentMetaType
+            val key = "$type::$videoId::$activeSeasonNumber::$activeEpisodeNumber"
+            if (qualitySourcesInitializedKey != key) {
+                qualitySourcesInitializedKey = key
+                val reused = PlayerStreamsRepository.primeSourcesFromSelection(type, videoId, activeSeasonNumber, activeEpisodeNumber,
+                    com.nuvio.app.features.streams.StreamsRepository.uiState.value)
+                if (!reused) PlayerStreamsRepository.loadSources(type, videoId, activeSeasonNumber, activeEpisodeNumber)
+            }
+        }
+    }
+    LaunchedEffect(sourceStreamsState.groups, activeVideoId, activeSeasonNumber, activeEpisodeNumber, qualitySwitching, playbackSnapshot.videoWidth, playbackSnapshot.videoHeight) {
+        if (!qualitySwitching) discoverPlayerQuality()
+    }
+    DisposableEffect(runtime) {
+        onDispose { runtime.qualityDisposed = true; runtime.cancelPlayerQuality() }
+    }
     val systemBackRegistration = args.onSystemBackHandlerChanged
     DisposableEffect(runtime, systemBackRegistration) {
         systemBackRegistration { runtime.requestBack() }
@@ -433,6 +453,14 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         sourceIsLoading = sourceStreamsState.isAnyLoading,
         sourceFilters = sourceFilters,
         sourceItems = sourceItems,
+        qualityLabel = stringResource(Res.string.player_quality_title),
+        qualityPlayingLabelFormat = stringResource(Res.string.player_quality_playing),
+        qualityItems = qualityChoices.map { PlayerControlQualityItem(it.height, it.disabledReason == null, it.disabledReason.orEmpty()) },
+        qualityBusy = qualityBusy,
+        qualityStatus = qualityStatus,
+        qualityRequestedHeight = if (qualityBusy) qualityLoadingHeight else qualityRequestedHeight,
+        qualityActualHeight = standardQualityHeight(playbackSnapshot.videoWidth, playbackSnapshot.videoHeight)
+            ?: activeStream?.let(::reportedStreamQuality) ?: qualityRequestedHeight,
         episodeItems = episodeItems,
         episodeSeasons = episodeSeasons,
         episodeStreamsVisible = episodeStreamsPanelState.showStreams,
@@ -631,6 +659,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                     }
                 },
                 onError = { message ->
+                    if (qualityReplacing) { qualityLoadError = message; return@PlatformPlayerSurface }
                     if (message != null && tryRefreshCredentialedSourceAfterError(message)) {
                         return@PlatformPlayerSurface
                     }
@@ -1013,6 +1042,8 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
         playerControlsLog.d { "event type=$type value=$value ${playerControlLogContext()}" }
     }
     when (type) {
+        "quality" -> { openPlayerQualityMenu() }
+        "selectQuality" -> { selectPlayerQuality(value.toInt()) }
         "dismissTvHandoff" -> {
             cancelTvHandoff?.invoke(); cancelTvHandoff = null
         }
