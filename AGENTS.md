@@ -89,6 +89,15 @@ Treat this as part of completing the fix.
   repository guidance during the task, not unrelated UI changes, live-account
   mutations, or background monitoring.
 
+## Packaged desktop helpers
+
+External helper launches must resolve bundled source through
+`compose.application.resources.dir` and durable local runtime paths, independent
+of `user.dir`. Go3's `Go3RuntimePathsTest` is the reference. When a bug affects
+release launches, check the packaged artifact from an unrelated working directory;
+MainKt success alone does not verify the fix. Never bundle browser profiles or
+credentials with helper resources.
+
 ## Repository boundaries
 
 Keep shared UI/state in commonMain and platform integrations in their existing

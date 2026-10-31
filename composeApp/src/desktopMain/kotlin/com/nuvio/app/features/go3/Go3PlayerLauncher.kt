@@ -23,21 +23,21 @@ object Go3PlayerLauncher {
     }
     @Synchronized private fun ensureStarted(): Process {
         process?.takeIf {it.isAlive}?.let {return it}
-        // Compose's :run uses composeApp as user.dir; tests commonly use the repository root.
-        val helper = System.getenv("NUVIO_GO3_HELPER") ?: sequenceOf(
-            File("scripts/go3-live-probe"), File("../scripts/go3-live-probe"),
-        ).firstOrNull { File(it, "main.cjs").isFile }?.canonicalPath
-            ?: error("Go3 helper unavailable; set NUVIO_GO3_HELPER")
-        val localRoot = File(helper).parentFile.parentFile.parentFile
-        val executable = System.getenv("NUVIO_GO3_ELECTRON") ?: File(localRoot,
-            "go3-feasibility/runtime/Electron.app/Contents/MacOS/Electron").absolutePath
-        require(File(executable).canExecute() && File(helper,"main.cjs").isFile) {"Go3 runtime unavailable"}
+        val support = File(System.getProperty("user.home"), "Library/Application Support/Nuvio")
+        val helper = Go3RuntimePaths.helper(
+            System.getenv("NUVIO_GO3_HELPER"),
+            System.getProperty("compose.application.resources.dir"),
+            File(System.getProperty("user.dir")),
+        )
+        val executable = Go3RuntimePaths.executable(
+            System.getenv("NUVIO_GO3_ELECTRON"), support, helper,
+        )
         val evidence=Files.createTempDirectory("nuvio-go3-player-").toFile()
-        // Reuse the explicitly approved investigation profile when present; never copy Chrome data.
-        val approved = File(File(helper).parentFile.parentFile.parentFile,"go3-feasibility/local-session")
+        // Keep an existing approved development session; packaged apps use stable app data.
+        val approved = File(helper.parentFile.parentFile.parentFile,"go3-feasibility/local-session")
         val profile=System.getenv("NUVIO_GO3_SESSION_DIR") ?: if(approved.isDirectory) approved.absolutePath else
-            File(System.getProperty("user.home"),"Library/Application Support/Nuvio/Go3").absolutePath
-        val child=ProcessBuilder(executable,helper).apply {
+            File(support,"Go3").absolutePath
+        val child=ProcessBuilder(executable.absolutePath,helper.absolutePath).apply {
             environment()["NUVIO_GO3_PROBE_DIR"]=evidence.absolutePath
             environment()["NUVIO_GO3_SESSION_DIR"]=profile
             environment()["NUVIO_GO3_SERVICE"]="1"

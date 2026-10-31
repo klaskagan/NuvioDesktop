@@ -81,7 +81,7 @@ readline.createInterface({input:process.stdin}).on('line',async line=>{
       catch {emit({kind:'events',request:command.request,error:'Go3 listings unavailable. Retry or sign in through Go3 settings.'});}
       return;
     }
-    if(command.action==='signin') {if(!player || player.isDestroyed())player=createWindow(false);player.go3WatchDeadline=0;await player.loadURL('https://go3.lt/');present(player);return;}
+    if(command.action==='signin') {if(!player || player.isDestroyed())player=createWindow(false);player.go3WatchDeadline=0;present(player);await player.loadURL('https://go3.lt/');return;}
     if(command.action==='signout') {const s=session.fromPartition(sessionRoot?'persist:nuvio-go3-live-test':'nuvio-go3-live');await s.clearStorageData();await s.clearAuthCache();if(player && !player.isDestroyed())await player.loadURL('https://go3.lt/');emit({kind:'status',message:'Local Go3 session cleared.'});return;}
     if(command.action==='watch') {
       await drmReady;
