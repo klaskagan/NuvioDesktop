@@ -233,3 +233,36 @@ name contains Go3 (case-insensitive) are stably pinned first, including future
 catalogues. Go3 loading skeletons use 16:9. Watch snapshots Nuvio's fullscreen
 state and sends it to the helper, which applies the same fullscreen state before
 presenting playback. Four focused isolated UI tests and compilation passed.
+
+
+## Packaged macOS launcher
+
+Release builds carry the source-only Go3 helper in the Compose application
+resources (`go3/`). The launcher resolves that directory through
+`compose.application.resources.dir` before considering development checkout paths.
+A Finder launch must work with an unrelated working directory; MainKt alone is
+not a regression check for this path. `Go3RuntimePathsTest` covers both layouts.
+
+The existing vendor browser remains a local prerequisite at
+`~/Library/Application Support/Nuvio/Go3Runtime/Electron.app`; it is not included
+in the distributed bundle. Explicit runtime/helper environment overrides remain
+available. Packaged sessions persist in
+`~/Library/Application Support/Nuvio/Go3`, independently of the app version and
+working directory. Reset clears only that session; sign-in presents the official
+window before navigation completes. Neither reset nor sign-in installs a runtime.
+
+The release-only failure was caused by resolving both helper and runtime from
+the development checkout. Packaging now includes only the allowlisted helper
+source files, never profiles, credentials, browser binaries or diagnostic data.
+
+Verification for the packaged-launch fix: two launcher path regression tests and
+all eight Node helper tests passed. `createDistributable` succeeded; its app
+resources contain the seven allowlisted helper files. A source-mode Java probe
+loaded the actual packaged classes with the packaged resources property from
+`/private/tmp`, dispatched sign-in successfully and observed sanitized helper
+startup/Widevine-ready evidence. This verifies packaged launcher startup, not a
+completed account login or protected playback. MainKt was also launched for review.
+
+The user confirmed Go3 works after installing the corrected release app. The
+installed bundle was verified against the build; the prior app was retained as
+a local rollback backup. Browser profiles and runtime remain outside Git.

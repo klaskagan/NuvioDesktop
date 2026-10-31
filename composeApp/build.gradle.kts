@@ -1003,12 +1003,20 @@ val prepareMacosPlayerRuntime = tasks.register<Sync>("prepareMacosPlayerRuntime"
 val prepareMacosPlayerAppResources = tasks.register<Sync>("prepareMacosPlayerAppResources") {
     enabled = isMacHost
     dependsOn(buildMacosPlayerBridge, prepareMacosPlayerRuntime)
-    from(macosPlayerBridgeOutput)
+    into(macosPlayerAppResourcesRoot.map { it.dir("macos") })
+    from(macosPlayerBridgeOutput) { into("native/macos") }
     from(macosPlayerRuntimeOutput) {
         include("*.dylib")
+        into("native/macos")
     }
-    from(layout.projectDirectory.file("src/desktopMain/native/macos/engine/libnuvio_engine.dylib"))
-    into(macosPlayerAppResourcesRoot.map { it.dir("macos/native/macos") })
+    from(layout.projectDirectory.file("src/desktopMain/native/macos/engine/libnuvio_engine.dylib")) {
+        into("native/macos")
+    }
+    // Ship source helpers only. Browser profiles and vendor runtime stay outside the bundle.
+    from(rootProject.layout.projectDirectory.dir("scripts/go3-live-probe")) {
+        include("main.cjs", "package.json", "event-catalog.cjs", "events.cjs", "catalog.cjs", "discovery.cjs", "player-page.cjs")
+        into("go3")
+    }
 }
 
 tasks.withType<Jar>().configureEach {
