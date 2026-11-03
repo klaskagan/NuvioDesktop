@@ -1437,6 +1437,11 @@ if (isMacHost && macosSigningIdentity == null) {
         }
     }
 }
+tasks.withType<AbstractJPackageTask>()
+    .matching { it.name.endsWith("Msi") || it.name.endsWith("Exe") }
+    .configureEach {
+        freeArgs.add("--win-shortcut-prompt")
+    }
 
 fun renameMacosDmgOutput(release: Boolean) {
     if (!isMacHost) return

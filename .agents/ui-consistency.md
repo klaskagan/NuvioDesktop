@@ -77,6 +77,12 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
 
 ## Styling, meaning, and settings
 
+When Settings categories or parent pages change, update desktop history defaults
+and retained category-name mappings as well as both responsive Settings screens.
+The grouped Settings reorganization exposed stale desktop enum references during
+branch integration. `settingsCategoryForName` preserves saved names;
+`DesktopNavigationHistoryTest` checks parent traversal and category restoration.
+
 - Reuse shared card components, viewport prefetch, readiness gates, and theme
   tokens. Scope a feature's style override so it does not leak into Home or alter
   collection cover shapes. Persist separate feature preferences independently
@@ -106,6 +112,13 @@ exercise visible pause/seek/menu buttons in the packaged UI. A lower-level test
 that explicitly passes `true` or only checks decoding cannot catch this regression.
 
 ## Verify transitions, not only settled screens
+
+Finish Gradle compilation and tests before launching MainKt for review. A second
+build can rewrite the JAR/classes used by an already running development JVM,
+causing `NoClassDefFoundError` for otherwise present classes. The Dev merge
+launch exposed this with `SettingsCategory` and Trakt nested classes. Verify a
+sequential `:composeApp:run` launch after the final build; do not rebuild its
+runtime outputs while that review window is open.
 
 - Use isolated profiles and in-memory authentication/preferences as required by
   `AGENTS.md`. Exercise real buttons, wheel/drag events, filters, and navigation;

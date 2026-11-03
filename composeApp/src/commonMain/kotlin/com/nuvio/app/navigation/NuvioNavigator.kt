@@ -116,7 +116,7 @@ internal class NuvioNavigator(
         val history = desktopHistory ?: return
         val page = SettingsPage.entries.firstOrNull { it.name == pageName } ?: return
         val category = if (page != SettingsPage.Root) page.category else
-            SettingsCategory.entries.firstOrNull { it.name == categoryName } ?: history.current.settingsCategory
+            categoryName?.let { com.nuvio.app.features.settings.settingsCategoryForName(it) } ?: history.current.settingsCategory
         history.visit(history.current.copy(tab = AppScreenTab.Settings, settingsPage = page, settingsCategory = category))
     }
 

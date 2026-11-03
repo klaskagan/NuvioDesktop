@@ -15,8 +15,8 @@
 
 #include <atomic>
 #include <array>
-#include <cmath>
 #include <clocale>
+#include <cmath>
 #include <dlfcn.h>
 #include <mutex>
 #include <string>
@@ -168,6 +168,7 @@ static constexpr double kMaxVolumePercent = 200.0;
 - (void)removeExternalSubtitles;
 - (void)removeExternalSubtitlesAndSelect:(int)trackId;
 - (void)setSubtitleDelayMs:(int)delayMs;
+- (void)setSubtitleVisible:(BOOL)visible;
 - (void)applySubtitleStyleWithTextColor:(NSString *)textColor
                         backgroundColor:(NSString *)backgroundColor
                             outlineColor:(NSString *)outlineColor
@@ -177,6 +178,10 @@ static constexpr double kMaxVolumePercent = 200.0;
                                   subPos:(int)subPos
                                useLibass:(BOOL)useLibass
                                 stripSdh:(BOOL)stripSdh;
+- (void)applySubtitleAppearanceWithFont:(NSString *)font
+                              fontsDir:(NSString *)fontsDir
+                           shadowColor:(NSString *)shadowColor
+                          shadowOffset:(double)shadowOffset;
 - (void)handleScriptMessage:(NSDictionary *)message;
 - (void)startMpvEventDrain;
 - (void)applyVolumeSplit:(double)percent;
@@ -1802,9 +1807,14 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
               playWhenReady:(BOOL)playWhenReady
            initialPositionMs:(long long)initialPositionMs
             decoderPriority:(int)decoderPriority {
-    // Match the Linux bridge: libmpv requires C numeric parsing even when
-    // the JVM/AppKit has initialized a regional process locale.
-    std::setlocale(LC_NUMERIC, "C");
+    // libmpv requires LC_NUMERIC=C: non-"C" locales that use comma decimals
+    // make mpv_create fail. The JVM formats numbers through java.util.Locale,
+    // so this C-level change does not affect Java number formatting.
+    if (setlocale(LC_NUMERIC, "C") == nullptr) {
+        @throw [NSException exceptionWithName:@"PlayerBridgeError"
+                                       reason:@"setlocale(LC_NUMERIC, \"C\") failed"
+                                     userInfo:nil];
+    }
     _mpv = mpv_create();
     if (!_mpv) {
         @throw [NSException exceptionWithName:@"PlayerBridgeError"
@@ -2610,11 +2620,27 @@ static void nuvioMpvWakeup(void *ctx) {
     }
 }
 
+- (void)setSubtitleVisible:(BOOL)visible {
+    if (!_mpv) return;
+    [self setStringProperty:"sub-visibility" value:visible ? @"yes" : @"no"];
+}
+
 - (void)setSubtitleDelayMs:(int)delayMs {
     if (!_mpv) return;
     int clamped = MAX(-60000, MIN(60000, delayMs));
     double delaySeconds = (double)clamped / 1000.0;
     mpv_set_property(_mpv, "sub-delay", MPV_FORMAT_DOUBLE, &delaySeconds);
+}
+
+- (void)applySubtitleAppearanceWithFont:(NSString *)font
+                              fontsDir:(NSString *)fontsDir
+                           shadowColor:(NSString *)shadowColor
+                          shadowOffset:(double)shadowOffset {
+    if (!_mpv) return;
+    if (fontsDir.length > 0) [self setStringProperty:"sub-fonts-dir" value:fontsDir];
+    [self setStringProperty:"sub-font" value:font];
+    [self setStringProperty:"sub-shadow-color" value:shadowColor];
+    mpv_set_property(_mpv, "sub-shadow-offset", MPV_FORMAT_DOUBLE, &shadowOffset);
 }
 
 - (void)applySubtitleStyleWithTextColor:(NSString *)textColor
@@ -3939,6 +3965,20 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_clearExternalSubti
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleVisible(
+    JNIEnv * /* env */,
+    jobject /* bridge */,
+    jlong handle,
+    jboolean visible
+) {
+    if (handle == 0) return;
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    runOnMainAsync(^{
+        [player setSubtitleVisible:visible == JNI_TRUE];
+    });
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleDelayMs(
     JNIEnv * /* env */,
     jobject /* bridge */,
@@ -4384,3 +4424,25 @@ static mpv_handle *qualityActiveMpv(jlong handle) {
 #define Q_COMMAND mpv_command
 #define Q_WAIT mpv_wait_event
 #include "../shared/quality_bridge.h"
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleAppearance(
+    JNIEnv *env,
+    jobject /* bridge */,
+    jlong handle,
+    jstring font,
+    jstring fontsDir,
+    jstring shadowColor,
+    jfloat shadowOffset
+) {
+    if (handle == 0) return;
+    std::string fontName = jstringToString(env, font);
+    std::string dir = jstringToString(env, fontsDir);
+    std::string shadow = jstringToString(env, shadowColor);
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    runOnMainAsync(^{
+        [player applySubtitleAppearanceWithFont:[NSString stringWithUTF8String:fontName.c_str()]
+                                       fontsDir:[NSString stringWithUTF8String:dir.c_str()]
+                                    shadowColor:[NSString stringWithUTF8String:shadow.c_str()]
+                                   shadowOffset:(double)shadowOffset];
+    });
+}

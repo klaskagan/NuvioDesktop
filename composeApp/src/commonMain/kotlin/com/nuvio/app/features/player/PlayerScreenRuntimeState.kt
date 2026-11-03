@@ -262,6 +262,10 @@ internal class PlayerScreenRuntime(
     var playerMetaVideos by mutableStateOf<List<MetaVideo>>(emptyList())
     var playerMeta by mutableStateOf<MetaDetails?>(null)
     var skipIntervals by mutableStateOf<List<SkipInterval>>(emptyList())
+    var chapterSkipIntervals: List<SkipInterval> = emptyList()
+    var apiSkipIntervals: List<SkipInterval> = emptyList()
+    var skipDetectionChapters: List<PlayerChapter> = emptyList()
+    var skipChaptersComputedForDuration: Long = 0L
     val autoSkippedIntervals = mutableSetOf<SkipInterval>()
     var lastManualSkipSeekPositions by mutableStateOf<Pair<Long, Long>?>(null)
     var activeSkipInterval by mutableStateOf<SkipInterval?>(null)
@@ -331,6 +335,9 @@ internal class PlayerScreenRuntime(
     var autoFetchedAddonSubtitlesForKey by mutableStateOf<String?>(null)
     var trackPreferenceRestoreApplied by mutableStateOf(false)
     var subtitleDelayMs by mutableStateOf(0)
+    var subtitleFontImportToken by mutableStateOf(0)
+    var subtitleFontsRevision by mutableStateOf(0)
+    var subtitleFontImportFailed by mutableStateOf(false)
     var subtitleAutoSyncState by mutableStateOf(SubtitleAutoSyncUiState())
 
     var lastSyncedSettingsResizeMode: PlayerResizeMode? = null
