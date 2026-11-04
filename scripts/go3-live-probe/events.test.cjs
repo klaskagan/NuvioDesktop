@@ -12,3 +12,9 @@ test('reject hostile origins and secret-bearing artwork',()=>{
 test('upcoming takes precedence over a live channel label',()=>{
  a.equal(event({url:'/live_tv/x,live-1/a,programme-2',name:'A',label:'GREITAI LIVE'}).state,'upcoming');
 });
+
+test('Champions League uses its official competition category rather than live-only listings',()=>{
+ const {SOURCES}=require('./event-catalog.cjs');
+ a.equal(SOURCES.ucl,'https://go3.lt/categories/uefachampionsleague,category-6886205');
+ a.notEqual(SOURCES.ucl,SOURCES.live);
+});

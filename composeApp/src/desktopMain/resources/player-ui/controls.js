@@ -2863,6 +2863,9 @@ const renderChrome = () => {
   const isPlaying = Boolean(state.isPlaying);
   const showError = renderPlaybackError();
   root.classList.toggle("pip-mode", Boolean(state.isInPip));
+  root.classList.toggle("lineups-mode", Boolean(state.lineupsActive));
+  const lineupButton = document.querySelector('[data-command="lineups"]');
+  if (lineupButton) lineupButton.setAttribute("aria-pressed", String(Boolean(state.lineupsActive)));
   if (!state.isInPip && isPipLocked) setPipLocked(false);
   root.classList.toggle("chrome-hidden", Boolean(showError || !state.controlsVisible));
   root.classList.toggle("modal-open", Boolean(activeModal));
@@ -4230,6 +4233,7 @@ document.addEventListener("keydown", event => {
     if (!wasQuality) focusShortcutRoot();
     return;
   }
+  if (event.key === "Escape" && state.lineupsActive) { send("lineups"); event.preventDefault(); return; }
   if (event.key === "Escape") {
     clearSpaceHoldTimerAndStopSpeedBoost();
     event.preventDefault();

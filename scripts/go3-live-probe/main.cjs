@@ -16,6 +16,8 @@ let catalogueQueue=Promise.resolve();
 let readyResolve; const runtimeReady=new Promise(r=>readyResolve=r);
 const {collectEvents}=require('./event-catalog.cjs');
 const {dismissFalseAutoplayNotice,activateOfficialWatch}=require('./player-page.cjs');
+const {installLineups,lookup,safeError}=require('./lineups.cjs');
+let footballKey='';
 const entries = new Map();
 const {chooseLive} = require('./discovery.cjs');
 const {discoverEntries} = require('./catalog.cjs');
@@ -32,7 +34,25 @@ function present(win) {if(win.isMinimized())win.restore();win.show();win.focus()
 function createWindow(show, role="player") {
   const bounds=role==='player'?screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea:{width:1500,height:950};
   const win=new BrowserWindow({show:false,...bounds,backgroundColor:'#000000',title:process.env.NUVIO_GO3_SERVICE?'Nuvio — Go3':'Nuvio — Go3 live test',webPreferences:{partition:sessionRoot?'persist:nuvio-go3-live-test':'nuvio-go3-live',sandbox:true,contextIsolation:true,nodeIntegration:false,zoomFactor:role==="catalog"?0.5:1,autoplayPolicy:role==="player"?"no-user-gesture-required":"document-user-activation-required"}});
+  if(role==='player') {
+    let lineupBusy=false;
+    win.webContents.on('console-message',async(_event,_level,message)=>{
+      if(!message.startsWith('NUVIO_LINEUPS_REQUEST:'))return;
+      if(new URL(win.webContents.getURL()).origin!=='https://go3.lt')return;
+      let command;try{command=JSON.parse(message.slice('NUVIO_LINEUPS_REQUEST:'.length));}catch{return;}
+      if(!Number.isSafeInteger(command.id))return;
+      if(lineupBusy){
+        win.webContents.executeJavaScript('window.__nuvioLineupsReceive?.('+JSON.stringify({id:command.id,error:'A football request is already loading. Please retry in a moment.'})+')').catch(()=>{});return;
+      }
+      const page=win.webContents.getURL();
+      lineupBusy=true;
+      let reply;try{reply={id:command.id,data:await lookup(footballKey,command)};}catch(error){reply={id:command.id,error:safeError(error)};}
+      lineupBusy=false;
+      if(!win.isDestroyed()&&win.webContents.getURL()===page)win.webContents.executeJavaScript('window.__nuvioLineupsReceive?.('+JSON.stringify(reply)+')').catch(()=>{});
+    });
+  }
   if(role==='player') win.webContents.on('did-finish-load',()=>{
+    win.webContents.executeJavaScript('('+installLineups.toString()+')(document)').catch(()=>{});
     const deadline=win.go3WatchDeadline||0;
     win.webContents.executeJavaScript(`(()=>{let activated=false;const check=()=>{if(!activated && Date.now()<${deadline})activated=Array.from(document.querySelectorAll('video')).some(v=>!v.paused && v.readyState>=2)||(${activateOfficialWatch.toString()})(document);(${dismissFalseAutoplayNotice.toString()})(document);};const observer=new MutationObserver(check);observer.observe(document.documentElement,{childList:true,subtree:true});document.addEventListener('playing',check,true);document.addEventListener('timeupdate',check,true);const timer=setInterval(()=>{check();if(Date.now()>${deadline})clearInterval(timer);},250);check();})()`).catch(()=>{});
   });
@@ -84,6 +104,7 @@ readline.createInterface({input:process.stdin}).on('line',async line=>{
     if(command.action==='signin') {if(!player || player.isDestroyed())player=createWindow(false);player.go3WatchDeadline=0;present(player);await player.loadURL('https://go3.lt/');return;}
     if(command.action==='signout') {const s=session.fromPartition(sessionRoot?'persist:nuvio-go3-live-test':'nuvio-go3-live');await s.clearStorageData();await s.clearAuthCache();if(player && !player.isDestroyed())await player.loadURL('https://go3.lt/');emit({kind:'status',message:'Local Go3 session cleared.'});return;}
     if(command.action==='watch') {
+      footballKey=typeof command.footballKey==='string'?command.footballKey:'';
       await drmReady;
       const u=new URL(command.url);
       if(u.origin!=='https://go3.lt' || u.username || u.password || u.search || u.hash || !/^\/(?:watch|live_tv)\/[^/]+,(live|programme|vod)-[0-9]+(\/[^/]+,programme-[0-9]+)?$/.test(u.pathname)) return;

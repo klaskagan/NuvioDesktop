@@ -100,6 +100,12 @@ branch integration. `settingsCategoryForName` preserves saved names;
   their date. Distinguish today from selection/focus; skipping an empty date does
   not make the next visible date today. Follow locale week boundaries and labels.
 
+Standalone panels that set a dark background must also own their foreground
+content color. The football lineup screenshot exposed black inherited text on a
+dark Box; use a Material Surface with explicit on-background content color, as
+SettingsCard does. Check the captured FootballLineupsUiTest panel as well as
+semantic text existence, which alone cannot verify readable contrast.
+
 ## Playback control ownership
 
 Desktop movie playback suppresses Compose controls, so its actual
@@ -171,3 +177,9 @@ existing interaction guard sees hover, focus, scrubbing, and open menus. Do not 
 a competing shared Compose hide timer on desktop: it hides stationary hovered
 controls after 3.5 seconds. Verify toolbar hover beyond the idle delay, then pointer
 leave and keyboard menu navigation. Mobile retains its shared timer.
+
+For formation/pitch layouts, scope flex-row rules to actual rows, not every
+direct child. Go3's absolute player markers inherited a 350px minimum height from
+a broad child selector, separating names from shirt numbers. Render a full
+22-player fixture and verify marker/name bounds and resizing; one-player and
+semantic-only tests missed the overlap. See docs/football-lineups.md.
