@@ -58,7 +58,7 @@ object Go3PlayerLauncher {
         ensureStarted().outputStream.let {it.write((message.toString()+"\n").toByteArray());it.flush()}
     }
     fun open(url: String): Boolean = Go3Playback.isWatchUrl(url) && runCatching {
-        send(buildJsonObject {put("action","watch");put("url",url);put("fullscreen",Go3Playback.fullscreenRequested)})
+        send(buildJsonObject {put("action","watch");put("footballKey",com.nuvio.app.features.player.FootballKeyStore.read());put("url",url);put("fullscreen",Go3Playback.fullscreenRequested)})
     }.isSuccess
     private suspend fun events(kind: String): List<Go3Event> = withContext(Dispatchers.IO) {
         val request=ids.incrementAndGet().toString()

@@ -2807,4 +2807,26 @@
     <string name="subtitle_shadow_opacity">Shadow opacity</string>
     <string name="subtitle_shadow_size">Shadow size</string>
     <string name="subtitle_reset_appearance">Reset appearance</string>
+    <string name="football_lineups_search_a_team_and_the_original">Search a team and the original match date. Scores are always hidden.</string>
+    <string name="football_lineups_football_data_unavailable_check_your_key">Football data unavailable. Check your key, connection and quota, then retry.</string>
+    <string name="football_lineups_lineups">Lineups</string>
+    <string name="football_lineups_close_lineups">Close lineups</string>
+    <string name="football_lineups_change_match">Change match</string>
+    <string name="football_lineups_team">Team</string>
+    <string name="football_lineups_match_date_yyyy_mm_dd">Match date · YYYY-MM-DD</string>
+    <string name="football_lineups_no_matching_fixtures_available">No matching fixtures available.</string>
+    <string name="football_lineups_choose_the_match">Choose the match.</string>
+    <string name="football_lineups_find_match">Find match</string>
+    <string name="football_lineups_original_lineups_are_not_available_try">Original lineups are not available. Try again later.</string>
+    <string name="football_lineups_original_lineups_are_not_available">Original lineups are not available.</string>
+    <string name="football_lineups_retry">Retry</string>
+    <string name="football_lineups_original_bench">Original bench</string>
+    <string name="football_lineups_football_lineups">Football Lineups</string>
+    <string name="football_lineups_pitchapi_key_description">PitchAPI free key · get a key at pitchapi.dev · stored on this device only</string>
+    <string name="football_lineups_api_key">API key</string>
+    <string name="football_lineups_key_validated_and_saved">Key validated and saved.</string>
+    <string name="football_lineups_unable_to_validate_check_your_key">Unable to validate. Check your key, connection and quota.</string>
+    <string name="football_lineups_validate_and_save">Validate and save</string>
+    <string name="football_lineups_key_removed">Key removed.</string>
+    <string name="football_lineups_remove">Remove</string>
 </resources>

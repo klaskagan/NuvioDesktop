@@ -1,5 +1,5 @@
 const {event}=require('./events.cjs');
-const SOURCES={live:'https://go3.lt/sports/sportas-tiesiogiai,section-7998051',epl:'https://go3.lt/categories/premierleague,category-6886315'};
+const SOURCES={live:'https://go3.lt/sports/sportas-tiesiogiai,section-7998051',epl:'https://go3.lt/categories/premierleague,category-6886315',ucl:'https://go3.lt/categories/uefachampionsleague,category-6886205'};
 const READ=`Array.from(document.querySelectorAll('a[href*="programme-"]')).map(a=>{const i=a.querySelector('img');const art=[i?.src,i?.currentSrc].find(s=>s && !s.includes('no-image'));return {url:a.href,name:i?.alt||a.innerText.split('\\n')[0].replace(/^[^·]+·\\s*/,''),artwork:art||'',label:a.innerText}})`;
 async function collectEvents(browser,kind) {
  const source=SOURCES[kind];if(!source)throw new Error('Unknown catalogue');
@@ -28,4 +28,4 @@ async function collectEvents(browser,kind) {
  if(!found.size)throw new Error('No programme cards available');
  return [...found.values()];
 }
-module.exports={collectEvents};
+module.exports={collectEvents,SOURCES};

@@ -22,6 +22,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.Alignment
@@ -133,6 +136,8 @@ private fun NativePlayerSurface(
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
 ) {
+    var lineupsOpen by remember(sourceUrl) { mutableStateOf(false) }
+    val lineupSession = remember(sourceUrl) { FootballLineupSession(playerControlsState.title) }
     val platformDensity = LocalNuvioPlatformDensity.current
     val host = remember(useYoutubeChunkedPlayback) { NativePlayerHost(embedded = useYoutubeChunkedPlayback) }
     val controller = remember(host) { NativePlayerController(host) }
@@ -150,7 +155,7 @@ private fun NativePlayerSurface(
         onDispose { playbackSource.close() }
     }
     SideEffect {
-        host.presentationFullscreen = playerControlsState.presentationFullscreen == true
+        host.presentationFullscreen = playerControlsState.presentationFullscreen == true && !lineupsOpen
         host.cornerRadius = if (playerControlsState.presentationFullscreen == true) 0.0 else 18.0
         controller.setNativeControlsEnabled(useNativeController)
         controller.setPresentationFullscreen(playerControlsState.presentationFullscreen)
@@ -213,7 +218,13 @@ private fun NativePlayerSurface(
     LaunchedEffect(controller) {
         controller.setControlCallbacks(
             onAction = { action -> latestOnPlayerControlsAction.value(action) },
-            onEvent = { type, value -> latestOnPlayerControlsEvent.value(type, value) },
+            onEvent = { type, value ->
+                when (type) {
+                    "lineups" -> { DesktopPlayerPictureInPicture.clear(); lineupsOpen = !lineupsOpen; true }
+                    "pictureInPicture", "pip" -> { lineupsOpen = false; latestOnPlayerControlsEvent.value(type, value) }
+                    else -> latestOnPlayerControlsEvent.value(type, value)
+                }
+            },
             onScrubChange = { positionMs -> latestOnPlayerControlsScrubChange.value(positionMs) },
             onScrubFinished = { positionMs -> latestOnPlayerControlsScrubFinished.value(positionMs) },
         )
@@ -280,14 +291,14 @@ private fun NativePlayerSurface(
         controller.setResizeMode(resizeMode)
     }
 
-    LaunchedEffect(controller, playerControlsState) {
-        controller.updateControls(playerControlsState)
+    LaunchedEffect(controller, playerControlsState, lineupsOpen) {
+        controller.updateControls(playerControlsState.copy(lineupsActive = lineupsOpen))
         DesktopPlayerPictureInPicture.setWindowTitle(playerControlsState.pipWindowTitle)
     }
 
     LaunchedEffect(controller) {
         DesktopPlayerPictureInPicture.changes.drop(1).collect {
-            controller.updateControls(latestPlayerControlsState.value)
+            controller.updateControls(latestPlayerControlsState.value.copy(lineupsActive = lineupsOpen))
         }
     }
 
@@ -320,6 +331,10 @@ private fun NativePlayerSurface(
             .background(Color.Black),
         contentAlignment = Alignment.Center,
     ) {
+        if (lineupsOpen) FootballLineupsPanel(
+            Modifier.fillMaxSize(),
+            close = { lineupsOpen = false }, session = lineupSession,
+        )
         // SwingPanel keeps the stable AWT host. PiP moves only the native player
         // surface to the independent window, so Compose never loses its host peer.
         CompositionLocalProvider(LocalDensity provides platformDensity) {
@@ -329,6 +344,8 @@ private fun NativePlayerSurface(
                     Modifier
                         .align(Alignment.BottomEnd)
                         .requiredSize(1.dp)
+                } else if (lineupsOpen && hostFirstPaintComplete.value) {
+                    Modifier.align(Alignment.TopEnd).padding(12.dp).width(416.dp).height(234.dp)
                 } else if (hostFirstPaintComplete.value) {
                     Modifier.fillMaxSize()
                 } else {

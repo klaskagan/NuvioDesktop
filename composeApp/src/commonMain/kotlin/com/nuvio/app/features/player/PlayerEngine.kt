@@ -111,6 +111,7 @@ data class PlayerControlInfoSection(
 )
 
 data class PlayerControlsState(
+    val lineupsActive: Boolean = false,
     /** Embedded presentations can expand independently of the app window. */
     val presentationFullscreen: Boolean? = null,
     val title: String = "",

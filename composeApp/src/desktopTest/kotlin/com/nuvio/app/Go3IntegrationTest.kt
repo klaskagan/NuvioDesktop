@@ -45,6 +45,8 @@ class Go3IntegrationTest {
             mainClock.advanceTimeBy(600)
             onNodeWithContentDescription("Settings").performClick()
             mainClock.advanceTimeBy(600)
+            onNodeWithText("Media", useUnmergedTree = true).performClick()
+            mainClock.advanceTimeBy(600)
             onNodeWithText("Content & Discovery").performScrollTo().performClick()
             mainClock.advanceTimeBy(600)
             onNodeWithText("Go3").performScrollTo().performClick()
@@ -91,6 +93,24 @@ class Go3IntegrationTest {
             assertEquals(1,requests)
         } finally {Go3Catalog.loader=null;SearchRepository.reset()}
     }
+    @Test fun championsLeagueSelectionRetainsExactReplayDestination() = runBlocking {
+        var requested = ""
+        val destination = "https://go3.lt/live_tv/extra,live-1/ucl-replay,programme-8111"
+        Go3Catalog.loader = { kind ->
+            requested = kind
+            listOf(Go3Event("go3:programme:8111", "UEFA Champions League fixture", destination, null, "replay", "ARCHYVAS"))
+        }
+        try {
+            val source = Go3Catalog.sources().single { it.catalogId == "ucl" }
+            assertEquals("Go3 Champions League", source.catalogName)
+            assertTrue("Replay" in source.genreOptions)
+            val page = Go3Catalog.page("ucl", "Replay", true)
+            assertEquals("ucl", requested)
+            assertEquals(listOf("go3:programme:8111"), page.map { it.id })
+            assertEquals(destination, Go3Catalog.find("go3:programme:8111")?.url)
+        } finally { Go3Catalog.loader = null; SearchRepository.reset() }
+    }
+
     @Test fun canonicalWatchValidationRejectsUntrustedRoutes() {
         assertTrue(Go3Playback.isWatchUrl("https://go3.lt/live_tv/extra,live-1/match,programme-2"))
         assertFalse(Go3Playback.isWatchUrl("https://go3.lt.evil.com/watch/a,live-1"))

@@ -1014,7 +1014,7 @@ val prepareMacosPlayerAppResources = tasks.register<Sync>("prepareMacosPlayerApp
     }
     // Ship source helpers only. Browser profiles and vendor runtime stay outside the bundle.
     from(rootProject.layout.projectDirectory.dir("scripts/go3-live-probe")) {
-        include("main.cjs", "package.json", "event-catalog.cjs", "events.cjs", "catalog.cjs", "discovery.cjs", "player-page.cjs")
+        include("main.cjs", "package.json", "event-catalog.cjs", "events.cjs", "catalog.cjs", "discovery.cjs", "player-page.cjs", "lineups.cjs")
         into("go3")
     }
 }

@@ -3785,3 +3785,22 @@ svg {
 @keyframes qualityBreath {
   50% { opacity: .3; filter: drop-shadow(0 0 6px white); }
 }
+
+/* In-window lineup video keeps the established compact player controls. */
+.header-button[data-command="lineups"] { width: auto; padding-inline: 12px; }
+.header-button[data-command="lineups"][aria-pressed="true"] { background: rgba(255,255,255,.2); }
+.player.lineups-mode .metadata,
+.player.lineups-mode .header-button:not([data-command="lineups"]):not(#pipButton):not(#fullscreenButton),
+.player.lineups-mode [data-command="resize"],
+.player.lineups-mode [data-command="speed"],
+.player.lineups-mode [data-command="sources"],
+.player.lineups-mode [data-command="episodes"],
+.player.lineups-mode [data-command="playNextEpisode"],
+.player.lineups-mode .next-episode-card,
+.player.lineups-mode .pause-metadata-overlay { display: none !important; }
+.player.lineups-mode .header { padding: 8px; }
+.player.lineups-mode .action-row { gap: 8px; }
+.player.lineups-mode .action span { display: none; }
+.player.lineups-mode .action { padding: 8px; width: 40px; min-width: 40px; height: 40px; min-height: 40px; justify-content: center; }
+.player.lineups-mode .playback-status { gap: 8px; }
+.player.lineups-mode .volume-slider { width: 76px; }

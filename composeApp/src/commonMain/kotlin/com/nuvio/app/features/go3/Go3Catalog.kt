@@ -24,9 +24,9 @@ object Go3Catalog {
     fun action(action: String) { _status.value = if(accountAction?.invoke(action)==true) {
         if(action=="signout") "Local Go3 session reset requested." else "Go3 window opened. Complete sign-in there if required."
     } else "Go3 player unavailable. Check the desktop runtime configuration." }
-    fun sources(): List<DiscoverCatalogOption> = if(loader==null) emptyList() else listOf("live" to "Go3 Live Events", "epl" to "Go3 Premier League").map { (id,name) ->
+    fun sources(): List<DiscoverCatalogOption> = if(loader==null) emptyList() else listOf("live" to "Go3 Live Events", "epl" to "Go3 Premier League", "ucl" to "Go3 Champions League").map { (id,name) ->
         DiscoverCatalogOption(key="go3:$id", addonName="Go3", manifestUrl="", type="sport", catalogId=id, catalogName=name,
-            genreOptions=if(id=="epl")listOf("Live", "Upcoming", "Replay") else listOf("Live", "Upcoming"))
+            genreOptions=if(id=="epl" || id=="ucl")listOf("Live", "Upcoming", "Replay") else listOf("Live", "Upcoming"))
     }
     suspend fun page(kind: String, filter: String?, refresh: Boolean): List<MetaPreview> = mutex.withLock {
         val now=kotlin.time.Clock.System.now().toEpochMilliseconds()
