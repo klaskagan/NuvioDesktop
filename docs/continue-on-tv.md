@@ -147,6 +147,15 @@ Wrapped webOS transport causes are retained so this error receives actionable
 local-network guidance. Wake-on-LAN failures are best-effort and do not abort
 a direct connection to an already awake TV.
 
+If both TVs stop responding after a local app update or bundle edit, verify the
+installed app with `codesign --verify --deep --strict /Applications/Nuvio.app`.
+In the November 8 incident, the archived DMG passed verification and the installed
+copy was unsigned. Both TV control ports answered from the Mac. After backing
+up the installed bundle, quitting Nuvio, restoring its ad-hoc signature in place,
+and relaunching, **Paired TVs → Find TVs** detected both devices. For locally
+modified builds, verify the final installed bundle after any edits. Discovery
+checks reachability. Verify playback separately with a transfer to each TV.
+
 ## Physical checks on 2026-10-22–23
 
 - Sony Android TV 14: standard pairing and launching Nuvio worked, including
