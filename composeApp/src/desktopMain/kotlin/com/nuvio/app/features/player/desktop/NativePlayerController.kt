@@ -119,6 +119,7 @@ internal class NativePlayerController(
     private var terminalReleaseFailure: String? = null
     private var controlsState = PlayerControlsState()
     private var bufferedSourceToAdopt: Pair<String, Map<String, String>>? = null
+    private var pictureInPictureActive = false
     @Volatile
     private var currentVolumeLevel = rememberedVolumeLevel.coerceDesktopPlayerVolumeLevel()
     private var pendingSubtitleDelayMs: Int? = null
@@ -569,8 +570,20 @@ internal class NativePlayerController(
         }
     }
 
+    @Synchronized
     fun setResizeMode(mode: PlayerResizeMode) {
         rememberedResizeMode = mode
+        applyResizeMode()
+    }
+
+    @Synchronized
+    fun setPictureInPictureActive(active: Boolean) {
+        pictureInPictureActive = active
+        applyResizeMode()
+    }
+
+    private fun applyResizeMode() {
+        val mode = desktopEffectiveResizeMode(rememberedResizeMode, pictureInPictureActive)
         handle.takeIf { it != 0L }?.let { current ->
             NativePlayerBridge.setResizeMode(
                 handle = current,
@@ -754,6 +767,7 @@ internal class NativePlayerController(
         return runCatching {
             val isLoading = NativePlayerBridge.isLoading(current)
             val isEnded = NativePlayerBridge.isEnded(current)
+            val videoSize = desktopMpvVideoSize { name -> NativePlayerBridge.stringProperty(current, name) }
             PlayerPlaybackSnapshot(
                 isLoading = isLoading,
                 isPlaying = !NativePlayerBridge.isPaused(current) && !isLoading && !isEnded,
@@ -764,6 +778,8 @@ internal class NativePlayerController(
                 playbackSpeed = NativePlayerBridge.speed(current),
                 videoWidth = NativePlayerBridge.stringProperty(current, "video-params/w").toIntOrNull() ?: 0,
                 videoHeight = NativePlayerBridge.stringProperty(current, "video-params/h").toIntOrNull() ?: 0,
+                displayVideoWidth = videoSize.width,
+                displayVideoHeight = videoSize.height,
             )
         }.getOrDefault(PlayerPlaybackSnapshot(isLoading = true))
     }
@@ -1739,8 +1755,6 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
         append(',')
         appendJsonField("subtitleStyleTabLabel", subtitleStyleTabLabel)
         append(',')
-        appendJsonField("customSubtitleStyleLabel", customSubtitleStyleLabel)
-        append(',')
         appendJsonField("forcedLabel", forcedLabel)
         append(',')
         appendJsonField("noneLabel", noneLabel)
@@ -2009,8 +2023,6 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
         appendJsonField("selectedAddonSubtitleId", selectedAddonSubtitleId)
         append(',')
         appendJsonField("useCustomSubtitles", useCustomSubtitles)
-        append(',')
-        appendJsonField("customSubtitleStylingEnabled", customSubtitleStylingEnabled)
         append(',')
         appendJsonField("subtitleDelayMs", subtitleDelayMs)
         append(',')
@@ -2310,6 +2322,8 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     appendJsonField("textColor", style.textColor.toStorageHexString())
     append(',')
     appendJsonField("outlineColor", style.outlineColor.toStorageHexString())
+    append(',')
+    appendJsonField("backgroundColor", style.backgroundColor.toStorageHexString())
     append(',')
     appendJsonField("outlineEnabled", style.outlineEnabled)
     append(',')

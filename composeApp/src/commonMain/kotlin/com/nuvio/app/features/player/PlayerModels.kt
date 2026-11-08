@@ -49,6 +49,7 @@ data class PlayerLaunch(
     val initialPositionMs: Long = 0L,
     val initialProgressFraction: Float? = null,
     val contentLanguage: String? = null,
+    val subtitleExtras: SubtitleRequestExtras? = null,
     val sourceFilename: String? = null,
     val stream: com.nuvio.app.features.streams.StreamItem? = null,
 )
@@ -300,6 +301,8 @@ data class PlayerPlaybackSnapshot(
     val playbackSpeed: Float = 1f,
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
+    val displayVideoWidth: Int = 0,
+    val displayVideoHeight: Int = 0,
 )
 
 data class PlayerNowPlayingInfo(
