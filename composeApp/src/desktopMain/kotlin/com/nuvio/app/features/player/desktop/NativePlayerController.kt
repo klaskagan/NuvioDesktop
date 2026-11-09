@@ -17,6 +17,8 @@ import com.nuvio.app.features.player.PlayerControlsAction
 import com.nuvio.app.features.player.PlayerControlsState
 import com.nuvio.app.features.player.PlayerChapter
 import com.nuvio.app.features.player.PlayerSettingsRepository
+import com.nuvio.app.features.player.PlayerSettingsStorage
+import com.nuvio.app.features.profiles.ProfileRepository
 import com.nuvio.app.features.player.PlayerEngineController
 import com.nuvio.app.features.player.PlayerMediaInfo
 import com.nuvio.app.features.player.mpvMediaInfo
@@ -118,6 +120,10 @@ internal class NativePlayerController(
     private var releaseTimedOut: Boolean = false
     private var terminalReleaseFailure: String? = null
     private var controlsState = PlayerControlsState()
+    private val nightModeProfileId = ProfileRepository.activeProfileId
+    private var nightModeRestorePending = false
+    private var nightModeActive = false
+    private var nightModeErrorToken = 0
     private var bufferedSourceToAdopt: Pair<String, Map<String, String>>? = null
     private var pictureInPictureActive = false
     @Volatile
@@ -369,6 +375,7 @@ internal class NativePlayerController(
                             "attach created handle=$created source=${resolvedSource.toPlaybackLogKey()} " +
                                 "initialPositionMs=${pending.initialPositionMs}"
                         }
+                        restoreNightMode()
                         applyRememberedVolume()
                         setNativeControlsEnabled(nativeControlsEnabled)
                         updateEmbeddedLayout()
@@ -458,6 +465,8 @@ internal class NativePlayerController(
         }
         val handoff = com.nuvio.app.features.handoff.tvHandoffPlaybackView()
         val stateWithVolume = state.copy(
+            nightModeActive = nightModeActive,
+            nightModeErrorToken = nightModeErrorToken,
             tvHandoffDevices = handoff.devices,
             tvHandoffReady = handoff.ready,
             tvHandoffBusy = handoff.busy,
@@ -633,6 +642,17 @@ internal class NativePlayerController(
                 }
             }
             "dragWindow" -> if (!host.embedded) NativePlayerBridge.beginWindowDrag(handle)
+            "nightMode" -> {
+                synchronized(lifecycleLock) {
+                    if (handle == 0L || releaseRequested) return
+                    val enabled = !desktopNightModeInChain(qualityGet("af"))
+                    if (applyNightMode(enabled)) {
+                        nightModeRestorePending = false
+                        PlayerSettingsStorage.saveNightModeEnabled(nightModeProfileId, enabled)
+                    }
+                }
+                updateControls(controlsState)
+            }
             "volumeChange" -> setFallbackVolume(value.toFloat())
             "volumeChangeTemporary" -> setTemporaryVolume(value.toFloat())
             "setPlaybackSpeed" -> {
@@ -767,6 +787,11 @@ internal class NativePlayerController(
         return runCatching {
             val isLoading = NativePlayerBridge.isLoading(current)
             val isEnded = NativePlayerBridge.isEnded(current)
+            if (!isLoading && finishNightModeRestore(current)) {
+                SwingUtilities.invokeLater {
+                    if (handle == current && !releaseRequested) updateControls(controlsState)
+                }
+            }
             val videoSize = desktopMpvVideoSize { name -> NativePlayerBridge.stringProperty(current, name) }
             PlayerPlaybackSnapshot(
                 isLoading = isLoading,
@@ -1071,6 +1096,46 @@ internal class NativePlayerController(
     private fun qualitySet(name: String, value: String): Boolean = synchronized(lifecycleLock) {
         handle != 0L && !releaseRequested && NativePlayerBridge.qualitySet(handle, false, name, value)
     }
+    private fun restoreNightMode() = synchronized(lifecycleLock) {
+        val enabled = PlayerSettingsStorage.loadNightModeEnabled(nightModeProfileId)
+        nightModeActive = desktopNightModeInChain(qualityGet("af"))
+        nightModeRestorePending = enabled && !nightModeActive
+        if (nightModeRestorePending) {
+            finishNightModeRestore(handle)
+        } else if (!enabled && nightModeActive) {
+            applyNightMode(false)
+        }
+    }
+
+    private fun finishNightModeRestore(current: Long): Boolean = synchronized(lifecycleLock) {
+        if (!nightModeRestorePending || current == 0L || current != handle || releaseRequested ||
+            qualityGet("audio-out-params/channel-count").isBlank()
+        ) return@synchronized false
+
+        nightModeRestorePending = false
+        applyNightMode(true)
+        true
+    }
+
+    // Called under lifecycleLock so confirmation always reads the same mpv handle.
+    private fun applyNightMode(enabled: Boolean): Boolean {
+        val before = desktopNightModeInChain(qualityGet("af"))
+        val accepted = before == enabled || if (enabled) {
+            // mpv can accept an unvalidated graph before an audio output exists.
+            qualityGet("audio-out-params/channel-count").isNotBlank() &&
+                qualityCommand("af", "add", DESKTOP_NIGHT_MODE_FILTER)
+        } else {
+            qualityCommand("af", "remove", DESKTOP_NIGHT_MODE_LABEL)
+        }
+        nightModeActive = desktopNightModeInChain(qualityGet("af"))
+        return (accepted && nightModeActive == enabled).also { applied ->
+            if (!applied) {
+                nightModeErrorToken++
+                log.w { "mpv could not set Night Mode to $enabled" }
+            }
+        }
+    }
+
     private fun qualityCommand(vararg args: String): Boolean = synchronized(lifecycleLock) {
         handle != 0L && !releaseRequested && NativePlayerBridge.qualityCommand(handle, false, arrayOf(*args))
     }
@@ -1150,6 +1215,7 @@ internal class NativePlayerController(
                     pendingSource = stage.pendingSource?.copy(onError = originalPending.onError, playWhenReady = !live.paused, initialPositionMs = position)
                     bufferedSourceToAdopt = choice.url to choice.headers
                     adoptedHandle.set(next)
+                    restoreNightMode()
                     promoted = true
                     currentVolumeLevel = (live.volume / 100f).coerceDesktopPlayerVolumeLevel()
                     qualitySet("volume", live.volume.toString())
@@ -1644,6 +1710,14 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
         appendJsonField("subtitlesLabel", subtitlesLabel)
         append(',')
         appendJsonField("audioLabel", audioLabel)
+        append(',')
+        appendJsonField("nightModeLabel", nightModeLabel)
+        append(',')
+        appendJsonField("nightModeErrorLabel", nightModeErrorLabel)
+        append(',')
+        appendJsonField("nightModeActive", nightModeActive)
+        append(',')
+        appendJsonField("nightModeErrorToken", nightModeErrorToken)
         append(',')
         appendJsonField("sourcesLabel", sourcesLabel)
         append(',')

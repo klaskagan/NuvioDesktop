@@ -2,6 +2,7 @@ package com.nuvio.app.features.player
 
 import androidx.compose.ui.awt.ComposeWindow
 import com.nuvio.app.features.player.desktop.*
+import com.nuvio.app.features.profiles.ProfileRepository
 import java.io.File
 import javax.swing.SwingUtilities
 import org.junit.Assume.assumeTrue
@@ -11,8 +12,11 @@ import org.junit.Test
 class MoviePlayerControlsLiveTest {
     @Test fun actualMovieScreenKeepsTheNativeControlsViewMountedAndVisible() {
         assumeTrue(System.getenv("NUVIO_PLAYER_LIVE_TEST") == "1")
+        check(java.lang.Boolean.getBoolean("nuvio.test.isolatedHome"))
         MoviePlayerControlsFixture.seedMetadata()
-        val file = File("build/qa/ordinary.mp4").absoluteFile
+        val profileId = ProfileRepository.activeProfileId
+        PlayerSettingsStorage.saveNightModeEnabled(profileId, false)
+        val file = File("../testFixtures/subtitles/video.mp4").absoluteFile
         check(file.isFile)
         lateinit var window: ComposeWindow
         SwingUtilities.invokeAndWait {
@@ -42,6 +46,24 @@ class MoviePlayerControlsLiveTest {
             check(NativePlayerBridge.controlsOverlayAvailable(handle))
             SwingUtilities.invokeAndWait { player.play() }
             await("resume") { player.snapshot().isPlaying }
+            SwingUtilities.invokeAndWait { player.pause() }
+            await("decoded audio") {
+                NativePlayerBridge.qualityProperty(handle, false, "audio-out-params/channel-count").isNotBlank()
+            }
+            val event = player.javaClass.getDeclaredMethod("handlePlayerEvent", String::class.java, Double::class.javaPrimitiveType)
+                .apply { isAccessible = true }
+            fun property(name: String) = NativePlayerBridge.qualityProperty(handle, false, name)
+            val originalFilters = property("af")
+            val originalVolume = property("volume")
+            val originalMute = property("mute")
+            SwingUtilities.invokeAndWait { event.invoke(player, "nightMode", 0.0) }
+            check(desktopNightModeInChain(property("af")))
+            check(PlayerSettingsStorage.loadNightModeEnabled(profileId))
+            check(!PlayerSettingsStorage.loadNightModeEnabled(profileId + 1))
+            SwingUtilities.invokeAndWait { event.invoke(player, "nightMode", 0.0) }
+            check(property("af") == originalFilters)
+            check(property("volume") == originalVolume && property("mute") == originalMute)
+            check(!PlayerSettingsStorage.loadNightModeEnabled(profileId))
             println("Actual movie screen: native controls attached/visible through pause, seek and resume")
         } finally { SwingUtilities.invokeAndWait { window.dispose() } }
     }

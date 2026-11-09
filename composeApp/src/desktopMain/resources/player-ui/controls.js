@@ -37,6 +37,8 @@ const playerBadges = document.getElementById("playerBadges");
 const resizeLabel = document.getElementById("resizeLabel");
 const speedLabel = document.getElementById("speedLabel");
 const subtitlesLabel = document.getElementById("subtitlesLabel");
+const nightModeButton = document.getElementById("nightModeButton");
+const nightModeLabel = document.getElementById("nightModeLabel");
 const audioLabel = document.getElementById("audioLabel");
 const sourcesLabel = document.getElementById("sourcesLabel");
 const episodesLabel = document.getElementById("episodesLabel");
@@ -2874,6 +2876,9 @@ const renderChrome = () => {
   document.getElementById("qualityIconText").textContent = state.qualityBusy ? qualityName(Number(state.qualityRequestedHeight) || qualityLoadingTarget || currentQuality) : currentQuality > 0 ? qualityName(currentQuality) : "HD";
   document.getElementById("qualityLabel").textContent = state.qualityBusy ? qualityName(Number(state.qualityRequestedHeight) || qualityLoadingTarget || currentQuality) : currentQuality > 0 ? qualityName(currentQuality) : (state.qualityLabel || "Quality");
   subtitlesLabel.textContent = state.subtitlesLabel || "Subs";
+  nightModeLabel.textContent = state.nightModeLabel || "Night Mode";
+  nightModeButton.setAttribute("aria-pressed", String(Boolean(state.nightModeActive)));
+  setActionButtonLabel("nightMode", nightModeLabel.textContent);
   audioLabel.textContent = state.audioLabel || "Audio";
   sourcesLabel.textContent = state.sourcesLabel || "Sources";
   document.getElementById("tvHandoffButton").style.display = state.showTvHandoff ? "" : "none";
@@ -3750,6 +3755,7 @@ window.playerControls = nextState => {
   const previousCloseToken = Number(state.closeModalsToken) || 0;
   const previousSubmitIntroSuccessToken = Number(state.submitIntroSuccessToken) || 0;
   const previousNotificationToken = Number(state.notificationToken) || 0;
+  const previousNightModeErrorToken = Number(state.nightModeErrorToken) || 0;
   const previousResizeLabel = state.resizeModeLabel || "";
   const previousSpeedLabel = state.playbackSpeedLabel || "";
   const previousEpisodeStreamsVisible = Boolean(state.episodeStreamsVisible);
@@ -3785,6 +3791,9 @@ window.playerControls = nextState => {
   const notificationToken = Number(state.notificationToken) || 0;
   if (notificationToken !== previousNotificationToken) {
     showPlayerToast(state.notificationMessage);
+  }
+  if ((Number(state.nightModeErrorToken) || 0) !== previousNightModeErrorToken) {
+    showPlayerToast(state.nightModeErrorLabel, { icon: "icon-moon" });
   }
   if (!replayingParty) applyPartyControls(previousParty);
   if (state.showP2pConsent && activeModal !== "p2pConsent") {

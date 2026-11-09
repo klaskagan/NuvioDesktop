@@ -109,8 +109,15 @@ for the current JDK and packaging requirements. After implementation, launch the
 actual MainKt application with `./gradlew :composeApp:run` and leave its development
 window open for user review before handoff. Tests, screenshots and probe windows
 do not substitute for this launch. Skip only on explicit user opt-out or a concrete
-blocker reported in the handoff. Do not build
-a standalone app or DMG unless explicitly requested. Development controls have
+blocker reported in the handoff.
+
+Finish Gradle tests and other builds for the same checkout before launching the
+review window. A task that rewrites a JAR on the running app's classpath can
+invalidate Java's cached ZIP entry offsets. If Compose resources fail with
+`ZipFile invalid LOC header` after a rebuild, verify the generated JAR with
+`unzip -tq`, restart MainKt, and reopen the screen that triggered the read.
+
+Do not build a standalone app or DMG unless explicitly requested. Development controls have
 shown behavior differing from packaged builds; report that validation limitation. Do not silently replace the user's installed
 app or trigger TV/network activity as part of an unrelated UI check.
 
@@ -119,6 +126,12 @@ Native mpv initialization must set `LC_NUMERIC` to `C` immediately before
 in a Gradle debug run can make creation fail before the stream opens. When
 changing initialization, check a comma-decimal locale (such as `lt_LT.UTF-8`)
 and confirm a player handle is created without the non-C locale warning.
+
+mpv can accept an audio filter graph before audio output exists without
+initializing its FFmpeg filters. For live audio filter toggles, follow
+`NativePlayerController`'s Night Mode implementation and wait for audio output
+before applying a saved choice. Check the command result and the labeled filter
+in `af`. Verify rejection with an invalid filter during active playback.
 
 For desktop quality reloads, read the implementation contract in
 [the playback capability report](../../../docs/playback-quality-capabilities.md).

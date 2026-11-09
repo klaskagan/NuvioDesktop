@@ -434,6 +434,12 @@ internal actual object PlayerSettingsStorage {
     actual fun loadNvidiaRtxSuperResolutionEnabled(): Boolean? = loadBoolean(nvidiaRtxSuperResolutionEnabledKey)
     actual fun saveNvidiaRtxSuperResolutionEnabled(enabled: Boolean) = saveBoolean(nvidiaRtxSuperResolutionEnabledKey, enabled)
 
+    fun loadNightModeEnabled(profileId: Int): Boolean =
+        store.getBoolean(ProfileScopedKey.of("desktop_night_mode_enabled", profileId)) ?: false
+
+    fun saveNightModeEnabled(profileId: Int, enabled: Boolean) =
+        store.putBoolean(ProfileScopedKey.of("desktop_night_mode_enabled", profileId), enabled)
+
     private fun scoped(key: String): String = ProfileScopedKey.of(key)
     private fun loadString(key: String): String? = store.getString(scoped(key))
     private fun saveString(key: String, value: String) = store.putString(scoped(key), value)

@@ -894,6 +894,11 @@ button:disabled {
   background: var(--theme-selected-surface);
 }
 
+.action[data-command="nightMode"][aria-pressed="true"] {
+  background: var(--theme-selected-surface);
+  color: var(--theme-accent-strong);
+}
+
 .header-button:active,
 .header-button.is-pressed,
 .skip-prompt:active,

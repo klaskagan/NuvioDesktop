@@ -355,6 +355,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         holdToSpeedValue = playerSettingsUiState.holdToSpeedValue,
         subtitlesLabel = stringResource(Res.string.compose_player_subs),
         audioLabel = stringResource(Res.string.compose_player_audio),
+        nightModeLabel = stringResource(Res.string.compose_player_night_mode),
+        nightModeErrorLabel = stringResource(Res.string.compose_player_night_mode_error),
         sourcesLabel = stringResource(Res.string.compose_player_sources),
         episodesLabel = stringResource(Res.string.compose_player_episodes),
         externalPlayerLabel = stringResource(Res.string.streams_open_external_player),

@@ -432,6 +432,8 @@
     <string name="compose_player_audio_amplification_keep">Keep for next videos</string>
     <string name="compose_player_center_mix">Center Mix Level</string>
     <string name="compose_player_audio">Audio</string>
+    <string name="compose_player_night_mode">Night Mode</string>
+    <string name="compose_player_night_mode_error">Night Mode could not be applied.</string>
     <string name="compose_player_auto_sync">Auto Sync</string>
     <string name="compose_player_bold">Bold</string>
     <string name="compose_player_built_in">Built-in</string>
