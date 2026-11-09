@@ -112,6 +112,8 @@ import com.nuvio.app.features.downloads.DownloadSubtitles
 import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
+import com.nuvio.app.features.home.components.HomeRowStylePicker
+import androidx.compose.material.icons.rounded.Menu
 import com.nuvio.app.features.home.HomeRepository
 import com.nuvio.app.features.home.buildAddonCatalogRefreshSignature
 import com.nuvio.app.features.home.components.shouldBlurContinueWatchingArtwork
@@ -358,6 +360,7 @@ internal fun MainAppContent(
             }
         }
         val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
+        var rowStyleShelfKey by remember(profileState.activeProfile?.id) { mutableStateOf<String?>(null) }
         val launchOverlayProfile = profileState.activeProfile ?: profileState.profiles.firstOrNull()
         val desktopProfileIdentity = (authState as? AuthState.Authenticated)?.userId to profileState.activeProfile?.profileIndex
         LaunchedEffect(desktopProfileIdentity) {
@@ -1544,6 +1547,9 @@ internal fun MainAppContent(
                                 onPosterLongClick = { meta ->
                                     openPosterActions(PosterActionTarget(preview = meta))
                                 },
+                                onHomePosterLongClick = { shelfKey, meta ->
+                                    openPosterActions(PosterActionTarget(preview = meta, homeShelfKey = shelfKey))
+                                },
                                 onLibraryPosterClick = { item ->
                                     navController.navigate(
                                         DetailRoute(type = item.type, id = item.id, title = item.name),
@@ -1934,6 +1940,7 @@ internal fun MainAppContent(
                             route = route,
                             navController = navController,
                             onCatalogClick = onCatalogClick,
+                            onPosterLongClick = openPosterActions,
                         )
                     }
                 }
@@ -1952,6 +1959,10 @@ internal fun MainAppContent(
                 )
                 }
             }
+            }
+
+            rowStyleShelfKey?.let { shelfKey ->
+                HomeRowStylePicker(shelfKey, onDismiss = { rowStyleShelfKey = null })
             }
 
             selectedPosterActionTarget?.let { posterActionTarget ->
@@ -2107,7 +2118,13 @@ internal fun MainAppContent(
                                     }
                                 },
                             ),
-                        ),
+                        ) + listOfNotNull(posterActionTarget.homeShelfKey?.let { shelfKey ->
+                            PosterZoomOverlayAction(
+                                icon = Icons.Rounded.Menu,
+                                label = stringResource(Res.string.home_row_style),
+                                onSelected = { rowStyleShelfKey = shelfKey },
+                            )
+                        }),
                         hazeState = posterOverlayHazeState,
                         onDismissed = {
                             selectedPosterActionTarget = null

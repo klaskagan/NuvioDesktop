@@ -136,6 +136,7 @@ fun HomeScreen(
     onCatalogClick: ((HomeCatalogSection) -> Unit)? = null,
     onPosterClick: ((MetaPreview) -> Unit)? = null,
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
+    onCatalogPosterLongClick: ((String, MetaPreview) -> Unit)? = null,
     onContinueWatchingClick: ((ContinueWatchingItem) -> Unit)? = null,
     onContinueWatchingLongPress: ((ContinueWatchingItem) -> Unit)? = null,
     continueWatchingDisintegrationRequest: DisintegrationRequest<String>? = null,
@@ -985,9 +986,14 @@ fun HomeScreen(
         val artworkRows = remember(keyedEnabledHomeItems, sectionsMap) {
             keyedEnabledHomeItems.map { keyed -> keyed.lazyKey.toString() to sectionsMap[keyed.value.key] }
         }
+        val rankedShelfKeys = remember(homeSettingsUiState.items) {
+            homeSettingsUiState.items.filter { isDesktop && it.rowStyle == HomeRowStyle.NumberedRanking }
+                .mapTo(mutableSetOf()) { it.key }
+        }
         val prefetchedArtwork = rememberHomeArtworkPrefetch(
             homeListState, artworkRows, artworkVisibleCardCount(maxWidth.value, homeSectionPadding.value, posterCardStyle.widthDp, posterCardStyle.catalogLandscapeModeEnabled), posterCardStyle.catalogLandscapeModeEnabled,
             activeProfileId.toString(), seasonalTmdbSettings.language, seasonalTmdbSettings.apiKey,
+            rankedShelfKeys = rankedShelfKeys,
         )
         val continueWatchingLayout = rememberContinueWatchingLayout(maxWidth.value, posterCardStyle)
         val nativeBottomNavigationOverlayHeight =
@@ -1246,6 +1252,8 @@ fun HomeScreen(
                                 item(key = keyedSettingsItem.lazyKey, contentType = "collection") {
                                     HomeCollectionRowSection(
                                         collection = collection,
+                                        rowStyleKey = settingsItem.key.takeIf { isDesktop },
+                                        numberedRanking = settingsItem.key in rankedShelfKeys,
                                         modifier = Modifier.padding(bottom = 12.dp),
                                         sectionPadding = homeSectionPadding,
                                         animateGifs = animateCollectionGifs,
@@ -1260,6 +1268,7 @@ fun HomeScreen(
                                     CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prefetchedArtwork) {
                                     HomeCatalogRowSection(
                                         section = section,
+                                        numberedRanking = section.key in rankedShelfKeys && section.calendarState == null,
                                         entries = if (isDesktop) {
                                             // The row is lazy, so desktop can expose the fetched catalog without
                                             // composing every poster up front. Mobile keeps its compact preview.
@@ -1277,7 +1286,10 @@ fun HomeScreen(
                                         watchedKeys = watchedUiState.watchedKeys,
                                         fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                                         onPosterClick = onPosterClick,
-                                        onPosterLongClick = onPosterLongClick,
+                                        onPosterLongClick = onCatalogPosterLongClick
+                                            ?.takeIf { isDesktop && section.calendarState == null && supportsHomeRowStyle(section.key) }
+                                            ?.let { open -> { item -> open(section.key, item) } }
+                                            ?: onPosterLongClick,
                                     )
                                     }
                                 }

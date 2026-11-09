@@ -80,6 +80,16 @@ class ConfiguredCollectionNavigationTest {
             onNodeWithTag("collection_background_prime").assertIsDisplayed()
             save("real-streaming-rows")
             onNodeWithTag("collection_grid").performScrollToIndex(1)
+            val shelfKey = FolderDetailRepository.getCatalogSectionsForRows().single().key
+            onAllNodesWithContentDescription("Dune", useUnmergedTree = true).onFirst()
+                .performMouseInput { click(center, button = MouseButton.Secondary) }
+            onNodeWithText("Row style").performClick()
+            onNodeWithText("Numbered ranking").performClick()
+            onNodeWithContentDescription("Rank 1", useUnmergedTree = true).assertIsDisplayed()
+            assertEquals(
+                com.nuvio.app.features.home.HomeRowStyle.NumberedRanking,
+                HomeCatalogSettingsRepository.uiState.value.rowStyles[shelfKey],
+            )
             onNodeWithText("Popular movies (Movies)").performClick()
             waitUntil(timeoutMillis = 15_000) { onAllNodesWithTag("catalog_grid").fetchSemanticsNodes().isNotEmpty() }
             onNodeWithTag("collection_background_prime").assertIsDisplayed()
@@ -87,7 +97,15 @@ class ConfiguredCollectionNavigationTest {
             waitUntil(timeoutMillis = 15_000) { CatalogRepository.uiState.value.items.size >= 120 }
             onNodeWithTag("catalog_back").performClick()
             onNodeWithTag("collection_grid").assertExists()
-        } finally { FolderDetailRepository.clear(); CatalogRepository.clear(); server.stop(0) }
+            onNodeWithContentDescription("Rank 1", useUnmergedTree = true).assertExists()
+        } finally {
+            FolderDetailRepository.getCatalogSectionsForRows().forEach {
+                HomeCatalogSettingsRepository.setRowStyle(it.key, com.nuvio.app.features.home.HomeRowStyle.Automatic)
+            }
+            FolderDetailRepository.clear()
+            CatalogRepository.clear()
+            server.stop(0)
+        }
     }
 
     private fun prepare(base: String, rows: Boolean) {

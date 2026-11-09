@@ -87,6 +87,9 @@ branch integration. `settingsCategoryForName` preserves saved names;
   tokens. Scope a feature's style override so it does not leak into Home or alter
   collection cover shapes. Persist separate feature preferences independently
   when the product calls for independent controls.
+- Use the shared shelf heading style for every card layout. A ranked shelf may
+  use its own numeral typography and card geometry, but its heading should
+  align with neighboring shelves and use the same font, size, and color.
 - Reuse the shared detail-label typography and muted color for secondary counts
   and metadata. Localize singular/plural counts. Associate an icon or toggle with
   an accessible name and current state; a neighboring text label alone is not an

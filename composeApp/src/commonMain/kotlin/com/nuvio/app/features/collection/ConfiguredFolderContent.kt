@@ -43,6 +43,8 @@ internal fun ConfiguredFolderContent(
     onLoadMore: () -> Unit,
     onCatalogClick: (HomeCatalogSection) -> Unit,
     onPosterClick: (MetaPreview) -> Unit,
+    rowStyles: Map<String, HomeRowStyle> = emptyMap(),
+    onCatalogPosterLongClick: ((String, MetaPreview) -> Unit)? = null,
 ) {
     val folder = uiState.artworkFolder ?: return
     val rows = uiState.viewMode != FolderViewMode.TABBED_GRID
@@ -125,12 +127,14 @@ internal fun ConfiguredFolderContent(
                 (with(density) { mediaRowHeight.toDp() } + 18.dp) * mediaRowCount
         }
         val minimumFooterHeight = (maxHeight - chromeHeight - resultContentHeight).coerceAtLeast(0.dp)
-        val artworkRows = remember(rows, sections, keyedMovies, columns, maxWidth, style.widthDp) {
+        val artworkRows = remember(rows, sections, keyedMovies, columns, maxWidth, style.widthDp, rowStyles) {
             if (rows) sections.withDuplicateSafeLazyKeys { it.key }.map { keyed ->
                 val section = keyed.value.let { it.copy(items = it.items.map { movie -> movie.copy(posterShape = PosterShape.Landscape) }) }
+                val ranked = rowStyles[section.key] == HomeRowStyle.NumberedRanking
                 com.nuvio.app.features.home.components.ArtworkPrefetchRow(keyed.lazyKey,
                     if (com.nuvio.app.features.home.components.preservesOriginalLandscapeArtwork(section.title, section.target)) emptyList()
-                    else section.items.take(com.nuvio.app.features.home.components.artworkVisibleCardCount(maxWidth.value, padding.value, style.widthDp) + 1))
+                    else section.items.take(com.nuvio.app.features.home.components.artworkVisibleCardCount(maxWidth.value, padding.value, style.widthDp) + 1),
+                    enhanceTitles = !ranked, forceShape = if (ranked) PosterShape.Poster else null)
             } else com.nuvio.app.features.home.components.artworkGridRows(keyedMovies.map { it.value }, keyedMovies.map { it.lazyKey }, columns)
         }
         val identity = listOf(uiState.collectionId, folder.id, rows, selected?.sourceKey, seasonalGrid?.query, columns)
@@ -192,6 +196,8 @@ internal fun ConfiguredFolderContent(
                     val section = keyed.value.let { it.copy(items = it.items.map { movie -> movie.copy(posterShape = PosterShape.Landscape) }) }
                     HomeCatalogRowSection(section = section, modifier = Modifier.onSizeChanged { sectionHeights[keyed.lazyKey] = it.height },
                         entries = section.items, sectionPadding = padding, allowPortraitFallback = false,
+                        numberedRanking = rowStyles[section.key] == HomeRowStyle.NumberedRanking,
+                        onPosterLongClick = onCatalogPosterLongClick?.let { open -> { item -> open(section.key, item) } },
                         onViewAllClick = if (section.canOpenCatalog(18)) { { onCatalogClick(section) } } else null,
                         watchedKeys = watchedKeys, onPosterClick = onPosterClick)
                 }

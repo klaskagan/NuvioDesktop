@@ -266,11 +266,17 @@ internal fun rememberHomeArtworkPrefetch(
     profileKey: String,
     language: String,
     apiKey: String,
+    rankedShelfKeys: Set<String> = emptySet(),
 ): PreparedArtworkStore {
-    val planned = remember(rows, visibleCardCount) { rows.map { (key, section) ->
+    val planned = remember(rows, visibleCardCount, rankedShelfKeys) { rows.map { (key, section) ->
+        val ranked = section?.key in rankedShelfKeys
         ArtworkPrefetchRow(key, if (section == null || preservesOriginalLandscapeArtwork(section.title, section.target) || section.target is com.nuvio.app.features.catalog.CatalogTarget.Seasonal) emptyList() else section.items.take(visibleCardCount + 1),
-            enhanceTitles = section != null && !preservesOriginalLandscapeArtwork(section.title, section.target) && section.target !is com.nuvio.app.features.catalog.CatalogTarget.Seasonal,
-            forceShape = if (section?.target is com.nuvio.app.features.catalog.CatalogTarget.Seasonal) PosterShape.Landscape else null,
+            enhanceTitles = !ranked && section != null && !preservesOriginalLandscapeArtwork(section.title, section.target) && section.target !is com.nuvio.app.features.catalog.CatalogTarget.Seasonal,
+            forceShape = when {
+                ranked -> PosterShape.Poster
+                section?.target is com.nuvio.app.features.catalog.CatalogTarget.Seasonal -> PosterShape.Landscape
+                else -> null
+            },
             alwaysShowTitle = section?.target is com.nuvio.app.features.catalog.CatalogTarget.Seasonal)
     } }
     return rememberListArtworkPrefetch(listState, planned, profileKey, enabled = true, language = language, apiKey = apiKey)

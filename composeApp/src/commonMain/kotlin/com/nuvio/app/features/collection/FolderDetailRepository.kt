@@ -519,9 +519,9 @@ object FolderDetailRepository {
         val collectionId = activeCollectionId ?: return emptyList()
 
         return current.tabs.filter { !it.isAllTab && it.items.isNotEmpty() }.mapNotNull { tab ->
+            val sourceKey = tab.sourceKey ?: return@mapNotNull null
             val directSource = current.artworkFolder != null || tab.source?.let { it.isTmdb || it.isTrakt } == true
             val target = if (directSource) {
-                val sourceKey = tab.sourceKey ?: return@mapNotNull null
                 CatalogTarget.CollectionSource(
                     collectionId = collectionId,
                     folderId = folder.id,
@@ -540,7 +540,7 @@ object FolderDetailRepository {
                 )
             }
             HomeCatalogSection(
-                key = "folder_${folder.id}_${tab.label}",
+                key = collectionShelfKey(collectionId, folder.id, sourceKey),
                 title = tab.label,
                 subtitle = tab.typeLabel,
                 addonName = "",
@@ -582,3 +582,8 @@ private fun traktCatalogId(source: CollectionSource): String =
         TraktListSort.normalize(source.sortBy),
         TraktSortHow.normalize(source.sortHow),
     ).joinToString("_")
+
+internal fun collectionShelfKey(collectionId: String, folderId: String, sourceKey: String): String =
+    listOf(collectionId, folderId, sourceKey).joinToString(separator = "", prefix = "collection-shelf:") {
+        "${it.length}:$it"
+    }

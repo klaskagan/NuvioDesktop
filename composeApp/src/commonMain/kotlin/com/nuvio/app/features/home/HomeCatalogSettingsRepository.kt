@@ -36,6 +36,7 @@ data class HomeCatalogSettingsItem(
     val collectionId: String? = null,
     val isPinnedToTop: Boolean = false,
     val supportsHero: Boolean = true,
+    val rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
 ) {
     val displayTitle: String
         get() = customTitle.ifBlank { defaultTitle }
@@ -47,6 +48,7 @@ data class HomeCatalogSettingsUiState(
     val showCatalogType: Boolean = true,
     val hideUnreleasedContent: Boolean = false,
     val items: List<HomeCatalogSettingsItem> = emptyList(),
+    val rowStyles: Map<String, HomeRowStyle> = emptyMap(),
 ) {
     val signature: String
         get() = buildString {
@@ -95,6 +97,7 @@ private data class StoredHomeCatalogSettingsPayload(
     val hideUnreleasedContent: Boolean = false,
     val items: List<StoredHomeCatalogPreference> = emptyList(),
     val appliedCollectionOrder: List<String>? = null,
+    val rowStyles: Map<String, String> = emptyMap(),
 )
 
 object HomeCatalogSettingsRepository {
@@ -128,6 +131,7 @@ object HomeCatalogSettingsRepository {
         set(value) {
             preferencesRef.value = value
         }
+    private var rowStyles: Map<String, String> = emptyMap()
     private var appliedCollectionOrder: List<String>? = null
     private var seasonalCollectionsEnabled = true
     private var heroEnabled = true
@@ -135,6 +139,7 @@ object HomeCatalogSettingsRepository {
     private var hideUnreleasedContent = false
 
     fun onProfileChanged() {
+        rowStyles = emptyMap()
         hasLoaded = false
         preferences = emptyMap()
         appliedCollectionOrder = null
@@ -152,6 +157,7 @@ object HomeCatalogSettingsRepository {
     }
 
     fun clearLocalState() {
+        rowStyles = emptyMap()
         hasLoaded = false
         definitions = emptyList()
         collectionDefinitions = emptyList()
@@ -298,8 +304,17 @@ object HomeCatalogSettingsRepository {
         }
     }
 
+    fun setRowStyle(key: String, style: HomeRowStyle) {
+        ensureLoaded()
+        if (!supportsHomeRowStyle(key) || HomeRowStyle.fromId(rowStyles[key]) == style) return
+        rowStyles = if (style == HomeRowStyle.Automatic) rowStyles - key else rowStyles + (key to style.id)
+        persist()
+        publish()
+    }
+
     fun resetToDefaults() {
         ensureLoaded()
+        rowStyles = emptyMap()
         appliedCollectionOrder = null
         seasonalCollectionsEnabled = true
         heroEnabled = true
@@ -384,6 +399,7 @@ object HomeCatalogSettingsRepository {
 
         if (parsedPayload != null) {
             lastPersistedPayload = payload
+            rowStyles = parsedPayload.rowStyles
             appliedCollectionOrder = parsedPayload.appliedCollectionOrder
             seasonalCollectionsEnabled = parsedPayload.seasonalCollectionsEnabled
             heroEnabled = parsedPayload.heroEnabled
@@ -470,6 +486,7 @@ object HomeCatalogSettingsRepository {
                 HomeCatalogSettingsItem(
                     key = definition.key,
                     supportsHero = definition.supportsHero,
+                    rowStyle = HomeRowStyle.fromId(rowStyles[definition.key]),
                     defaultTitle = definition.defaultTitle,
                     addonName = definition.addonName,
                     customTitle = preference?.customTitle.orEmpty(),
@@ -490,6 +507,7 @@ object HomeCatalogSettingsRepository {
                 heroSourceEnabled = false,
                 order = preference?.order ?: 0,
                 isCollection = true,
+                rowStyle = HomeRowStyle.fromId(rowStyles[colDef.key]),
                 collectionId = colDef.collectionId,
                 isPinnedToTop = colDef.isPinnedToTop,
             )
@@ -504,6 +522,7 @@ object HomeCatalogSettingsRepository {
             showCatalogType = showCatalogType,
             hideUnreleasedContent = hideUnreleasedContent,
             items = items,
+            rowStyles = rowStyles.mapValues { HomeRowStyle.fromId(it.value) },
         )
         if (_uiState.value != nextState) _uiState.value = nextState
     }
@@ -517,6 +536,7 @@ object HomeCatalogSettingsRepository {
                 hideUnreleasedContent = hideUnreleasedContent,
                 items = preferences.values.sortedBy { it.order },
                 appliedCollectionOrder = appliedCollectionOrder,
+                rowStyles = rowStyles,
             ),
         )
         if (payload == lastPersistedPayload) return

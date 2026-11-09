@@ -87,6 +87,7 @@ internal data class PosterActionTarget(
     val preview: MetaPreview,
     val libraryItem: LibraryItem? = null,
     val libraryListKey: String? = null,
+    val homeShelfKey: String? = null,
 )
 
 internal fun PlayerLaunch.toExternalPlayerPlaybackRequest(): ExternalPlayerPlaybackRequest =
