@@ -3,9 +3,20 @@ function officialPage(raw) {
   try {
     const u=new URL(raw,'https://go3.lt');
     if(u.origin!=='https://go3.lt' || u.username || u.password) return null;
-    if(!/^\/(?:watch|live_tv)\/[^/]+,(?:live|programme|vod)-\d+(?:\/[^/]+,programme-\d+)?$/.test(u.pathname)) return null;
+    if(!/^\/(?:lt\/)?(?:watch|live_tv)\/[^/]+,(?:live|programme|vod)-\d+(?:\/[^/]+,programme-\d+)?$/.test(u.pathname)) return null;
     return u.origin+u.pathname;
   } catch{return null;}
+}
+function browserWatchUrl(raw) {
+  try {
+    const url = new URL(raw);
+    if (url.search || url.hash || !officialPage(url.href)) return null;
+    // The metadata's /lt canonical prefix is not routed by the Go3 website.
+    url.pathname = url.pathname.replace(/^\/lt\//, '/');
+    return url;
+  } catch {
+    return null;
+  }
 }
 function artwork(raw) {
   try {const u=new URL(raw); if(u.origin!=='https://static3.go3.tv' || !u.pathname.startsWith('/scale/go3/'))return null;
@@ -25,4 +36,4 @@ function event(row) {
   const state=/GREITAI|UPCOMING/i.test(label)?'upcoming':/ARCHYVAS|ARCHIVE/i.test(label)?'replay':/TIESIOGIAI|LIVE/i.test(label)?'live':'listed';
   return {id:'go3:programme:'+programme,title,url,artwork:artwork(row.artwork),state,scheduleLabel:label.replace(/[\u0000-\u001f]/g,' ').trim().slice(0,500)};
 }
-module.exports={officialPage,artwork,event};
+module.exports={officialPage,artwork,event,browserWatchUrl};

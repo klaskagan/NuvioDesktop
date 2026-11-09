@@ -3779,6 +3779,7 @@ svg {
 }
 
 /* In-window lineup video keeps the established compact player controls. */
+.header-button[data-command="lineups"][hidden] { display: none; }
 .header-button[data-command="lineups"] { width: auto; padding-inline: 12px; }
 .header-button[data-command="lineups"][aria-pressed="true"] { background: rgba(255,255,255,.2); }
 .player.lineups-mode .metadata,

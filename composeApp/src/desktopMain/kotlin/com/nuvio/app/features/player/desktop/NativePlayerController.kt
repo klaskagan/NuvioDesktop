@@ -1605,6 +1605,8 @@ private data class NativeControlsStructureKey(
 internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageReady: () -> Unit): String =
     buildString {
         append('{')
+        appendJsonField("lineupsAvailable", lineupsAvailable)
+        append(',')
         appendJsonField("lineupsActive", lineupsActive)
         append(',')
         appendJsonField("title", title)

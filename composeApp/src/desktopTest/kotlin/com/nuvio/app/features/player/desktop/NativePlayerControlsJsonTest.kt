@@ -2,6 +2,7 @@ package com.nuvio.app.features.player.desktop
 
 import com.nuvio.app.features.player.PlayerControlsState
 import com.nuvio.app.features.player.PlayerControlTvDevice
+import com.nuvio.app.features.player.supportsFootballLineups
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
@@ -11,6 +12,18 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class NativePlayerControlsJsonTest {
+    @Test
+    fun `lineups availability reaches native controls only for explicit sports types`() {
+        for (type in listOf(null, "", "movie", "series", "trailer", "sport", "Sports")) {
+            val state = PlayerControlsState(lineupsAvailable = supportsFootballLineups(type))
+            for (fullscreen in listOf(false, true)) {
+                val payload = Json.parseToJsonElement(state.toControlsJson(fullscreen) {}).jsonObject
+                assertEquals(fullscreen, payload.getValue("isFullscreen").jsonPrimitive.boolean)
+                assertEquals(type == "sport" || type == "Sports", payload.getValue("lineupsAvailable").jsonPrimitive.boolean)
+            }
+        }
+    }
+
     @Test
     fun `controls payload parses with handoff enabled and disabled`() {
         for (enabled in listOf(false, true)) {

@@ -136,7 +136,9 @@ private fun NativePlayerSurface(
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
 ) {
-    var lineupsOpen by remember(sourceUrl) { mutableStateOf(false) }
+    val lineupsRequested = remember(sourceUrl, playerControlsState.lineupsAvailable) { mutableStateOf(false) }
+    val latestLineupsRequested by rememberUpdatedState(lineupsRequested)
+    val lineupsOpen = playerControlsState.lineupsAvailable && lineupsRequested.value
     val lineupSession = remember(sourceUrl) { FootballLineupSession(playerControlsState.title) }
     val platformDensity = LocalNuvioPlatformDensity.current
     val host = remember(useYoutubeChunkedPlayback) { NativePlayerHost(embedded = useYoutubeChunkedPlayback) }
@@ -220,8 +222,18 @@ private fun NativePlayerSurface(
             onAction = { action -> latestOnPlayerControlsAction.value(action) },
             onEvent = { type, value ->
                 when (type) {
-                    "lineups" -> { DesktopPlayerPictureInPicture.clear(); lineupsOpen = !lineupsOpen; true }
-                    "pictureInPicture", "pip" -> { lineupsOpen = false; latestOnPlayerControlsEvent.value(type, value) }
+                    "lineups" -> {
+                        if (!latestPlayerControlsState.value.lineupsAvailable) false
+                        else {
+                            DesktopPlayerPictureInPicture.clear()
+                            latestLineupsRequested.let { it.value = !it.value }
+                            true
+                        }
+                    }
+                    "pictureInPicture", "pip" -> {
+                        latestLineupsRequested.value = false
+                        latestOnPlayerControlsEvent.value(type, value)
+                    }
                     else -> latestOnPlayerControlsEvent.value(type, value)
                 }
             },
@@ -298,7 +310,8 @@ private fun NativePlayerSurface(
 
     LaunchedEffect(controller) {
         DesktopPlayerPictureInPicture.changes.drop(1).collect {
-            controller.updateControls(latestPlayerControlsState.value.copy(lineupsActive = lineupsOpen))
+            val controls = latestPlayerControlsState.value
+            controller.updateControls(controls.copy(lineupsActive = controls.lineupsAvailable && latestLineupsRequested.value))
         }
     }
 
@@ -333,7 +346,7 @@ private fun NativePlayerSurface(
     ) {
         if (lineupsOpen) FootballLineupsPanel(
             Modifier.fillMaxSize(),
-            close = { lineupsOpen = false }, session = lineupSession,
+            close = { lineupsRequested.value = false }, session = lineupSession,
         )
         // SwingPanel keeps the stable AWT host. PiP moves only the native player
         // surface to the independent window, so Compose never loses its host peer.

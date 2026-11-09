@@ -18,7 +18,7 @@ class Go3IntegrationTest {
     @Test fun discoverOpensProgrammeDetailsAndDispatchesExactReplay() = runDesktopComposeUiTest(width=1200,height=900) {
         assumeTrue(System.getProperty("nuvio.test.isolatedHome")=="true")
         val replay="https://go3.lt/live_tv/extra,live-6886504/sunderland-leeds,programme-12642899"
-        var opened: String?=null
+        var opened: Go3Playback.Request?=null
         var accountAction: String?=null
         Go3Catalog.accountAction={accountAction=it;true}
         Go3Playback.open={opened=it;true}
@@ -40,7 +40,7 @@ class Go3IntegrationTest {
             val imageFile=File("build/reports/go3/details-fixed.png").apply {parentFile.mkdirs()}
             ImageIO.write(onRoot().captureToImage().toAwtImage(),"png",imageFile)
             onNodeWithText("Watch on Go3").assertExists().performClick()
-            assertEquals(replay,opened)
+            assertEquals(Go3Playback.Request(replay, "Go3 test replay"), opened)
             onNodeWithContentDescription("Back").performClick()
             mainClock.advanceTimeBy(600)
             onNodeWithContentDescription("Settings").performClick()
@@ -70,6 +70,7 @@ class Go3IntegrationTest {
             Go3Catalog.loader={throw IllegalStateException("offline")}
             val stale=Go3Catalog.page("cache-test","Replay",true)
             assertEquals("stale",stale.single().status)
+            assertEquals("stale", Go3Catalog.cachedPage("cache-test", "Replay")?.single()?.status)
             assertEquals("replay",Go3Catalog.find("go3:programme:9002")?.state)
         } finally {Go3Catalog.loader=null}
     }

@@ -1,4 +1,4 @@
-const {test}=require('node:test');const a=require('node:assert/strict');const {event,officialPage,artwork}=require('./events.cjs');
+const {test}=require('node:test');const a=require('node:assert/strict');const {event,officialPage,artwork,browserWatchUrl}=require('./events.cjs');
 test('programme identity and exact destination survive normalization',()=>{
  const x=event({url:'/live_tv/go3,live-10267383/vienna,programme-12669382?tracking=x',name:'Vienna',label:'TIESIOGIAI'});
  a.equal(x.id,'go3:programme:12669382');a.equal(x.state,'live');a.equal(x.url,'https://go3.lt/live_tv/go3,live-10267383/vienna,programme-12669382');
@@ -17,4 +17,15 @@ test('Champions League uses its official competition category rather than live-o
  const {SOURCES}=require('./event-catalog.cjs');
  a.equal(SOURCES.ucl,'https://go3.lt/categories/uefachampionsleague,category-6886205');
  a.notEqual(SOURCES.ucl,SOURCES.live);
+});
+
+
+test('browser watch maps metadata canonical paths onto the Go3 website route', () => {
+ const path = '/live_tv/go3-sport-1,live-4296024/laliga-valencia---real-madrid,programme-12705179';
+ a.equal(browserWatchUrl('https://go3.lt/lt' + path).href, 'https://go3.lt' + path);
+ a.equal(browserWatchUrl('https://go3.lt' + path).href, 'https://go3.lt' + path);
+ a.equal(browserWatchUrl('https://go3.lt/lt' + path + '?token=private'), null);
+ a.equal(browserWatchUrl('https://go3.lt/lt' + path + '#fragment'), null);
+ a.equal(browserWatchUrl('https://example.com/lt' + path), null);
+ a.equal(browserWatchUrl('https://user@go3.lt/lt' + path), null);
 });

@@ -23,13 +23,32 @@ import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.components.DesktopDetailBackdrop
 import com.nuvio.app.features.details.components.DetailActionButtons
 import com.nuvio.app.navigation.LocalNativeNavigationBarHidden
+import kotlinx.coroutines.CancellationException
 
 /** Uses the same backdrop, primary action and circular back control as desktop details. */
 @Composable
 fun Go3EventScreen(id: String, onBack: () -> Unit) {
     val fullscreen=isFullscreenActionActive()
-    val event=Go3Catalog.find(id)
-    var error by remember(id) {mutableStateOf<String?>(null)}
+    val loader = Go3Catalog.programmeLoader
+    var event by remember(id) { mutableStateOf(Go3Catalog.find(id)) }
+    var loading by remember(id) { mutableStateOf(loader != null) }
+    var refreshFailed by remember(id) { mutableStateOf(false) }
+    var retry by remember(id) { mutableIntStateOf(0) }
+    var error by remember(id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(id, retry) {
+        if (loader == null) return@LaunchedEffect
+        try {
+            val refreshed = loader(id)
+            event = refreshed.copy(artwork = refreshed.artwork ?: event?.artwork)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            refreshFailed = true
+            error = "Go3 programme could not refresh."
+        } finally {
+            loading = false
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds().background(MaterialTheme.colorScheme.background)) {
         val inset=desktopPageHorizontalPaddingForWidth(maxWidth.value)
         val meta=remember(event) {MetaDetails(id=id,type="sport",name=event?.title ?: "Go3",background=event?.artwork,poster=event?.artwork)}
@@ -46,11 +65,30 @@ fun Go3EventScreen(id: String, onBack: () -> Unit) {
                 color=MaterialTheme.colorScheme.onBackground)
             Text(event?.schedule ?: "This listing is no longer loaded. Return to Discover.",
                 style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurface)
-            DetailActionButtons(playLabel=if(event?.state=="upcoming") "Upcoming on Go3" else "Watch on Go3",
-                playEnabled=event!=null && event.state!="upcoming",onPlayClick={
-                    Go3Playback.fullscreenRequested=fullscreen
-                    if(event!=null && Go3Playback.open?.invoke(event.url)!=true)error="Go3 player could not open. Check Go3 settings."
-                })
+            DetailActionButtons(
+                playLabel = when {
+                    loading -> "Checking Go3 availability…"
+                    refreshFailed -> "Retry"
+                    event?.state == "upcoming" -> "Upcoming on Go3"
+                    event?.playable == true -> "Watch on Go3"
+                    else -> "Unavailable on Go3"
+                },
+                playEnabled = !loading && (refreshFailed || event?.playable == true),
+                onPlayClick = {
+                    if (refreshFailed) {
+                        loading = true
+                        refreshFailed = false
+                        error = null
+                        retry++
+                    } else {
+                        event?.takeIf { it.playable }?.let {
+                            if (Go3Playback.open?.invoke(Go3Playback.Request(it.url, it.title, fullscreen)) != true) {
+                                error = "Go3 player could not open. Check Go3 settings."
+                            }
+                        }
+                    }
+                },
+            )
             error?.let {Text(it,color=MaterialTheme.colorScheme.error)}
         }
         FullscreenActionButton(modifier=Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top=32.dp,end=inset),

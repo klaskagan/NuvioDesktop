@@ -30,7 +30,7 @@ object FootballLineupDecoder {
         return listOf("home", "away").mapNotNull { side ->
             val o = d.objectOrEmpty(side)
             // Never silently substitute a predicted XI for the original team sheet.
-            if ((o["confirmed"] as? JsonPrimitive)?.booleanOrNull != true) return@mapNotNull null
+            if (o["confirmed"] != JsonPrimitive(true)) return@mapNotNull null
             val team = d.objectOrEmpty("${side}_team")
             fun players(key: String) = (o[key] as? JsonArray).orEmpty().map {
                 val player = it.jsonObject
@@ -43,3 +43,6 @@ object FootballLineupDecoder {
         }
     }
 }
+
+internal fun supportsFootballLineups(contentType: String?): Boolean =
+    contentType.equals("sport", ignoreCase = true) || contentType.equals("sports", ignoreCase = true)

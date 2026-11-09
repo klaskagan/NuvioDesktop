@@ -952,7 +952,7 @@ internal fun MainAppContent(
 
         fun openExternalStreamUrl(url: String): Boolean {
             if (Go3Playback.isWatchUrl(url) && Go3Playback.open != null) {
-                val opened = Go3Playback.open?.invoke(url) == true
+                val opened = Go3Playback.open?.invoke(Go3Playback.Request(url)) == true
                 if (!opened) NuvioToastController.show("Go3 player unavailable. Check the Go3 runtime configuration.")
                 return opened
             }

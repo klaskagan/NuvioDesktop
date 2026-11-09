@@ -16,7 +16,16 @@ Predicted lineups are excluded: PitchAPI must mark the side confirmed.
 
 ## Data and spoiler contract
 
-GET /v1/date/{date} finds fixtures by team name and explicit original match date.
+Desktop Go3 carries the exact programme title from Watch into the player.
+Live Extra channels can replace the browser title with “Extra tiesiogiai”
+after playback starts. Resolve the fixture from the selected programme title
+when available, and use the page title for bare playback URLs.
+
+GET /v1/date/{date}?status=all includes live and scheduled fixtures. The
+default PitchAPI response is played-only, which hid confirmed live Premier
+League team sheets. The Go3 resolver checks both Premier League team labels
+and the league, including Go3's “Premier Leauge” spelling, Brighton's “and”
+versus “&”, and Bournemouth's optional “AFC” prefix.
 GET /v1/matches/{id}/lineups fetches that fixture's original team sheet.
 Match IDs are opaque strings. Always send X-API-KEY and NuvioDesktop/1.0
 User-Agent; the direct test initially received HTTP 403 without a User-Agent.
@@ -86,3 +95,25 @@ pitch height. Do not size its width and height using unrelated percentages or
 force the pitch to viewport height; both caused the vertically stretched field
 and oval centre marking in the Go3 screenshot. Check computed pitch and circle
 bounds at wide and tall window sizes when changing video/rail dimensions.
+
+
+## Desktop native player eligibility
+
+The native controls WebView receives Lineups availability from the playback
+request's explicit `sport` or `sports` content type. The button starts hidden
+until that state arrives. The native command handler checks the same eligibility,
+including after a source or content type changes. Movie, episode and trailer
+requests leave the action hidden. `NativePlayerControlsJsonTest` checks the
+sports-only value crossing the WebView bridge.
+
+
+## Go3 fullscreen ownership
+
+Electron window fullscreen keeps the document-level Lineups action available.
+For HTML element fullscreen, move the same action and open panel into the
+fullscreen player container. A body-mounted button disappears behind that
+container regardless of z-index. Video-only fullscreen also makes other
+elements inert, including a popover. In that case the helper uses fullscreen
+on the existing Electron window so the playing video and Lineups can coexist.
+Test windowed playback, native window fullscreen, fullscreen containers, and
+video-only fullscreen with open, restore and keyboard focus on the same video.

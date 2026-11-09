@@ -62,14 +62,12 @@ The user chose built-in Go3 catalogues rather than a hosted addon. Nothing has
 been published to GitHub or Cloudflare. The separate `../go3-feasibility/inactive-addon-prototype` skeleton is
 inactive and is not used by the desktop application.
 
-Normal macOS MainKt startup installs a local Go3 service. Search → Discover →
-Sport includes **Go3 Live Events** and **Go3 Premier League** alongside existing
-sources, without installing an addon or changing account/catalogue configuration.
-Cards use Go3 landscape images, programme titles and availability labels. Missing
-images use a Go3 text placeholder. Programme details dispatch their exact official
-`/live_tv/.../programme-ID` route, including replays, to the same managed window.
-Filters currently cover availability; no inferred sport or match metadata is used.
-Source schedule labels are shown as provided rather than guessing absent dates.
+Normal macOS MainKt startup registers ten built-in sources under Search → Discover
+→ Sport. These match NuvioTV's Go3 Live Events, Premier League, Champions League,
+Europa League, Conference League, La Liga, Bundesliga, Ligue 1, Serie A and FA Cup.
+No addon or account configuration is needed for listings. Cards use landscape
+artwork and availability labels. The detail screen refreshes the exact programme
+before enabling Watch for a live event or an available replay.
 
 Settings → Content & Discovery → Go3 opens official sign-in and offers a confirmed
 local session reset. UI status describes local actions, not a verified account
@@ -83,20 +81,21 @@ Configuration for development:
   approved investigation profile is reused when present; otherwise desktop uses
   `~/Library/Application Support/Nuvio/Go3`. No Chrome profile is copied.
 
-One hidden browser reads public programme cards from the official live-sports and
-Premier League pages. It collects only programme URLs, image URLs with allowlisted
-transformation parameters, titles and labels. It excludes channel/footer links,
-preserves programme identity and serializes requests to prevent competing page
-navigations. Listings cache for two minutes in memory. Failed refreshes can show
-previously loaded cards marked STALE; Go3 still decides availability at playback.
-The catalogue currently covers cards rendered by those pages, not an asserted
-complete historic archive or account-specific subscription inventory.
+The desktop app reads the same credential-free public metadata endpoints as
+NuvioTV. The live section is 7998051, and competition listings use the bounded,
+paginated programme catalog endpoint. Both admit programme identities only.
+Listings cache for two minutes and preserve available artwork and stale cards
+after a failed refresh. A replay requires a recording ID and an active catch-up
+window. Keep the channel and programme IDs from the API route. At browser
+dispatch, remove only the leading `/lt` locale segment. Go3's site renders its
+404 view for the localized canonical URLs even when navigation succeeds.
+`events.test.cjs` checks that normalization preserves the programme and URL
+restrictions. Verify the rendered match page in Electron when changing routing.
+Go3 still decides playback entitlement in the existing DRM runtime.
 
-Observed local service check: 3 live programmes, all with artwork; 16 EPL entries
-(upcoming and replay), 10 with usable artwork. Every result had a programme link.
-One observed replay artwork URL returned HTTP 200 without cookies. Direct public
-HTML retrieval returned 403; this integration uses the official browser runtime.
-No cloud scraper is involved.
+`Go3PublicCatalogTest` checks the source IDs, metadata boundary, pagination,
+artwork and replay eligibility without using an account. Browser catalogue scripts
+remain available for the historical helper probes.
 
 Development checks:
 
@@ -241,7 +240,11 @@ Release builds carry the source-only Go3 helper in the Compose application
 resources (`go3/`). The launcher resolves that directory through
 `compose.application.resources.dir` before considering development checkout paths.
 A Finder launch must work with an unrelated working directory; MainKt alone is
-not a regression check for this path. `Go3RuntimePathsTest` covers both layouts.
+not a regression check for this path. MainKt also stages the helper in its build
+resources, so the checkout runtime fallback uses the Gradle working directory
+to find the source checkout independently. This lets an isolated MainKt profile
+launch Go3 even when its temporary home has no vendor runtime.
+`Go3RuntimePathsTest` covers all three layouts.
 
 The existing vendor browser remains a local prerequisite at
 `~/Library/Application Support/Nuvio/Go3Runtime/Electron.app`; it is not included

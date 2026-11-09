@@ -11,7 +11,7 @@ internal fun LazyListScope.go3SettingsContent(isTablet: Boolean) {
         var confirmReset by remember {mutableStateOf(false)}
         SettingsSection(title="Go3",isTablet=isTablet) {
             SettingsGroup(isTablet=isTablet) {
-                SettingsNavigationRow(title="Sign in / Open Go3",description=status,isTablet=isTablet,onClick={Go3Catalog.action("signin")})
+                SettingsNavigationRow(title="Sign in / Open Go3",description="$status Sign in with your Go3 email or phone number and password.",isTablet=isTablet,onClick={Go3Catalog.action("signin")})
                 SettingsGroupDivider(isTablet=isTablet)
                 SettingsNavigationRow(title="Reset Go3 session",description="Sign out on this Mac. Your Nuvio account is unaffected.",isTablet=isTablet,onClick={confirmReset=true})
             }

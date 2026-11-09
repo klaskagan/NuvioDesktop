@@ -2843,7 +2843,10 @@ const renderChrome = () => {
   root.classList.toggle("pip-mode", Boolean(state.isInPip));
   root.classList.toggle("lineups-mode", Boolean(state.lineupsActive));
   const lineupButton = document.querySelector('[data-command="lineups"]');
-  if (lineupButton) lineupButton.setAttribute("aria-pressed", String(Boolean(state.lineupsActive)));
+  if (lineupButton) {
+    lineupButton.hidden = !state.lineupsAvailable;
+    lineupButton.setAttribute("aria-pressed", String(Boolean(state.lineupsActive)));
+  }
   if (!state.isInPip && isPipLocked) setPipLocked(false);
   root.classList.toggle("chrome-hidden", Boolean(showError || !state.controlsVisible));
   root.classList.toggle("modal-open", Boolean(activeModal));

@@ -6,6 +6,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import java.util.prefs.Preferences
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 internal object FootballKeyStore {
     private val prefs get() = Preferences.userRoot().node("com/nuvio/football-local")
@@ -28,10 +29,12 @@ internal class PitchApiProvider(private val key: String) : FootballLineupProvide
         check(response.status.value in 200..299) { "Football data unavailable. Check your PitchAPI key or retry." }
         return readBoundedResponseBody(response.bodyAsChannel(), response.headers["Content-Length"]?.toLongOrNull())
     }
-    suspend fun validate() { FootballLineupDecoder.matches(get("date/${LocalDate.now()}")) }
+    private suspend fun fixtures(date: LocalDate) =
+        FootballLineupDecoder.matches(get("date/$date?status=all"))
+
+    suspend fun validate() { fixtures(LocalDate.now(ZoneOffset.UTC)) }
     override suspend fun matches(team: String, date: String): List<FootballMatch> {
-        LocalDate.parse(date)
-        return FootballLineupDecoder.matches(get("date/$date")).filter {
+        return fixtures(LocalDate.parse(date)).filter {
             it.home.contains(team, ignoreCase = true) || it.away.contains(team, ignoreCase = true)
         }
     }
@@ -39,13 +42,15 @@ internal class PitchApiProvider(private val key: String) : FootballLineupProvide
         fun normalize(value: String) = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
             .replace(Regex("""\p{M}+"""), "").lowercase()
             .replace(Regex("man[ .-]+utd|man[ .-]+united"), "manchester united")
+            .replace("&", " and ")
+            .replace(Regex("""\bafc bournemouth\b"""), "bournemouth")
             .replace(Regex("[^a-z0-9]+"), " ").trim()
         val normalized = normalize(title)
         val explicit = Regex("""\d{4}-\d{2}-\d{2}""").find(title)?.value
         val dates = if (explicit != null) listOf(LocalDate.parse(explicit))
-            else (0L..14L).map { LocalDate.now().minusDays(it) }
+            else LocalDate.now(ZoneOffset.UTC).let { today -> (0L..14L).map(today::minusDays) }
         return dates.flatMap { date ->
-            FootballLineupDecoder.matches(get("date/$date")).filter {
+            fixtures(date).filter {
                 normalized.contains(normalize(it.home)) && normalized.contains(normalize(it.away))
             }
         }.distinctBy { it.id }

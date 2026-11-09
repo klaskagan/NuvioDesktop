@@ -327,6 +327,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         )
     }
     val playerControlsState = PlayerControlsState(
+        lineupsAvailable = supportsFootballLineups(contentType ?: parentMetaType),
         chapters = controlChapters,
         chaptersLabel = stringResource(Res.string.compose_player_chapters),
         chaptersPanelTitle = stringResource(Res.string.compose_player_panel_chapters, chapters.size),

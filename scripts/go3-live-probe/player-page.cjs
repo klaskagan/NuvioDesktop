@@ -29,7 +29,7 @@ function activateOfficialWatch(doc) {
   if(!visible(e)||e.disabled||e.getAttribute?.('aria-disabled')==='true')return false;
   const label=(e.querySelector?.('.o-button__label')?.textContent||e.textContent).replace(/[\uE000-\uF8FF]/g,'').normalize('NFD').replace(/\p{M}/gu,'').trim();
   if(!/^(ziureti|watch|watch now)$/i.test(label))return false;
-  if(e.tagName==='A') {try {const u=new URL(e.href,doc.location.href);if(u.origin!=='https://go3.lt'||!u.pathname.startsWith('/watch/'))return false;}catch{return false;}}
+  if(e.tagName==='A') {try {const u=new URL(e.href,doc.location.href);if(u.origin!=='https://go3.lt'||!/^\/(?:lt\/)?watch\//.test(u.pathname))return false;}catch{return false;}}
   return true;
  });
  if(matches.length!==1)return false;

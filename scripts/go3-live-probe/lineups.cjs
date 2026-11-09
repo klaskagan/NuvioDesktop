@@ -1,5 +1,5 @@
 // The official Go3 video stays mounted. Only its CSS presentation changes.
-function installLineups(doc) {
+function installLineups(doc, programmeTitle) {
  if (doc.getElementById('nuvio-lineups-toggle')) return;
  const style=doc.createElement('style');
  style.textContent=`
@@ -33,33 +33,69 @@ function installLineups(doc) {
  doc.head.append(style);
  const button=doc.createElement('button');button.id='nuvio-lineups-toggle';button.textContent='Lineups';button.setAttribute('aria-pressed','false');doc.body.append(button);
  let panel, selected, sequence=0;
+ let fullscreenTransition=false;
+ const fullScreenHost=()=>doc.fullscreenElement;
+ let videoFullscreenInWindow=false;
+ const syncFullscreen=()=>{
+  const fullscreen=fullScreenHost();
+  if(fullscreen?.tagName==='VIDEO') {
+   // Chromium makes the rest of the document inert during video-only fullscreen.
+   // Use Electron window fullscreen so the same player and its controls stay interactive.
+   if(!fullscreenTransition) {
+    fullscreenTransition=true;
+    doc.exitFullscreen().then(()=>{
+     videoFullscreenInWindow=!videoFullscreenInWindow;
+     send('videoWindowFullscreen',{id:0,active:videoFullscreenInWindow});
+    }).catch(()=>{}).finally(()=>{fullscreenTransition=false;});
+   }
+   return;
+  }
+  const host=fullscreen || doc.body;
+  if(button.parentElement!==host)host.append(button);
+  if(panel && panel.parentElement!==host)host.append(panel);
+ };
+ doc.addEventListener('fullscreenchange',syncFullscreen);
+ const send=(operation,args)=>console.info('NUVIO_LINEUPS_REQUEST:'+JSON.stringify({operation,...args}));
  const cache=new Map();
  const savedControls=new Map();
  const el=(tag,text,parent)=>{const node=doc.createElement(tag);if(text)node.textContent=text;if(parent)parent.append(node);return node;};
- const close=()=>{for(const [video,controls] of savedControls)video.controls=controls;savedControls.clear();sequence++;panel?.remove();panel=null;doc.body.classList.remove('nuvio-lineups-open');button.setAttribute('aria-pressed','false');};
+ const close=()=>{
+  for(const [video,{controls, ancestors}] of savedControls) {
+   video.controls=controls;
+   ancestors.forEach(parent=>parent.removeAttribute('data-nuvio-video-ancestor'));
+  }
+  savedControls.clear();
+  sequence++;
+  panel?.remove();
+  panel=null;
+  doc.body.classList.remove('nuvio-lineups-open');
+  button.setAttribute('aria-pressed','false');
+  button.focus?.();
+ };
  const request=(operation,args)=>{
   const id=++sequence;window.__nuvioLineupsReceive=(reply)=>{
    if(!panel||id!==sequence||reply.id!==id)return;
    status.textContent=reply.error||'';
    if(reply.error)return;
    if(operation==='resolve'){
-    if(reply.data.length!==1){status.textContent=reply.data.length?'More than one matching fixture was found. Original programme date is required.':'No confirmed match found for this programme.';return;}
+    if(reply.data.length!==1){status.textContent=reply.data.length?'More than one matching fixture was found. Original programme date is required.':'No matching fixture found for this programme.';return;}
     selected=reply.data[0];
     if(cache.has(selected.id))render(cache.get(selected.id));else request('lineups',{fixture:selected.id});
    }else{cache.set(selected.id,reply.data);render(reply.data);}
 
   };
   status.textContent='Loading…';
-  console.info('NUVIO_LINEUPS_REQUEST:'+JSON.stringify({id,operation,...args}));
+  send(operation,{id,...args});
  };
  let status;
  const automatic=()=>{
   panel.replaceChildren();
   el('h2','Football lineups',panel);
   status=el('p','Finding the original match…',panel);status.setAttribute('role','status');
-  const date=doc.title.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0];
+  const title=programmeTitle || doc.title;
+  const date=title.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0];
   const retry=el('button','Retry',panel);retry.onclick=automatic;
-  request('resolve',{title:doc.title,date});
+  request('resolve',{title,date});
  };
  const render=teams=>{
   panel.replaceChildren();
@@ -92,13 +128,36 @@ function installLineups(doc) {
   });
   status=el('p','',panel);
  };
- button.onclick=()=>{
-  if(panel){close();return;}
+ const open=()=>{
   panel=el('section','',doc.body);panel.id='nuvio-lineups-panel';panel.setAttribute('aria-label','Football lineups');
-  for(const video of doc.querySelectorAll('video')){savedControls.set(video,video.controls);video.controls=true;for(let parent=video.parentElement;parent&&parent!==doc.body;parent=parent.parentElement)parent.setAttribute('data-nuvio-video-ancestor','');}
+  for(const video of doc.querySelectorAll('video')){
+   const ancestors=[];
+   for(let parent=video.parentElement;parent&&parent!==doc.body;parent=parent.parentElement) {
+    if(parent===fullScreenHost())break;
+    parent.setAttribute('data-nuvio-video-ancestor','');
+    ancestors.push(parent);
+   }
+   savedControls.set(video,{controls:video.controls,ancestors});
+   video.controls=true;
+  }
+  syncFullscreen();
   doc.body.classList.add('nuvio-lineups-open');button.setAttribute('aria-pressed','true');if(selected&&cache.has(selected.id))render(cache.get(selected.id));else automatic();
  };
- doc.addEventListener('keydown',event=>{if(event.key==='Escape'&&panel){event.preventDefault();event.stopImmediatePropagation();close();}},true);
+ button.onclick=()=>{
+  if(panel){close();return;}
+  open();
+ };
+ syncFullscreen();
+ doc.addEventListener('keydown',event=>{
+  if(event.key!=='Escape')return;
+  if(panel)close();
+  else if(videoFullscreenInWindow) {
+   videoFullscreenInWindow=false;
+   send('videoWindowFullscreen',{id:0,active:false});
+  } else return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+ },true);
 }
 function responseData(body) {
  if(body.error || !body.data)throw Error('Football data unavailable. Check your PitchAPI key or retry.');
@@ -119,23 +178,39 @@ function decodeLineups(body) {
 async function lookup(key,command,fetcher=fetch) {
  if(!key)throw Error('Set your free PitchAPI key in Nuvio Settings → Playback → Player → Football Lineups, then reopen Go3 playback.');
  const get=async(path)=>{
-  const r=await fetcher('https://api.pitchapi.dev/v1/'+path,{headers:{'X-API-KEY':key,'User-Agent':'NuvioDesktop/1.0','Accept':'application/json'},signal:AbortSignal.timeout(20000)});
+  const r=await fetcher('https://api.pitchapi.dev/v1/'+path,{headers:{'X-API-KEY':key,'User-Agent':'NuvioDesktop/1.0','Accept':'application/json'},redirect:'error',signal:AbortSignal.timeout(20000)});
   if(!r.ok)throw Error('Football data unavailable. Check your PitchAPI key or retry.');
   return r.json();
  };
+ const fixtures=async date=>decodeMatches(await get('date/'+date+'?status=all'));
  if(command.operation==='resolve'&&typeof command.title==='string'&&command.title.length<=1000){
-  const normalize=s=>String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/man[ .-]+utd|man[ .-]+united/g,'manchester united').replace(/[^a-z0-9]+/g,' ').trim();
-  const title=normalize(command.title);const found=new Map();
+  const normalize=s=>String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+   .replace(/man[ .-]+utd|man[ .-]+united/g,'manchester united')
+   .replace(/&/g,' and ').replace(/\bafc bournemouth\b/g,'bournemouth')
+   .replace(/[^a-z0-9]+/g,' ').trim();
+  const title=normalize(command.title);
+  // Go3 has shipped both spellings in programme titles.
+  const premierTitle=command.title.match(/^premier lea(?:gue|uge)[.:]\s*(.*)$/i);
+  const premierTeams=premierTitle?.[1]
+   .replace(/\s+[-–—]\s+go3\b.*$|\s*\|\s*go3\s*$/i,'')
+   .replace(/\s+\(?\d{4}-\d{2}-\d{2}\)?\s*$/,'')
+   .split(/\s+(?:[-–—]|vs\.?|v\.?)\s+/i).map(normalize);
+  const found=new Map();
   const explicit=typeof command.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(command.date)?command.date:null;
   const dates=explicit?[explicit]:Array.from({length:15},(_,i)=>new Date(Date.now()-i*86400000).toISOString().slice(0,10));
-  for(const date of dates)for(const m of decodeMatches(await get('date/'+date))){
-   if(title.includes(normalize(m.home))&&title.includes(normalize(m.away)))found.set(m.id,m);
+  for(const date of dates)for(const m of await fixtures(date)){
+   const home=normalize(m.home),away=normalize(m.away);
+   const matches=premierTeams
+    ? premierTeams.length===2 && normalize(m.competition)==='premier league' &&
+      ((premierTeams[0]===home && premierTeams[1]===away) || (premierTeams[0]===away && premierTeams[1]===home))
+    : home && away && title.includes(home) && title.includes(away);
+   if(matches)found.set(m.id,m);
   }
   return [...found.values()];
  }
  if(command.operation==='matches'&&typeof command.team==='string'&&command.team.length>=3&&command.team.length<=100&&/^\d{4}-\d{2}-\d{2}$/.test(command.date)){
   const team=command.team.toLowerCase();
-  return decodeMatches(await get('date/'+command.date)).filter(m=>m.home.toLowerCase().includes(team)||m.away.toLowerCase().includes(team));
+  return (await fixtures(command.date)).filter(m=>m.home.toLowerCase().includes(team)||m.away.toLowerCase().includes(team));
  }
  if(command.operation==='lineups'&&typeof command.fixture==='string'&&/^m_[A-Za-z0-9]+$/.test(command.fixture))
   return decodeLineups(await get('matches/'+command.fixture+'/lineups'));
