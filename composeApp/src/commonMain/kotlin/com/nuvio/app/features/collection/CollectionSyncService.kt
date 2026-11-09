@@ -76,19 +76,15 @@ object CollectionSyncService {
                 return
             }
 
-            val remoteCollections = runCatching {
-                json.decodeFromString<List<Collection>>(remoteJson)
-            }.getOrNull()
-
-            if (remoteCollections != null) {
-                if (ProfileRepository.activeProfileId != profileId) return@runCatching
-                isSyncingFromRemote = true
-                CollectionRepository.applyFromRemote(remoteCollections, remoteCollectionsJson)
-                isSyncingFromRemote = false
-                if (CollectionRepository.hasPendingSeasonalMigration()) triggerPush()
-                log.i { "pullFromServer — applied ${remoteCollections.size} collections from remote" }
-            } else {
+            isSyncingFromRemote = true
+            val collectionCount = CollectionRepository.applyFromRemote(remoteCollectionsJson, profileId)
+            isSyncingFromRemote = false
+            if (ProfileRepository.activeProfileId != profileId) return@runCatching
+            if (collectionCount == null) {
                 log.w { "pullFromServer — failed to parse remote collections JSON" }
+            } else {
+                if (CollectionRepository.hasPendingSeasonalMigration()) triggerPush()
+                log.i { "pullFromServer — applied $collectionCount collections from remote" }
             }
         }.onFailure { e ->
             isSyncingFromRemote = false

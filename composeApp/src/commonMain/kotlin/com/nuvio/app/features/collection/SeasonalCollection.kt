@@ -28,25 +28,39 @@ object SeasonalCollection {
         return collection.copy(folders = folders)
     }
 
-    private fun folderId(theme: SeasonalTheme) = "seasonal_${theme.id}"
+    internal fun folderId(theme: SeasonalTheme) = "seasonal_${theme.id}"
 
     fun defaults(): Collection = runBlocking {
         Collection(ID, getString(Res.string.seasonal_collection_title), viewMode = FolderViewMode.ROWS.name,
             folders = SeasonalTheme.entries.map { theme ->
                 CollectionFolder(id = folderId(theme), title = getString(theme.title),
                     tileShape = "landscape", seasonalThemeId = theme.id,
-                    sources = definitions(theme).map { entry ->
-                        CollectionSource(provider = "tmdb", tmdbSourceType = "DISCOVER", title = getString(entry.title),
-                            mediaType = entry.mediaType, seasonalCatalog = true, sortBy = "popularity.desc", seasonalKeywords = entry.keywords,
-                            filters = TmdbCollectionFilters(withGenres = entry.genres, withoutGenres = entry.excludedGenres,
-                                voteCountGte = 100, voteAverageGte = 6.0,
-                                releaseDateGte = entry.after, releaseDateLte = entry.before))
-                    })
+                    sources = starterSources(theme).map(StarterSource::source))
             })
     }
 
+    internal data class StarterSource(val source: CollectionSource, val previousKeywords: List<String>?)
+
+    internal suspend fun starterSources(theme: SeasonalTheme): List<StarterSource> =
+        definitions(theme).map { entry ->
+            StarterSource(
+                CollectionSource(
+                    provider = "tmdb", tmdbSourceType = "DISCOVER", title = getString(entry.title),
+                    mediaType = entry.mediaType, seasonalCatalog = true, sortBy = "popularity.desc",
+                    seasonalKeywords = entry.keywords,
+                    filters = TmdbCollectionFilters(
+                        withGenres = entry.genres, withoutGenres = entry.excludedGenres,
+                        voteCountGte = 100, voteAverageGte = 6.0,
+                        releaseDateGte = entry.after, releaseDateLte = entry.before,
+                    ),
+                ),
+                entry.previousKeywords,
+            )
+        }
+
     internal data class Entry(val title: org.jetbrains.compose.resources.StringResource, val genres: String? = null, val keywords: List<String> = emptyList(),
-        val before: String? = null, val excludedGenres: String? = null, val after: String? = null, val mediaType: String = "BOTH")
+        val before: String? = null, val excludedGenres: String? = null, val after: String? = null, val mediaType: String = "BOTH",
+        val previousKeywords: List<String>? = null)
 
     internal fun definitions(theme: SeasonalTheme): List<Entry> = when (theme) {
         SeasonalTheme.HALLOWEEN -> listOf(
@@ -64,7 +78,8 @@ object SeasonalCollection {
             Entry(Res.string.seasonal_list_modern_christmas_favorites, keywords = listOf("christmas"), after = "2000-01-01"),
             Entry(Res.string.seasonal_list_winter_adventures, "12", listOf("winter")), Entry(Res.string.seasonal_list_christmas_magic, "14", listOf("christmas")),
             Entry(Res.string.seasonal_list_festive_musicals, keywords = listOf("christmas", "musical")), Entry(Res.string.seasonal_list_holiday_mysteries, "9648", listOf("christmas")),
-            Entry(Res.string.seasonal_list_dark_christmas, "27", listOf("christmas")), Entry(Res.string.seasonal_list_festive_stories, keywords = listOf("christmas eve"), mediaType = "tv"))
+            Entry(Res.string.seasonal_list_dark_christmas, "27", listOf("christmas")),
+            Entry(Res.string.seasonal_list_festive_stories, keywords = listOf("christmas"), mediaType = "tv", previousKeywords = listOf("christmas eve")))
         SeasonalTheme.FRESH_START -> listOf(
             Entry(Res.string.seasonal_list_new_beginnings, keywords = listOf("new beginning")), Entry(Res.string.seasonal_list_finding_yourself, keywords = listOf("self-discovery")),
             Entry(Res.string.seasonal_list_second_chances, keywords = listOf("second chance")), Entry(Res.string.seasonal_list_chasing_dreams, keywords = listOf("dream")),
@@ -82,7 +97,8 @@ object SeasonalCollection {
             Entry(Res.string.seasonal_list_magical_worlds, "14"), Entry(Res.string.seasonal_list_epic_fantasy, "14,12"), Entry(Res.string.seasonal_list_dystopian_worlds, null, listOf("dystopia")),
             Entry(Res.string.seasonal_list_science_fiction_classics, "878", before = "1999-12-31"), Entry(Res.string.seasonal_list_family_fantasy, "14,10751"), Entry(Res.string.seasonal_list_otherworldly_animation, "16", listOf("fantasy world")))
         SeasonalTheme.FAMILY -> listOf(
-            Entry(Res.string.seasonal_list_family_favorites, "10751"), Entry(Res.string.seasonal_list_animated_adventures, "16,12"), Entry(Res.string.seasonal_list_animal_friends, "10751", listOf("animal")),
+            Entry(Res.string.seasonal_list_family_favorites, "10751"), Entry(Res.string.seasonal_list_animated_adventures, "16,12"),
+            Entry(Res.string.seasonal_list_animal_friends, "10751", listOf("animals"), previousKeywords = listOf("animal")),
             Entry(Res.string.seasonal_list_family_comedy, "10751,35"), Entry(Res.string.seasonal_list_fairy_tales, null, listOf("fairy tale")), Entry(Res.string.seasonal_list_growing_up, null, listOf("coming of age")),
             Entry(Res.string.seasonal_list_magical_family_stories, "10751,14"), Entry(Res.string.seasonal_list_family_classics, "10751", before = "1999-12-31"),
             Entry(Res.string.seasonal_list_families_together, "10751,18"), Entry(Res.string.seasonal_list_family_adventures, "10751,12"))

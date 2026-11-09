@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.ManagedAddon
 import com.nuvio.app.features.addons.enabledAddons
+import com.nuvio.app.features.profiles.ProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -58,9 +59,9 @@ object CollectionRepository {
         }
 
         runCatching {
-            val parsed = json.parseToJsonElement(payload)
-            rawCollectionsJson = parsed
+            val parsed = CollectionJsonPreserver.restoreSeasonalSourceMetadata(json.parseToJsonElement(payload))
             val decoded = json.decodeFromJsonElement<List<Collection>>(parsed)
+            rawCollectionsJson = parsed
             val normalized = normalizeCollections(decoded, source = "local storage")
             _collections.value = CollectionMobileSettingsRepository.applyToCollections(normalized)
             if (normalized.size != decoded.size) {
@@ -171,8 +172,9 @@ object CollectionRepository {
             if (!validation.valid) {
                 throw IllegalArgumentException(validation.error.orEmpty())
             }
-            rawCollectionsJson = json.parseToJsonElement(jsonString)
-            val imported = normalizeCollections(json.decodeFromString<List<Collection>>(jsonString), source = "import")
+            val parsed = CollectionJsonPreserver.restoreSeasonalSourceMetadata(json.parseToJsonElement(jsonString))
+            val imported = normalizeCollections(json.decodeFromJsonElement<List<Collection>>(parsed), source = "import")
+            rawCollectionsJson = parsed
             _collections.value = CollectionMobileSettingsRepository.applyToCollections(imported)
             persist()
             imported
@@ -232,13 +234,17 @@ object CollectionRepository {
         }
     }
 
-    internal fun applyFromRemote(collections: List<Collection>, rawJson: JsonElement) {
-        rawCollectionsJson = rawJson
+    internal fun applyFromRemote(rawJson: JsonElement, profileId: Int): Int? {
+        val repaired = CollectionJsonPreserver.restoreSeasonalSourceMetadata(rawJson)
+        val collections = runCatching { json.decodeFromJsonElement<List<Collection>>(repaired) }.getOrNull() ?: return null
+        if (ProfileRepository.activeProfileId != profileId) return null
+        rawCollectionsJson = repaired
         val seasonal = _collections.value.firstOrNull { it.id == SeasonalCollection.ID }
         val incoming = if (seasonalMigrationPending && seasonal != null && collections.none { it.id == seasonal.id }) collections + seasonal else collections
         val normalized = normalizeCollections(incoming, source = "remote sync")
         _collections.value = CollectionMobileSettingsRepository.applyToCollections(normalized)
         if (persist(sync = false) && collections.any { it.id == SeasonalCollection.ID }) acknowledgeSeasonalMigration()
+        return collections.size
     }
 
     internal fun onMobileSettingsChanged() {

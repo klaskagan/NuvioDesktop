@@ -30,7 +30,12 @@ Paths are relative to the repository root:
   Preserve explicit assignments, folder edits and deletions, and other collections.
   `SeasonalMigrationTest` covers saved and pulled payloads. The Home → Explore
   case in `SeasonalCollectionNavigationTest` starts with a missing theme and
-  checks the matching backdrop. Legacy seasonal catalogs resolve
+  checks the matching backdrop. Sync payloads can also omit seasonal source
+  keywords. Recover them in raw JSON for uniquely matching starter sources before
+  computing source route keys, preserving the saved media type, explicit filters,
+  and unknown source fields. `SeasonalMigrationTest` covers all 95 starter rows,
+  including Witches' TMDB keyword 616 and the two revised defaults for Animal
+  Friends and Festive Stories. Legacy seasonal catalogs resolve
   `CatalogTarget.Seasonal.themeId` through
   `SeasonalTheme`. Halloween uses the supplied bundled WebP; the remaining eight
   themes use their own bundled backgrounds. Keep the season selected at navigation

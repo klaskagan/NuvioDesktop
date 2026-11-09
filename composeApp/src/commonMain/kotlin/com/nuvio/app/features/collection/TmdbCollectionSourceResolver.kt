@@ -307,29 +307,7 @@ object TmdbCollectionSourceResolver {
         } else {
             source.tmdbMediaType()
         }
-        val originalFilters = source.filters ?: TmdbCollectionFilters()
-        val tv = mediaType == TmdbCollectionMediaType.TV && source.seasonalCatalog
-        val tvKeywords = if (!tv) emptyList() else originalFilters.withGenres.orEmpty().split(',', '|').mapNotNull {
-            when (it) { "27" -> "horror"; "53" -> "thriller"; "10749" -> "romance"; "10402" -> "music"; else -> null }
-        }
-        val baseFilters = if (tv) originalFilters.copy(withGenres = originalFilters.withGenres?.let(::seasonalTvGenres)) else originalFilters
-        val keywordIds = (source.seasonalKeywords + tvKeywords).distinct().map { keyword ->
-            seasonalKeywordId(keyword)
-        }
-        val today = com.nuvio.app.features.watchprogress.CurrentDateProvider.todayIsoDate()
-        val filters = baseFilters.copy(
-            withKeywords = if (keywordIds.isEmpty()) baseFilters.withKeywords else
-                listOfNotNull(baseFilters.withKeywords, keywordIds.joinToString(",")).joinToString(","),
-            releaseDateLte = if (source.seasonalCatalog) minOf(baseFilters.releaseDateLte ?: today, today) else baseFilters.releaseDateLte,
-        )
-        val query = buildDiscoverQuery(
-            source = source,
-            sourceType = sourceType,
-            mediaType = mediaType,
-            language = language,
-            page = page,
-            filters = filters,
-        )
+        val query = discoverQueryForSource(source, sourceType, mediaType, language, page)
         val endpoint = when (mediaType) {
             TmdbCollectionMediaType.MOVIE -> "discover/movie"
             TmdbCollectionMediaType.TV -> "discover/tv"
@@ -346,6 +324,38 @@ object TmdbCollectionSourceResolver {
             items = items,
             rawItemCount = items.size,
             nextSkip = if ((body.page ?: page) < (body.totalPages ?: page) && items.isNotEmpty()) page + 1 else null,
+        )
+    }
+
+    internal suspend fun discoverQueryForSource(
+        source: CollectionSource,
+        sourceType: TmdbCollectionSourceType,
+        mediaType: TmdbCollectionMediaType,
+        language: String,
+        page: Int,
+    ): Map<String, String> {
+        val originalFilters = source.filters ?: TmdbCollectionFilters()
+        val tv = mediaType == TmdbCollectionMediaType.TV && source.seasonalCatalog
+        val tvKeywords = if (!tv) emptyList() else originalFilters.withGenres.orEmpty().split(',', '|').mapNotNull {
+            when (it) { "27" -> "horror"; "53" -> "thriller"; "10749" -> "romance"; "10402" -> "music"; else -> null }
+        }
+        val baseFilters = if (tv) originalFilters.copy(withGenres = originalFilters.withGenres?.let(::seasonalTvGenres)) else originalFilters
+        val keywordIds = (source.seasonalKeywords + tvKeywords).distinct().map { keyword ->
+            seasonalKeywordId(keyword)
+        }
+        val today = com.nuvio.app.features.watchprogress.CurrentDateProvider.todayIsoDate()
+        val filters = baseFilters.copy(
+            withKeywords = if (keywordIds.isEmpty()) baseFilters.withKeywords else
+                listOfNotNull(baseFilters.withKeywords, keywordIds.joinToString(",")).joinToString(","),
+            releaseDateLte = if (source.seasonalCatalog) minOf(baseFilters.releaseDateLte ?: today, today) else baseFilters.releaseDateLte,
+        )
+        return buildDiscoverQuery(
+            source = source,
+            sourceType = sourceType,
+            mediaType = mediaType,
+            language = language,
+            page = page,
+            filters = filters,
         )
     }
 
