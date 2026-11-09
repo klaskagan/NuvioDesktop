@@ -1206,6 +1206,7 @@ internal fun MainAppContent(
                         title = section.title,
                         subtitle = section.subtitle,
                         target = section.target,
+                        fromCollectionFolder = navController.currentRoute is FolderDetailRoute,
                     ),
                 )
                 navController.navigate(
@@ -1399,6 +1400,18 @@ internal fun MainAppContent(
                     profileSwitchLoading = false
                 }
             }
+        }
+
+        @Composable
+        fun CollectionNavigationFrame(route: AppRoute, content: @Composable () -> Unit) {
+            DetailNavigationFrame(
+                route = route,
+                selectedTab = selectedTab,
+                onTabSelected = ::selectDetailNavigationTab,
+                onProfileSelected = selectNavigationProfile,
+                onAddProfileRequested = onSwitchProfile,
+                content = content,
+            )
         }
 
         // Desktop has no system back, so mouse Back joins Esc in Compose's window back
@@ -1789,11 +1802,21 @@ internal fun MainAppContent(
                     )
                 }
                 entry<CatalogRoute> { route ->
-                    CatalogDestination(
-                        route = route,
-                        navController = navController,
-                        onPosterLongClick = openPosterActions,
-                    )
+                    val content: @Composable () -> Unit = {
+                        CatalogDestination(
+                            route = route,
+                            navController = navController,
+                            onPosterLongClick = openPosterActions,
+                        )
+                    }
+                    val launch = CatalogLaunchStore.get(route.launchId)
+                    if (launch?.fromCollectionFolder == true ||
+                        launch?.target is CatalogTarget.CollectionSource || launch?.target is CatalogTarget.Seasonal
+                    ) {
+                        CollectionNavigationFrame(route, content)
+                    } else {
+                        content()
+                    }
                 }
                 entry<HomescreenSettingsRoute> { route ->
                     SettingsDestination(route, navController) { onBack ->
@@ -1880,31 +1903,39 @@ internal fun MainAppContent(
                     }
                 }
                 entry<CollectionsRoute> { route ->
-                    CollectionsDestination(
-                        route = route,
-                        navController = navController,
-                        newCollectionTitle = newCollectionTitle,
-                    )
+                    CollectionNavigationFrame(route) {
+                        CollectionsDestination(
+                            route = route,
+                            navController = navController,
+                            newCollectionTitle = newCollectionTitle,
+                        )
+                    }
                 }
                 entry<CollectionEditorRoute> { route ->
-                    CollectionEditorDestination(
-                        route = route,
-                        navController = navController,
-                        useNativeNavigation = useNativeNavigation,
-                    )
+                    CollectionNavigationFrame(route) {
+                        CollectionEditorDestination(
+                            route = route,
+                            navController = navController,
+                            useNativeNavigation = useNativeNavigation,
+                        )
+                    }
                 }
                 entry<CollectionEditorPageRoute> { route ->
-                    CollectionEditorPageDestination(
-                        route = route,
-                        navController = navController,
-                    )
+                    CollectionNavigationFrame(route) {
+                        CollectionEditorPageDestination(
+                            route = route,
+                            navController = navController,
+                        )
+                    }
                 }
                 entry<FolderDetailRoute> { route ->
-                    FolderDestination(
-                        route = route,
-                        navController = navController,
-                        onCatalogClick = onCatalogClick,
-                    )
+                    CollectionNavigationFrame(route) {
+                        FolderDestination(
+                            route = route,
+                            navController = navController,
+                            onCatalogClick = onCatalogClick,
+                        )
+                    }
                 }
                     }.let { provider ->
                         { key ->

@@ -18,6 +18,7 @@ internal data class CatalogLaunch(
     val title: String,
     val subtitle: String,
     val target: CatalogTarget,
+    val fromCollectionFolder: Boolean = false,
 )
 
 internal object CatalogLaunchStore {

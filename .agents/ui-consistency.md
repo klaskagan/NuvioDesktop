@@ -149,6 +149,19 @@ accumulating a history of individual bugs here.
 
 ## Custom detail routes and native navigation
 
+Desktop collection destinations lost their tab controls because their NavDisplay
+entries bypassed the shared frame used by Details and Streams. Wrap collection
+browsing and management entries in `DetailNavigationFrame`. The top bar overlays
+the page at its existing position. Only the sidebar reserves content space.
+`MainAppTabNavigationTest` exercises Settings → Collections → editor → Search
+in both desktop layouts. `SeasonalCollectionNavigationTest` covers Home →
+Explore collection and leaving the folder through the shared navigation.
+Only track pointer movement for auto-hiding top bars. Always-visible frames
+have no timer to restart, and synthetic pointer moves during route layout can
+keep full-app UI tests from reaching idle. For auto-hide, ignore repeated Move
+events at the same position so layout cannot restart the timer.
+`DetailNavigationFrameTest` checks both pointer wake and subsequent inactivity.
+
 Provider details must reuse the actual desktop detail components, not approximate
 screenshots with generic buttons or typed arrow characters. Use
 `DesktopDetailBackdrop`, `DetailActionButtons`, and `NuvioBackButton` as in

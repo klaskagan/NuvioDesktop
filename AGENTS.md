@@ -100,6 +100,9 @@ credentials with helper resources.
 
 ## Repository boundaries
 
+After the user approves the result, commit the approved changes and push them
+to `origin/develop`.
+
 Keep shared UI/state in commonMain and platform integrations in their existing
 platform source sets. Follow the touched feature's localization and state patterns.
 Use focused tests for changed behavior; avoid tests that only mirror cosmetic code.

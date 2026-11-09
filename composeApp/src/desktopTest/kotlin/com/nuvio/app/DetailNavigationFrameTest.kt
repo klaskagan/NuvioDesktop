@@ -153,7 +153,7 @@ class DetailNavigationFrameTest {
                 Box(Modifier.requiredSize(1000.dp, 700.dp)) {
                     if (reference?.value == true) {
                         DesktopNavigationBar(
-                            items = listOf("Home", "Search", "Library", "Settings").mapIndexed { index, label ->
+                            items = listOf("Home", "Search", "Library", "Calendar", "Settings").mapIndexed { index, label ->
                                 FloatingNavigationItem(
                                     label = label,
                                     selected = index == 0,
