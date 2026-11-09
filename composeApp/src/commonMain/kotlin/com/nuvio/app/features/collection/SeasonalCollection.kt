@@ -17,10 +17,23 @@ object SeasonalCollection {
     fun activeFolder(collection: Collection?, theme: SeasonalTheme): CollectionFolder? =
         collection?.folders?.firstOrNull { it.seasonalThemeId == theme.id }
 
+    internal fun restoreFolderThemes(collection: Collection): Collection {
+        if (collection.id != ID) return collection
+        val assignedThemes = collection.folders.mapNotNull { it.seasonalThemeId }.toSet()
+        val folders = collection.folders.map { folder ->
+            if (folder.seasonalThemeId != null) return@map folder
+            val theme = SeasonalTheme.entries.firstOrNull { folder.id == folderId(it) && it.id !in assignedThemes }
+            if (theme == null) folder else folder.copy(seasonalThemeId = theme.id)
+        }
+        return collection.copy(folders = folders)
+    }
+
+    private fun folderId(theme: SeasonalTheme) = "seasonal_${theme.id}"
+
     fun defaults(): Collection = runBlocking {
         Collection(ID, getString(Res.string.seasonal_collection_title), viewMode = FolderViewMode.ROWS.name,
             folders = SeasonalTheme.entries.map { theme ->
-                CollectionFolder(id = "seasonal_${theme.id}", title = getString(theme.title),
+                CollectionFolder(id = folderId(theme), title = getString(theme.title),
                     tileShape = "landscape", seasonalThemeId = theme.id,
                     sources = definitions(theme).map { entry ->
                         CollectionSource(provider = "tmdb", tmdbSourceType = "DISCOVER", title = getString(entry.title),

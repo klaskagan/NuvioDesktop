@@ -1,6 +1,7 @@
 package com.nuvio.app.features.collection
 
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
+import com.nuvio.app.features.home.SeasonalTheme
 import com.nuvio.app.core.storage.DesktopStorage
 import com.nuvio.app.core.storage.ProfileScopedKey
 import kotlinx.coroutines.runBlocking
@@ -9,6 +10,40 @@ import org.junit.Assume.assumeTrue
 import kotlin.test.*
 
 class SeasonalMigrationTest {
+    @Test fun localLoadAndRemotePullRecoverOnlyMissingBuiltInFolderThemes() {
+        prepare()
+        val json = Json { ignoreUnknownKeys = true }
+        val payload = """[
+            {"id":"nuvio-seasonal","title":"My Seasons","folders":[
+                {"id":"seasonal_christmas","title":"Winter","seasonalThemeId":null},
+                {"id":"seasonal_halloween","title":"Spooky","heroBackdropUrl":"https://example.org/art"},
+                {"id":"seasonal_love","title":"Explicit","seasonalThemeId":"love"},
+                {"id":"seasonal_school","title":"Unrecognized","seasonalThemeId":"custom"},
+                {"id":"custom","title":"Spring"}
+            ]},
+            {"id":"personal","title":"Personal","folders":[{"id":"seasonal_halloween","title":"Personal Halloween"}]}
+        ]"""
+        val original = json.decodeFromString<List<Collection>>(payload)
+        CollectionStorage.savePayload(payload)
+        CollectionStorage.saveSeasonalSeedVersion(SeasonalCollection.VERSION)
+
+        fun assertRecovered() {
+            val seasonal = CollectionRepository.getCollection(SeasonalCollection.ID)!!
+            val folders = original.first().folders.toMutableList()
+            folders[0] = folders[0].copy(seasonalThemeId = "christmas")
+            folders[1] = folders[1].copy(seasonalThemeId = "halloween")
+            assertEquals(original.first().copy(folders = folders), seasonal)
+            assertEquals(original.last(), CollectionRepository.getCollection("personal"))
+            assertEquals("seasonal_halloween", SeasonalCollection.activeFolder(seasonal, SeasonalTheme.HALLOWEEN)?.id)
+            assertNull(SeasonalCollection.activeFolder(seasonal, SeasonalTheme.SUMMER))
+        }
+
+        CollectionRepository.initialize()
+        assertRecovered()
+        CollectionRepository.applyFromRemote(original, json.parseToJsonElement(payload))
+        assertRecovered()
+    }
+
     @Test fun draggingCollectionsUpdatesHomeOrderAndPreservesEnabledFlags() = runBlocking {
         prepare()
         HomeCatalogSettingsRepository.clearLocalState()

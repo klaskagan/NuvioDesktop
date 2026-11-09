@@ -40,7 +40,7 @@ class SeasonalCollectionNavigationTest {
         try {
             val base = "http://127.0.0.1:${server.address.port}"
             val theme = SeasonalTheme.forDate(CurrentDateProvider.todayIsoDate())
-            val collection = prepare(base, theme)
+            val collection = prepare(base, theme, missingTheme = true)
             setContent {
                 CompositionLocalProvider(LocalLandscapeArtworkLoader provides { _, _, _ -> TmdbLandscapeArtwork("$base/art.png", null, "$base/art.png") }) {
                     AppEnvironment { MainAppContent(ownsAppRuntime = false, showLaunchOverlay = false) }
@@ -52,7 +52,7 @@ class SeasonalCollectionNavigationTest {
             save("home")
             onNodeWithText("Explore collection").performScrollTo().performClick()
             waitUntil(timeoutMillis = 15_000) { FolderDetailRepository.getCatalogSectionsForRows().isNotEmpty() }
-            onNodeWithTag("collection_background_seasonal-${theme.id}").assertIsDisplayed()
+            onNodeWithTag("collection_background_${collection.folders.single().id}").assertIsDisplayed()
             assertEquals(FolderViewMode.ROWS, FolderDetailRepository.uiState.value.viewMode)
             save("rows")
             onNodeWithTag("collection_grid").performMouseInput { enter(center); scroll(3f, ScrollWheel.Vertical) }
@@ -115,7 +115,7 @@ class SeasonalCollectionNavigationTest {
             }
             onNodeWithContentDescription("Show catalog rows").performClick()
             waitForIdle()
-            val introductionTag = "collection_intro_seasonal-${theme.id}"
+            val introductionTag = "collection_intro_${collection.folders.single().id}"
             if (onAllNodesWithTag(introductionTag).fetchSemanticsNodes().isNotEmpty()) {
                 onNodeWithTag(introductionTag).assertIsNotDisplayed()
             }
@@ -237,7 +237,7 @@ class SeasonalCollectionNavigationTest {
         assertEquals("com.nuvio.app.core.storage.IsolatedPreferencesFactory", System.getProperty("java.util.prefs.PreferencesFactory"))
     }
 
-    private fun prepare(base: String, theme: SeasonalTheme): Collection {
+    private fun prepare(base: String, theme: SeasonalTheme, missingTheme: Boolean = false): Collection {
         ThemeSettingsRepository.ensureLoaded()
         HomeCatalogSettingsRepository.setHeroEnabled(false)
         TmdbSettingsRepository.setEnabled(false)
@@ -259,8 +259,9 @@ class SeasonalCollectionNavigationTest {
         val sources = listOf(CollectionSource(addonId = "seasonal-fixture", type = "movie", catalogId = "slashers", title = "Slashers"),
             CollectionSource(addonId = "seasonal-fixture", type = "movie", catalogId = "family", title = "Family Frights"))
         val collection = Collection(SeasonalCollection.ID, "Seasonal", viewMode = "ROWS", folders = listOf(
-            CollectionFolder("seasonal-${theme.id}", runBlocking { org.jetbrains.compose.resources.getString(theme.title) },
-                seasonalThemeId = theme.id, sources = sources)))
+            CollectionFolder(if (missingTheme) "seasonal_${theme.id}" else "seasonal-${theme.id}",
+                runBlocking { org.jetbrains.compose.resources.getString(theme.title) },
+                seasonalThemeId = theme.id.takeUnless { missingTheme }, sources = sources)))
         CollectionRepository.setCollections(listOf(collection))
         runBlocking { HomeCatalogSettingsRepository.syncCollections(listOf(collection)) }
         HomeCatalogSettingsRepository.setEnabled(SeasonalCollection.HOME_KEY, true)

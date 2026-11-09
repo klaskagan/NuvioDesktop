@@ -172,7 +172,7 @@ object CollectionRepository {
                 throw IllegalArgumentException(validation.error.orEmpty())
             }
             rawCollectionsJson = json.parseToJsonElement(jsonString)
-            val imported = json.decodeFromString<List<Collection>>(jsonString).deduplicatedById()
+            val imported = normalizeCollections(json.decodeFromString<List<Collection>>(jsonString), source = "import")
             _collections.value = CollectionMobileSettingsRepository.applyToCollections(imported)
             persist()
             imported
@@ -255,7 +255,7 @@ object CollectionRepository {
                 "Dropped ${collections.size - normalized.size} duplicate collection IDs from $source"
             }
         }
-        return normalized
+        return normalized.map(SeasonalCollection::restoreFolderThemes)
     }
 
     private fun ensureLoaded() {
