@@ -563,7 +563,7 @@ private fun RowsContent(
                 val section = keyedSection.value
                 HomeCatalogRowSection(
                     section = section,
-                    numberedRanking = rowStyles[section.key] == HomeRowStyle.NumberedRanking,
+                    rowStyle = rowStyles[section.key] ?: HomeRowStyle.Automatic,
                     onPosterLongClick = onCatalogPosterLongClick?.let { open -> { item -> open(section.key, item) } },
                     entries = if (isDesktop) {
                         // Match desktop home rows: the lazy row exposes every fetched item so the

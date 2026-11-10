@@ -65,12 +65,83 @@ class NumberedRankingShelfTest {
 
             runOnIdle { pickerOpen = true }
             onNodeWithText("Numbered ranking").assertIsSelected()
+            onNodeWithText("Landscape").performClick()
+            onNodeWithText("Medium").assertIsSelected()
+            onNodeWithText("Large").performClick()
+            runOnIdle {
+                assertEquals(HomeRowStyle.LandscapeLarge, style(firstKey))
+                pickerOpen = true
+            }
+            onNodeWithText("Landscape").assertIsSelected().performClick()
+            onNodeWithText("Large").assertIsSelected()
+            onNodeWithText("Back").performClick()
             onNodeWithText("Automatic").performClick()
             runOnIdle { assertEquals(HomeRowStyle.Automatic, style(firstKey)) }
         } finally {
             repository.setRowStyle(firstKey, HomeRowStyle.Automatic)
             repository.onProfileChanged()
         }
+    }
+
+    @Test
+    fun explicitStylesControlArtworkGeometryAndBannerLabels() = runDesktopComposeUiTest(width = 1000, height = 420) {
+        check(System.getProperty("nuvio.test.isolatedHome") == "true")
+        PosterCardStyleRepository.setCatalogLandscapeModeEnabled(true)
+        val art = sequenceOf(File("../nuvio-native-legacy"), File("../../nuvio-native-legacy"))
+            .map { it.resolve("deploy/app/art") }
+            .firstOrNull(File::isDirectory)
+        val entry = MetaPreview(
+            id = "style-fixture", type = "movie", name = "Style fixture", genres = listOf("Adventure"),
+            poster = art?.resolve("poster/00.jpg")?.toURI()?.toString(),
+            banner = art?.resolve("00.jpg")?.toURI()?.toString(),
+        )
+        val section = HomeCatalogSection(
+            key = "fixture:movie:styles",
+            title = "Shelf styles",
+            subtitle = "",
+            addonName = "Fixture",
+            target = CatalogTarget.Addon("https://example.com/manifest.json", "movie", "styles"),
+            items = listOf(entry),
+        )
+        var style by mutableStateOf(HomeRowStyle.Posters)
+        setContent {
+            AppEnvironment {
+                HomeCatalogRowSection(section = section, rowStyle = style, onPosterClick = {})
+            }
+        }
+
+        fun artworkBounds() = onNode(hasClickAction(), useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+
+        val poster = artworkBounds()
+        assertTrue(poster.height > poster.width)
+        val widths = listOf(HomeRowStyle.LandscapeSmall, HomeRowStyle.LandscapeMedium, HomeRowStyle.LandscapeLarge).map { size ->
+            runOnIdle { style = size }
+            val wide = artworkBounds()
+            assertTrue(wide.width > wide.height)
+            wide.width
+        }
+        assertTrue(widths[0] < widths[1] && widths[1] < widths[2])
+
+        val report = File("build/reports/row-styles").apply { mkdirs() }
+        fun capture(label: String) {
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", report.resolve("$label.png"))
+        }
+
+        runOnIdle { style = HomeRowStyle.BannerWithTitle }
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodesWithText("Adventure", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText("Adventure", substring = true).assertIsDisplayed()
+        capture("banner")
+        runOnIdle { style = HomeRowStyle.Round }
+        val round = artworkBounds()
+        assertEquals(round.width, round.height, 1f)
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodesWithText(entry.name).fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText(entry.name).assertIsDisplayed()
+        capture("round")
     }
 
     @Test
@@ -105,7 +176,7 @@ class NumberedRankingShelfTest {
                 AppEnvironment {
                     HomeCatalogRowSection(
                         section = section,
-                        numberedRanking = ranked,
+                        rowStyle = if (ranked) HomeRowStyle.NumberedRanking else HomeRowStyle.Automatic,
                         onPosterClick = { opened = it.id },
                     )
                 }

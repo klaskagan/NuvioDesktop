@@ -1,14 +1,17 @@
 package com.nuvio.app.features.collection
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.unit.Density
 import com.nuvio.app.AppEnvironment
 import com.nuvio.app.core.ui.PosterCardStyleRepository
+import com.nuvio.app.features.home.HomeRowStyle
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.components.HomeCollectionRowSection
 import com.nuvio.app.features.home.components.LocalLandscapeArtworkLoader
@@ -55,6 +58,45 @@ class CollectionShapeIndependenceTest {
             assertTrue(ratio("Personal portrait") < 0.8f, "Personal collections keep their configured shape too")
             save(if (mode) "media-landscape-covers-unchanged" else "media-portrait-covers-unchanged")
         }
+    }
+
+    @Test fun roundStyleClipsCollectionArtworkToACircle() = runDesktopComposeUiTest(width = 620, height = 320) {
+        check(System.getProperty("nuvio.test.isolatedHome") == "true")
+        val file = File.createTempFile("collection-round-", ".png").apply { deleteOnExit() }
+        val art = java.awt.image.BufferedImage(100, 100, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        val graphics = art.createGraphics()
+        graphics.color = java.awt.Color.RED
+        graphics.fillRect(0, 0, art.width, art.height)
+        graphics.dispose()
+        ImageIO.write(art, "png", file)
+
+        val studio = CollectionFolder("studio", "Studio cover", coverImageUrl = file.toURI().toString(),
+            tileShape = "SQUARE", hideTitle = true)
+        val collection = Collection("round-studios", "Studios", folders = listOf(studio))
+        var style by mutableStateOf(HomeRowStyle.Round)
+        setContent {
+            AppEnvironment {
+                Box(Modifier.fillMaxSize().background(Color.Black)) {
+                    HomeCollectionRowSection(collection, rowStyle = style)
+                }
+            }
+        }
+
+        val cover = onNodeWithContentDescription(studio.title, useUnmergedTree = true)
+        fun capture() = cover.captureToImage().toAwtImage()
+        val red = java.awt.Color.RED.rgb
+        waitUntil(timeoutMillis = 10_000) {
+            val image = capture()
+            image.getRGB(image.width / 2, image.height / 2) == red
+        }
+        val round = capture()
+        assertEquals(round.width, round.height)
+        assertEquals(java.awt.Color.BLACK.rgb, round.getRGB(round.width / 10, round.height / 10))
+        save("round-studio-cover")
+
+        runOnIdle { style = HomeRowStyle.Automatic }
+        val square = capture()
+        assertEquals(red, square.getRGB(square.width / 10, square.height / 10))
     }
 
     @Test fun customDecadeContentKeepsWideCardsWhenMediaStyleChanges() = runDesktopComposeUiTest(width = 1100, height = 850) {

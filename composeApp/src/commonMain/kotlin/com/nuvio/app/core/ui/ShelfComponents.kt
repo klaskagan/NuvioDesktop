@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.Icon
@@ -274,13 +275,15 @@ fun NuvioPosterCard(
     artworkHeight: Dp? = null,
     artworkCornerRadius: Dp? = null,
     artworkFocusRing: Dp? = null,
+    circularArtwork: Boolean = false,
+    bottomLeftDetail: String? = null,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
     val tokens = MaterialTheme.nuvio
     val effectiveBasePosterWidthDp = basePosterWidthDp ?: posterCardStyle.widthDp
     val cardWidth = shape.cardWidth(basePosterWidthDp = effectiveBasePosterWidthDp)
     val cornerRadius = artworkCornerRadius ?: posterCardStyle.cornerRadiusDp.dp
-    val cardShape = RoundedCornerShape(cornerRadius)
+    val cardShape = if (circularArtwork) CircleShape else RoundedCornerShape(cornerRadius)
     var focused by remember { mutableStateOf(false) }
     val focusColor = tokens.colors.accent
     val catalogLogoOverlaySize = catalogLogoOverlaySize(
@@ -356,7 +359,7 @@ fun NuvioPosterCard(
                     onClick = onClick,
                     onLongClick = onLongClick,
                     zoomImageUrl = imageUrl,
-                    zoomCornerRadius = cornerRadius,
+                    zoomCornerRadius = if (circularArtwork) cardWidth / 2 else cornerRadius,
                     hoverScaleEnabled = false,
                 ),
             contentAlignment = Alignment.Center,
@@ -381,7 +384,7 @@ fun NuvioPosterCard(
                         contentScale = ContentScale.Crop,
                         desktopAnimation = posterCardStyle.animatedArtworkMode.toDesktopAnimation(),
                     )
-                } else {
+                } else if (!circularArtwork && bottomLeftDetail == null) {
                     Text(
                         text = placeholderTitle,
                         modifier = Modifier.padding(horizontal = NuvioTokens.Space.s14),
@@ -402,8 +405,8 @@ fun NuvioPosterCard(
                                 val gradient = Brush.verticalGradient(
                                     colorStops = arrayOf(
                                         0.0f to Color.Transparent,
-                                        0.58f to Color.Transparent,
-                                        1.0f to Color.Black.copy(alpha = 0.75f)
+                                        (if (bottomLeftDetail == null) 0.58f else 0.12f) to Color.Transparent,
+                                        1.0f to Color.Black.copy(alpha = if (bottomLeftDetail == null) 0.75f else 0.94f)
                                     )
                                 )
                                 onDrawBehind { drawRect(gradient) }
@@ -431,14 +434,25 @@ fun NuvioPosterCard(
                             )
                         }
                         if (bottomLeftLogoUrl.isNullOrBlank() || (logoTextFallback && if (revealArtworkTogether) logoFailed else !logoLoaded)) {
-                            Text(
-                                text = bottomLeftText.orEmpty(),
-                                style = if (logoTextFallback) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelMedium,
-                                color = tokens.colors.textPrimary,
-                                maxLines = if (logoTextFallback) 2 else 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.align(Alignment.BottomStart).widthIn(max = catalogLogoOverlaySize.textMaxWidth),
-                            )
+                            Column(Modifier.align(Alignment.BottomStart)) {
+                                Text(
+                                    text = bottomLeftText.orEmpty(),
+                                    style = if (logoTextFallback) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelMedium,
+                                    color = tokens.colors.textPrimary,
+                                    maxLines = if (logoTextFallback) 2 else 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = if (bottomLeftDetail == null) Modifier.widthIn(max = catalogLogoOverlaySize.textMaxWidth) else Modifier,
+                                )
+                                if (!bottomLeftDetail.isNullOrBlank()) {
+                                    Text(
+                                        text = bottomLeftDetail,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = Color.White.copy(alpha = 0.88f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -462,7 +476,8 @@ fun NuvioPosterCard(
                 .then(if (artworkReady) Modifier else Modifier.clearAndSetSemantics { })
             Text(
                 text = title,
-                modifier = labelVisibility,
+                modifier = if (circularArtwork) labelVisibility.fillMaxWidth() else labelVisibility,
+                textAlign = if (circularArtwork) TextAlign.Center else TextAlign.Start,
                 style = MaterialTheme.typography.bodyMedium,
                 color = tokens.colors.textPrimary,
                 maxLines = 1,

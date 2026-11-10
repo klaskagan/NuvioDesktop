@@ -25,7 +25,7 @@ import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
 import com.nuvio.app.isDesktop
 import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.MetaPreview
-import com.nuvio.app.features.home.PosterShape
+import com.nuvio.app.features.home.HomeRowStyle
 import com.nuvio.app.features.home.stableKey
 import com.nuvio.app.features.watching.application.WatchingState
 
@@ -41,7 +41,7 @@ fun HomeCatalogRowSection(
     onPosterClick: ((MetaPreview) -> Unit)? = null,
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
     allowPortraitFallback: Boolean = true,
-    numberedRanking: Boolean = false,
+    rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
 ) {
     val scope = rememberCoroutineScope()
     val calendar = section.calendarState
@@ -68,7 +68,8 @@ fun HomeCatalogRowSection(
             sectionPadding = sectionPadding ?: homeSectionHorizontalPaddingForWidth(maxWidth.value),
             onViewAllClick = onViewAllClick, onPosterClick = onPosterClick,
             onPosterLongClick = onPosterLongClick, allowPortraitFallback = allowPortraitFallback,
-            rankingLayout = if (numberedRanking) NumberedRankingLayout(maxWidth) else null,
+            rowStyle = rowStyle,
+            rankingLayout = if (rowStyle == HomeRowStyle.NumberedRanking) NumberedRankingLayout(maxWidth) else null,
         )
     }
     }
@@ -87,15 +88,18 @@ private fun HomeCatalogRowSectionContent(
     onPosterClick: ((MetaPreview) -> Unit)?,
     onPosterLongClick: ((MetaPreview) -> Unit)?,
     allowPortraitFallback: Boolean,
+    rowStyle: HomeRowStyle,
     rankingLayout: NumberedRankingLayout?,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
     val rowState = rememberLazyListState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = .25f, behindFraction = .25f) })
     val excluded = preservesOriginalLandscapeArtwork(section.title, section.target) || entries.any { it.calendarCard != null }
+    val artworkItems = remember(entries, rowStyle) { entries.map(rowStyle::artworkItem) }
     val prepared = rememberShelfArtworkPrefetch(
-        rowState, entries, section.key, enhanceTitles = !excluded && rankingLayout == null,
+        rowState, artworkItems, section.key to rowStyle, enhanceTitles = !excluded && rowStyle.enhancesLandscapeArtwork,
         allowPortraitFallback = allowPortraitFallback,
-        forceShape = if (rankingLayout != null) PosterShape.Poster else null,
+        forceShape = rowStyle.posterShape,
+        alwaysShowLandscapeTitle = rowStyle == HomeRowStyle.BannerWithTitle,
     )
     val gate = remember(section.key, entries, prepared, posterCardStyle.catalogLandscapeModeEnabled) { LandscapeRowRevealState() }
     val visibleIndices by remember(rowState) { derivedStateOf { rowState.layoutInfo.visibleItemsInfo.map { it.index } } }
@@ -155,9 +159,10 @@ private fun HomeCatalogRowSectionContent(
                 )
             }
         } else HomePosterCard(
-            item = item,
+            item = rowStyle.artworkItem(item),
             allowPortraitFallback = allowPortraitFallback,
             enhanceLandscapeTitles = !excluded,
+            rowStyle = rowStyle,
             useLandscapeBackdropMode = posterCardStyle.catalogLandscapeModeEnabled,
             isWatched = watched,
             onClick = openItem,

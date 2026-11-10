@@ -1,5 +1,7 @@
 package com.nuvio.app.features.home.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -22,6 +25,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import kotlin.math.roundToInt
+import com.nuvio.app.features.home.HomeRowStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -49,11 +56,11 @@ fun HomeCollectionRowSection(
     animateGifs: Boolean = true,
     onFolderClick: ((collectionId: String, folderId: String) -> Unit)? = null,
     rowStyleKey: String? = null,
-    numberedRanking: Boolean = false,
+    rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
 ) {
     if (collection.folders.isEmpty()) return
 
-    if (sectionPadding != null && rowStyleKey == null && !numberedRanking) {
+    if (sectionPadding != null && rowStyleKey == null && rowStyle == HomeRowStyle.Automatic) {
         HomeCollectionRowSectionContent(
             collection = collection,
             modifier = modifier.fillMaxWidth(),
@@ -71,7 +78,8 @@ fun HomeCollectionRowSection(
                 animateGifs = animateGifs,
                 onFolderClick = onFolderClick,
                 rowStyleKey = rowStyleKey,
-                rankingLayout = if (numberedRanking) NumberedRankingLayout(maxWidth) else null,
+                rowStyle = rowStyle,
+                rankingLayout = if (rowStyle == HomeRowStyle.NumberedRanking) NumberedRankingLayout(maxWidth) else null,
             )
         }
     }
@@ -85,6 +93,7 @@ private fun HomeCollectionRowSectionContent(
     animateGifs: Boolean,
     onFolderClick: ((collectionId: String, folderId: String) -> Unit)?,
     rowStyleKey: String?,
+    rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
     rankingLayout: NumberedRankingLayout? = null,
 ) {
     var pickerOpen by remember(rowStyleKey) { mutableStateOf(false) }
@@ -100,11 +109,8 @@ private fun HomeCollectionRowSectionContent(
     ) { folder ->
         CollectionFolderCard(
             folder = folder,
-            shape = when {
-                rankingLayout != null -> PosterShape.Poster
-                collection.usesConfiguredArtwork() -> PosterShape.Landscape
-                else -> folder.posterShape
-            },
+            shape = rowStyle.posterShape ?: if (collection.usesConfiguredArtwork()) PosterShape.Landscape else folder.posterShape,
+            rowStyle = rowStyle,
             rankingLayout = rankingLayout,
             onLongClick = rowStyleKey?.let { { pickerOpen = true } },
             animateGifs = animateGifs,
@@ -120,6 +126,7 @@ private fun HomeCollectionRowSectionContent(
 private fun CollectionFolderCard(
     folder: CollectionFolder,
     shape: PosterShape,
+    rowStyle: HomeRowStyle,
     modifier: Modifier = Modifier,
     animateGifs: Boolean = true,
     onClick: (() -> Unit)? = null,
@@ -137,7 +144,7 @@ private fun CollectionFolderCard(
             aspectRatio = 0.675f
         }
         PosterShape.Landscape -> {
-            cardWidth = landscapePosterWidth(basePosterWidthDp)
+            cardWidth = landscapePosterWidth((basePosterWidthDp * rowStyle.landscapeWidthFactor).roundToInt())
             aspectRatio = PosterLandscapeAspectRatio
         }
         PosterShape.Square -> {
@@ -153,17 +160,21 @@ private fun CollectionFolderCard(
             .width(rankingLayout?.posterWidth ?: cardWidth),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        val shapeCorner = RoundedCornerShape(rankingLayout?.posterCorner ?: posterCardStyle.cornerRadiusDp.dp)
+        val coverShape = if (rowStyle == HomeRowStyle.Round) {
+            CircleShape
+        } else {
+            RoundedCornerShape(rankingLayout?.posterCorner ?: posterCardStyle.cornerRadiusDp.dp)
+        }
         val imageUrl = collectionFolderCardImageUrl(folder)
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(if (rankingLayout == null) aspectRatio else 212f / 322f)
                 .nuvioCardDepth(
-                    shape = shapeCorner,
+                    shape = coverShape,
                     surface = NuvioCardDepthSurface.Posters,
                 ),
-            shape = shapeCorner,
+            shape = coverShape,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface,
             ),
@@ -203,11 +214,22 @@ private fun CollectionFolderCard(
                         )
                     }
                 }
-
+                if (!folder.hideTitle && rowStyle == HomeRowStyle.BannerWithTitle) {
+                    Text(
+                        text = folder.title,
+                        modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))))
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
 
-        if (!folder.hideTitle) {
+        if (!folder.hideTitle && rowStyle != HomeRowStyle.BannerWithTitle) {
             Text(
                 text = folder.title,
                 style = MaterialTheme.typography.bodyMedium,
