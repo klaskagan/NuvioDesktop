@@ -1408,6 +1408,7 @@ internal class NativePlayerController(
                 label = track.label,
                 language = track.language.takeUnless(String::isBlank),
                 isSelected = track.selected,
+                isExternal = track.external,
                 isForced = track.forced || inferForcedSubtitleTrack(
                     label = track.label,
                     language = track.language,
@@ -1567,6 +1568,7 @@ private data class NativeMpvTrack(
     val language: String = "",
     val selected: Boolean = false,
     val forced: Boolean = false,
+    val external: Boolean = false,
 )
 
 private fun resolveTrackId(index: Int, tracks: List<NativeMpvTrack>): Int? =

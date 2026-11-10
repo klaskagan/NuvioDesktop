@@ -68,6 +68,17 @@ internal fun PlaybackSubtitleSettings(
                     isTablet = isTablet,
                     onClick = { showSecondarySubtitleDialog = true },
                 )
+                if (isDesktop) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_playback_auto_show_subtitles_on_rewind),
+                        description = stringResource(Res.string.settings_playback_auto_show_subtitles_on_rewind_description),
+                        checked = settings.autoShowSubtitlesOnRewindEnabled,
+                        enabled = !settings.externalPlayerEnabled,
+                        isTablet = isTablet,
+                        onCheckedChange = PlayerSettingsRepository::setAutoShowSubtitlesOnRewindEnabled,
+                    )
+                }
                 SettingsGroupDivider(isTablet = isTablet)
                 AutoSyncPlaybackSettingsRows(
                     isTablet = isTablet,

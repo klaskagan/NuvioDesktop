@@ -25,6 +25,7 @@ internal fun PlayerScreenRuntime.rememberCurrentTrackPreferenceForEngineSwitch(
     targetEngine: AndroidPlaybackEngine,
 ) {
     val audio = captureCurrentAudioSelectionForEngineSwitch()
+    clearRewindSubtitles()
     val subtitle = captureCurrentSubtitleSelectionForEngineSwitch()
     if (audio == null && subtitle == null) {
         pendingEngineSwitchTrackPreference = null

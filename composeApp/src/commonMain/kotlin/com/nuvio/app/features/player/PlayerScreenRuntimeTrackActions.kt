@@ -195,7 +195,7 @@ internal fun PlayerScreenRuntime.refreshTracks() {
     val selectedAudio = audioTracks.firstOrNull { it.isSelected }
     if (selectedAudio != null) selectedAudioIndex = selectedAudio.index
     val selectedSub = subtitleTracks.firstOrNull { it.isSelected }
-    if (selectedSub != null && !useCustomSubtitles) selectedSubtitleIndex = selectedSub.index
+    if (selectedSub != null && !useCustomSubtitles && !rewindSubtitles.isActive) selectedSubtitleIndex = selectedSub.index
     if (!playbackSnapshot.isLoading) {
         hasScannedTextTracksOnce = true
     }
@@ -205,7 +205,7 @@ internal fun PlayerScreenRuntime.refreshTracks() {
     }
 
     if (qualityReplacing) return
-    val subtitlePreferenceReady = restorePersistedTrackPreferenceIfNeeded()
+    val subtitlePreferenceReady = !rewindSubtitles.isActive && restorePersistedTrackPreferenceIfNeeded()
 
     val preferredAudioTargets = preferredAudioLanguageTargets
 

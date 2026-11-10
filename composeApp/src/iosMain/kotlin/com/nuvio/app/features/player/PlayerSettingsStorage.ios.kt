@@ -557,6 +557,9 @@ actual object PlayerSettingsStorage {
         saveBoolean(subtitleStripSdhKey, enabled)
     }
 
+    actual fun loadAutoShowSubtitlesOnRewindEnabled(): Boolean? = null
+    actual fun saveAutoShowSubtitlesOnRewindEnabled(enabled: Boolean) {}
+
     actual fun loadSubtitleUseForcedSubtitles(): Boolean? = loadBoolean(subtitleUseForcedSubtitlesKey)
 
     actual fun saveSubtitleUseForcedSubtitles(enabled: Boolean) {

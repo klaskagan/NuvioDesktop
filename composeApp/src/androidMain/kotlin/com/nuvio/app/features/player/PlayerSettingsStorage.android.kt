@@ -635,6 +635,9 @@ actual object PlayerSettingsStorage {
             ?.apply()
     }
 
+    actual fun loadAutoShowSubtitlesOnRewindEnabled(): Boolean? = null
+    actual fun saveAutoShowSubtitlesOnRewindEnabled(enabled: Boolean) {}
+
     actual fun loadSubtitleUseForcedSubtitles(): Boolean? =
         preferences?.let { sharedPreferences ->
             val key = ProfileScopedKey.of(subtitleUseForcedSubtitlesKey)

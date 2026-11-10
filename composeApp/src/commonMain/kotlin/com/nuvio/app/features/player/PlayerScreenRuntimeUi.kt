@@ -684,6 +684,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
                     }
                 },
                 onControllerReady = { controller ->
+                    if (playerController !== controller) clearRewindSubtitles()
                     playerController = controller.takeIf { sourceAvailable }
                     playerLifecycleController = controller
                     playerControllerSourceUrl = surfaceSource?.sourceUrl
@@ -698,6 +699,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
                     }
                 },
                 onError = { message ->
+                    if (message != null) clearRewindSubtitles()
                     if (qualityReplacing) { qualityLoadError = message; return@PlatformPlayerSurface }
                     if (message != null && tryRefreshCredentialedSourceAfterError(message)) {
                         return@PlatformPlayerSurface
@@ -1070,10 +1072,18 @@ private fun PlayerScreenRuntime.handlePlayerControlsAction(action: PlayerControl
             togglePlayerPictureInPicture()
         }
         PlayerControlsAction.DoubleTapSeekBack -> {
+            if (isDesktop && playerController != null) {
+                handleDoubleTapSeek(PlayerSeekDirection.Backward)
+                return true
+            }
             prepareDoubleTapSeekForNativeFallback(PlayerSeekDirection.Backward)
             return false
         }
         PlayerControlsAction.DoubleTapSeekForward -> {
+            if (isDesktop && playerController != null) {
+                handleDoubleTapSeek(PlayerSeekDirection.Forward)
+                return true
+            }
             prepareDoubleTapSeekForNativeFallback(PlayerSeekDirection.Forward)
             return false
         }
@@ -1195,6 +1205,7 @@ internal fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: 
             }
         }
         "selectBuiltInSubtitleTrack" -> {
+            clearRewindSubtitles()
             val index = value.toInt()
             val wasCustom = useCustomSubtitles
             playerControlsLog.d {
@@ -1230,6 +1241,7 @@ internal fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: 
         "fetchAddonSubtitles" -> fetchAddonSubtitlesForActiveItem()
         "selectAddonSubtitle" -> {
             val addon = visibleAddonSubtitles.getOrNull(value.toInt()) ?: return true
+            clearRewindSubtitles()
             playerControlsLog.d {
                 "selectAddonSubtitle index=${value.toInt()} addonId=${addon.id} language=${addon.language} ${playerControlLogContext()}"
             }
@@ -1241,7 +1253,11 @@ internal fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: 
             persistAddonSubtitlePreference(addon)
             attachSelectedAddonSubtitleWithAutoSync(addon.url)
         }
-        "subtitleVisibility" -> playerController?.setSubtitleVisible(value != 0.0)
+        "subtitleVisibility" -> {
+            desktopSubtitlesVisible = value != 0.0
+            clearRewindSubtitles()
+            playerController?.setSubtitleVisible(desktopSubtitlesVisible)
+        }
         "subtitleDelayDelta" -> setSubtitleDelay((subtitleDelayMs + value.toInt()).coerceIn(SUBTITLE_DELAY_MIN_MS, SUBTITLE_DELAY_MAX_MS))
         "subtitleDelayReset" -> setSubtitleDelay(0)
         "subtitleAutoSyncCapture" -> captureSubtitleAutoSyncTime()
@@ -1704,17 +1720,22 @@ private data class PlayerControlSubtitleSelection(
 private fun PlayerScreenRuntime.buildPlayerControlSubtitleSelection(): PlayerControlSubtitleSelection {
     val autoSyncedUrl by AutoSyncSyncedSubtitle.url.collectAsState()
     val selectedAddon = selectedAddonSubtitle
+    val displayedSubtitleIndex = if (rewindSubtitles.isActive) {
+        subtitleTracks.firstOrNull { it.isSelected }?.index ?: -1
+    } else {
+        selectedSubtitleIndex
+    }
     var selectedLanguageKey = "__off__"
     var selectedOptionId = ""
-    if (selectedAddon != null || selectedSubtitleIndex != -1) {
+    if (selectedAddon != null || displayedSubtitleIndex != -1) {
         selectedLanguageKey = selectedSubtitleLanguageKey(
             subtitleTracks = subtitleTracks,
-            selectedSubtitleIndex = selectedSubtitleIndex,
+            selectedSubtitleIndex = displayedSubtitleIndex,
             selectedAddonSubtitle = selectedAddon,
         )
         selectedOptionId = selectedSubtitleOptionId(
             subtitleTracks = subtitleTracks,
-            selectedSubtitleIndex = selectedSubtitleIndex,
+            selectedSubtitleIndex = displayedSubtitleIndex,
             selectedAddonSubtitle = selectedAddon,
         ).orEmpty()
     }
@@ -2034,6 +2055,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
         selectedAddonSubtitle = selectedAddonSubtitle,
         subtitleAutoSyncState = subtitleAutoSyncState,
         onBuiltInSubtitleTrackSelected = { index ->
+            clearRewindSubtitles()
             if (serverSubtitleTracks.isNotEmpty() && index >= 0) {
                 selectServerSubtitleTrack(index)
             } else {
@@ -2053,6 +2075,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
             }
         },
         onAddonSubtitleSelected = { addon ->
+            clearRewindSubtitles()
             isUserExplicitSubtitleSelection = true
             selectedAddonSubtitleId = addon.selectionKey
             selectedSubtitleIndex = -1

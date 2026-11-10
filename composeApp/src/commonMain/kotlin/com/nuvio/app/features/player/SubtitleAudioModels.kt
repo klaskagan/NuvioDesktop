@@ -25,6 +25,7 @@ data class SubtitleTrack(
     val language: String? = null,
     val isSelected: Boolean = false,
     val isForced: Boolean = false,
+    val isExternal: Boolean = false,
 )
 
 data class AddonSubtitle(

@@ -2705,6 +2705,7 @@ static id qualityNodeObject(const mpv_node &node) {
             @"language": language ?: @"",
             @"selected": @(selected),
             @"forced": @(forced),
+            @"external": @([item[@"external"] boolValue]),
         }];
         logicalIndex += 1;
     }

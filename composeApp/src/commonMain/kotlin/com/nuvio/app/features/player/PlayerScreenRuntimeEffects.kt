@@ -118,6 +118,8 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
     }
 
     LaunchedEffect(activePlaybackKey, activeSourceUrl, activeSourceAudioUrl, activeSourceHeaders, activeSourceResponseHeaders) {
+        clearRewindSubtitles()
+        pendingSeekTarget = null
         errorMessage = null
         playerController = null
         playerControllerSourceUrl = null
@@ -248,6 +250,10 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
 
     LaunchedEffect(selectedAddonSubtitleId, useCustomSubtitles, activeSourceUrl) {
         subtitleAutoSyncState = SubtitleAutoSyncUiState()
+    }
+
+    LaunchedEffect(playerSettingsUiState.autoShowSubtitlesOnRewindEnabled) {
+        if (!playerSettingsUiState.autoShowSubtitlesOnRewindEnabled) clearRewindSubtitles()
     }
 
     LaunchedEffect(playerController, subtitleStyle, playerSettingsUiState.useLibass) {
@@ -464,6 +470,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
                 // re-reads its launch from the store).
                 PlayerLaunchStore.markExited(launchId)
             }
+            clearRewindSubtitles()
             playerController?.clearNowPlayingInfo()
             P2pStreamingEngine.shutdown()
             cancelNextEpisodePreload()

@@ -48,6 +48,15 @@ Multiple `--tests` options select the union of those filters. Omit all filters t
 run the whole desktop suite. `--rerun-tasks` forces tasks to execute again; it is
 normally unnecessary because Gradle detects changed source files automatically.
 
+For the live rewind-subtitle test, set `NUVIO_REWIND_TEST_MEDIA` to a synthetic
+60-second MKV with frequent keyframes and one SRT cue per second reading
+`Rewind subtitle fixture`. Put the external `cue.srt` and the 136-pixel-high
+replacement video `no-subtitles.mkv` in the same directory. Run
+`MoviePlayerControlsLiveTest.actualMovieScreenShowsRewindCuesUntilTheOriginalPosition`
+with the isolation init script. On macOS, run `:composeApp:buildMacosPlayerBridge`
+before the live test after changing the native bridge. `:composeApp:desktopTest`
+can reuse a previously built player bridge.
+
 ## Android Studio
 
 1. Open **Settings → Build, Execution, Deployment → Build Tools → Gradle**.
@@ -69,6 +78,20 @@ configuration rather than an Android app configuration. A green gutter icon alon
 does not ensure the isolation script has been added.
 
 ## Reading the result
+
+If a macOS live test aborts while loading `libjawt.dylib` and reports that
+`@rpath/libjvm.dylib` is missing, set `DYLD_LIBRARY_PATH` on the Gradle test
+process with a local init script. Use the test JDK's `lib/server` directory.
+
+```groovy
+allprojects {
+    tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+        environment 'DYLD_LIBRARY_PATH', '/absolute/path/to/test/jdk/lib/server'
+    }
+}
+```
+
+Pass the local script with a second `-I` alongside the isolation script.
 
 - **Passed:** assertions ran and succeeded.
 - **Skipped:** a test did not verify its assertions. Some full-app tests use

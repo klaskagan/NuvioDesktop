@@ -311,6 +311,8 @@ internal class PlayerScreenRuntime(
     var partyPreviousKey: String? = null
     var partyAppInBackground = false
     var playbackSnapshotMark: TimeMark? = null
+    val rewindSubtitles = PlayerRewindSubtitles()
+    var desktopSubtitlesVisible = true
     var pendingSeekTarget: Pair<Long, TimeMark>? = null
     var streamMediaInfo by mutableStateOf(PlayerMediaInfo())
     var playbackEngineOverride by mutableStateOf<AndroidPlaybackEngine?>(null)

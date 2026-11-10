@@ -79,6 +79,7 @@ internal fun PlayerScreenRuntime.selectPlayerQuality(height: Int) {
         var handoverCheckpoint: PlayerQualityCheckpoint? = null
         val adapter = object : QualitySwitchPlayback<RuntimeQualityCheckpoint> {
             override suspend fun capture(): RuntimeQualityCheckpoint {
+                clearRewindSubtitles()
                 val playback = playerController?.qualityCheckpoint() ?: error("Player unavailable")
                 return RuntimeQualityCheckpoint(playback, activeSourceUrl, activeSourceAudioUrl, activeSourceHeaders,
                     activeSourceResponseHeaders, activeStreamType, qualityRequestedHeight, activeVideoId).also { capturedPaused = playback.paused }

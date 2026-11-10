@@ -13,6 +13,7 @@ import com.nuvio.app.features.watchprogress.WatchProgressPlaybackSession
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.features.watchprogress.buildPlaybackVideoId
 import com.nuvio.app.features.watching.domain.isShortPlaceholderDuration
+import com.nuvio.app.isDesktop
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -41,6 +42,15 @@ internal fun PlayerScreenRuntime.updatePlaybackSnapshot(
     }
     playbackSnapshotKey = playbackKey
     playbackSnapshotMark = TimeSource.Monotonic.markNow()
+    if (isDesktop && !snapshot.isLoading) {
+        val target = pendingSeekTarget?.first
+        if (target != null && abs(snapshot.positionMs - target) <= 500L) pendingSeekTarget = null
+    }
+    if (snapshot.isEnded) {
+        clearRewindSubtitles()
+    } else if (!snapshot.isLoading && rewindSubtitles.observe(snapshot.positionMs)) {
+        restoreSubtitlesOffAfterRewind()
+    }
     val targetPositionMs = scrubbingPositionMs ?: return true
     if (!isScrubbingTimeline && (
             !snapshot.isLoading || snapshot.isEnded ||

@@ -4416,6 +4416,7 @@ document.addEventListener("keydown", event => {
     if (subtitlesHidden && !isOff) {
       showHiddenSubtitles();
     } else if (isOff) {
+      showHiddenSubtitles();
       if (window.lastActiveSubtitle) {
         if (window.lastActiveSubtitle.kind === "builtIn") send("selectBuiltInSubtitleTrack", window.lastActiveSubtitle.index);
         else send("selectAddonSubtitle", window.lastActiveSubtitle.index);

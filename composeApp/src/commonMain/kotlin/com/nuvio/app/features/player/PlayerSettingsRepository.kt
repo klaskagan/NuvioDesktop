@@ -49,6 +49,7 @@ data class PlayerSettingsUiState(
     val externalPlayerId: String? = ExternalPlayerPlatform.defaultPlayerId(),
     val preferredAudioLanguage: String = AudioLanguageOption.DEVICE,
     val secondaryPreferredAudioLanguage: String? = null,
+    val autoShowSubtitlesOnRewindEnabled: Boolean = true,
     val preferredSubtitleLanguage: String = SubtitleLanguageOption.NONE,
     val secondaryPreferredSubtitleLanguage: String? = null,
     val subtitleStyle: SubtitleStyleState = SubtitleStyleState.DEFAULT,
@@ -143,6 +144,7 @@ object PlayerSettingsRepository {
     private var externalPlayerId: String? = ExternalPlayerPlatform.defaultPlayerId()
     private var preferredAudioLanguage = AudioLanguageOption.DEVICE
     private var secondaryPreferredAudioLanguage: String? = null
+    private var autoShowSubtitlesOnRewindEnabled = true
     private var preferredSubtitleLanguage = SubtitleLanguageOption.NONE
     private var secondaryPreferredSubtitleLanguage: String? = null
     private var subtitleStyle = SubtitleStyleState.DEFAULT
@@ -242,6 +244,7 @@ object PlayerSettingsRepository {
         externalPlayerId = ExternalPlayerPlatform.defaultPlayerId()
         preferredAudioLanguage = AudioLanguageOption.DEVICE
         secondaryPreferredAudioLanguage = null
+        autoShowSubtitlesOnRewindEnabled = true
         preferredSubtitleLanguage = SubtitleLanguageOption.NONE
         secondaryPreferredSubtitleLanguage = null
         subtitleStyle = SubtitleStyleState.DEFAULT
@@ -349,6 +352,7 @@ object PlayerSettingsRepository {
                 ?: AudioLanguageOption.DEVICE
         secondaryPreferredAudioLanguage =
             normalizeLanguageCode(PlayerSettingsStorage.loadSecondaryPreferredAudioLanguage())
+        autoShowSubtitlesOnRewindEnabled = PlayerSettingsStorage.loadAutoShowSubtitlesOnRewindEnabled() ?: true
         preferredSubtitleLanguage =
             normalizeLanguageCode(PlayerSettingsStorage.loadPreferredSubtitleLanguage())
                 ?: SubtitleLanguageOption.NONE
@@ -641,6 +645,14 @@ object PlayerSettingsRepository {
         secondaryPreferredAudioLanguage = normalized
         publish()
         PlayerSettingsStorage.saveSecondaryPreferredAudioLanguage(normalized)
+    }
+
+    fun setAutoShowSubtitlesOnRewindEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (autoShowSubtitlesOnRewindEnabled == enabled) return
+        autoShowSubtitlesOnRewindEnabled = enabled
+        publish()
+        PlayerSettingsStorage.saveAutoShowSubtitlesOnRewindEnabled(enabled)
     }
 
     fun setPreferredSubtitleLanguage(language: String) {
@@ -1339,6 +1351,7 @@ object PlayerSettingsRepository {
             externalPlayerId = externalPlayerId,
             preferredAudioLanguage = preferredAudioLanguage,
             secondaryPreferredAudioLanguage = secondaryPreferredAudioLanguage,
+            autoShowSubtitlesOnRewindEnabled = autoShowSubtitlesOnRewindEnabled,
             preferredSubtitleLanguage = preferredSubtitleLanguage,
             secondaryPreferredSubtitleLanguage = secondaryPreferredSubtitleLanguage,
             subtitleStyle = subtitleStyle,
