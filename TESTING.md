@@ -49,9 +49,11 @@ run the whole desktop suite. `--rerun-tasks` forces tasks to execute again; it i
 normally unnecessary because Gradle detects changed source files automatically.
 
 For the live rewind-subtitle test, set `NUVIO_REWIND_TEST_MEDIA` to a synthetic
-60-second MKV with frequent keyframes and one SRT cue per second reading
-`Rewind subtitle fixture`. Put the external `cue.srt` and the 136-pixel-high
-replacement video `no-subtitles.mkv` in the same directory. Run
+60-second MKV with frequent keyframes. Include two Russian SRT tracks in this
+order, `Русские - форс.` and `Русские`, with both forced disposition flags unset.
+The regular track should show `Rewind subtitle fixture` once per second. Put the
+external `cue.srt` and the 136-pixel-high replacement video `no-subtitles.mkv`
+in the same directory. Run
 `MoviePlayerControlsLiveTest.actualMovieScreenShowsRewindCuesUntilTheOriginalPosition`
 with the isolation init script. On macOS, run `:composeApp:buildMacosPlayerBridge`
 before the live test after changing the native bridge. `:composeApp:desktopTest`

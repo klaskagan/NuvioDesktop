@@ -49,7 +49,7 @@ internal fun PlayerScreenRuntime.updatePlaybackSnapshot(
     if (snapshot.isEnded) {
         clearRewindSubtitles()
     } else if (!snapshot.isLoading && rewindSubtitles.observe(snapshot.positionMs)) {
-        restoreSubtitlesOffAfterRewind()
+        restoreSubtitlesAfterRewind()
     }
     val targetPositionMs = scrubbingPositionMs ?: return true
     if (!isScrubbingTimeline && (

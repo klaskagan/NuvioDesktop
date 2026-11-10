@@ -50,25 +50,35 @@ internal class PlayerRewindSubtitles {
 internal fun PlayerScreenRuntime.onUserSeekForRewindSubtitles(fromMs: Long, targetMs: Long) {
     if (!isDesktop) return
     if (targetMs >= fromMs) {
-        if (targetMs > fromMs && rewindSubtitles.clearAtForwardTarget(targetMs)) restoreSubtitlesOffAfterRewind()
+        if (targetMs > fromMs && rewindSubtitles.clearAtForwardTarget(targetMs)) restoreSubtitlesAfterRewind()
         return
     }
     if (!playerSettingsUiState.autoShowSubtitlesOnRewindEnabled || qualitySwitching ||
-        selectedSubtitleIndex >= 0 || selectedAddonSubtitleId != null ||
+        selectedAddonSubtitleId != null ||
         useCustomSubtitles || hasBurnedInServerSubtitle
     ) return
     val controller = playerController ?: return
     if (!rewindSubtitles.isActive) {
         val tracks = controller.getSubtitleTracks()
-        if (tracks.any { it.isSelected }) return
-        val embedded = tracks.filterNot { it.isExternal }
+        val selected = tracks.firstOrNull { it.isSelected }
+            ?: tracks.firstOrNull { it.index == selectedSubtitleIndex }
+        if (selected != null && (!selected.isForced || selected.isExternal)) return
+        if (selected == null && selectedSubtitleIndex >= 0) return
+        val embedded = tracks.filterNot { it.isExternal || it.isForced }
         val targets = resolvePreferredSubtitleLanguageTargets(
             preferredSubtitleLanguage = playerSettingsUiState.preferredSubtitleLanguage,
             secondaryPreferredSubtitleLanguage = playerSettingsUiState.secondaryPreferredSubtitleLanguage,
             deviceLanguages = DeviceLanguagePreferences.preferredLanguageCodes(),
         )
         val preferred = findBestInternalSubtitleTrackIndex(embedded, targets)
-        val track = embedded.getOrNull(preferred) ?: embedded.firstOrNull() ?: return
+        val track = embedded.getOrNull(preferred)
+            ?: selected?.language?.let { language ->
+                embedded.firstOrNull { subtitleTrackMatchesLanguage(it, language) }
+            }
+            ?: embedded.firstOrNull()
+            ?: return
+        // Keep the original selection in runtime state while the temporary track plays.
+        selectedSubtitleIndex = selected?.index ?: -1
         controller.selectSubtitleTrack(track.index)
         subtitleTracks = tracks.map { it.copy(isSelected = it.index == track.index) }
         if (!desktopSubtitlesVisible) controller.setSubtitleVisible(true)
@@ -77,11 +87,11 @@ internal fun PlayerScreenRuntime.onUserSeekForRewindSubtitles(fromMs: Long, targ
 }
 
 internal fun PlayerScreenRuntime.clearRewindSubtitles() {
-    if (rewindSubtitles.clear()) restoreSubtitlesOffAfterRewind()
+    if (rewindSubtitles.clear()) restoreSubtitlesAfterRewind()
 }
 
-internal fun PlayerScreenRuntime.restoreSubtitlesOffAfterRewind() {
-    playerController?.selectSubtitleTrack(-1)
+internal fun PlayerScreenRuntime.restoreSubtitlesAfterRewind() {
+    playerController?.selectSubtitleTrack(selectedSubtitleIndex)
     if (!desktopSubtitlesVisible) playerController?.setSubtitleVisible(false)
-    subtitleTracks = subtitleTracks.map { if (it.isSelected) it.copy(isSelected = false) else it }
+    subtitleTracks = subtitleTracks.map { it.copy(isSelected = it.index == selectedSubtitleIndex) }
 }

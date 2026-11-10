@@ -126,7 +126,8 @@ class MoviePlayerControlsLiveTest {
             seekTo(35_000)
             dispatch("keyboardSeekBack")
             await("first rewind with embedded track selected") {
-                player.snapshot().positionMs in 24_500L..25_500L && subtitlesOn()
+                player.snapshot().positionMs in 24_500L..25_500L &&
+                    player.getSubtitleTracks().any { it.isSelected && it.label.startsWith("Русские (") }
             }
             SwingUtilities.invokeAndWait { player.play() }
             await("subtitle cue during replay") {
@@ -146,6 +147,28 @@ class MoviePlayerControlsLiveTest {
                 player.snapshot().positionMs >= 35_000 && !subtitlesOn()
             }
             SwingUtilities.invokeAndWait { player.pause() }
+            await("paused before forced track check") { !player.snapshot().isPlaying }
+            val forcedIndex = player.getSubtitleTracks().single { it.isForced }.index
+            dispatch("selectBuiltInSubtitleTrack", forcedIndex.toDouble())
+            await("forced track selected") {
+                player.getSubtitleTracks().any { it.index == forcedIndex && it.isSelected }
+            }
+            seekTo(38_000)
+            dispatch("keyboardSeekBack")
+            await("rewind replaces forced subtitles with regular subtitles") {
+                player.snapshot().positionMs in 27_500L..28_500L &&
+                    player.getSubtitleTracks().any { it.isSelected && !it.isForced }
+            }
+            seekTo(37_000)
+            SwingUtilities.invokeAndWait { player.play() }
+            await("natural playback restores the original forced track") {
+                player.snapshot().positionMs >= 38_000 &&
+                    player.getSubtitleTracks().any { it.index == forcedIndex && it.isSelected }
+            }
+            SwingUtilities.invokeAndWait { player.pause() }
+            await("paused after forced subtitles were restored") { !player.snapshot().isPlaying }
+            dispatch("selectBuiltInSubtitleTrack", -1.0)
+            await("subtitles off before the next rewind") { !subtitlesOn() }
             seekTo(40_000)
             dispatch("scrubFinish", 20_000.0)
             await("backward timeline seek with subtitles") { player.snapshot().positionMs in 19_500L..20_500L && subtitlesOn() }

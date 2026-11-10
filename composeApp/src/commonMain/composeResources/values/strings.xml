@@ -1267,7 +1267,7 @@
     <string name="settings_playback_subtitle_strip_sdh_description">Hide sound descriptions and speaker labels from text subtitles.</string>
     <string name="settings_playback_subtitle_text_color">Text Color</string>
     <string name="settings_playback_auto_show_subtitles_on_rewind">Auto-Show Subtitles on Rewind</string>
-    <string name="settings_playback_auto_show_subtitles_on_rewind_description">When subtitles are off, show them temporarily until playback catches up to where you rewound.</string>
+    <string name="settings_playback_auto_show_subtitles_on_rewind_description">When subtitles are off or only forced subtitles are showing, show regular subtitles until playback catches up to where you rewound.</string>
     <string name="settings_playback_subtitle_use_forced">Use Forced Subtitles</string>
     <string name="settings_playback_subtitle_use_forced_description">Prefer forced subtitles when audio matches the subtitle language; if unavailable, select nothing.</string>
     <string name="settings_playback_subtitle_vertical_offset">Vertical Offset</string>
