@@ -2651,13 +2651,45 @@ const syncSkipPromptPlacement = showSkip => {
   }
 };
 
-let movieRecommendationKey = "";
+const movieRecommendationPrevious = document.getElementById("movieRecommendationPrevious");
+const movieRecommendationNext = document.getElementById("movieRecommendationNext");
+let movieRecommendationSession = "";
+let movieRecommendationDismissedLocally = false;
+
+const syncMovieRecommendationScroll = () => {
+  const { scrollLeft, scrollWidth, clientWidth } = movieRecommendationItems;
+  movieRecommendationPrevious.hidden = scrollLeft <= 1;
+  movieRecommendationNext.hidden = scrollLeft + clientWidth >= scrollWidth - 1;
+  if (document.activeElement === movieRecommendationPrevious && movieRecommendationPrevious.hidden ||
+      document.activeElement === movieRecommendationNext && movieRecommendationNext.hidden) {
+    const items = movieRecommendationItems.children;
+    (scrollLeft <= 1 ? items[0] : items[items.length - 1])?.focus({ preventScroll: true });
+  }
+};
+
+const scrollMovieRecommendations = direction => {
+  movieRecommendationItems.scrollBy({
+    left: direction * movieRecommendationItems.clientWidth * .8,
+    behavior: prefersReducedMotion ? "instant" : "smooth",
+  });
+};
+
+movieRecommendationPrevious.addEventListener("click", () => scrollMovieRecommendations(-1));
+movieRecommendationNext.addEventListener("click", () => scrollMovieRecommendations(1));
+movieRecommendationItems.addEventListener("scroll", syncMovieRecommendationScroll);
+new ResizeObserver(syncMovieRecommendationScroll).observe(movieRecommendationItems);
+movieRecommendationCard.addEventListener("wheel", event => {
+  event.stopPropagation();
+  if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+  event.preventDefault();
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? movieRecommendationItems.clientWidth : 1;
+  movieRecommendationItems.scrollLeft += event.deltaY * unit;
+}, { passive: false });
 let movieRecommendationListKey = "";
-let movieRecommendationAutoHidden = false;
-let movieRecommendationTimer = 0;
+
 
 const dismissMovieRecommendations = () => {
-  state = { ...state, movieRecommendationDismissed: true };
+  movieRecommendationDismissedLocally = true;
   send(`dismissMovieRecommendations:${state.movieRecommendationSessionKey}`);
   renderMovieRecommendations();
   focusShortcutRoot();
@@ -2665,12 +2697,12 @@ const dismissMovieRecommendations = () => {
 
 const renderMovieRecommendations = () => {
   const stage = Number(state.movieRecommendationStage) || 0;
-  const key = `${state.movieRecommendationSessionKey}:${stage}`;
-  if (key !== movieRecommendationKey) {
-    movieRecommendationKey = key;
-    movieRecommendationAutoHidden = false;
-    window.clearTimeout(movieRecommendationTimer);
-    movieRecommendationTimer = 0;
+  if (state.movieRecommendationSessionKey !== movieRecommendationSession || stage === 0) {
+    movieRecommendationDismissedLocally = false;
+    if (state.movieRecommendationSessionKey !== movieRecommendationSession) {
+      movieRecommendationItems.scrollLeft = 0;
+    }
+    movieRecommendationSession = state.movieRecommendationSessionKey;
   }
   const items = state.movieRecommendationItems || [];
   const listKey = JSON.stringify(items);
@@ -2686,11 +2718,11 @@ const renderMovieRecommendations = () => {
       button.setAttribute("aria-label", item.title);
       const image = document.createElement("img");
       image.alt = "";
+      image.loading = "lazy";
       setImageSource(image, item.poster);
       image.addEventListener("error", () => image.removeAttribute("src"), { once: true });
-      const title = document.createElement("span");
-      title.textContent = item.title;
-      button.append(image, title);
+      button.title = item.title;
+      button.append(image);
       button.addEventListener("click", event => {
         event.stopPropagation();
         send(`openMovieRecommendation:${item.actionKey}`);
@@ -2702,37 +2734,33 @@ const renderMovieRecommendations = () => {
   }
   movieRecommendationLabel.textContent = state.movieRecommendationLabel || "More Like This";
   movieRecommendationClose.setAttribute("aria-label", state.movieRecommendationCloseLabel || "Close");
-  const ended = stage >= 3;
-  const eligible = stage > 0 && items.length > 0 && !state.isInPip &&
-    !activeModal && !playbackErrorText() && !isOpeningOverlayActive();
-  const shouldShow = eligible && (!state.movieRecommendationDismissed || state.controlsVisible);
-  const visible = shouldShow && (ended || !movieRecommendationAutoHidden || state.controlsVisible);
-  if (!visible || ended || state.controlsVisible) {
-    window.clearTimeout(movieRecommendationTimer);
-    movieRecommendationTimer = 0;
-  } else if (!movieRecommendationTimer) {
-    movieRecommendationTimer = window.setTimeout(() => {
-      movieRecommendationTimer = 0;
-      movieRecommendationAutoHidden = true;
-      renderMovieRecommendations();
-    }, 10000);
-  }
+  const visible = stage > 0 && items.length > 0 && !state.isInPip && !state.lineupsActive &&
+    !activeModal && !playbackErrorText() && !isOpeningOverlayActive() &&
+    !state.movieRecommendationDismissed && !movieRecommendationDismissedLocally;
   if (!visible && movieRecommendationCard.contains(document.activeElement)) focusShortcutRoot();
   movieRecommendationCard.inert = !visible;
   movieRecommendationCard.setAttribute("aria-hidden", visible ? "false" : "true");
   movieRecommendationCard.classList.toggle("visible", visible);
+  root.classList.toggle("recommendations-open", visible);
+  if (visible) syncMovieRecommendationScroll();
 };
 
-movieRecommendationClose.addEventListener("click", event => {
+movieRecommendationCard.addEventListener("click", event => {
   event.stopPropagation();
-  dismissMovieRecommendations();
+  const button = event.target.closest("button");
+  if (!button || button === movieRecommendationClose) dismissMovieRecommendations();
 });
-// Preserve native button activation; keep player shortcuts from swallowing Enter/Space/Escape.
 movieRecommendationCard.addEventListener("keydown", event => {
-  if (event.key === "Escape") {
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
     event.preventDefault();
     event.stopPropagation();
-    dismissMovieRecommendations();
+    const poster = event.target.closest(".movie-recommendation-item");
+    if (poster) {
+      const adjacent = event.key === "ArrowLeft" ? poster.previousElementSibling : poster.nextElementSibling;
+      adjacent?.focus();
+    } else {
+      scrollMovieRecommendations(event.key === "ArrowLeft" ? -1 : 1);
+    }
   } else if (event.key === "Enter" || event.code === "Space") {
     event.stopPropagation();
   }
@@ -2834,7 +2862,7 @@ const clearChromeAutoHideTimer = () => {
 
 const shouldHideCursorForIdleChrome = () => Boolean(
   !playbackErrorText() &&
-  !state.controlsVisible,
+  !state.controlsVisible && !root.classList.contains("recommendations-open"),
 );
 
 const clearHiddenCursorTimer = () => {
@@ -4086,7 +4114,7 @@ root.addEventListener("contextmenu", event => {
 });
 
 root.addEventListener("pointerdown", event => {
-  if (!canSpeedBoostStart() || state.isInPip || playbackErrorText() || isControlsSurfaceEvent(event)) return;
+  if (root.classList.contains("recommendations-open") || !canSpeedBoostStart() || state.isInPip || playbackErrorText() || isControlsSurfaceEvent(event)) return;
   if (event.button !== 0) return;
 
   rootPointerStartX = event.clientX;
@@ -4188,6 +4216,11 @@ root.addEventListener("click", event => {
     window.clearTimeout(tapTimer);
     event.stopPropagation();
     event.preventDefault();
+    return;
+  }
+  if (root.classList.contains("recommendations-open") && !event.target.closest(chromeInteractionSelector)) {
+    window.clearTimeout(tapTimer);
+    dismissMovieRecommendations();
     return;
   }
   if (playbackErrorText() || isControlsSurfaceEvent(event)) return;
@@ -4301,6 +4334,11 @@ document.addEventListener("keydown", event => {
     return;
   }
   if (event.key === "Escape" && state.lineupsActive) { send("lineups"); event.preventDefault(); return; }
+  if (event.key === "Escape" && root.classList.contains("recommendations-open")) {
+    event.preventDefault();
+    dismissMovieRecommendations();
+    return;
+  }
   if (event.key === "Escape") {
     clearSpaceHoldTimerAndStopSpeedBoost();
     event.preventDefault();

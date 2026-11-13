@@ -7,6 +7,8 @@ import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.PosterShape
 import com.nuvio.app.features.tmdb.TmdbService
 import io.ktor.http.encodeURLParameter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
@@ -53,7 +55,7 @@ object TraktRelatedRepository {
             }
         }
 
-        val items = fetchRelated(target = target, headers = headers)
+        val items = fetchRelated(target = target, headers = headers).items
             .distinctBy { it.stableRelatedKey() }
             .take(RELATED_LIMIT)
 
@@ -70,32 +72,57 @@ object TraktRelatedRepository {
         cache.clear()
     }
 
+    internal suspend fun getRelatedForPlayback(meta: MetaDetails): List<MetaPreview> {
+        val (headers, target) = withTimeoutOrNull(5_000L) {
+            val headers = TraktAuthRepository.authorizedHeaders() ?: return@withTimeoutOrNull null
+            val target = resolveRelatedTarget(meta, meta.imdbId, "movie", headers) ?: return@withTimeoutOrNull null
+            headers to target
+        } ?: return emptyList()
+        return collectRelatedMoviePages { page ->
+            withTimeoutOrNull(3_000L) {
+                try {
+                    fetchRelated(target, headers, page)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    log.w { "Failed to load Trakt related movie page $page: ${error.message}" }
+                    null
+                }
+            }
+        }
+    }
+
     private suspend fun fetchRelated(
         target: ResolvedRelatedTarget,
         headers: Map<String, String>,
-    ): List<MetaPreview> {
+        page: Int = 1,
+    ): RelatedMoviePage {
         val endpoint = when (target.type) {
             TraktRelatedType.MOVIE -> "movies"
             TraktRelatedType.SHOW -> "shows"
         }
         val response = httpRequestRaw(
             method = "GET",
-            url = buildTraktUrl("$endpoint/${target.pathId}/related", mapOf("extended" to "full,images")),
+            url = buildTraktUrl("$endpoint/${target.pathId}/related", mapOf("extended" to "full,images", "page" to page.toString())),
             headers = jsonHeaders(headers),
             body = "",
         )
 
-        if (response.status == 404) return emptyList()
+        if (response.status == 404) return RelatedMoviePage(emptyList(), null)
         if (response.status !in 200..299) {
             error("Failed to load Trakt related titles (${response.status})")
         }
 
-        return when (target.type) {
+        val items = when (target.type) {
             TraktRelatedType.MOVIE -> json.decodeFromString<List<TraktRelatedMovieDto>>(response.body)
                 .mapNotNull { it.toMetaPreview() }
             TraktRelatedType.SHOW -> json.decodeFromString<List<TraktRelatedShowDto>>(response.body)
                 .mapNotNull { it.toMetaPreview() }
         }
+        val pageCount = response.headers.entries
+            .firstOrNull { it.key.equals("X-Pagination-Page-Count", ignoreCase = true) }
+            ?.value?.toIntOrNull()
+        return RelatedMoviePage(items, pageCount)
     }
 
     private suspend fun resolveRelatedTarget(
@@ -182,7 +209,7 @@ object TraktRelatedRepository {
     }
 
     private fun buildTraktUrl(endpoint: String, query: Map<String, String> = emptyMap()): String {
-        val queryString = (query + mapOf("page" to "1", "limit" to RELATED_LIMIT.toString()))
+        val queryString = (mapOf("page" to "1", "limit" to RELATED_LIMIT.toString()) + query)
             .entries
             .filter { (_, value) -> value.isNotBlank() }
             .joinToString("&") { (key, value) ->
@@ -193,6 +220,25 @@ object TraktRelatedRepository {
 
     private fun jsonHeaders(headers: Map<String, String>): Map<String, String> =
         mapOf("Accept" to "application/json") + headers
+}
+
+internal data class RelatedMoviePage(val items: List<MetaPreview>, val pageCount: Int?)
+
+internal suspend fun collectRelatedMoviePages(
+    loadPage: suspend (Int) -> RelatedMoviePage?,
+): List<MetaPreview> {
+    val items = mutableListOf<MetaPreview>()
+    val seen = mutableSetOf<String>()
+    var page = 1
+    while (true) {
+        val response = loadPage(page) ?: break
+        val newItems = response.items.filter { seen.add(it.id) }
+        if (newItems.isEmpty()) break
+        items += newItems
+        if (response.pageCount?.let { page >= it } == true) break
+        page++
+    }
+    return items
 }
 
 private data class TimedCache(
@@ -257,6 +303,7 @@ private fun TraktRelatedMovieDto.toMetaPreview(): MetaPreview? {
 
     return MetaPreview(
         id = contentId,
+        alternateIds = setOfNotNull(ids?.imdb, ids?.tmdb?.let { "tmdb:$it" }, ids?.trakt?.let { "trakt:$it" }),
         type = "movie",
         name = normalizedTitle,
         poster = images.traktBestPosterUrl(),

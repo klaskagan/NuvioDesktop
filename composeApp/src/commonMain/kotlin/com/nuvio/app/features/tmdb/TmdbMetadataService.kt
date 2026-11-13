@@ -1249,7 +1249,22 @@ object TmdbMetadataService {
             query = mapOf("language" to language),
         ) ?: return emptyList()
 
-        val items = response.results
+        val items = mapRecommendations(response.results, mediaType).take(12)
+        moreLikeThisCache[cacheKey] = items
+        return items
+    }
+
+    internal suspend fun movieRecommendationPage(tmdbId: String, page: Int): Pair<List<MetaPreview>, Int?>? {
+        val language = normalizeTmdbLanguage(TmdbSettingsRepository.snapshot().language)
+        val response = fetch<TmdbRecommendationResponse>(
+            endpoint = "movie/$tmdbId/recommendations",
+            query = mapOf("language" to language, "page" to page.toString()),
+        ) ?: return null
+        return mapRecommendations(response.results, "movie") to response.totalPages
+    }
+
+    private fun mapRecommendations(results: List<TmdbRecommendationItem>, mediaType: String): List<MetaPreview> =
+        results
             .filter { it.id > 0 }
             .mapNotNull { recommendation ->
                 val inferredType = when (recommendation.mediaType?.lowercase()) {
@@ -1279,11 +1294,6 @@ object TmdbMetadataService {
                     imdbRating = recommendation.voteAverage?.formatRating(),
                 )
             }
-            .take(12)
-
-        moreLikeThisCache[cacheKey] = items
-        return items
-    }
 
     private suspend fun fetchCollection(
         collectionId: Int,
@@ -2073,6 +2083,7 @@ private data class TmdbCollectionRef(
 
 @Serializable
 private data class TmdbRecommendationResponse(
+    @SerialName("total_pages") val totalPages: Int? = null,
     val results: List<TmdbRecommendationItem> = emptyList(),
 )
 

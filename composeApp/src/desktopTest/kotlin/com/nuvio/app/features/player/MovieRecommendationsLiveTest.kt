@@ -18,7 +18,7 @@ class MovieRecommendationsLiveTest {
         assumeTrue(System.getenv("NUVIO_PLAYER_LIVE_TEST") == "1")
         val media = File("build/qa/movie-recommendations.mp4").absoluteFile
         check(media.isFile) { "Generate the local QA movie before running the live fixture" }
-        val recommendations = (1..10).map { MetaPreview("recommendation-fixture-$it", "movie", "Title $it") }
+        val recommendations = (1..20).map { MetaPreview("recommendation-fixture-$it", "movie", "Title $it") }
         val selected = recommendations.last()
         MoviePlayerControlsFixture.seedMetadata(recommendations)
         val opened = AtomicBoolean(false)
@@ -45,14 +45,20 @@ class MovieRecommendationsLiveTest {
             val player = checkNotNull(controller)
             val handle = player.javaClass.getDeclaredField("handle").apply { isAccessible = true }.getLong(player)
             check(NativePlayerBridge.controlsOverlayAvailable(handle))
-            // Reveal native chrome before targeting the card above the transport bar.
+            // Wait for the shelf to open, then scroll to its trailing edge.
             val robot = Robot()
             robot.mouseMove(window.x + window.width / 2, window.y + window.height / 2)
             Thread.sleep(1_500)
+            robot.mouseMove(window.x + window.width - 21, window.y + window.height - 128)
+            repeat(3) {
+                robot.mousePress(InputEvent.BUTTON1_DOWN_MASK)
+                robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK)
+                robot.delay(400)
+            }
             val output = File("build/qa/movie-recommendations-native.png").apply { parentFile.mkdirs() }
             ImageIO.write(robot.createScreenCapture(window.bounds), "png", output)
-            // Click the tenth title in the second row, without scrolling the native card.
-            robot.mouseMove(window.x + window.width - 70, window.y + window.height - 235)
+            // The final poster sits against the trailing gutter at the end of the row.
+            robot.mouseMove(window.x + window.width - 70, window.y + window.height - 100)
             robot.mousePress(InputEvent.BUTTON1_DOWN_MASK)
             robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK)
             await("recommendation detail callback after player release") { opened.get() }

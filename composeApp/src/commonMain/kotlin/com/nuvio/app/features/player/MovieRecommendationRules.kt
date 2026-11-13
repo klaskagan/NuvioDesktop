@@ -1,6 +1,9 @@
 package com.nuvio.app.features.player
 
+import com.nuvio.app.features.details.MoreLikeThisSource
 import com.nuvio.app.features.home.MetaPreview
+import com.nuvio.app.features.trakt.TraktAuthRepository
+import com.nuvio.app.features.trakt.TraktConnectionMode
 import com.nuvio.app.features.watching.application.WatchingState
 
 enum class MovieRecommendationTiming { INTRODB, FINAL_FOUR_MINUTES }
@@ -14,7 +17,7 @@ internal object MovieRecommendationRules {
         isEnded -> 3
         durationMs <= 0 -> 0
         timing == MovieRecommendationTiming.INTRODB && creditsStartMs != null &&
-            creditsStartMs >= 0 && creditsStartMs < durationMs && positionMs < creditsStartMs -> 0
+            creditsStartMs >= 0 && creditsStartMs < durationMs && positionMs - creditsStartMs < 5_000L -> 0
         durationMs - positionMs <= 30_000L -> 2
         timing == MovieRecommendationTiming.INTRODB && creditsStartMs != null &&
             creditsStartMs >= 0 && creditsStartMs < durationMs -> 1
@@ -22,12 +25,49 @@ internal object MovieRecommendationRules {
         else -> 0
     }
 
-    fun candidates(items: List<MetaPreview>, currentId: String, watchedKeys: Set<String>): List<MetaPreview> =
-        items.asSequence()
-            .filterNot { it.id == currentId }
-            .filterNot { WatchingState.isPosterWatched(watchedKeys, it) }
-            .distinctBy { "${it.type}:${it.id}" }
-            .take(10).toList()
+    const val LIMIT = 20
+
+    fun candidates(
+        items: List<MetaPreview>,
+        currentId: String,
+        watchedKeys: Set<String>,
+        currentAliases: Set<String> = emptySet(),
+    ): List<MetaPreview> {
+        val seen = (currentAliases + currentId).toMutableSet()
+        return items.asSequence()
+            .filter { it.type == "movie" }
+            .filter { item ->
+                val ids = item.alternateIds + item.id
+                val distinct = ids.none(seen::contains)
+                seen.addAll(ids)
+                distinct
+            }
+            .filter { item ->
+                (item.alternateIds + item.id).none { id ->
+                    WatchingState.isPosterWatched(watchedKeys, item.copy(id = id))
+                }
+            }
+            .take(LIMIT).toList()
+    }
+    suspend fun appendFallbackPages(
+        primary: List<MetaPreview>,
+        hasEnough: (List<MetaPreview>) -> Boolean,
+        loadPage: suspend (Int) -> Pair<List<MetaPreview>, Int?>?,
+    ): List<MetaPreview> {
+        val items = primary.toMutableList()
+        val seenFallbackIds = mutableSetOf<String>()
+        var page = 1
+        while (!hasEnough(items)) {
+            val (results, totalPages) = loadPage(page) ?: break
+            val newItems = results.filter { seenFallbackIds.add(it.id) }
+            if (newItems.isEmpty()) break
+            items += newItems
+            if (totalPages != null && page >= totalPages) break
+            page++
+        }
+        return items
+    }
+
 }
 
 internal val PlayerScreenRuntime.movieRecommendationSessionKey: String
@@ -46,13 +86,32 @@ internal val PlayerScreenRuntime.movieRecommendationLookupKey: String
         "${playerSettingsUiState.movieRecommendationsEnabled}:${args.onOpenMetaDetails != null}:" +
         "${contentType ?: parentMetaType}:${playbackSnapshot.durationMs / 1000}"
 
+internal val PlayerScreenRuntime.movieRecommendationPoolKey: Pair<String, Boolean>
+    get() = movieRecommendationSessionKey to
+        (TraktAuthRepository.uiState.value.mode == TraktConnectionMode.CONNECTED)
+
+internal data class MovieRecommendationPool(
+    val key: Pair<String, Boolean>,
+    val items: List<MetaPreview>,
+    val currentAliases: Set<String>,
+    val extraWatchedKeys: Set<String>,
+)
+
 internal val PlayerScreenRuntime.movieRecommendationCandidates: List<MetaPreview>
     get() {
         if (!parentMetaType.equals("movie", true) ||
             !(contentType ?: parentMetaType).equals("movie", true) ||
-            args.onOpenMetaDetails == null || !playerSettingsUiState.movieRecommendationsEnabled ||
-            playerMeta?.id != parentMetaId || playerMeta?.type != parentMetaType) return emptyList()
-        return MovieRecommendationRules.candidates(playerMeta?.moreLikeThis.orEmpty(), parentMetaId, watchedUiState.watchedKeys)
+            args.onOpenMetaDetails == null || !playerSettingsUiState.movieRecommendationsEnabled) return emptyList()
+        val meta = playerMeta?.takeIf { it.id == parentMetaId && it.type == parentMetaType } ?: return emptyList()
+        val key = movieRecommendationPoolKey
+        val pool = movieRecommendationPool?.takeIf { it.key == key }
+        if (pool == null && (key.second || movieRecommendationPoolLoadingKey == key)) return emptyList()
+        return MovieRecommendationRules.candidates(
+            pool?.items ?: meta.moreLikeThis,
+            parentMetaId,
+            watchedUiState.watchedKeys + pool?.extraWatchedKeys.orEmpty(),
+            pool?.currentAliases ?: setOfNotNull(meta.imdbId),
+        )
     }
 
 internal val PlayerScreenRuntime.movieRecommendationStage: Int
@@ -70,7 +129,7 @@ internal fun PlayerScreenRuntime.movieRecommendationActionKey(id: String, type: 
 
 internal fun PlayerScreenRuntime.syncMovieRecommendationDismissal() {
     if (movieRecommendationSessionKey != movieRecommendationDismissedSession || movieRecommendationStage == 0) {
-        movieRecommendationDismissedStage = 0
+        movieRecommendationsDismissed = false
         movieRecommendationDismissedSession = movieRecommendationSessionKey
     }
 }

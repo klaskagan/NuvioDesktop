@@ -278,13 +278,15 @@ internal class PlayerScreenRuntime(
     var parentalGuideHasShown by mutableStateOf(false)
     var playbackStartedForParentalGuide by mutableStateOf(false)
     var nextEpisodeInfo by mutableStateOf<NextEpisodeInfo?>(null)
+    var movieRecommendationPoolLoadingKey by mutableStateOf<Pair<String, Boolean>?>(null)
+    var movieRecommendationPool by mutableStateOf<MovieRecommendationPool?>(null)
     var movieRecommendationCreditsStartMs by mutableStateOf<Long?>(null)
     var movieRecommendationCreditsLoaded by mutableStateOf(false)
     var movieRecommendationCreditsRequest by mutableStateOf("")
     val movieRecommendationRuntimeToken = kotlin.random.Random.nextLong().toString(16)
     var movieRecommendationSessionIdentity: String? = null
     var movieRecommendationSessionGeneration = 0L
-    var movieRecommendationDismissedStage by mutableStateOf(0)
+    var movieRecommendationsDismissed by mutableStateOf(false)
     var movieRecommendationDismissedSession by mutableStateOf("")
     var showNextEpisodeCard by mutableStateOf(false)
     var nextEpisodeCardDismissed by mutableStateOf(false)

@@ -3657,40 +3657,114 @@ svg {
   pointer-events: none;
 }
 
-/* Movie suggestions share the native next-episode prompt surface; all ten fit without scrolling. */
+/* Keep the video full size and lift the existing controls by the shelf height. */
+.player {
+  --recommendation-poster-height: min(clamp(110px, 28vh, 290px), 39vw);
+  --recommendation-shelf-height: calc(var(--recommendation-poster-height) + 66px + env(safe-area-inset-bottom));
+  --recommendation-lift: 0px;
+}
+.player.recommendations-open { --recommendation-lift: var(--recommendation-shelf-height); }
+.player .progress {
+  bottom: calc(var(--slider-bottom) + var(--recommendation-lift));
+  transition: opacity 160ms ease, bottom 300ms var(--ease-out);
+}
+.player.recommendations-open.chrome-hidden .progress {
+  opacity: 1;
+  pointer-events: auto;
+}
+.player.recommendations-open .progress .metadata { display: none; }
+.player.recommendations-open .skip-prompt {
+  bottom: calc(var(--overlay-bottom) + var(--recommendation-lift) + var(--skip-prompt-lift, 0px) + env(safe-area-inset-bottom));
+}
 .movie-recommendation-card {
-  --recommendation-poster-width: clamp(24px, calc((100vh - var(--overlay-bottom) - 110px) / 3), 72px);
   position: absolute;
-  right: var(--hp);
-  bottom: calc(var(--overlay-bottom) + env(safe-area-inset-bottom));
+  inset: auto 0 0;
   z-index: 7;
-  width: min(calc(var(--recommendation-poster-width) * 5 + 54px), calc(100vw - (var(--hp) * 2)));
-  overflow: hidden;
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(25,25,25,.89);
-  backdrop-filter: blur(20px);
+  height: var(--recommendation-shelf-height);
+  padding-bottom: env(safe-area-inset-bottom);
   color: var(--theme-control-foreground);
-  padding: 10px;
+  /* Original: linear-gradient(to bottom, rgba(9, 14, 18, .48), rgba(9, 14, 18, .79)).
+     To restore it, replace this gradient and remove the inset shadow and backdrop filters. */
+  background: linear-gradient(145deg, rgba(95, 105, 116, .31), rgba(11, 14, 19, .88) 62%);
+  box-shadow: inset 0 1px rgba(227, 234, 242, .22);
+  -webkit-backdrop-filter: blur(14px) saturate(.8);
+  backdrop-filter: blur(14px) saturate(.8);
   opacity: 0;
   pointer-events: none;
-  transform: translateX(50%);
-  transition: opacity 220ms ease, transform 260ms var(--ease-out);
+  transform: translateY(100%);
+  transition: opacity 220ms ease, transform 300ms var(--ease-out);
 }
-.movie-recommendation-card.visible { opacity: 1; pointer-events: auto; transform: translateX(0); }
-.movie-recommendation-header { display: flex; align-items: center; padding: 0 0 6px; gap: 8px; }
-.movie-recommendation-header span { flex: 1; font-size: 11px; font-weight: 600; opacity: .8; }
-.movie-recommendation-header button { width: 24px; height: 24px; border-radius: 50%; padding: 4px; border: 0; background: transparent; color: inherit; cursor: pointer; }
-.movie-recommendation-header svg { width: 15px; height: 15px; }
-.movie-recommendation-items { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px 8px; padding: 2px 0 0; }
-.movie-recommendation-item { display: block; width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; border-radius: 9px; }
-.movie-recommendation-item img { display: block; width: 100%; height: auto; aspect-ratio: 2 / 3; border-radius: 9px; object-fit: cover; background: rgba(255,255,255,.08); }
-.movie-recommendation-item span { display: block; margin-top: 4px; font-size: 10px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.movie-recommendation-card::before {
+  content: "";
+  position: absolute;
+  inset: -104px 0 100%;
+  background: linear-gradient(to bottom, transparent, rgba(9, 14, 18, .48));
+  pointer-events: none;
+}
+.movie-recommendation-card.visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.movie-recommendation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 46px;
+  padding-inline: var(--hp);
+  font-size: clamp(16px, 1.6vw, 25px);
+  font-weight: 600;
+}
+.movie-recommendation-card button { color: inherit; cursor: pointer; }
+.movie-recommendation-header button,
+.movie-recommendation-scroll {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(10, 15, 20, .74);
+}
+.movie-recommendation-header svg, .movie-recommendation-scroll svg { width: 18px; height: 18px; }
+.movie-recommendation-row { position: relative; }
+.movie-recommendation-items {
+  display: flex;
+  gap: 12px;
+  padding: 4px var(--hp);
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: var(--hp);
+}
+.movie-recommendation-items::-webkit-scrollbar { display: none; }
+.movie-recommendation-item {
+  flex: 0 0 auto;
+  width: calc(var(--recommendation-poster-height) * 2 / 3);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  border-radius: 8px;
+}
+.movie-recommendation-item img {
+  display: block;
+  width: 100%;
+  height: var(--recommendation-poster-height);
+  border-radius: 8px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, .08);
+}
+.movie-recommendation-scroll { position: absolute; top: calc(var(--recommendation-poster-height) / 2 - 13px); }
+.movie-recommendation-scroll[hidden] { display: none; }
+.movie-recommendation-scroll.previous { left: 4px; }
+.movie-recommendation-scroll.next { right: 4px; }
 .movie-recommendation-card button:focus-visible { outline: 2px solid var(--theme-control-foreground); outline-offset: 1px; }
-.player:is(.native-resizing, .opening-active, .error-active, .pip-mode) .movie-recommendation-card { visibility: hidden; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .movie-recommendation-card { transition: none; } }
+.player:is(.native-resizing, .opening-active, .error-active, .pip-mode, .lineups-mode) .movie-recommendation-card {
+  visibility: hidden;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .movie-recommendation-card, .player .progress { transition: none; }
+}
 
-.player.chrome-hidden .movie-recommendation-card { bottom: calc(24px + env(safe-area-inset-bottom)); }
 .stream-info-modal {
   display: flex;
   align-items: flex-end;

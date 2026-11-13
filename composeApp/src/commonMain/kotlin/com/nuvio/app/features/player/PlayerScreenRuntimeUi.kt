@@ -562,7 +562,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         movieRecommendationSessionKey = movieRecommendationSessionKey,
         movieRecommendationStage = if (playerControlsLocked) 0 else movieRecommendationStage,
         movieRecommendationDismissed = movieRecommendationDismissedSession == movieRecommendationSessionKey &&
-            movieRecommendationStage <= movieRecommendationDismissedStage,
+            movieRecommendationsDismissed,
         movieRecommendationLabel = stringResource(Res.string.details_more_like_this),
         movieRecommendationCloseLabel = stringResource(Res.string.action_close),
         nextEpisodeVisible = nextEpisodeForControls != null && !playerControlsLocked,
@@ -1118,7 +1118,7 @@ internal fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: 
     if (type.startsWith("dismissMovieRecommendations:")) {
         if (type.removePrefix("dismissMovieRecommendations:") == movieRecommendationSessionKey) {
             movieRecommendationDismissedSession = movieRecommendationSessionKey
-            movieRecommendationDismissedStage = movieRecommendationStage
+            movieRecommendationsDismissed = movieRecommendationStage > 0
         }
         return true
     }

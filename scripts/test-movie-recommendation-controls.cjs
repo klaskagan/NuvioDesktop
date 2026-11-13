@@ -18,93 +18,98 @@ const { pathToFileURL } = require('node:url');
     await page.goto(pathToFileURL(path.resolve(__dirname, '../composeApp/src/desktopMain/resources/player-ui/controls.html')).href);
     const update = state => page.evaluate(state => window.playerControls(state), state);
     const card = page.locator('#movieRecommendationCard');
-    const assertGridFits = async () => {
-      const layout = await card.evaluate(el => {
-        const box = el.getBoundingClientRect();
-        const grid = el.querySelector('.movie-recommendation-items');
-        const items = [...grid.children].map(item => {
-          const rect = item.getBoundingClientRect();
-          return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom };
-        });
-        return { x: box.x, y: box.y, right: box.right, bottom: box.bottom, items,
-          cardOverflow: el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight,
-          gridOverflow: grid.scrollWidth > grid.clientWidth || grid.scrollHeight > grid.clientHeight };
-      });
-      assert.equal(layout.items.length, 10, 'all ten recommendations are rendered');
-      assert.equal(new Set(layout.items.map(item => Math.round(item.x))).size, 5, 'five columns');
-      assert.equal(new Set(layout.items.map(item => Math.round(item.y))).size, 2, 'two rows');
-      assert.equal(layout.cardOverflow, false, 'card does not scroll');
-      assert.equal(layout.gridOverflow, false, 'grid does not scroll');
-      for (const item of layout.items) {
-        assert.ok(item.x - layout.x >= 9 && layout.right - item.right >= 9, 'fixed left and right gutters');
-        assert.ok(item.y > layout.y && item.bottom <= layout.bottom - 9, 'every title fits inside the card');
-      }
-    };
     const visible = () => card.evaluate(el => el.classList.contains('visible') && !el.inert);
     const poster = (name, color) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="144" height="216"><rect width="144" height="216" fill="${color}"/><circle cx="72" cy="80" r="40" fill="white" opacity=".12"/><text x="72" y="160" text-anchor="middle" fill="white" font-family="sans-serif" font-size="14">${name}</text></svg>`);
-    const items = ['Arrival', 'Interstellar', 'Contact', 'Moon', 'Solaris', 'Gravity', 'Ad Astra', 'Dune', 'Oblivion', 'Sunshine'].map((title, index) => ({ actionKey: `fixture:movie:${index}`, title, poster: poster(title, ['#294657', '#433d59', '#275b56', '#544532'][index % 4]) }));
-    await update({ isLoading: false, showOpeningOverlay: false, title: 'A movie', movieRecommendationSessionKey: 'fixture', movieRecommendationStage: 0, movieRecommendationItems: items, controlsVisible: false });
+    const items = Array.from({ length: 20 }, (_, index) => ({
+      actionKey: `fixture:movie:${index}`,
+      title: `Movie ${index + 1}`,
+      poster: poster(`Movie ${index + 1}`, '#294657'),
+    }));
+    const events = () => page.evaluate(() => window.cardEvents.map(event => event.type));
+    const posters = page.locator('.movie-recommendation-item');
+    await update({ isLoading: false, showOpeningOverlay: false, title: 'A movie',
+      movieRecommendationSessionKey: 'fixture', movieRecommendationStage: 0,
+      movieRecommendationItems: items, controlsVisible: false });
+    await page.evaluate(() => window.playerUpdate({ duration: 600, position: 500, paused: false }));
     assert.equal(await visible(), false);
-    await update({ movieRecommendationStage: 1, controlsVisible: false });
-    assert.equal(await visible(), true);
-    await page.clock.fastForward(10001);
-    assert.equal(await visible(), false, 'card auto-hides after ten seconds');
-    assert.equal(await card.getAttribute('aria-hidden'), 'true');
-    await update({ controlsVisible: true });
-    assert.equal(await visible(), true, 'controls reveal auto-hidden card');
-    await page.locator('#movieRecommendationClose').click();
-    assert.equal(await page.evaluate(() => window.cardEvents.some(e => e.type === 'dismissMovieRecommendations:fixture')), true);
-    assert.equal(await visible(), true, 'mobile behavior lets controls override dismissal');
-    await update({ controlsVisible: false, movieRecommendationDismissed: true });
-    assert.equal(await visible(), false);
-    await update({ movieRecommendationStage: 2, movieRecommendationDismissed: false });
-    assert.equal(await visible(), true, 'next stage reopens card');
-    await page.clock.fastForward(10001);
-    assert.equal(await visible(), false);
-    await update({ movieRecommendationStage: 3, movieRecommendationDismissed: false });
+    await update({ movieRecommendationStage: 1 });
     await page.clock.fastForward(30000);
-    assert.equal(await visible(), true, 'ended stage does not auto-hide');
-    await update({ movieRecommendationDismissed: true, controlsVisible: false });
-    assert.equal(await visible(), false, 'ended stage can be dismissed');
-    await update({ movieRecommendationDismissed: false, controlsVisible: true });
-    const first = page.locator('.movie-recommendation-item').first();
-    await first.focus();
+    assert.equal(await visible(), true, 'shelf stays open while browsing');
+    assert.equal(await posters.count(), 20);
+    assert.equal(await posters.locator("span").count(), 0);
+    assert.equal(await posters.first().getAttribute("aria-label"), "Movie 1");
+    for (const [width, height, isFullscreen] of [[1100, 750, false], [640, 360, false], [1920, 1080, true]]) {
+      await page.setViewportSize({ width, height });
+      await update({ isFullscreen });
+      const layout = await card.evaluate(el => {
+        const row = el.querySelector('.movie-recommendation-items');
+        const rect = el.getBoundingClientRect();
+        const seek = document.querySelector('#seek').getBoundingClientRect();
+        const tops = [...row.children].map(poster => poster.getBoundingClientRect().top);
+        return { oneRow: new Set(tops).size === 1, scrollable: row.scrollWidth > row.clientWidth,
+          bottom: rect.bottom, top: rect.top, seekBottom: seek.bottom,
+          seekReceivesInput: document.elementFromPoint(seek.x + seek.width / 2, seek.y + seek.height / 2)?.id === 'seek' };
+      });
+      assert.ok(layout.oneRow && layout.scrollable);
+      assert.ok(layout.top >= 0 && layout.bottom <= height && layout.seekBottom < layout.top);
+      assert.ok(layout.seekReceivesInput, 'timeline remains interactive');
+    }
+    if (process.env.NUVIO_CARD_SCREENSHOT) await page.screenshot({ path: process.env.NUVIO_CARD_SCREENSHOT });
+    const row = page.locator('#movieRecommendationItems');
+    await page.locator('#movieRecommendationNext').click();
+    assert.ok(await row.evaluate(el => el.scrollLeft) > 0, 'chevron scrolls the shelf');
+    await page.locator('#movieRecommendationPrevious').click();
+    await row.hover();
+    await page.mouse.wheel(0, 320);
+    await page.waitForFunction(() => document.querySelector('#movieRecommendationItems').scrollLeft > 0);
+    await posters.first().focus();
+    for (let i = 0; i < 19; i++) await page.keyboard.press('ArrowRight');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.recommendationKey), 'fixture:movie:19');
     await page.keyboard.press('Enter');
-    assert.equal(await page.evaluate(() => window.cardEvents.some(e => e.type === 'openMovieRecommendation:fixture:movie:0')), true);
-    assert.equal(await page.evaluate(() => window.cardEvents.some(e => e.type === 'togglePlayback')), false, 'card activation does not pause playback');
+    assert.ok((await events()).includes('openMovieRecommendation:fixture:movie:19'));
     await page.keyboard.press('Escape');
-    assert.equal(await page.evaluate(() => window.cardEvents.some(e => e.type === 'back')), false, 'Escape dismisses the card instead of leaving playback');
+    assert.equal(await visible(), false);
     assert.equal(await page.evaluate(() => document.activeElement.id), 'playerRoot');
-    await update({ movieRecommendationDismissed: false });
-    await page.locator('.movie-recommendation-item').first().focus();
+    await update({ movieRecommendationStage: 2, controlsVisible: true });
+    assert.equal(await visible(), false, 'dismissal survives milestones and control activity');
+    await update({ movieRecommendationStage: 3, movieRecommendationDismissed: true });
+    assert.equal(await visible(), false);
+    const seekBack = async () => {
+      await update({ movieRecommendationStage: 0, movieRecommendationDismissed: false });
+      assert.equal(await visible(), false);
+      await update({ movieRecommendationStage: 1 });
+      assert.equal(await visible(), true);
+    };
+    await seekBack();
+    await page.mouse.click(400, 130);
+    await page.clock.fastForward(300);
+    assert.equal(await visible(), false, 'clicking the video dismisses');
+    assert.equal(await page.locator('#toggle').getAttribute('aria-label'), 'Pause', 'playback remains active');
+    await seekBack();
+    await card.locator('.movie-recommendation-header').click({ position: { x: 400, y: 20 } });
+    assert.equal(await visible(), false, 'clicking empty shelf space dismisses');
+    await seekBack();
+    await page.locator('#movieRecommendationClose').click();
+    assert.equal(await visible(), false);
+    const actions = await events();
+    assert.equal(actions.filter(type => type === 'dismissMovieRecommendations:fixture').length, 4);
+    for (const action of ['togglePlayback', 'setPlaybackStateQuiet', 'back', 'toggleFullscreen']) {
+      assert.ok(!actions.includes(action), `shelf input never sends ${action}`);
+    }
+    await seekBack();
+    await posters.first().focus();
     await update({ movieRecommendationItems: [] });
     assert.equal(await visible(), false);
     assert.equal(await page.evaluate(() => document.activeElement.id), 'playerRoot');
-    await update({ movieRecommendationItems: items, movieRecommendationStage: 1, movieRecommendationSessionKey: 'new-session', controlsVisible: false });
-    assert.equal(await visible(), true, 'new session resets auto-hide');
-    await update({ isInPip: true });
+    await update({ movieRecommendationItems: items, isInPip: true });
     assert.equal(await visible(), false);
-    await update({ isInPip: false, movieRecommendationStage: 0 });
-    assert.equal(await visible(), false);
-    await update({ movieRecommendationStage: 3, controlsVisible: true });
-    await page.clock.fastForward(300);
-    await assertGridFits();
-    if (process.env.NUVIO_CARD_SCREENSHOT) await page.screenshot({ path: process.env.NUVIO_CARD_SCREENSHOT });
-    for (const viewport of [{ width: 640, height: 480 }, { width: 640, height: 360 }, { width: 320, height: 480 }, { width: 1920, height: 1080 }]) {
-      await page.setViewportSize(viewport);
-      await page.clock.fastForward(300);
-      await assertGridFits();
-      const box = await card.boundingBox();
-      assert.ok(box.x >= 0 && box.x + box.width <= viewport.width + 1, 'card stays inside window');
-      assert.ok(box.y >= 0 && box.y + box.height <= viewport.height + 1, 'card fits above controls');
-    }
-    await update({ controlsVisible: false });
-    await page.clock.fastForward(300);
-    await assertGridFits();
-    const last = page.locator('.movie-recommendation-item').last();
-    await last.click();
-    assert.equal(await page.evaluate(() => window.cardEvents.some(e => e.type === 'openMovieRecommendation:fixture:movie:9')), true, 'tenth title opens without scrolling');
+    await update({ isInPip: false });
+    assert.equal(await visible(), true);
+    await page.locator('[data-command="speed"]').click();
+    assert.equal(await visible(), false, 'player dialog takes precedence');
+    await page.keyboard.press('Escape');
+    assert.equal(await visible(), true);
     assert.deepEqual(errors, []);
-    console.log('Movie recommendation overlay: stage transitions, auto-hide, controls, dismissal, keyboard, actions, empty/session states, PiP, and resize passed.');
+    console.log('Movie recommendation overlay: 20 posters, scrolling, controls, dismissal, keyboard, actions, focus, PiP, and resize passed.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

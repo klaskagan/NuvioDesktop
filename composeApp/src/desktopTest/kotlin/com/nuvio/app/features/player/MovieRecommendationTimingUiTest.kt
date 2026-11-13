@@ -1,11 +1,10 @@
 package com.nuvio.app.features.player
 
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.test.*
 import com.nuvio.app.AppEnvironment
+import com.nuvio.app.features.settings.SettingsPage
 import com.nuvio.app.features.settings.playbackSettingsContent
 import java.io.File
 import javax.imageio.ImageIO
@@ -19,30 +18,13 @@ class MovieRecommendationTimingUiTest {
         PlayerSettingsRepository.setMovieRecommendationTiming(MovieRecommendationTiming.INTRODB)
         setContent {
             AppEnvironment {
-                val settings by PlayerSettingsRepository.uiState.collectAsState()
-                LazyColumn { playbackSettingsContent(
-                    isTablet = true,
-                    showLoadingOverlay = settings.showLoadingOverlay,
-                    holdToSpeedEnabled = settings.holdToSpeedEnabled,
-                    holdToSpeedValue = settings.holdToSpeedValue,
-                    touchGesturesEnabled = settings.touchGesturesEnabled,
-                    preferredAudioLanguage = settings.preferredAudioLanguage,
-                    secondaryPreferredAudioLanguage = settings.secondaryPreferredAudioLanguage,
-                    preferredSubtitleLanguage = settings.preferredSubtitleLanguage,
-                    secondaryPreferredSubtitleLanguage = settings.secondaryPreferredSubtitleLanguage,
-                    streamReuseLastLinkEnabled = settings.streamReuseLastLinkEnabled,
-                    streamReuseLastLinkCacheHours = settings.streamReuseLastLinkCacheHours,
-                    androidPlaybackEngine = settings.androidPlaybackEngine,
-                    androidLibmpvVideoOutput = settings.androidLibmpvVideoOutput,
-                    androidLibmpvHardwareDecodingEnabled = settings.androidLibmpvHardwareDecodingEnabled,
-                    androidLibmpvYuv420pEnabled = settings.androidLibmpvYuv420pEnabled,
-                    decoderPriority = settings.decoderPriority,
-                    mapDV7ToHevc = settings.mapDV7ToHevc,
-                    tunnelingEnabled = settings.tunnelingEnabled,
-                    useLibass = settings.useLibass,
-                    libassRenderType = settings.libassRenderType,
-                    libassRenderScale = settings.libassRenderScale,
-                ) }
+                LazyColumn {
+                    playbackSettingsContent(
+                        isTablet = true,
+                        page = SettingsPage.PlaybackInterface,
+                        onPageChange = {},
+                    )
+                }
             }
         }
         onNodeWithText("Movie Recommendation Timing").performScrollTo().performClick()

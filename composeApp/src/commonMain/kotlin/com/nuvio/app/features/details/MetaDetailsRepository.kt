@@ -1,6 +1,7 @@
 package com.nuvio.app.features.details
 
 import co.touchlab.kermit.Logger
+import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.addons.AddonManifest
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.buildAddonResourceUrl
@@ -451,6 +452,22 @@ object MetaDetailsRepository {
         return enrichedMeta
     }
 
+    internal fun playbackRecommendationArtwork(meta: MetaDetails, items: List<MetaPreview>): List<MetaPreview> =
+        meta.copy(moreLikeThis = items).withUnreleasedFilter().moreLikeThis
+
+    private suspend fun traktRecommendations(
+        meta: MetaDetails,
+        fallbackItemId: String,
+        fallbackItemType: String,
+    ): List<MetaPreview> = try {
+        TraktRelatedRepository.getRelated(meta, fallbackItemId, fallbackItemType)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        log.w { "Failed to load Trakt related titles for ${meta.id}: ${error.message}" }
+        emptyList()
+    }
+
     private suspend fun applyMoreLikeThisSource(
         meta: MetaDetails,
         fallbackItemId: String,
@@ -490,15 +507,7 @@ object MetaDetailsRepository {
         ) && supportsMoreLikeThis(meta, fallbackItemType)
 
         if (shouldUseTrakt) {
-            val items = runCatching {
-                TraktRelatedRepository.getRelated(
-                    meta = meta,
-                    fallbackItemId = fallbackItemId,
-                    fallbackItemType = fallbackItemType,
-                )
-            }.onFailure { error ->
-                log.w { "Failed to load Trakt related titles for ${meta.id}: ${error.message}" }
-            }.getOrDefault(emptyList())
+            val items = traktRecommendations(meta, fallbackItemId, fallbackItemType)
 
             return meta.copy(
                 moreLikeThis = items,

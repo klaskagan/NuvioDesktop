@@ -1,5 +1,12 @@
 package com.nuvio.app.features.player
 
+import com.nuvio.app.features.details.MoreLikeThisSource
+import com.nuvio.app.features.trakt.TraktAuthRepository
+import com.nuvio.app.features.trakt.TraktConnectionMode
+import com.nuvio.app.features.trakt.TraktRelatedRepository
+import com.nuvio.app.features.tmdb.TmdbMetadataService
+import com.nuvio.app.features.tmdb.TmdbService
+import com.nuvio.app.features.watching.sync.TraktWatchedSyncAdapter
 import com.nuvio.app.core.i18n.localizedSeasonEpisodeCode
 import com.nuvio.app.core.network.NetworkCondition
 import com.nuvio.app.core.network.NetworkStatusRepository
@@ -83,6 +90,69 @@ private fun rememberNetworkCondition(): NetworkCondition {
 
 @Composable
 internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
+    val traktConnection by remember {
+        TraktAuthRepository.ensureLoaded()
+        TraktAuthRepository.uiState
+    }.collectAsStateWithLifecycle()
+    val poolKey = movieRecommendationSessionKey to
+        (traktConnection.mode == TraktConnectionMode.CONNECTED)
+    val recommendationMeta = playerMeta?.takeIf { it.id == parentMetaId && it.type == parentMetaType }
+    val shouldPrefetchRecommendations = playerSettingsUiState.movieRecommendationsEnabled &&
+        parentMetaType.equals("movie", true) && (contentType ?: parentMetaType).equals("movie", true) &&
+        args.onOpenMetaDetails != null
+    LaunchedEffect(poolKey, recommendationMeta, shouldPrefetchRecommendations, watchedUiState.hasLoadedRemoteItems) {
+        if (!shouldPrefetchRecommendations || recommendationMeta == null) return@LaunchedEffect
+        movieRecommendationPoolLoadingKey = poolKey
+        val currentId = parentMetaId
+        val tmdbId = withTimeoutOrNull(3_000L) {
+            TmdbService.ensureTmdbId(currentId, "movie", fallbackImdbId = recommendationMeta.imdbId)
+        }
+        val aliases = setOfNotNull(recommendationMeta.imdbId, tmdbId?.let { "tmdb:$it" })
+        val items = when {
+            poolKey.second -> TraktRelatedRepository.getRelatedForPlayback(recommendationMeta)
+                .ifEmpty {
+                    recommendationMeta.moreLikeThis.takeIf {
+                        recommendationMeta.moreLikeThisSource == MoreLikeThisSource.TRAKT
+                    }.orEmpty()
+                }
+            recommendationMeta.moreLikeThisSource == MoreLikeThisSource.TRAKT -> withTimeoutOrNull(4_000L) {
+                MetaDetailsRepository.fetch("movie", currentId, cacheResult = false)
+            }?.moreLikeThis.orEmpty()
+            else -> recommendationMeta.moreLikeThis
+        }
+        val primary = MetaDetailsRepository.playbackRecommendationArtwork(recommendationMeta, items)
+        val traktWatchedAliases = if (poolKey.second) {
+            TraktWatchedSyncAdapter.pullExtraWatchedKeys(profileId)
+        } else {
+            emptySet()
+        }
+        val poolItems = if (poolKey.second && tmdbId != null) {
+            MovieRecommendationRules.appendFallbackPages(
+                primary = primary,
+                hasEnough = {
+                    MovieRecommendationRules.candidates(
+                        it, currentId, watchedUiState.watchedKeys + traktWatchedAliases, aliases,
+                    ).size == MovieRecommendationRules.LIMIT
+                },
+            ) { page ->
+                withTimeoutOrNull(3_000L) { TmdbMetadataService.movieRecommendationPage(tmdbId, page) }
+                    ?.let { (results, total) ->
+                        MetaDetailsRepository.playbackRecommendationArtwork(recommendationMeta, results) to total
+                    }
+            }
+        } else {
+            primary
+        }
+        if (poolKey == movieRecommendationPoolKey) {
+            movieRecommendationPool = MovieRecommendationPool(
+                poolKey,
+                poolItems,
+                aliases,
+                traktWatchedAliases,
+            )
+            movieRecommendationPoolLoadingKey = null
+        }
+    }
     LaunchedEffect(movieRecommendationLookupKey) {
         val requestKey = movieRecommendationLookupKey
         movieRecommendationCreditsRequest = requestKey

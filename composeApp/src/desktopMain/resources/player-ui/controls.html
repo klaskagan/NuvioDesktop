@@ -231,7 +231,15 @@
           <span id="movieRecommendationLabel"></span>
           <button id="movieRecommendationClose" type="button"><svg><use href="#icon-close"></use></svg></button>
         </div>
-        <div class="movie-recommendation-items" id="movieRecommendationItems"></div>
+        <div class="movie-recommendation-row">
+          <div class="movie-recommendation-items" id="movieRecommendationItems"></div>
+          <button class="movie-recommendation-scroll previous" id="movieRecommendationPrevious" type="button" aria-label="Previous recommendations" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+          <button class="movie-recommendation-scroll next" id="movieRecommendationNext" type="button" aria-label="Next recommendations" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+        </div>
       </aside>
 
       <button class="next-episode-card" id="nextEpisodeCard" type="button" aria-hidden="true">

@@ -31,6 +31,7 @@ data class MetaPreview(
     val language: String? = null,
     val externalRatings: List<MetaExternalRating> = emptyList(),
     val catalogRank: Int? = null,
+    val alternateIds: Set<String> = emptySet(),
 )
 
 fun MetaPreview.stableKey(): String = calendarCard?.key ?: "$type:$id"
