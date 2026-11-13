@@ -61,3 +61,4 @@ iosApp/Configuration/DeviceSigning.local.json
 !scripts/go3-live-probe/**
 
 !docs/buffered-quality-handover.md
+.codegraph
