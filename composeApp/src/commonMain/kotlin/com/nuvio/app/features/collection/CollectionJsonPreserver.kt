@@ -1,9 +1,12 @@
 package com.nuvio.app.features.collection
 
+import com.nuvio.app.features.home.SeasonalTheme
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -11,6 +14,44 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 internal object CollectionJsonPreserver {
+    // Repair raw rows before computing route keys so their unknown fields stay attached.
+    fun restoreSeasonalSourceMetadata(raw: JsonElement): JsonElement =
+        raw.mapObjects { collection ->
+            if (collection["id"] != JsonPrimitive(SeasonalCollection.ID)) return@mapObjects collection
+            val folders = (collection["folders"] as? JsonArray) ?: return@mapObjects collection
+            JsonObject(collection + ("folders" to folders.mapObjects(::restoreSeasonalFolderSources)))
+        }
+
+    private fun restoreSeasonalFolderSources(folder: JsonObject): JsonObject {
+        val theme = SeasonalTheme.entries.firstOrNull {
+            folder["id"] == JsonPrimitive(SeasonalCollection.folderId(it))
+        } ?: return folder
+        val sources = folder["sources"] as? JsonArray ?: return folder
+        val starters by lazy { runBlocking { SeasonalCollection.starterSources(theme) } }
+        val restored = sources.mapObjects { raw ->
+            val source = runCatching {
+                sourceJson.decodeFromJsonElement(CollectionSource.serializer(), raw)
+            }.getOrNull() ?: return@mapObjects raw
+            if (source.mediaType?.uppercase() !in setOf("MOVIE", "TV", "BOTH")) return@mapObjects raw
+            val starter = starters.singleOrNull {
+                val lostMetadata = !source.seasonalCatalog && source.seasonalKeywords.isEmpty()
+                val previousDefault = source.seasonalCatalog && source.seasonalKeywords == it.previousKeywords
+                if (!lostMetadata && !previousDefault) return@singleOrNull false
+                // Other clients can narrow BOTH to MOVIE or TV. Keep the saved media type.
+                source.copy(mediaType = it.source.mediaType, seasonalCatalog = true, seasonalKeywords = it.source.seasonalKeywords) ==
+                    it.source
+            } ?: return@mapObjects raw
+            JsonObject(raw + mapOf(
+                "seasonalCatalog" to JsonPrimitive(true),
+                "seasonalKeywords" to JsonArray(starter.source.seasonalKeywords.map(::JsonPrimitive)),
+            ))
+        }
+        return JsonObject(folder + ("sources" to restored))
+    }
+
+    private fun JsonElement.mapObjects(transform: (JsonObject) -> JsonObject): JsonElement =
+        if (this is JsonArray) JsonArray(map { if (it is JsonObject) transform(it) else it }) else this
+
     fun merge(
         json: Json,
         rawCollectionsJson: JsonElement,

@@ -580,6 +580,8 @@ internal expect object DeviceLanguagePreferences {
     fun preferredLanguageCodes(): List<String>
 }
 
+private val russianForcedSubtitleLabel = Regex("""(?<![\p{L}\p{N}])форс(?:ированн[\p{L}]*)?(?![\p{L}\p{N}])""")
+
 fun inferForcedSubtitleTrack(
     label: String?,
     language: String?,
@@ -595,7 +597,7 @@ fun inferForcedSubtitleTrack(
         .joinToString(" ")
         .lowercase()
 
-    if ("forced" in text) return true
+    if ("forced" in text || russianForcedSubtitleLabel.containsMatchIn(text)) return true
     return text.contains("songs") && text.contains("sign")
 }
 

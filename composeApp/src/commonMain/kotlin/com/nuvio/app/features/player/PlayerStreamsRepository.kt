@@ -23,6 +23,7 @@ import com.nuvio.app.features.streams.StreamBadgeSettingsRepository
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.StreamLoadCompletion
 import com.nuvio.app.features.streams.StreamParser
+import com.nuvio.app.features.streams.StreamsRepository
 import com.nuvio.app.features.streams.StreamsUiState
 import com.nuvio.app.features.streams.runCatchingUnlessCancelled
 import com.nuvio.app.features.streams.sortedForGroupedDisplay
@@ -63,6 +64,20 @@ object PlayerStreamsRepository {
     val episodeStreamsState: StateFlow<StreamsUiState> = _episodeStreamsState.asStateFlow()
     private var episodeStreamsJob: Job? = null
     private var episodeStreamsRequestKey: String? = null
+
+    /** Reuse the title's stream-picker results before considering any player-side fetch. */
+    internal fun primeSourcesFromSelection(type: String, videoId: String, season: Int?, episode: Int?, selection: StreamsUiState): Boolean {
+        val key = "$type::$videoId::$season::$episode::pluginsGrouped=${PluginRepository.uiState.value.groupStreamsByRepository}"
+        if (sourceRequestKey == key && (_sourceState.value.groups.isNotEmpty() || _sourceState.value.emptyStateReason != null || _sourceState.value.isAnyLoading)) return true
+        val matches = listOf(false, true).any { manual ->
+            selection.requestToken == StreamsRepository.requestToken(type, videoId, season, episode, manual)
+        }
+        if (!matches || !selection.hasAnyStreams) return false
+        cancelSourceJob()
+        sourceRequestKey = key
+        _sourceState.value = selection.copy(requestToken = key, selectedFilter = null, isAnyLoading = false, groups = selection.groups.map { it.copy(isLoading = false) })
+        return true
+    }
 
     fun loadSources(
         type: String,
@@ -213,7 +228,7 @@ object PlayerStreamsRepository {
         log.d { "start $panelName request=$requestKey force=$forceRefresh previous=${current.streamDiagnostics()}" }
         setRequestKey(requestKey)
         jobHolder()?.cancel()
-        stateFlow.value = StreamsUiState()
+        stateFlow.value = StreamsUiState(requestToken = requestKey)
 
         val streamBadgeRules = StreamBadgeSettingsRepository.snapshot()
         val embeddedStreams = MetaDetailsRepository.findEmbeddedStreams(videoId)
@@ -230,6 +245,7 @@ object PlayerStreamsRepository {
                 rules = streamBadgeRules,
             ).firstOrNull() ?: group
             stateFlow.value = StreamsUiState(
+            requestToken = requestKey,
                 groups = listOf(presentedGroup),
                 activeAddonIds = setOf("embedded"),
                 isAnyLoading = false,
@@ -257,6 +273,7 @@ object PlayerStreamsRepository {
 
         if (installedAddons.isEmpty() && pluginProviderGroups.isEmpty() && serverSources.isEmpty()) {
             stateFlow.value = StreamsUiState(
+            requestToken = requestKey,
                 isAnyLoading = false,
                 emptyStateReason = com.nuvio.app.features.streams.StreamsEmptyStateReason.NoAddonsInstalled,
             )
@@ -278,6 +295,7 @@ object PlayerStreamsRepository {
 
         if (streamAddons.isEmpty() && pluginProviderGroups.isEmpty() && serverSources.isEmpty()) {
             stateFlow.value = StreamsUiState(
+            requestToken = requestKey,
                 isAnyLoading = false,
                 emptyStateReason = com.nuvio.app.features.streams.StreamsEmptyStateReason.NoCompatibleAddons,
             )
@@ -310,6 +328,7 @@ object PlayerStreamsRepository {
         } + serverSources.map { it.loadingGroup() }, installedAddonOrder, preferredGroupIds)
         val isInitiallyLoading = initialGroups.any { it.isLoading }
         stateFlow.value = StreamsUiState(
+            requestToken = requestKey,
             groups = initialGroups,
             activeAddonIds = initialGroups.map { it.addonId }.toSet(),
             isAnyLoading = isInitiallyLoading,

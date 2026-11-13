@@ -15,6 +15,10 @@ import com.nuvio.app.features.player.AudioTrack
 import com.nuvio.app.features.player.ParentalWarning
 import com.nuvio.app.features.player.PlayerControlsAction
 import com.nuvio.app.features.player.PlayerControlsState
+import com.nuvio.app.features.player.PlayerChapter
+import com.nuvio.app.features.player.PlayerSettingsRepository
+import com.nuvio.app.features.player.PlayerSettingsStorage
+import com.nuvio.app.features.profiles.ProfileRepository
 import com.nuvio.app.features.player.PlayerEngineController
 import com.nuvio.app.features.player.PlayerMediaInfo
 import com.nuvio.app.features.player.mpvMediaInfo
@@ -24,11 +28,13 @@ import com.nuvio.app.features.player.SUBTITLE_DELAY_MAX_MS
 import com.nuvio.app.features.player.findPreferredAudioTrackIndex
 import com.nuvio.app.features.player.SUBTITLE_DELAY_MIN_MS
 import com.nuvio.app.features.player.SubtitleColorSwatches
+import com.nuvio.app.features.player.SubtitleFontResolver
 import com.nuvio.app.features.player.SubtitleOutlineColorSwatches
 import com.nuvio.app.features.player.SubtitleStyleState
 import com.nuvio.app.features.player.SubtitleTrack
 import com.nuvio.app.features.player.inferForcedSubtitleTrack
 import com.nuvio.app.features.player.toStorageHexString
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -66,6 +72,7 @@ internal class NativePlayerController(
     private val createWaitTimeoutMs: Long = 5_000L,
     private val releaseTimeoutMs: Long = 10_000L,
     private val onCreateWaitCompleted: () -> Unit = {},
+    private val nativeEventForwarder: ((String, Double) -> Unit)? = null,
 ) : PlayerEngineController {
     private companion object {
         val json = Json { ignoreUnknownKeys = true }
@@ -113,6 +120,12 @@ internal class NativePlayerController(
     private var releaseTimedOut: Boolean = false
     private var terminalReleaseFailure: String? = null
     private var controlsState = PlayerControlsState()
+    private val nightModeProfileId = ProfileRepository.activeProfileId
+    private var nightModeRestorePending = false
+    private var nightModeActive = false
+    private var nightModeErrorToken = 0
+    private var bufferedSourceToAdopt: Pair<String, Map<String, String>>? = null
+    private var pictureInPictureActive = false
     @Volatile
     private var currentVolumeLevel = rememberedVolumeLevel.coerceDesktopPlayerVolumeLevel()
     private var pendingSubtitleDelayMs: Int? = null
@@ -324,7 +337,9 @@ internal class NativePlayerController(
                         pending.nvidiaRtxSuperResolutionEnabled,
                         NativePlayerEventSink { type, value ->
                             SwingUtilities.invokeLater {
-                                if (pendingSource === pending && !releaseRequested) handlePlayerEvent(type, value)
+                                if (pendingSource === pending && !releaseRequested) {
+                                    if (nativeEventForwarder != null) nativeEventForwarder.invoke(type, value) else handlePlayerEvent(type, value)
+                                }
                             }
                         },
                     ).also { if (it == 0L) error("Native player did not return a handle.") }
@@ -360,6 +375,7 @@ internal class NativePlayerController(
                             "attach created handle=$created source=${resolvedSource.toPlaybackLogKey()} " +
                                 "initialPositionMs=${pending.initialPositionMs}"
                         }
+                        restoreNightMode()
                         applyRememberedVolume()
                         setNativeControlsEnabled(nativeControlsEnabled)
                         updateEmbeddedLayout()
@@ -449,6 +465,8 @@ internal class NativePlayerController(
         }
         val handoff = com.nuvio.app.features.handoff.tvHandoffPlaybackView()
         val stateWithVolume = state.copy(
+            nightModeActive = nightModeActive,
+            nightModeErrorToken = nightModeErrorToken,
             tvHandoffDevices = handoff.devices,
             tvHandoffReady = handoff.ready,
             tvHandoffBusy = handoff.busy,
@@ -561,8 +579,20 @@ internal class NativePlayerController(
         }
     }
 
+    @Synchronized
     fun setResizeMode(mode: PlayerResizeMode) {
         rememberedResizeMode = mode
+        applyResizeMode()
+    }
+
+    @Synchronized
+    fun setPictureInPictureActive(active: Boolean) {
+        pictureInPictureActive = active
+        applyResizeMode()
+    }
+
+    private fun applyResizeMode() {
+        val mode = desktopEffectiveResizeMode(rememberedResizeMode, pictureInPictureActive)
         handle.takeIf { it != 0L }?.let { current ->
             NativePlayerBridge.setResizeMode(
                 handle = current,
@@ -612,6 +642,17 @@ internal class NativePlayerController(
                 }
             }
             "dragWindow" -> if (!host.embedded) NativePlayerBridge.beginWindowDrag(handle)
+            "nightMode" -> {
+                synchronized(lifecycleLock) {
+                    if (handle == 0L || releaseRequested) return
+                    val enabled = !desktopNightModeInChain(qualityGet("af"))
+                    if (applyNightMode(enabled)) {
+                        nightModeRestorePending = false
+                        PlayerSettingsStorage.saveNightModeEnabled(nightModeProfileId, enabled)
+                    }
+                }
+                updateControls(controlsState)
+            }
             "volumeChange" -> setFallbackVolume(value.toFloat())
             "volumeChangeTemporary" -> setTemporaryVolume(value.toFloat())
             "setPlaybackSpeed" -> {
@@ -746,6 +787,12 @@ internal class NativePlayerController(
         return runCatching {
             val isLoading = NativePlayerBridge.isLoading(current)
             val isEnded = NativePlayerBridge.isEnded(current)
+            if (!isLoading && finishNightModeRestore(current)) {
+                SwingUtilities.invokeLater {
+                    if (handle == current && !releaseRequested) updateControls(controlsState)
+                }
+            }
+            val videoSize = desktopMpvVideoSize { name -> NativePlayerBridge.stringProperty(current, name) }
             PlayerPlaybackSnapshot(
                 isLoading = isLoading,
                 isPlaying = !NativePlayerBridge.isPaused(current) && !isLoading && !isEnded,
@@ -754,6 +801,10 @@ internal class NativePlayerController(
                 positionMs = NativePlayerBridge.positionMs(current),
                 bufferedPositionMs = NativePlayerBridge.bufferedPositionMs(current),
                 playbackSpeed = NativePlayerBridge.speed(current),
+                videoWidth = NativePlayerBridge.stringProperty(current, "video-params/w").toIntOrNull() ?: 0,
+                videoHeight = NativePlayerBridge.stringProperty(current, "video-params/h").toIntOrNull() ?: 0,
+                displayVideoWidth = videoSize.width,
+                displayVideoHeight = videoSize.height,
             )
         }.getOrDefault(PlayerPlaybackSnapshot(isLoading = true))
     }
@@ -1039,6 +1090,286 @@ internal class NativePlayerController(
         handle.takeIf { it != 0L }?.let { NativePlayerBridge.setSpeed(it, speed) }
     }
 
+    private fun qualityGet(name: String): String = synchronized(lifecycleLock) {
+        if (handle == 0L || releaseRequested) "" else NativePlayerBridge.qualityProperty(handle, false, name)
+    }
+    private fun qualitySet(name: String, value: String): Boolean = synchronized(lifecycleLock) {
+        handle != 0L && !releaseRequested && NativePlayerBridge.qualitySet(handle, false, name, value)
+    }
+    private fun restoreNightMode() = synchronized(lifecycleLock) {
+        val enabled = PlayerSettingsStorage.loadNightModeEnabled(nightModeProfileId)
+        nightModeActive = desktopNightModeInChain(qualityGet("af"))
+        nightModeRestorePending = enabled && !nightModeActive
+        if (nightModeRestorePending) {
+            finishNightModeRestore(handle)
+        } else if (!enabled && nightModeActive) {
+            applyNightMode(false)
+        }
+    }
+
+    private fun finishNightModeRestore(current: Long): Boolean = synchronized(lifecycleLock) {
+        if (!nightModeRestorePending || current == 0L || current != handle || releaseRequested ||
+            qualityGet("audio-out-params/channel-count").isBlank()
+        ) return@synchronized false
+
+        nightModeRestorePending = false
+        applyNightMode(true)
+        true
+    }
+
+    // Called under lifecycleLock so confirmation always reads the same mpv handle.
+    private fun applyNightMode(enabled: Boolean): Boolean {
+        val before = desktopNightModeInChain(qualityGet("af"))
+        val accepted = before == enabled || if (enabled) {
+            // mpv can accept an unvalidated graph before an audio output exists.
+            qualityGet("audio-out-params/channel-count").isNotBlank() &&
+                qualityCommand("af", "add", DESKTOP_NIGHT_MODE_FILTER)
+        } else {
+            qualityCommand("af", "remove", DESKTOP_NIGHT_MODE_LABEL)
+        }
+        nightModeActive = desktopNightModeInChain(qualityGet("af"))
+        return (accepted && nightModeActive == enabled).also { applied ->
+            if (!applied) {
+                nightModeErrorToken++
+                log.w { "mpv could not set Night Mode to $enabled" }
+            }
+        }
+    }
+
+    private fun qualityCommand(vararg args: String): Boolean = synchronized(lifecycleLock) {
+        handle != 0L && !releaseRequested && NativePlayerBridge.qualityCommand(handle, false, arrayOf(*args))
+    }
+    override fun qualityCheckpoint(): com.nuvio.app.features.player.PlayerQualityCheckpoint? {
+        if (handle == 0L || releaseRequested) return null
+        return com.nuvio.app.features.player.PlayerQualityCheckpoint(
+            ((qualityGet("time-pos").toDoubleOrNull() ?: return null) * 1000).toLong(), qualityGet("pause") == "yes", qualityGet("speed").toFloatOrNull() ?: snapshot().playbackSpeed,
+            qualityGet("volume").toFloatOrNull() ?: 100f, qualityGet("mute") == "yes",
+            ((qualityGet("sub-delay").toDoubleOrNull() ?: 0.0) * 1000).toInt(),
+            readQualityTracks(::qualityGet), snapshot().durationMs, qualityGet("seekable") == "yes",
+        )
+    }
+    override suspend fun prepareBufferedQuality(
+        choice: com.nuvio.app.features.player.PlayerQualityChoice,
+        checkpoint: com.nuvio.app.features.player.PlayerQualityCheckpoint,
+    ): com.nuvio.app.features.player.BufferedPlayerQuality? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (DesktopHostOs.current != DesktopHostOs.MACOS || host.embedded || DesktopPlayerPictureInPicture.isEnabled) return@withContext null
+        val originalHandle = handle.takeIf { it != 0L } ?: error("Player unavailable")
+        val originalPending = pendingSource ?: error("Source unavailable")
+        val adoptedHandle = java.util.concurrent.atomic.AtomicLong(0)
+        val failure = java.util.concurrent.atomic.AtomicReference<String?>(null)
+        lateinit var stage: NativePlayerController
+        val window = qualityOnEdt {
+            val container = javax.swing.JWindow()
+            try { container.apply {
+                focusableWindowState = false
+                setBounds(-20_000, -20_000, 320, 180)
+                val stagingHost = NativePlayerHost()
+                add(stagingHost)
+                isVisible = true
+                check(java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices.none { it.defaultConfiguration.bounds.intersects(bounds) }) {
+                    "Cannot create an offscreen staging host"
+                }
+                stage = NativePlayerController(
+                    host = stagingHost,
+                    nativeCreate = { view, source, headers, play, position, controls, decoder, rtx, sink ->
+                        NativePlayerBridge.createStaging(view, source, headers, play, position, controls, decoder, rtx, sink)
+                    },
+                    nativeEventForwarder = { type, value ->
+                        if (adoptedHandle.get() != 0L && handle == adoptedHandle.get()) handlePlayerEvent(type, value)
+                    },
+                )
+                stage.setNativeControlsEnabled(false)
+                stage.pendingSubtitleStyle = pendingSubtitleStyle
+                stage.pendingUseLibass = pendingUseLibass
+                stage.pendingSubtitleDelayMs = checkpoint.subtitleDelayMs
+                // The staging document can be painted before a promotion-time JS update
+                // completes. Its very first snapshot must already describe this choice.
+                stage.updateControls(bufferedQualityPreparationControls(controlsState, choice.height))
+                stage.attach(choice.url, choice.headers, false, 0L,
+                    originalPending.decoderPriority, originalPending.nvidiaRtxSuperResolutionEnabled,
+                    { message -> if (message != null) failure.set(message) })
+            } } catch (error: Throwable) { container.dispose(); throw error }
+        }
+        var promoted = false
+        var lastPrepared = checkpoint
+        val cleaned = java.util.concurrent.atomic.AtomicBoolean(false)
+        val session = object : com.nuvio.app.features.player.BufferedPlayerQuality {
+            override fun promote(): com.nuvio.app.features.player.PlayerQualityCheckpoint = qualityOnEdt {
+                synchronized(lifecycleLock) {
+                    check(!releaseRequested && !DesktopPlayerPictureInPicture.isEnabled && handle == originalHandle && pendingSource === originalPending) { "Source changed during buffering" }
+                    val live = qualityCheckpoint() ?: error("Player unavailable")
+                    val position = ((stage.qualityGet("time-pos").toDoubleOrNull() ?: -1.0) * 1000).toLong()
+                    val target = bufferedQualityTarget(live.positionMs, stage.snapshot().durationMs,
+                        live.seekable && stage.qualityGet("seekable") == "yes")
+                    check(kotlin.math.abs(position - target) <= 750) { "Prepared quality is no longer aligned" }
+                    check(live.tracks.filter { it.selected } == lastPrepared.tracks.filter { it.selected }) { "Track selection changed during buffering" }
+                    val next = stage.handle.takeIf { it != 0L } ?: error("Prepared player was released")
+                    val view = resolveHostView().takeIf { it != 0L } ?: error("Player view unavailable")
+                    // The old player remains alive until the buffered renderer has joined its host.
+                    check(NativePlayerBridge.reparentSurface(next, view)) { "Cannot promote prepared quality" }
+                    NativePlayerBridge.setPaused(originalHandle, true)
+                    NativePlayerBridge.setStaging(originalHandle, true)
+                    NativePlayerBridge.setStaging(next, false)
+                    handle = next
+                    stage.handle = 0L
+                    pendingSource = stage.pendingSource?.copy(onError = originalPending.onError, playWhenReady = !live.paused, initialPositionMs = position)
+                    bufferedSourceToAdopt = choice.url to choice.headers
+                    adoptedHandle.set(next)
+                    restoreNightMode()
+                    promoted = true
+                    currentVolumeLevel = (live.volume / 100f).coerceDesktopPlayerVolumeLevel()
+                    qualitySet("volume", live.volume.toString())
+                    qualitySet("mute", if (live.muted) "yes" else "no")
+                    qualitySet("speed", live.speed.toString())
+                    setPlaybackSpeed(live.speed)
+                    qualitySet("sub-delay", (live.subtitleDelayMs / 1000.0).toString())
+                    lastSentControlsStructureKey = null
+                    // Seed the prepared document before revealing it. Main controls can
+                    // still contain the outgoing tier until Compose publishes its next state.
+                    updateControls(bufferedQualityPromotionControls(controlsState, choice.height))
+                    setNativeControlsEnabled(nativeControlsEnabled)
+                    setResizeMode(rememberedResizeMode)
+                    setNowPlayingMetadata(currentNowPlayingTitle, currentNowPlayingSubtitle, currentArtworkUrl)
+                    NativePlayerBridge.setPaused(next, live.paused)
+                    requestKeyboardFocus()
+                    startTrackedDisposeLocked(originalHandle)
+                    stage.host.onPeerReady = null
+                    window.dispose()
+                    live
+                }
+            }
+            override suspend fun cancel() {
+                if (!cleaned.compareAndSet(false, true) || promoted) return
+                val released = kotlinx.coroutines.CompletableDeferred<Unit>()
+                qualityOnEdt {
+                    stage.releaseBeforeNavigation(
+                        onReleased = { window.dispose(); released.complete(Unit) },
+                        onReleaseFailed = { message ->
+                            // Do not destroy a host still owned by a native create/dispose worker.
+                            log.e { "background quality cleanup failed: $message" }
+                            released.complete(Unit)
+                        },
+                    )
+                }
+                // A network-backed native dispose can outlive the switch timeout.
+                // Its callback still owns the hidden host until release actually completes.
+                kotlinx.coroutines.withTimeoutOrNull(5_000) { released.await() }
+            }
+        }
+        try {
+            var appliedSettings: com.nuvio.app.features.player.PlayerQualityCheckpoint? = null
+            var bufferFilled = false
+            while (true) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                check(handle == originalHandle && pendingSource === originalPending && !releaseRequested && !DesktopPlayerPictureInPicture.isEnabled) { "Source changed during buffering" }
+                failure.get()?.let { error("Background player failed to load") }
+                val live = qualityCheckpoint() ?: error("Player unavailable")
+                val snapshot = stage.snapshot()
+                val stagePosition = ((stage.qualityGet("time-pos").toDoubleOrNull() ?: -1.0) * 1000).toLong()
+                val seeking = stage.qualityGet("seeking") == "yes"
+                val canSeek = live.seekable && stage.qualityGet("seekable") == "yes"
+                val target = bufferedQualityTarget(live.positionMs, snapshot.durationMs, canSeek)
+                val settings = live.copy(positionMs = 0, seekable = canSeek)
+                if (!snapshot.isLoading && stagePosition >= 0 && !seeking &&
+                    (appliedSettings != settings || (bufferFilled && kotlin.math.abs(stagePosition - target) > 500))) {
+                    stage.restoreQuickQuality(live.copy(seekable = canSeek))
+                    // Preparation must stay silent and paused, irrespective of the source's defaults.
+                    stage.qualitySet("pause", "yes")
+                    stage.qualitySet("mute", "yes")
+                    appliedSettings = settings
+                    lastPrepared = live
+                } else if (appliedSettings != null) {
+                    val ahead = ((stage.qualityGet("demuxer-cache-duration").toDoubleOrNull() ?: 0.0) * 1000).toLong()
+                    val buffered = maxOf(snapshot.bufferedPositionMs, stagePosition + ahead)
+                    bufferFilled = buffered - stagePosition >= 1900 || (snapshot.durationMs > 0 && buffered >= snapshot.durationMs - 100)
+                    if (bufferedQualityReady(stagePosition, target, buffered, snapshot.durationMs,
+                            stage.qualityGet("video-out-params/w").toIntOrNull()?.let { it > 0 } == true,
+                            seeking, snapshot.isLoading)) {
+                        lastPrepared = live
+                        return@withContext session
+                    }
+                }
+                kotlinx.coroutines.delay(100)
+            }
+            @Suppress("UNREACHABLE_CODE") null
+        } catch (error: Throwable) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { session.cancel() }
+            throw error
+        }
+    }
+
+    fun consumeBufferedSource(url: String, headers: Map<String, String>): Boolean = synchronized(lifecycleLock) {
+        if (handle != 0L && bufferedSourceToAdopt == (url to headers)) {
+            bufferedSourceToAdopt = null
+            true
+        } else false
+    }
+
+    override suspend fun restoreQuickQuality(checkpoint: com.nuvio.app.features.player.PlayerQualityCheckpoint): Boolean {
+        if (handle == 0L || qualityGet("time-pos").toDoubleOrNull() == null) return false
+        val tracks = readQualityTracks(::qualityGet)
+        for (type in listOf("audio", "sub")) {
+            val selected = checkpoint.tracks.firstOrNull { it.selected && it.type == type }
+            if (selected == null) {
+                qualitySet(if (type == "audio") "aid" else "sid", "no")
+                continue
+            }
+            if (selected.externalUrl != null && type == "sub") {
+                qualityCommand("sub-add", selected.externalUrl, "select", selected.title, selected.language.orEmpty())
+                continue
+            }
+            val matching = qualityTrackMatch(selected, tracks) ?: tracks.firstOrNull {
+                it.type == type && selected.language != null &&
+                    com.nuvio.app.features.player.normalizeLanguageCode(it.language) == com.nuvio.app.features.player.normalizeLanguageCode(selected.language)
+            }
+            // Missing language/role uses the new stream's defaults; the cloud picker remains available.
+            matching?.let { qualitySet(if (type == "audio") "aid" else "sid", it.id.toString()) }
+        }
+        setPlaybackSpeed(checkpoint.speed)
+        qualitySet("volume", checkpoint.volume.toString())
+        currentVolumeLevel = (checkpoint.volume / 100f).coerceDesktopPlayerVolumeLevel()
+        qualitySet("mute", if (checkpoint.muted) "yes" else "no")
+        qualitySet("sub-delay", (checkpoint.subtitleDelayMs / 1000.0).toString())
+        val duration = qualityGet("duration").toDoubleOrNull()?.let { (it * 1000).toLong() }
+        val target = checkpoint.positionMs.coerceAtMost((duration?.minus(1000) ?: checkpoint.positionMs).coerceAtLeast(0))
+        if (checkpoint.seekable && target > 0) qualityCommand("seek", (target / 1000.0).toString(), "absolute+exact")
+        return true
+    }
+
+    override suspend fun restoreQuality(checkpoint: com.nuvio.app.features.player.PlayerQualityCheckpoint): Boolean {
+        val current = qualityCheckpoint() ?: return false
+        if (current.durationMs <= 0) return false
+        val external = checkpoint.tracks.filter { it.selected && it.externalUrl != null }
+        external.forEach { track ->
+            if (current.tracks.none { it.externalUrl == track.externalUrl })
+                qualityCommand("sub-add", track.externalUrl!!, when (track.role) { "forced" -> "select+forced"; "forced+hearing-impaired" -> "select+forced+hearing-impaired"; "hearing-impaired" -> "select+hearing-impaired"; else -> "select" }, track.title, track.language.orEmpty())
+        }
+        val tracks = readQualityTracks(::qualityGet)
+        if (qualityCompatibility(checkpoint, tracks, current.durationMs) != null) error("Selected tracks cannot be preserved")
+        for (type in listOf("audio", "sub")) {
+            val selected = checkpoint.tracks.firstOrNull { it.type == type && it.selected }
+            val property = if (type == "audio") "aid" else "sid"
+            val match = selected?.let { qualityTrackMatch(it, tracks) ?: error("Track unavailable") }
+            check(qualitySet(property, match?.id?.toString() ?: "no"))
+        }
+        setPlaybackSpeed(checkpoint.speed)
+        check(qualitySet("speed", checkpoint.speed.toString()))
+        check(qualitySet("volume", checkpoint.volume.toString()))
+        currentVolumeLevel = (checkpoint.volume / 100f).coerceDesktopPlayerVolumeLevel()
+        check(qualitySet("mute", if (checkpoint.muted) "yes" else "no"))
+        check(qualitySet("sub-delay", (checkpoint.subtitleDelayMs / 1000.0).toString()))
+        val position = ((qualityGet("time-pos").toDoubleOrNull() ?: return false) * 1000).toLong()
+        if (kotlin.math.abs(position - checkpoint.positionMs) > 1500) {
+            qualityCommand("seek", (checkpoint.positionMs / 1000.0).toString(), "absolute+exact")
+            return false
+        }
+        if (kotlin.math.abs(snapshot().playbackSpeed - checkpoint.speed) > .01f) return false
+        val restored = readQualityTracks(::qualityGet)
+        return checkpoint.tracks.filter { it.selected }.all { selected ->
+            qualityTrackMatch(selected, restored.filter { it.selected }) != null
+        } && (checkpoint.tracks.any { it.type == "sub" && it.selected } || restored.none { it.type == "sub" && it.selected })
+    }
+
     override fun getAudioTracks(): List<AudioTrack> =
         decodeTracks { NativePlayerBridge.audioTracksJson(it) }.map { track ->
             AudioTrack(
@@ -1049,6 +1380,20 @@ internal class NativePlayerController(
                 isSelected = track.selected,
             )
         }
+
+    override suspend fun getChapters(): List<PlayerChapter> {
+        if (!PlayerSettingsRepository.uiState.value.androidExoChaptersEnabled) return emptyList()
+        val current = handle.takeIf { it != 0L } ?: return emptyList()
+        val count = NativePlayerBridge.stringProperty(current, "chapter-list/count").toIntOrNull() ?: return emptyList()
+        return (0 until count).mapNotNull { index ->
+            val seconds = NativePlayerBridge.stringProperty(current, "chapter-list/$index/time").toDoubleOrNull()
+                ?: return@mapNotNull null
+            PlayerChapter(
+                startMs = (seconds * 1000.0).toLong(),
+                title = NativePlayerBridge.stringProperty(current, "chapter-list/$index/title").takeIf { it.isNotBlank() },
+            )
+        }
+    }
 
     override suspend fun getMediaInfo(): PlayerMediaInfo {
         val current = handle.takeIf { it != 0L } ?: return PlayerMediaInfo()
@@ -1063,6 +1408,7 @@ internal class NativePlayerController(
                 label = track.label,
                 language = track.language.takeUnless(String::isBlank),
                 isSelected = track.selected,
+                isExternal = track.external,
                 isForced = track.forced || inferForcedSubtitleTrack(
                     label = track.label,
                     language = track.language,
@@ -1134,6 +1480,10 @@ internal class NativePlayerController(
         applyPendingSubtitleSettings()
     }
 
+    override fun setSubtitleVisible(visible: Boolean) {
+        handle.takeIf { it != 0L }?.let { NativePlayerBridge.setSubtitleVisible(it, visible) }
+    }
+
     override fun setSubtitleDelayMs(delayMs: Int) {
         val clamped = delayMs.coerceIn(SUBTITLE_DELAY_MIN_MS, SUBTITLE_DELAY_MAX_MS)
         pendingSubtitleDelayMs = clamped
@@ -1173,6 +1523,14 @@ internal class NativePlayerController(
             useLibass = useLibass,
             stripSdh = style.stripSdh,
         )
+        val shadowAlpha = if (style.appearance.shadowEnabled) (style.appearance.shadowOpacity * 255 / 100) else 0
+        NativePlayerBridge.setSubtitleAppearance(
+            handle = handle,
+            font = SubtitleFontResolver.mpvFontName(style.appearance.fontId),
+            fontsDir = SubtitleFontResolver.fontsDir(),
+            shadowColor = "#" + shadowAlpha.toHexByte() + "000000",
+            shadowOffset = if (style.appearance.shadowEnabled) style.appearance.shadowSize.toFloat() else 0f,
+        )
     }
 
     private fun decodeTracks(readJson: (Long) -> String): List<NativeMpvTrack> {
@@ -1210,6 +1568,7 @@ private data class NativeMpvTrack(
     val language: String = "",
     val selected: Boolean = false,
     val forced: Boolean = false,
+    val external: Boolean = false,
 )
 
 private fun resolveTrackId(index: Int, tracks: List<NativeMpvTrack>): Int? =
@@ -1314,6 +1673,10 @@ private data class NativeControlsStructureKey(
 internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageReady: () -> Unit): String =
     buildString {
         append('{')
+        appendJsonField("lineupsAvailable", lineupsAvailable)
+        append(',')
+        appendJsonField("lineupsActive", lineupsActive)
+        append(',')
         appendJsonField("title", title)
         append(',')
         appendJsonField("episodeText", episodeText)
@@ -1349,6 +1712,14 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
         appendJsonField("subtitlesLabel", subtitlesLabel)
         append(',')
         appendJsonField("audioLabel", audioLabel)
+        append(',')
+        appendJsonField("nightModeLabel", nightModeLabel)
+        append(',')
+        appendJsonField("nightModeErrorLabel", nightModeErrorLabel)
+        append(',')
+        appendJsonField("nightModeActive", nightModeActive)
+        append(',')
+        appendJsonField("nightModeErrorToken", nightModeErrorToken)
         append(',')
         appendJsonField("sourcesLabel", sourcesLabel)
         append(',')
@@ -1462,8 +1833,6 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
         append(',')
         appendJsonField("subtitleStyleTabLabel", subtitleStyleTabLabel)
         append(',')
-        appendJsonField("customSubtitleStyleLabel", customSubtitleStyleLabel)
-        append(',')
         appendJsonField("forcedLabel", forcedLabel)
         append(',')
         appendJsonField("noneLabel", noneLabel)
@@ -1497,6 +1866,36 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
         appendJsonField("textOpacityLabel", textOpacityLabel)
         append(',')
         appendJsonField("outlineColorLabel", outlineColorLabel)
+        append(',')
+        appendJsonField("fontLabel", fontLabel)
+        append(',')
+        appendJsonField("backgroundColorLabel", backgroundColorLabel)
+        append(',')
+        appendJsonField("backgroundOpacityLabel", backgroundOpacityLabel)
+        append(',')
+        appendJsonField("fontImportLabel", fontImportLabel)
+        append(',')
+        appendJsonField("fontImportHint", fontImportHint)
+        append(',')
+        appendJsonField("fontImportError", fontImportError)
+        append(',')
+        appendJsonField("doneLabel", doneLabel)
+        append(',')
+        appendJsonField("fontRemoveLabel", fontRemoveLabel)
+        append(',')
+        appendJsonField("subtitleFontImportFailed", subtitleFontImportFailed)
+        append(',')
+        appendJsonField("shadowLabel", shadowLabel)
+        append(',')
+        appendJsonField("shadowOpacityLabel", shadowOpacityLabel)
+        append(',')
+        appendJsonField("shadowSizeLabel", shadowSizeLabel)
+        append(',')
+        appendJsonArrayField("subtitleFonts", subtitleFonts) {
+            append("{\"id\":").append(it.id.toJsonString())
+            append(",\"label\":").append(it.label.toJsonString())
+            append('}')
+        }
         append(',')
         appendJsonField("noSubtitleLinesFoundLabel", noSubtitleLinesFoundLabel)
         append(',')
@@ -1653,6 +2052,26 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
         append(',')
         appendJsonArrayField("sourceFilters", sourceFilters) { appendFilterItemJson(it) }
         append(',')
+        appendJsonField("qualityLabel", qualityLabel)
+        append(',')
+        appendJsonField("qualityPlayingLabelFormat", qualityPlayingLabelFormat)
+        append(',')
+        appendJsonField("qualityBusy", qualityBusy)
+        append(',')
+        appendJsonField("qualityStatus", qualityStatus)
+        append(',')
+        appendJsonField("qualityRequestedHeight", qualityRequestedHeight.toLong())
+        append(',')
+        appendJsonField("qualityActualHeight", qualityActualHeight.toLong())
+        append(',')
+        appendJsonArrayField("qualityItems", qualityItems) { item ->
+            append('{')
+            appendJsonField("height", item.height.toLong()); append(',')
+            appendJsonField("enabled", item.enabled); append(',')
+            appendJsonField("reason", item.reason)
+            append('}')
+        }
+        append(',')
         appendJsonArrayField("sourceItems", sourceItems) { appendSourceItemJson(it) }
         append(',')
         appendJsonArrayField("episodeItems", episodeItems) { appendEpisodeItemJson(it) }
@@ -1703,8 +2122,6 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
         append(',')
         appendJsonField("useCustomSubtitles", useCustomSubtitles)
         append(',')
-        appendJsonField("customSubtitleStylingEnabled", customSubtitleStylingEnabled)
-        append(',')
         appendJsonField("subtitleDelayMs", subtitleDelayMs)
         append(',')
         appendJsonField("hasSelectedAddonSubtitle", hasSelectedAddonSubtitle)
@@ -1738,6 +2155,38 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
             append(",\"tagStyle\":").append(it.tagStyle.toJsonString())
             append(",\"borderColor\":").append(it.borderColor.toJsonString())
             append('}')
+        }
+        append(',')
+        appendJsonArrayField("chapters", chapters) {
+            append("{\"startMs\":").append(it.startMs)
+            append(",\"title\":").append(it.title.toJsonString())
+            append('}')
+        }
+        append(',')
+        appendJsonField("chaptersLabel", chaptersLabel)
+        append(',')
+        appendJsonField("chaptersPanelTitle", chaptersPanelTitle)
+        append(',')
+        appendJsonField("chapterRemainingTemplate", chapterRemainingTemplate)
+        append(',')
+        appendJsonField("autoSyncedLabel", autoSyncedLabel)
+        append(',')
+        appendJsonField("streamInfoLabel", streamInfoLabel)
+        append(',')
+        appendJsonArrayField("streamInfoSections", streamInfoSections) { section ->
+            append("{\"title\":").append(section.title.toJsonString())
+            append(",\"logo\":").append((section.logo ?: "").toJsonString())
+            append(",\"name\":").append((section.name ?: "").toJsonString())
+            append(",\"subtitle\":").append((section.subtitle ?: "").toJsonString())
+            append(",\"description\":").append((section.description ?: "").toJsonString())
+            append(",\"items\":[")
+            section.items.forEachIndexed { index, item ->
+                if (index > 0) append(',')
+                append("{\"label\":").append(item.label.toJsonString())
+                append(",\"value\":").append(item.value.toJsonString())
+                append('}')
+            }
+            append("]}")
         }
         append(",\"party\":")
         append(partyJson.encodeToString(PlayerControlPartyState.serializer(), party.withWebviewImages(onImageReady)))
@@ -1941,6 +2390,8 @@ private fun StringBuilder.appendSubtitleOptionItemJson(item: PlayerControlSubtit
     appendJsonField("metadata", item.metadata)
     append(',')
     appendJsonField("isSelected", item.isSelected)
+    append(',')
+    appendJsonField("isAutoSynced", item.isAutoSynced)
     append('}')
 }
 
@@ -1970,6 +2421,8 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     append(',')
     appendJsonField("outlineColor", style.outlineColor.toStorageHexString())
     append(',')
+    appendJsonField("backgroundColor", style.backgroundColor.toStorageHexString())
+    append(',')
     appendJsonField("outlineEnabled", style.outlineEnabled)
     append(',')
     appendJsonField("bold", style.bold)
@@ -1977,6 +2430,14 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     appendJsonField("fontSizeSp", style.fontSizeSp)
     append(',')
     appendJsonField("bottomOffset", style.bottomOffset)
+    append(',')
+    appendJsonField("fontId", style.appearance.fontId)
+    append(',')
+    appendJsonField("shadowEnabled", style.appearance.shadowEnabled)
+    append(',')
+    appendJsonField("shadowOpacity", style.appearance.shadowOpacity)
+    append(',')
+    appendJsonField("shadowSize", style.appearance.shadowSize)
     append('}')
 }
 

@@ -246,7 +246,8 @@ object SearchRepository {
         val addonManifestErrorMessage = enabledAddons.firstEnabledManifestError()
         val activeAddons = enabledAddons.filter { it.manifest != null }
         val serverLibraries = ServerCatalog.titleLibraries()
-        if (activeAddons.isEmpty() && serverLibraries.isEmpty()) {
+        val go3Sources = com.nuvio.app.features.go3.Go3Catalog.sources()
+        if (activeAddons.isEmpty() && serverLibraries.isEmpty() && go3Sources.isEmpty()) {
             activeDiscoverJob?.cancel()
             discoverSources = emptyList()
             lastDiscoverRequestKey = null
@@ -263,7 +264,7 @@ object SearchRepository {
             return
         }
 
-        val sources = buildDiscoverSources(activeAddons) + serverLibraries.filter { it.library.kind != ServerMediaKind.MIXED }.map { ref ->
+        val sources = buildDiscoverSources(activeAddons) + go3Sources + serverLibraries.filter { it.library.kind != ServerMediaKind.MIXED }.map { ref ->
             DiscoverCatalogOption(
                 key = ref.target.let { "server:${it.connectionId}:${it.libraryId}" },
                 addonName = ServerRepository.sourceLabel(ref.connection),
@@ -403,8 +404,19 @@ object SearchRepository {
     fun selectDiscoverGenre(genre: String?) {
         val current = _discoverUiState.value
         val selectedCatalog = current.selectedCatalog ?: return
-        val normalizedGenre = selectedCatalog.resolveGenreSelection(genre)
+        val normalizedGenre = if(selectedCatalog.key.startsWith("go3:")) genre?.takeIf {
+            it in com.nuvio.app.features.go3.Go3Catalog.filters(selectedCatalog.catalogId)
+        } else selectedCatalog.resolveGenreSelection(genre)
         if (current.selectedGenre == normalizedGenre) return
+        if (selectedCatalog.key.startsWith("go3:")) {
+            val cached = com.nuvio.app.features.go3.Go3Catalog.cachedPage(selectedCatalog.catalogId, normalizedGenre)
+            if (cached != null) {
+                activeDiscoverJob?.cancel()
+                _discoverUiState.value=current.copy(selectedGenre=normalizedGenre,items=cached,isLoading=false,nextSkip=null,
+                    emptyStateReason=if(cached.isEmpty()) DiscoverEmptyStateReason.NoResults else null,errorMessage=null)
+                return
+            }
+        }
 
         _discoverUiState.value = current.copy(
             selectedGenre = normalizedGenre,
@@ -418,6 +430,13 @@ object SearchRepository {
             reset = true,
             forceRefresh = false,
         )
+    }
+
+    fun refreshGo3IfStale() {
+        val state=_discoverUiState.value
+        val selected=state.selectedCatalog ?: return
+        if(selected.key.startsWith("go3:") && !state.isLoading && com.nuvio.app.features.go3.Go3Catalog.isStale(selected.catalogId))
+            loadDiscoverFeed(reset=true,forceRefresh=true)
     }
 
     fun loadMoreDiscover() {
@@ -517,7 +536,7 @@ object SearchRepository {
         val current = _discoverUiState.value
         val selectedCatalog = current.selectedCatalog ?: return
         val requestedSkip = if (reset) 0 else current.nextSkip ?: return
-        val requestUrl = if (selectedCatalog.server != null) {
+        val requestUrl = if (selectedCatalog.key.startsWith("go3:") || selectedCatalog.server != null) {
             selectedCatalog.key
         } else {
             buildCatalogUrl(
@@ -538,7 +557,7 @@ object SearchRepository {
 
         _discoverUiState.value = current.copy(
             isLoading = true,
-            items = if (reset) emptyList() else current.items,
+            items = if (reset && !selectedCatalog.key.startsWith("go3:")) emptyList() else current.items,
             nextSkip = if (reset) null else current.nextSkip,
             consecutiveDuplicatePages = if (reset) 0 else current.consecutiveDuplicatePages,
             emptyStateReason = null,
@@ -548,7 +567,10 @@ object SearchRepository {
         activeDiscoverJob = scope.launch {
             runCatching {
                 val server = selectedCatalog.server
-                if (server != null) {
+                if (selectedCatalog.key.startsWith("go3:")) {
+                    val items = com.nuvio.app.features.go3.Go3Catalog.page(selectedCatalog.catalogId, current.selectedGenre, forceRefresh)
+                    CatalogPage(items = items, rawItemCount = items.size, nextSkip = null)
+                } else if (server != null) {
                     ServerCatalog.page(server, skip = requestedSkip)
                 } else {
                     fetchCatalogPage(
@@ -566,10 +588,15 @@ object SearchRepository {
                     if (latest.selectedCatalogKey != selectedCatalog.key || latest.selectedGenre != current.selectedGenre) {
                         return@fold
                     }
+                    val effectiveGenre = if(selectedCatalog.key.startsWith("go3:")) latest.selectedGenre?.takeIf {
+                        it in com.nuvio.app.features.go3.Go3Catalog.filters(selectedCatalog.catalogId)
+                    } else latest.selectedGenre
+                    val visiblePage = if(selectedCatalog.key.startsWith("go3:")) page.copy(items =
+                        com.nuvio.app.features.go3.Go3Catalog.cachedPage(selectedCatalog.catalogId,effectiveGenre) ?: page.items) else page
                     val mergedItems = if (reset) {
-                        page.items
+                        visiblePage.items
                     } else {
-                        mergeCatalogItems(latest.items, page.items)
+                        mergeCatalogItems(latest.items, visiblePage.items)
                     }.let { items ->
                         val pattern = com.nuvio.app.core.poster.CustomPosterUrlRepository.let { repo ->
                             repo.ensureLoaded()
@@ -577,7 +604,7 @@ object SearchRepository {
                         }
                         items.withCustomPosterUrls(pattern)
                     }
-                    val supportsPagination = selectedCatalog.supportsPagination || page.rawItemCount >= CATALOG_PAGE_SIZE
+                    val supportsPagination = !selectedCatalog.key.startsWith("go3:") && (selectedCatalog.supportsPagination || page.rawItemCount >= CATALOG_PAGE_SIZE)
                     val loadedNewItems = reset || mergedItems.size > latest.items.size
                     val paginationState = nextCatalogPaginationState(
                         supportsPagination = supportsPagination,
@@ -593,6 +620,7 @@ object SearchRepository {
                     }
                     _discoverUiState.value = latest.copy(
                         items = mergedItems,
+                        selectedGenre = effectiveGenre,
                         isLoading = false,
                         nextSkip = paginationState.nextSkip,
                         consecutiveDuplicatePages = paginationState.consecutiveDuplicatePages,

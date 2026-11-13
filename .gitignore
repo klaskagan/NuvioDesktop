@@ -22,6 +22,7 @@ node_modules/
 logs/
 analysis/
 [Dd]ocs/*
+![Dd]ocs/playback-quality-capabilities.md
 ![Dd]ocs/continue-on-tv.md
 ![Dd]ocs/trailer-playback.md
 ![Dd]ocs/tv-handoff/
@@ -38,6 +39,7 @@ AGENTS.md
 PERFORMANCE_FINDINGS.md
 scripts/*
 !scripts/desktop-ui-tests.init.gradle
+!scripts/create-quality-test-fixtures.sh
 !scripts/tv-handoff/
 !scripts/tv-handoff/**
 scripts/tv-handoff/**/__pycache__/
@@ -47,6 +49,10 @@ scripts/tv-handoff/**/venv/
 !scripts/sign-ios-device-app.py
 iosApp/Configuration/DeviceSigning.local.json
 
+# Go3 browser state and local DRM runtime are private development artifacts.
+/go3-feasibility/local-session/
+/go3-feasibility/runtime/
+
 # Local MPVKit iOS build environment (sparse APFS image, see MPVKit docs)
 .mpvkit-build.sparseimage
 ![Dd]ocs/trailer-player-comparison.md
@@ -54,3 +60,9 @@ iosApp/Configuration/DeviceSigning.local.json
 # Movie recommendation behavior and native overlay regression fixture.
 !docs/movie-recommendations.md
 !scripts/test-movie-recommendation-controls.cjs
+![Dd]ocs/go3-live-probe.md
+!scripts/go3-live-probe/
+!scripts/go3-live-probe/**
+
+!docs/buffered-quality-handover.md
+.codegraph

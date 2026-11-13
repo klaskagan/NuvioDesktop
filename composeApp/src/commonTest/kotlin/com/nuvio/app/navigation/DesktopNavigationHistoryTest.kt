@@ -74,7 +74,7 @@ class DesktopNavigationHistoryTest {
         assertEquals(SettingsPage.Advanced, history.current.settingsPage)
         navigator.popBackStack()
         assertEquals(SettingsPage.Root, history.current.settingsPage)
-        assertEquals(SettingsCategory.Advanced, history.current.settingsCategory)
+        assertEquals(SettingsCategory.System, history.current.settingsCategory)
         navigator.goForward()
         assertEquals(SettingsPage.Advanced, history.current.settingsPage)
         navigator.goForward()
@@ -82,7 +82,7 @@ class DesktopNavigationHistoryTest {
         navigator.openDesktopSettings("Root", "About")
         navigator.selectDesktopTab(AppScreenTab.Library)
         navigator.popBackStack()
-        assertEquals(SettingsCategory.About, history.current.settingsCategory)
+        assertEquals(SettingsCategory.System, history.current.settingsCategory)
         assertEquals(SettingsPage.Root, history.current.settingsPage)
     }
 

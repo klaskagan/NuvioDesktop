@@ -12,7 +12,7 @@ import com.nuvio.app.features.settings.SettingsPage
 internal data class DesktopNavigationLocation(
     val tab: AppScreenTab = AppScreenTab.Home,
     val settingsPage: SettingsPage = SettingsPage.Root,
-    val settingsCategory: SettingsCategory = SettingsCategory.General,
+    val settingsCategory: SettingsCategory = SettingsCategory.Look,
     val routes: List<AppRoute> = listOf(TabsRoute),
 ) {
     val isSettingsRootRoute: Boolean get() = tab == AppScreenTab.Settings && routes.lastOrNull() == TabsRoute

@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.nuvio.app.features.player.skip.SkipInterval
 import com.nuvio.app.features.player.skip.internalSkipAction
+import com.nuvio.app.isDesktop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
@@ -71,8 +72,10 @@ internal fun PlayerScreenRuntime.lockPlayerControls() {
     showSubtitleModal = false
     showVideoSettingsModal = false
     showStreamInfo = false
+    showPartyPanel = false
     showSourcesPanel = false
     showEpisodesPanel = false
+    showChaptersPanel = false
     episodeStreamsPanelState = EpisodeStreamsPanelState()
     PlayerStreamsRepository.clearEpisodeStreams()
 }
@@ -215,7 +218,7 @@ internal fun PlayerScreenRuntime.applyNativePlaybackState(play: Boolean) {
 }
 
 internal fun PlayerScreenRuntime.seekFromNativeControls(offsetMs: Long, revealControls: Boolean = true): Boolean {
-    if (isPartySynced) {
+    if (isPartySynced || (isDesktop && playerController != null)) {
         seekBy(offsetMs, revealControls)
         return true
     }
@@ -230,8 +233,11 @@ internal fun PlayerScreenRuntime.finishTimelineSeek(positionMs: Long) {
         scrubbingPositionMs = null
         return
     }
+    val fromMs = currentPlaybackPositionMs()
+    if (isDesktop) pendingSeekTarget = targetMs to TimeSource.Monotonic.markNow()
     finishTimelineScrub(targetMs)
     playerController?.seekTo(targetMs)
+    onUserSeekForRewindSubtitles(fromMs, targetMs)
     scheduleProgressSyncAfterSeek()
     publishPartyPlayback(positionMs = targetMs)
 }
@@ -279,7 +285,8 @@ internal fun PlayerScreenRuntime.seekBy(offsetMs: Long, revealControls: Boolean 
     val targetMs = if (isPartyControlLocked) ownSeekTarget(requestedMs) ?: return else requestedMs
     lastManualSkipSeekPositions = fromMs to targetMs
     pendingSeekTarget = targetMs to TimeSource.Monotonic.markNow()
-    if (isPartySynced) playerController?.seekTo(targetMs) else playerController?.seekBy(offsetMs)
+    if (isPartySynced || isDesktop) playerController?.seekTo(targetMs) else playerController?.seekBy(offsetMs)
+    onUserSeekForRewindSubtitles(fromMs, targetMs)
     applySeekByControlFeedback(offsetMs, revealControls, partyPositionMs = targetMs)
 }
 
@@ -344,6 +351,7 @@ private fun PlayerScreenRuntime.handleDoubleTapSeek(
     lastManualSkipSeekPositions = currentPositionMs to targetPositionMs
     if (sendToController) {
         playerController?.seekTo(targetPositionMs)
+        onUserSeekForRewindSubtitles(currentPositionMs, targetPositionMs)
     }
     scheduleProgressSyncAfterSeek()
     publishPartyPlayback(positionMs = targetPositionMs)
@@ -476,8 +484,10 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
             } else {
                 requestedPositionMs
             }
-            lastManualSkipSeekPositions = playbackSnapshot.positionMs to targetPositionMs
+            val fromMs = playbackSnapshot.positionMs
+            lastManualSkipSeekPositions = fromMs to targetPositionMs
             playerController?.seekTo(targetPositionMs)
+            onUserSeekForRewindSubtitles(fromMs, targetPositionMs)
             scheduleProgressSyncAfterSeek()
             publishPartyPlayback(positionMs = targetPositionMs)
         },

@@ -74,6 +74,10 @@ internal fun DetailsDestination(
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val onBack = rememberGuardedPopBackStack(navController, route)
+    if (route.id.startsWith("go3:programme:")) {
+        com.nuvio.app.features.go3.Go3EventScreen(route.id, onBack)
+        return
+    }
     val onOpenMeta = rememberOpenMeta(navController)
     val directorRole = stringResource(Res.string.person_role_director)
     val writerRole = stringResource(Res.string.person_role_writer)

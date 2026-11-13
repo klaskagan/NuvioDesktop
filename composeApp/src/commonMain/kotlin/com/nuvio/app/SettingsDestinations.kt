@@ -150,6 +150,7 @@ internal fun FolderDestination(
     route: FolderDetailRoute,
     navController: NuvioNavigator,
     onCatalogClick: (HomeCatalogSection) -> Unit,
+    onPosterLongClick: (PosterActionTarget) -> Unit,
 ) {
     val onBack = rememberGuardedPopBackStack(navController, route)
     LaunchedEffect(route.collectionId, route.folderId) {
@@ -159,5 +160,8 @@ internal fun FolderDestination(
         onBack = onBack,
         onCatalogClick = onCatalogClick,
         onPosterClick = rememberOpenMeta(navController),
+        onCatalogPosterLongClick = { shelfKey, poster ->
+            onPosterLongClick(PosterActionTarget(preview = poster, homeShelfKey = shelfKey))
+        },
     )
 }

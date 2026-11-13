@@ -31,6 +31,8 @@ import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.nuvio.app.features.home.HomeCatalogSettingsRepository
+import com.nuvio.app.features.home.HomeRowStyle
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -95,6 +97,7 @@ fun FolderDetailScreen(
     onBack: () -> Unit,
     onCatalogClick: (HomeCatalogSection) -> Unit,
     onPosterClick: (MetaPreview) -> Unit,
+    onCatalogPosterLongClick: ((String, MetaPreview) -> Unit)? = null,
 ) {
     val uiState by FolderDetailRepository.uiState.collectAsState()
     val watchedUiState by remember {
@@ -118,6 +121,11 @@ fun FolderDetailScreen(
         return
     }
 
+    val rowStyles by remember {
+        HomeCatalogSettingsRepository.snapshot()
+        HomeCatalogSettingsRepository.uiState
+    }.collectAsState()
+
     if (uiState.artworkFolder != null) {
         ConfiguredFolderContent(
             uiState = uiState,
@@ -128,6 +136,8 @@ fun FolderDetailScreen(
             onLoadMore = FolderDetailRepository::loadMoreSelectedTab,
             onCatalogClick = onCatalogClick,
             onPosterClick = onPosterClick,
+            rowStyles = rowStyles.rowStyles,
+            onCatalogPosterLongClick = onCatalogPosterLongClick,
         )
         return
     }
@@ -207,6 +217,8 @@ fun FolderDetailScreen(
                         modifier = Modifier.weight(1f),
                         onCatalogClick = onCatalogClick,
                         onPosterClick = onPosterClick,
+                        rowStyles = rowStyles.rowStyles,
+                        onCatalogPosterLongClick = onCatalogPosterLongClick,
                     )
                     FolderViewMode.FOLLOW_LAYOUT -> RowsContent(
                         uiState = uiState,
@@ -214,6 +226,8 @@ fun FolderDetailScreen(
                         modifier = Modifier.weight(1f),
                         onCatalogClick = onCatalogClick,
                         onPosterClick = onPosterClick,
+                        rowStyles = rowStyles.rowStyles,
+                        onCatalogPosterLongClick = onCatalogPosterLongClick,
                     )
                 }
             }
@@ -505,6 +519,8 @@ private fun RowsContent(
     modifier: Modifier = Modifier,
     onCatalogClick: (HomeCatalogSection) -> Unit,
     onPosterClick: (MetaPreview) -> Unit,
+    rowStyles: Map<String, HomeRowStyle> = emptyMap(),
+    onCatalogPosterLongClick: ((String, MetaPreview) -> Unit)? = null,
 ) {
     val sections = FolderDetailRepository.getCatalogSectionsForRows()
     val listState = rememberLazyListState()
@@ -547,6 +563,8 @@ private fun RowsContent(
                 val section = keyedSection.value
                 HomeCatalogRowSection(
                     section = section,
+                    rowStyle = rowStyles[section.key] ?: HomeRowStyle.Automatic,
+                    onPosterLongClick = onCatalogPosterLongClick?.let { open -> { item -> open(section.key, item) } },
                     entries = if (isDesktop) {
                         // Match desktop home rows: the lazy row exposes every fetched item so the
                         // catalog remains horizontally scrollable without opening the expanded view.

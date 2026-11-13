@@ -74,10 +74,11 @@ internal fun LazyListScope.discoverContent(
     }
 
     when {
-        (state.isLoading || isSourceLoading) && state.items.isEmpty() -> {
+        (state.isLoading || (isSourceLoading && state.selectedCatalogKey?.startsWith("go3:") != true)) && state.items.isEmpty() -> {
             items(2) {
                 PosterGridSkeletonRow(
                     columns = columns,
+                    aspectRatio = if(state.selectedCatalogKey?.startsWith("go3:")==true) 16f/9f else 0.68f,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
@@ -153,7 +154,7 @@ private fun DiscoverFilterRow(
             title = stringResource(Res.string.discover_select_catalog),
             label = state.selectedCatalog?.catalogName ?: stringResource(Res.string.discover_catalog),
             selectedKey = state.selectedCatalogKey,
-            options = state.catalogOptions.map { option -> NuvioDropdownOption(key = option.key, label = option.catalogName) },
+            options = state.catalogOptions.sortedBy { if(it.catalogName.contains("go3",ignoreCase=true) || it.addonName.contains("go3",ignoreCase=true)) 0 else 1 }.map { option -> NuvioDropdownOption(key = option.key, label = option.catalogName) },
             enabled = state.catalogOptions.isNotEmpty(),
             onSelected = { onCatalogSelected(it.key) },
         )
@@ -161,13 +162,13 @@ private fun DiscoverFilterRow(
         val selectedCatalog = state.selectedCatalog
         val genreOptions = buildList {
             if (selectedCatalog?.genreRequired != true) {
-                add(NuvioDropdownOption(key = "", label = stringResource(Res.string.discover_all_genres)))
+                add(NuvioDropdownOption(key = "", label = if(state.selectedCatalogKey?.startsWith("go3:")==true) "All events" else stringResource(Res.string.discover_all_genres)))
             }
             addAll(state.genreOptions.map { genre -> NuvioDropdownOption(key = genre, label = genre) })
         }
         NuvioDropdownChip(
             title = stringResource(Res.string.discover_select_genre),
-            label = state.selectedGenre ?: stringResource(Res.string.discover_all_genres),
+            label = state.selectedGenre ?: if(state.selectedCatalogKey?.startsWith("go3:")==true) "All events" else stringResource(Res.string.discover_all_genres),
             selectedKey = state.selectedGenre ?: "",
             options = genreOptions,
             enabled = genreOptions.size > 1 || selectedCatalog?.genreRequired == true,

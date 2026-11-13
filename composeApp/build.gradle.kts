@@ -730,6 +730,7 @@ val macosPlayerBridgeCommand = if (missingMacosPlayerBridgeInputs.isNotEmpty()) 
 val buildMacosPlayerBridge = tasks.register<Exec>("buildMacosPlayerBridge") {
     notCompatibleWithConfigurationCache("Builds a host-local player bridge against the bundled macOS libmpv runtime.")
     enabled = isMacHost
+    inputs.dir(layout.projectDirectory.dir("src/desktopMain/native/shared"))
     inputs.file(macosPlayerBridgeSource)
     inputs.file(bundledMacosLibmpvDylib)
     inputs.dir(macosLibmpvHeaders)
@@ -750,6 +751,7 @@ val linuxPlayerBridgeOutputFile = linuxPlayerBridgeOutput.get().asFile
 val buildLinuxPlayerBridge = tasks.register<Exec>("buildLinuxPlayerBridge") {
     notCompatibleWithConfigurationCache("Builds a host-local player bridge against system libmpv.")
     enabled = isLinuxHost
+    inputs.dir(layout.projectDirectory.dir("src/desktopMain/native/shared"))
     inputs.file(linuxPlayerBridgeSourceFile)
     outputs.file(linuxPlayerBridgeOutputFile)
     val src = linuxPlayerBridgeSourceFile.absolutePath
@@ -928,6 +930,7 @@ val windowsPlayerBridgeCommand = if (missingWindowsPlayerBridgeInputs.isNotEmpty
 val buildWindowsPlayerBridge = tasks.register<Exec>("buildWindowsPlayerBridge") {
     notCompatibleWithConfigurationCache("Builds a host-local player bridge against WebView2 and libmpv for Windows.")
     enabled = isWindowsHost
+    inputs.dir(layout.projectDirectory.dir("src/desktopMain/native/shared"))
     inputs.file(windowsPlayerBridgeSource)
     if (windowsWebView2IncludeDir.exists()) {
         inputs.dir(windowsWebView2IncludeDir)
@@ -1000,12 +1003,20 @@ val prepareMacosPlayerRuntime = tasks.register<Sync>("prepareMacosPlayerRuntime"
 val prepareMacosPlayerAppResources = tasks.register<Sync>("prepareMacosPlayerAppResources") {
     enabled = isMacHost
     dependsOn(buildMacosPlayerBridge, prepareMacosPlayerRuntime)
-    from(macosPlayerBridgeOutput)
+    into(macosPlayerAppResourcesRoot.map { it.dir("macos") })
+    from(macosPlayerBridgeOutput) { into("native/macos") }
     from(macosPlayerRuntimeOutput) {
         include("*.dylib")
+        into("native/macos")
     }
-    from(layout.projectDirectory.file("src/desktopMain/native/macos/engine/libnuvio_engine.dylib"))
-    into(macosPlayerAppResourcesRoot.map { it.dir("macos/native/macos") })
+    from(layout.projectDirectory.file("src/desktopMain/native/macos/engine/libnuvio_engine.dylib")) {
+        into("native/macos")
+    }
+    // Ship source helpers only. Browser profiles and vendor runtime stay outside the bundle.
+    from(rootProject.layout.projectDirectory.dir("scripts/go3-live-probe")) {
+        include("main.cjs", "package.json", "event-catalog.cjs", "events.cjs", "catalog.cjs", "discovery.cjs", "player-page.cjs", "lineups.cjs")
+        into("go3")
+    }
 }
 
 tasks.withType<Jar>().configureEach {
@@ -1203,6 +1214,7 @@ kotlin {
                 implementation(libs.androidx.media3.extractor)
                 implementation("com.google.guava:guava:33.3.1-android")
                 implementation("androidx.media3:media3-database:1.8.0")
+                implementation("androidx.media3:media3-effect:1.8.0")
                 implementation("androidx.annotation:annotation-experimental:1.3.1")
                 implementation(libs.mpv.android.lib)
                 implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("lib-*.aar"))))
@@ -1425,6 +1437,11 @@ if (isMacHost && macosSigningIdentity == null) {
         }
     }
 }
+tasks.withType<AbstractJPackageTask>()
+    .matching { it.name.endsWith("Msi") || it.name.endsWith("Exe") }
+    .configureEach {
+        freeArgs.add("--win-shortcut-prompt")
+    }
 
 fun renameMacosDmgOutput(release: Boolean) {
     if (!isMacHost) return

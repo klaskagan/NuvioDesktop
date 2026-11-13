@@ -112,6 +112,8 @@ import com.nuvio.app.features.downloads.DownloadSubtitles
 import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
+import com.nuvio.app.features.home.components.HomeRowStylePicker
+import androidx.compose.material.icons.rounded.Menu
 import com.nuvio.app.features.home.HomeRepository
 import com.nuvio.app.features.home.buildAddonCatalogRefreshSignature
 import com.nuvio.app.features.home.components.shouldBlurContinueWatchingArtwork
@@ -176,6 +178,7 @@ import com.nuvio.app.features.updater.rememberAppUpdaterController
 import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.features.watching.application.WatchingActions
 import com.nuvio.app.features.watching.application.WatchingState
+import com.nuvio.app.features.watching.application.canMarkWatched
 import com.nuvio.app.features.watchprogress.ContinueWatchingItem
 import com.nuvio.app.features.watchprogress.ContinueWatchingPreferencesRepository
 import com.nuvio.app.features.watchprogress.ResumePromptRepository
@@ -187,10 +190,9 @@ import com.nuvio.app.features.watchprogress.toContinueWatchingItem
 import com.nuvio.app.navigation.*
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import com.nuvio.app.features.servers.ServerRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import com.nuvio.app.features.servers.ServerMatcher
-import com.nuvio.app.features.servers.ServerRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -358,6 +360,7 @@ internal fun MainAppContent(
             }
         }
         val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
+        var rowStyleShelfKey by remember(profileState.activeProfile?.id) { mutableStateOf<String?>(null) }
         val launchOverlayProfile = profileState.activeProfile ?: profileState.profiles.firstOrNull()
         val desktopProfileIdentity = (authState as? AuthState.Authenticated)?.userId to profileState.activeProfile?.profileIndex
         LaunchedEffect(desktopProfileIdentity) {
@@ -453,7 +456,6 @@ internal fun MainAppContent(
         if (enabledAddons.isWaitingForFirstEnabledManifest()) return@LaunchedEffect
         HomeCatalogSettingsRepository.syncCatalogs(enabledAddons)
         HomeRepository.refresh(enabledAddons)
-        ServerMatcher.warm()
     }
 
     fun activateTab(tab: AppScreenTab) {
@@ -882,6 +884,7 @@ internal fun MainAppContent(
                 sendSkipSegments = shouldSendSkipSegments,
                 preferredLanguage = playerSettingsUiState.preferredSubtitleLanguage,
                 secondaryLanguage = playerSettingsUiState.secondaryPreferredSubtitleLanguage,
+                subtitleExtras = launch.subtitleExtras,
                 onOverlayMessage = { message -> StreamsRepository.setOverlayVisible(true, message) },
             )
             StreamsRepository.setOverlayVisible(false)
@@ -951,6 +954,11 @@ internal fun MainAppContent(
         }
 
         fun openExternalStreamUrl(url: String): Boolean {
+            if (Go3Playback.isWatchUrl(url) && Go3Playback.open != null) {
+                val opened = Go3Playback.open?.invoke(Go3Playback.Request(url)) == true
+                if (!opened) NuvioToastController.show("Go3 player unavailable. Check the Go3 runtime configuration.")
+                return opened
+            }
             val opened = runCatching {
                 uriHandler.openUri(url)
             }.isSuccess
@@ -1201,6 +1209,7 @@ internal fun MainAppContent(
                         title = section.title,
                         subtitle = section.subtitle,
                         target = section.target,
+                        fromCollectionFolder = navController.currentRoute is FolderDetailRoute,
                     ),
                 )
                 navController.navigate(
@@ -1349,6 +1358,11 @@ internal fun MainAppContent(
             }
         }
 
+        val onContinueWatchingMarkWatched: (ContinueWatchingItem) -> Unit = { item ->
+            continueWatchingDisintegrationRequests.arm(continueWatchingItemKey(item))
+            WatchingActions.markContinueWatchingWatched(item)
+        }
+
         val onContinueWatchingLongPress: (ContinueWatchingItem) -> Unit = { item ->
             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
             val zoomAnchor = PosterZoomAnchorHolder.consume()
@@ -1389,6 +1403,18 @@ internal fun MainAppContent(
                     profileSwitchLoading = false
                 }
             }
+        }
+
+        @Composable
+        fun CollectionNavigationFrame(route: AppRoute, content: @Composable () -> Unit) {
+            DetailNavigationFrame(
+                route = route,
+                selectedTab = selectedTab,
+                onTabSelected = ::selectDetailNavigationTab,
+                onProfileSelected = selectNavigationProfile,
+                onAddProfileRequested = onSwitchProfile,
+                content = content,
+            )
         }
 
         // Desktop has no system back, so mouse Back joins Esc in Compose's window back
@@ -1520,6 +1546,9 @@ internal fun MainAppContent(
                                 onPosterClick = navController::openPreview,
                                 onPosterLongClick = { meta ->
                                     openPosterActions(PosterActionTarget(preview = meta))
+                                },
+                                onHomePosterLongClick = { shelfKey, meta ->
+                                    openPosterActions(PosterActionTarget(preview = meta, homeShelfKey = shelfKey))
                                 },
                                 onLibraryPosterClick = { item ->
                                     navController.navigate(
@@ -1779,11 +1808,21 @@ internal fun MainAppContent(
                     )
                 }
                 entry<CatalogRoute> { route ->
-                    CatalogDestination(
-                        route = route,
-                        navController = navController,
-                        onPosterLongClick = openPosterActions,
-                    )
+                    val content: @Composable () -> Unit = {
+                        CatalogDestination(
+                            route = route,
+                            navController = navController,
+                            onPosterLongClick = openPosterActions,
+                        )
+                    }
+                    val launch = CatalogLaunchStore.get(route.launchId)
+                    if (launch?.fromCollectionFolder == true ||
+                        launch?.target is CatalogTarget.CollectionSource || launch?.target is CatalogTarget.Seasonal
+                    ) {
+                        CollectionNavigationFrame(route, content)
+                    } else {
+                        content()
+                    }
                 }
                 entry<HomescreenSettingsRoute> { route ->
                     SettingsDestination(route, navController) { onBack ->
@@ -1870,31 +1909,40 @@ internal fun MainAppContent(
                     }
                 }
                 entry<CollectionsRoute> { route ->
-                    CollectionsDestination(
-                        route = route,
-                        navController = navController,
-                        newCollectionTitle = newCollectionTitle,
-                    )
+                    CollectionNavigationFrame(route) {
+                        CollectionsDestination(
+                            route = route,
+                            navController = navController,
+                            newCollectionTitle = newCollectionTitle,
+                        )
+                    }
                 }
                 entry<CollectionEditorRoute> { route ->
-                    CollectionEditorDestination(
-                        route = route,
-                        navController = navController,
-                        useNativeNavigation = useNativeNavigation,
-                    )
+                    CollectionNavigationFrame(route) {
+                        CollectionEditorDestination(
+                            route = route,
+                            navController = navController,
+                            useNativeNavigation = useNativeNavigation,
+                        )
+                    }
                 }
                 entry<CollectionEditorPageRoute> { route ->
-                    CollectionEditorPageDestination(
-                        route = route,
-                        navController = navController,
-                    )
+                    CollectionNavigationFrame(route) {
+                        CollectionEditorPageDestination(
+                            route = route,
+                            navController = navController,
+                        )
+                    }
                 }
                 entry<FolderDetailRoute> { route ->
-                    FolderDestination(
-                        route = route,
-                        navController = navController,
-                        onCatalogClick = onCatalogClick,
-                    )
+                    CollectionNavigationFrame(route) {
+                        FolderDestination(
+                            route = route,
+                            navController = navController,
+                            onCatalogClick = onCatalogClick,
+                            onPosterLongClick = openPosterActions,
+                        )
+                    }
                 }
                     }.let { provider ->
                         { key ->
@@ -1911,6 +1959,10 @@ internal fun MainAppContent(
                 )
                 }
             }
+            }
+
+            rowStyleShelfKey?.let { shelfKey ->
+                HomeRowStylePicker(shelfKey, onDismiss = { rowStyleShelfKey = null })
             }
 
             selectedPosterActionTarget?.let { posterActionTarget ->
@@ -2066,7 +2118,13 @@ internal fun MainAppContent(
                                     }
                                 },
                             ),
-                        ),
+                        ) + listOfNotNull(posterActionTarget.homeShelfKey?.let { shelfKey ->
+                            PosterZoomOverlayAction(
+                                icon = Icons.Rounded.Menu,
+                                label = stringResource(Res.string.home_row_style),
+                                onSelected = { rowStyleShelfKey = shelfKey },
+                            )
+                        }),
                         hazeState = posterOverlayHazeState,
                         onDismissed = {
                             selectedPosterActionTarget = null
@@ -2128,6 +2186,15 @@ internal fun MainAppContent(
                                         ),
                                     )
                                 }
+                                if (item.canMarkWatched()) {
+                                    add(
+                                        PosterZoomOverlayAction(
+                                            icon = Icons.Default.CheckCircle,
+                                            label = stringResource(Res.string.hero_mark_watched),
+                                            onSelected = { onContinueWatchingMarkWatched(item) },
+                                        ),
+                                    )
+                                }
                                 add(
                                     PosterZoomOverlayAction(
                                         icon = Icons.Default.DeleteOutline,
@@ -2169,6 +2236,9 @@ internal fun MainAppContent(
                     ?.let { item -> { onContinueWatchingStartFromBeginning(item) } },
                 onPlayManually = selectedContinueWatchingForActions
                     ?.let { item -> { onContinueWatchingPlayManually(item) } },
+                onMarkWatched = selectedContinueWatchingForActions
+                    ?.takeIf { it.canMarkWatched() }
+                    ?.let { item -> { onContinueWatchingMarkWatched(item) } },
                 onRemove = {
                     selectedContinueWatchingForActions?.let(onContinueWatchingRemove)
                 },

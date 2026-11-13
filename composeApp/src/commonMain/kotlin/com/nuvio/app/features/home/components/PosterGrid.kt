@@ -112,6 +112,7 @@ internal fun PosterGridRow(
 internal fun PosterGridSkeletonRow(
     columns: Int,
     modifier: Modifier = Modifier,
+    aspectRatio: Float = 0.68f,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
 
@@ -122,6 +123,7 @@ internal fun PosterGridSkeletonRow(
         repeat(columns) {
             SkeletonPoster(
                 modifier = Modifier.weight(1f),
+                aspectRatio = aspectRatio,
                 cornerRadius = posterCardStyle.cornerRadiusDp.dp,
                 showLabels = !posterCardStyle.hideLabelsEnabled,
             )

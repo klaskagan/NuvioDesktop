@@ -1,0 +1,14 @@
+<resources>
+    <string name="home_row_style">Row style</string>
+    <string name="home_row_style_automatic">Automatic</string>
+    <string name="home_row_style_posters">Posters</string>
+    <string name="home_row_style_landscape">Landscape</string>
+    <string name="home_row_style_landscape_small">Small</string>
+    <string name="home_row_style_landscape_medium">Medium</string>
+    <string name="home_row_style_landscape_large">Large</string>
+    <string name="home_row_style_landscape_size">%1$s · %2$s</string>
+    <string name="home_row_style_banner_with_title">Banner with title</string>
+    <string name="home_row_style_round">Round</string>
+    <string name="home_row_style_numbered_ranking">Numbered ranking</string>
+    <string name="home_row_rank">Rank %1$d</string>
+</resources>

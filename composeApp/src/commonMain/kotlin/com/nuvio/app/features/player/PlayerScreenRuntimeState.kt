@@ -64,10 +64,37 @@ internal class PlayerReleaseSurfaceRetention {
     }
 }
 
+/**
+ * Audio/subtitle selection captured right before the playback engine changes, together with the
+ * engine expected to take over. Re-applied as soon as the new engine exposes its track list.
+ */
+internal data class PendingEngineSwitchTrackPreference(
+    val sourceIdentity: String,
+    val capturedController: PlayerEngineController?,
+    val targetEngine: AndroidPlaybackEngine,
+    val preference: PersistedPlayerTrackPreference,
+    val hasAudioSelection: Boolean,
+    val hasSubtitleSelection: Boolean,
+    val audioApplied: Boolean = false,
+    val subtitleApplied: Boolean = false,
+)
+
 internal class PlayerScreenRuntime(
     args: PlayerScreenArgs,
 ) {
     var args by mutableStateOf(args)
+    var qualityChoices by mutableStateOf(emptyList<PlayerQualityChoice>())
+    var qualityBusy by mutableStateOf(false)
+    var qualityStatus by mutableStateOf("")
+    var qualityLoadingHeight by mutableStateOf(0)
+    var qualityRequestedHeight by mutableStateOf(0)
+    var qualityJob: kotlinx.coroutines.Job? = null
+    var qualityGeneration = 0L
+    var qualitySwitching = false
+    var qualityReplacing = false
+    var qualityLoadError: String? = null
+    var qualityDisposed = false
+    var qualitySourcesInitializedKey: String? = null
     var tvHandoffTransferred = false
     var cancelTvHandoff: (() -> Unit)? = null
 
@@ -125,6 +152,7 @@ internal class PlayerScreenRuntime(
     var sliderEdgePadding: Dp = 0.dp
     var overlayBottomPadding: Dp = 0.dp
     var sideGestureSystemEdgeExclusionPx: Float = 0f
+    var horizontalSeekSystemEdgeExclusionPx: Float = 0f
     var resizeModeFitLabel: String = ""
     var resizeModeFillLabel: String = ""
     var resizeModeZoomLabel: String = ""
@@ -159,6 +187,8 @@ internal class PlayerScreenRuntime(
     )
     var activeStreamTitle by mutableStateOf(streamTitle)
     var activeStreamSubtitle by mutableStateOf(streamSubtitle)
+    // behaviorHints filename (or URL basename) for the auto engine resolver's HDR/DV detection.
+    var activeStreamFilename by mutableStateOf(sourceFilenameFromUrl(sourceUrl))
     var activeProviderName by mutableStateOf(providerName)
     var activeProviderAddonId by mutableStateOf(providerAddonId)
     var activeStream by mutableStateOf(args.stream)
@@ -171,6 +201,7 @@ internal class PlayerScreenRuntime(
     var activeEpisodeThumbnail by mutableStateOf(episodeThumbnail)
     var activePauseDescription by mutableStateOf(pauseDescription)
     var activeVideoId by mutableStateOf(videoId)
+    var activeSubtitleExtras by mutableStateOf(args.subtitleExtras)
     var activeInitialPositionMs by mutableStateOf(initialPositionMs)
     var activeInitialProgressFraction by mutableStateOf(initialProgressFraction)
     var shouldPlay by mutableStateOf(true)
@@ -210,6 +241,11 @@ internal class PlayerScreenRuntime(
 
     var showSourcesPanel by mutableStateOf(false)
     var showEpisodesPanel by mutableStateOf(false)
+    var showChaptersPanel by mutableStateOf(false)
+    /** The file's chapters, sorted; empty when it has fewer than two. */
+    var chapters by mutableStateOf<List<PlayerChapter>>(emptyList())
+    /** The source whose chapters [chapters] holds, so a rebuffer does not read them again. */
+    var chaptersLoadedForSourceUrl: String? = null
     var showSubmitIntroModal by mutableStateOf(false)
     var showSwitchEngineConfirm by mutableStateOf(false)
     var submitIntroSegmentType by mutableStateOf("intro")
@@ -228,6 +264,10 @@ internal class PlayerScreenRuntime(
     var playerMetaVideos by mutableStateOf<List<MetaVideo>>(emptyList())
     var playerMeta by mutableStateOf<MetaDetails?>(null)
     var skipIntervals by mutableStateOf<List<SkipInterval>>(emptyList())
+    var chapterSkipIntervals: List<SkipInterval> = emptyList()
+    var apiSkipIntervals: List<SkipInterval> = emptyList()
+    var skipDetectionChapters: List<PlayerChapter> = emptyList()
+    var skipChaptersComputedForDuration: Long = 0L
     val autoSkippedIntervals = mutableSetOf<SkipInterval>()
     var lastManualSkipSeekPositions by mutableStateOf<Pair<Long, Long>?>(null)
     var activeSkipInterval by mutableStateOf<SkipInterval?>(null)
@@ -270,15 +310,24 @@ internal class PlayerScreenRuntime(
     var copyPartyInvite: () -> Unit = {}
     var showPartyChat by mutableStateOf(false)
     var partyChatVisible by mutableStateOf(false)
+    val isPanelOpen: Boolean
+        get() = showAudioModal || showSubtitleModal || showVideoSettingsModal || showStreamInfo ||
+            showPartyPanel || showSourcesPanel || showEpisodesPanel || showSubmitIntroModal
     var partyBehind by mutableStateOf(false)
     var partyBehindMs by mutableStateOf<Long?>(null)
     var partyRateNudge: Float? = null
     var partyPreviousKey: String? = null
     var partyAppInBackground = false
     var playbackSnapshotMark: TimeMark? = null
+    val rewindSubtitles = PlayerRewindSubtitles()
+    var desktopSubtitlesVisible = true
     var pendingSeekTarget: Pair<Long, TimeMark>? = null
     var streamMediaInfo by mutableStateOf(PlayerMediaInfo())
     var playbackEngineOverride by mutableStateOf<AndroidPlaybackEngine?>(null)
+    var engineFailoverTriggered by mutableStateOf(false)
+    var engineFailoverDisarmed by mutableStateOf(false)
+    var engineFailoverSourceIdentity: String? = null
+    var pendingEngineSwitchTrackPreference by mutableStateOf<PendingEngineSwitchTrackPreference?>(null)
     var audioTracks by mutableStateOf<List<AudioTrack>>(emptyList())
     var serverAudioTracks by mutableStateOf<List<AudioTrack>>(emptyList())
     var serverSubtitleTracks by mutableStateOf<List<SubtitleTrack>>(emptyList())
@@ -299,9 +348,19 @@ internal class PlayerScreenRuntime(
     var autoFetchedAddonSubtitlesForKey by mutableStateOf<String?>(null)
     var trackPreferenceRestoreApplied by mutableStateOf(false)
     var subtitleDelayMs by mutableStateOf(0)
+    var subtitleFontImportToken by mutableStateOf(0)
+    var subtitleFontsRevision by mutableStateOf(0)
+    var subtitleFontImportFailed by mutableStateOf(false)
+    var audioDelayMs by mutableStateOf(0)
+    var audioOutputKey: String? = null
+    var audioAmplificationDb by mutableStateOf(0)
+    var centerMixLevelDb by mutableStateOf(0)
+    var centerMixAvailable by mutableStateOf(false)
     var subtitleAutoSyncState by mutableStateOf(SubtitleAutoSyncUiState())
 
     var lastSyncedSettingsResizeMode: PlayerResizeMode? = null
     var lastResetPlaybackIdentity: PlaybackKey? = null
+    var lastResetSourcePlaybackIdentity: PlaybackKey? = null
+    var lastAddonSubtitleSourceIdentity: PlaybackKey? = null
     var lastResetVideoIdentity: String? = null
 }

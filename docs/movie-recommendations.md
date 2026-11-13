@@ -1,6 +1,6 @@
 # Movie recommendations
 
-Settings → Playback → **Movie Recommendations** is on by default for each profile.
+Settings → Playback → Player interface → **Movie Recommendations** is on by default for each profile.
 The native desktop player shows up to ten
 unwatched titles from its existing More Like This source. All available titles,
 up to ten, fit in a five-column, two-row grid without scrolling. A fixed 10px
@@ -24,7 +24,7 @@ actions reject stale events after a playback change.
 
 ## Timing source
 
-Settings → Playback → **Movie Recommendation Timing** offers **IntroDB API**
+Settings → Playback → Player interface → **Movie Recommendation Timing** offers **IntroDB API**
 (default) or **Final 4 minutes**. API mode reuses the existing IntroDB movie
 response models and IMDb/TMDB/anime ID resolver. It reads end credits from
 `https://api.introdb.app/segments?imdb_id=…&is_movie=true`, then tries

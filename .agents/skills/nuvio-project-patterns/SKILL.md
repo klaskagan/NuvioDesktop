@@ -26,6 +26,11 @@ Paths below are relative to the NuvioDesktop repository root.
   including keyboard focus, outside-click/Escape dismissal, scrolling, selected
   state, and hidden empty status areas. Inspect the linked stylesheet rather
   than approximating the appearance with Compose or a native system dialog.
+- **Provider details:** reuse `DesktopDetailBackdrop`, `DetailActionButtons` and
+  the desktop `NuvioBackButton` configuration in `MetaDetailsScreen.kt`. Keep
+  viewport-filling artwork and the existing circular 48 dp back control; do not
+  substitute capped thumbnails or a text arrow. Scope native navigation ownership
+  when necessary so the actual shared button remains visible.
 - **Compose appearance:** `composeApp/src/commonMain/kotlin/com/nuvio/app/core/ui/Tokens.kt`,
   `Theme.kt`, and `AppTheme.kt`. Prefer `MaterialTheme.nuvio` tokens and existing
   typography/shapes. Follow the reference's responsive layout; do not assume
@@ -100,9 +105,20 @@ dismissal if changed. Do not claim visual verification from source inspection.
 
 Use `./gradlew :composeApp:desktopTest --tests '<affected test class>'` for focused
 JVM tests. See the repository's build scripts and `composeApp/build.gradle.kts`
-for the current JDK and packaging requirements. Native macOS player checks may
-require the packaged app: the development `:composeApp:run` controls have shown
-behavior differing from the DMG build. Do not silently replace the user's installed
+for the current JDK and packaging requirements. After implementation, launch the
+actual MainKt application with `./gradlew :composeApp:run` and leave its development
+window open for user review before handoff. Tests, screenshots and probe windows
+do not substitute for this launch. Skip only on explicit user opt-out or a concrete
+blocker reported in the handoff.
+
+Finish Gradle tests and other builds for the same checkout before launching the
+review window. A task that rewrites a JAR on the running app's classpath can
+invalidate Java's cached ZIP entry offsets. If Compose resources fail with
+`ZipFile invalid LOC header` after a rebuild, verify the generated JAR with
+`unzip -tq`, restart MainKt, and reopen the screen that triggered the read.
+
+Do not build a standalone app or DMG unless explicitly requested. Development controls have
+shown behavior differing from packaged builds; report that validation limitation. Do not silently replace the user's installed
 app or trigger TV/network activity as part of an unrelated UI check.
 
 Native mpv initialization must set `LC_NUMERIC` to `C` immediately before
@@ -110,6 +126,20 @@ Native mpv initialization must set `LC_NUMERIC` to `C` immediately before
 in a Gradle debug run can make creation fail before the stream opens. When
 changing initialization, check a comma-decimal locale (such as `lt_LT.UTF-8`)
 and confirm a player handle is created without the non-C locale warning.
+
+mpv can accept an audio filter graph before audio output exists without
+initializing its FFmpeg filters. For live audio filter toggles, follow
+`NativePlayerController`'s Night Mode implementation and wait for audio output
+before applying a saved choice. Check the command result and the labeled filter
+in `af`. Verify rejection with an invalid filter during active playback.
+
+For desktop quality reloads, read the implementation contract in
+[the playback capability report](../../../docs/playback-quality-capabilities.md).
+It records cached source ownership, fast deduplication, standard quality labels,
+and best-effort playback-state restoration. Quality must reuse known sources
+without fetching/probing on menu open; the cloud Sources picker keeps all entries.
+Language and release-duration differences are user-recoverable through Sources,
+not compatibility gates for quick quality selection.
 
 For skip-intro lookup failures, inspect the generated `IntroDbConfig.URL` before
 changing popup or auto-skip behavior. An empty generated URL gates off repository
@@ -136,10 +166,11 @@ These integration tests skip without the isolation flag supplied by that script;
 a skipped run does not verify the navigation regression. Do not use a real user
 profile as a full-app test fixture.
 
-Before handoff, remove task-created temporary QA `.app` bundles, intermediate
-app copies and superseded review builds. Keep the latest standalone review app,
-its verification results and small reusable test fixtures. Check temporary apps
-are no longer running; never clean the installed application or unrelated builds.
+If packaging was explicitly requested, remove task-created temporary QA `.app`
+bundles, intermediate copies and superseded review builds before handoff. Keep
+the requested review app, verification results and small reusable test fixtures.
+Check temporary apps are no longer running; never clean the installed application
+or unrelated builds.
 
 At handoff, report the behavior changed, tests run, and any visual or hardware
 checks that remain unverified. Follow `AGENTS.md`'s automatic documentation

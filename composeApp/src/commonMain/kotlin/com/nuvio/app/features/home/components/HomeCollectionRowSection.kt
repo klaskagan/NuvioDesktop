@@ -1,5 +1,7 @@
 package com.nuvio.app.features.home.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -9,15 +11,24 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import kotlin.math.roundToInt
+import com.nuvio.app.features.home.HomeRowStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -44,25 +55,31 @@ fun HomeCollectionRowSection(
     sectionPadding: Dp? = null,
     animateGifs: Boolean = true,
     onFolderClick: ((collectionId: String, folderId: String) -> Unit)? = null,
+    rowStyleKey: String? = null,
+    rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
 ) {
     if (collection.folders.isEmpty()) return
 
-    if (sectionPadding != null) {
+    if (sectionPadding != null && rowStyleKey == null && rowStyle == HomeRowStyle.Automatic) {
         HomeCollectionRowSectionContent(
             collection = collection,
             modifier = modifier.fillMaxWidth(),
             sectionPadding = sectionPadding,
             animateGifs = animateGifs,
             onFolderClick = onFolderClick,
+            rowStyleKey = rowStyleKey,
         )
     } else {
         BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
             HomeCollectionRowSectionContent(
                 collection = collection,
                 modifier = Modifier.fillMaxWidth(),
-                sectionPadding = homeSectionHorizontalPaddingForWidth(maxWidth.value),
+                sectionPadding = sectionPadding ?: homeSectionHorizontalPaddingForWidth(maxWidth.value),
                 animateGifs = animateGifs,
                 onFolderClick = onFolderClick,
+                rowStyleKey = rowStyleKey,
+                rowStyle = rowStyle,
+                rankingLayout = if (rowStyle == HomeRowStyle.NumberedRanking) NumberedRankingLayout(maxWidth) else null,
             )
         }
     }
@@ -75,21 +92,33 @@ private fun HomeCollectionRowSectionContent(
     sectionPadding: Dp,
     animateGifs: Boolean,
     onFolderClick: ((collectionId: String, folderId: String) -> Unit)?,
+    rowStyleKey: String?,
+    rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
+    rankingLayout: NumberedRankingLayout? = null,
 ) {
+    var pickerOpen by remember(rowStyleKey) { mutableStateOf(false) }
+    val shelfInset = rankingLayout?.inset ?: sectionPadding
     NuvioShelfSection(
         title = collection.title,
         entries = collection.folders,
         modifier = modifier,
-        headerHorizontalPadding = sectionPadding,
-        rowContentPadding = PaddingValues(horizontal = sectionPadding),
+        headerHorizontalPadding = shelfInset,
+        rowContentPadding = PaddingValues(horizontal = shelfInset),
+        itemSpacing = rankingLayout?.gap ?: 10.dp,
         key = { folder -> "collection_${collection.id}_folder_${folder.id}" },
     ) { folder ->
         CollectionFolderCard(
             folder = folder,
-            shape = if (collection.usesConfiguredArtwork()) PosterShape.Landscape else folder.posterShape,
+            shape = rowStyle.posterShape ?: if (collection.usesConfiguredArtwork()) PosterShape.Landscape else folder.posterShape,
+            rowStyle = rowStyle,
+            rankingLayout = rankingLayout,
+            onLongClick = rowStyleKey?.let { { pickerOpen = true } },
             animateGifs = animateGifs,
             onClick = onFolderClick?.let { { it(collection.id, folder.id) } },
         )
+    }
+    if (pickerOpen && rowStyleKey != null) {
+        HomeRowStylePicker(rowStyleKey, onDismiss = { pickerOpen = false })
     }
 }
 
@@ -97,9 +126,12 @@ private fun HomeCollectionRowSectionContent(
 private fun CollectionFolderCard(
     folder: CollectionFolder,
     shape: PosterShape,
+    rowStyle: HomeRowStyle,
     modifier: Modifier = Modifier,
     animateGifs: Boolean = true,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    rankingLayout: NumberedRankingLayout? = null,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
     val basePosterWidthDp = desktopCatalogShelfPosterBaseWidthDp(posterCardStyle.widthDp)
@@ -112,7 +144,7 @@ private fun CollectionFolderCard(
             aspectRatio = 0.675f
         }
         PosterShape.Landscape -> {
-            cardWidth = landscapePosterWidth(basePosterWidthDp)
+            cardWidth = landscapePosterWidth((basePosterWidthDp * rowStyle.landscapeWidthFactor).roundToInt())
             aspectRatio = PosterLandscapeAspectRatio
         }
         PosterShape.Square -> {
@@ -123,22 +155,26 @@ private fun CollectionFolderCard(
 
     Column(
         modifier = Modifier
-            .posterCardClickable(onClick = onClick, onLongClick = null)
+            .posterCardClickable(onClick = onClick, onLongClick = onLongClick)
             .then(modifier)
-            .width(cardWidth),
+            .width(rankingLayout?.posterWidth ?: cardWidth),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        val shapeCorner = RoundedCornerShape(posterCardStyle.cornerRadiusDp.dp)
+        val coverShape = if (rowStyle == HomeRowStyle.Round) {
+            CircleShape
+        } else {
+            RoundedCornerShape(rankingLayout?.posterCorner ?: posterCardStyle.cornerRadiusDp.dp)
+        }
         val imageUrl = collectionFolderCardImageUrl(folder)
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(aspectRatio)
+                .aspectRatio(if (rankingLayout == null) aspectRatio else 212f / 322f)
                 .nuvioCardDepth(
-                    shape = shapeCorner,
+                    shape = coverShape,
                     surface = NuvioCardDepthSurface.Posters,
                 ),
-            shape = shapeCorner,
+            shape = coverShape,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface,
             ),
@@ -178,11 +214,22 @@ private fun CollectionFolderCard(
                         )
                     }
                 }
-
+                if (!folder.hideTitle && rowStyle == HomeRowStyle.BannerWithTitle) {
+                    Text(
+                        text = folder.title,
+                        modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))))
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
 
-        if (!folder.hideTitle) {
+        if (!folder.hideTitle && rowStyle != HomeRowStyle.BannerWithTitle) {
             Text(
                 text = folder.title,
                 style = MaterialTheme.typography.bodyMedium,

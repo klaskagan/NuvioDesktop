@@ -25,6 +25,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Menu
+import com.nuvio.app.features.home.components.HomeRowStylePicker
+import com.nuvio.app.features.home.components.homeRowStyleLabel
+import com.nuvio.app.features.home.supportsHomeRowStyle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
@@ -36,6 +39,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import nuvio.composeapp.generated.resources.home_row_style
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -79,7 +87,7 @@ private fun SettingsCard(
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = tokens.colors.surface,
-        shape = if (isTablet) RoundedCornerShape(NuvioTokens.Radius.xl) else tokens.shapes.compactCard,
+        shape = tokens.shapes.card,
         border = BorderStroke(
             tokens.borders.hairline,
             tokens.colors.borderSubtle,
@@ -214,7 +222,9 @@ internal fun SettingsSection(
     val tokens = MaterialTheme.nuvio
     Column {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = NuvioTokens.Radius.card),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -547,11 +557,13 @@ internal fun HomescreenCatalogRow(
             }
         }
 
-        AnimatedVisibility(visible = expanded && !item.isCollection) {
+        val showRowStyle = com.nuvio.app.isDesktop && supportsHomeRowStyle(item.key)
+        var rowStylePickerOpen by remember(item.key) { mutableStateOf(false) }
+        AnimatedVisibility(visible = expanded && (!item.isCollection || showRowStyle)) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                OutlinedTextField(
+                if (!item.isCollection) OutlinedTextField(
                     value = item.customTitle,
                     onValueChange = onTitleChange,
                     modifier = Modifier.fillMaxWidth(),
@@ -566,7 +578,15 @@ internal fun HomescreenCatalogRow(
                         disabledContainerColor = tokens.colors.surface,
                     ),
                 )
+                if (showRowStyle) {
+                    androidx.compose.material3.TextButton(onClick = { rowStylePickerOpen = true }) {
+                        Text(stringResource(Res.string.home_row_style) + " · " + homeRowStyleLabel(item.rowStyle))
+                    }
+                }
             }
+        }
+        if (expanded && rowStylePickerOpen) {
+            HomeRowStylePicker(item.key, onDismiss = { rowStylePickerOpen = false })
         }
     }
 }

@@ -77,10 +77,19 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
 
 ## Styling, meaning, and settings
 
+When Settings categories or parent pages change, update desktop history defaults
+and retained category-name mappings as well as both responsive Settings screens.
+The grouped Settings reorganization exposed stale desktop enum references during
+branch integration. `settingsCategoryForName` preserves saved names;
+`DesktopNavigationHistoryTest` checks parent traversal and category restoration.
+
 - Reuse shared card components, viewport prefetch, readiness gates, and theme
   tokens. Scope a feature's style override so it does not leak into Home or alter
   collection cover shapes. Persist separate feature preferences independently
   when the product calls for independent controls.
+- Use the shared shelf heading style for every card layout. A ranked shelf may
+  use its own numeral typography and card geometry, but its heading should
+  align with neighboring shelves and use the same font, size, and color.
 - Reuse the shared detail-label typography and muted color for secondary counts
   and metadata. Localize singular/plural counts. Associate an icon or toggle with
   an accessible name and current state; a neighboring text label alone is not an
@@ -94,6 +103,12 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   their date. Distinguish today from selection/focus; skipping an empty date does
   not make the next visible date today. Follow locale week boundaries and labels.
 
+Standalone panels that set a dark background must also own their foreground
+content color. The football lineup screenshot exposed black inherited text on a
+dark Box; use a Material Surface with explicit on-background content color, as
+SettingsCard does. Check the captured FootballLineupsUiTest panel as well as
+semantic text existence, which alone cannot verify readable contrast.
+
 ## Playback control ownership
 
 Desktop movie playback suppresses Compose controls, so its actual
@@ -106,6 +121,13 @@ exercise visible pause/seek/menu buttons in the packaged UI. A lower-level test
 that explicitly passes `true` or only checks decoding cannot catch this regression.
 
 ## Verify transitions, not only settled screens
+
+Finish Gradle compilation and tests before launching MainKt for review. A second
+build can rewrite the JAR/classes used by an already running development JVM,
+causing `NoClassDefFoundError` for otherwise present classes. The Dev merge
+launch exposed this with `SettingsCategory` and Trakt nested classes. Verify a
+sequential `:composeApp:run` launch after the final build; do not rebuild its
+runtime outputs while that review window is open.
 
 - Use isolated profiles and in-memory authentication/preferences as required by
   `AGENTS.md`. Exercise real buttons, wheel/drag events, filters, and navigation;
@@ -126,3 +148,54 @@ that explicitly passes `true` or only checks decoding cannot catch this regressi
 Maintain these rules under `AGENTS.md`'s automatic documentation maintenance
 policy. Add only demonstrated reusable lessons; link feature details instead of
 accumulating a history of individual bugs here.
+
+
+## Custom detail routes and native navigation
+
+Desktop collection destinations lost their tab controls because their NavDisplay
+entries bypassed the shared frame used by Details and Streams. Wrap collection
+browsing and management entries in `DetailNavigationFrame`. The top bar overlays
+the page at its existing position. Only the sidebar reserves content space.
+`MainAppTabNavigationTest` exercises Settings → Collections → editor → Search
+in both desktop layouts. `SeasonalCollectionNavigationTest` covers Home →
+Explore collection and leaving the folder through the shared navigation.
+Only track pointer movement for auto-hiding top bars. Always-visible frames
+have no timer to restart, and synthetic pointer moves during route layout can
+keep full-app UI tests from reaching idle. For auto-hide, ignore repeated Move
+events at the same position so layout cannot restart the timer.
+`DetailNavigationFrameTest` checks both pointer wake and subsequent inactivity.
+
+Provider details must reuse the actual desktop detail components, not approximate
+screenshots with generic buttons or typed arrow characters. Use
+`DesktopDetailBackdrop`, `DetailActionButtons`, and `NuvioBackButton` as in
+`MetaDetailsScreen`: viewport-filling art/gradients and the 48 dp circular arrow
+control with a 24 dp icon, 0.34 black container and existing page inset.
+
+The Go3 review exposed both a hidden shared back button and an incorrect fix
+using a text Back button and capped poster. Resolve native-header ownership with
+a scoped navigation local so the shared back component remains visible; do not
+replace it with an ad hoc control. Explicit user references take precedence over
+prior feature-specific layout choices. `Go3IntegrationTest` checks the viewport
+backdrop, 48 dp Back control, and actual navigation actions.
+
+## macOS accessibility and native UI bridges
+
+Do not synchronously dispatch from the AWT event thread to AppKit when registering
+or removing native observers during Compose effects. Accessibility can already
+be waiting on AWT, creating a circular wait (confirmed in history_gestures.mm).
+Queue observer work asynchronously, retain its lifetime, and mark it inactive
+before teardown so cancellation before installation is safe. Verify Home → Search
+under accessibility inspection and confirm keyboard input still works; inspect
+AWT/AppKit stacks if the screen paints once but then stops responding.
+
+Desktop playback chrome idle timing belongs to the native controls WebView, whose
+existing interaction guard sees hover, focus, scrubbing, and open menus. Do not run
+a competing shared Compose hide timer on desktop: it hides stationary hovered
+controls after 3.5 seconds. Verify toolbar hover beyond the idle delay, then pointer
+leave and keyboard menu navigation. Mobile retains its shared timer.
+
+For formation/pitch layouts, scope flex-row rules to actual rows, not every
+direct child. Go3's absolute player markers inherited a 350px minimum height from
+a broad child selector, separating names from shirt numbers. Render a full
+22-player fixture and verify marker/name bounds and resizing; one-player and
+semantic-only tests missed the overlap. See docs/football-lineups.md.

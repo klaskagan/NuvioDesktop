@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -73,15 +74,16 @@ internal fun DetailNavigationFrame(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val screenWidth = maxWidth
         val sidebar = layout == DesktopNavigationLayout.Sidebar && screenWidth >= 768.dp
+        val canAutoHide = autoHide && !sidebar
         val hoverSource = remember { MutableInteractionSource() }
         val hovered by hoverSource.collectIsHoveredAsState()
         var profileStackVisible by remember { mutableStateOf(false) }
         var topProfileOpen by remember { mutableStateOf(false) }
         var motion by remember(route) { mutableStateOf(0L) }
         var visible by remember(route) { mutableStateOf(true) }
-        LaunchedEffect(route, motion, topProfileOpen, sidebar, autoHide, hideDelaySeconds) {
+        LaunchedEffect(route, motion, topProfileOpen, canAutoHide, hideDelaySeconds) {
             visible = true
-            if (autoHide && !sidebar && !topProfileOpen) {
+            if (canAutoHide && !topProfileOpen) {
                 delay(hideDelaySeconds * 1_000L)
                 visible = false
             }
@@ -96,14 +98,22 @@ internal fun DetailNavigationFrame(
             animationSpec = tween(200),
         )
         val haze = rememberHazeState()
-        Box(Modifier.fillMaxSize().pointerInput(route) {
-            awaitPointerEventScope {
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    if (event.type == PointerEventType.Move || event.type == PointerEventType.Enter) motion++
+        val revealOnPointerMotion = if (canAutoHide) {
+            Modifier.pointerInput(route) {
+                awaitPointerEventScope {
+                    var lastPosition: Offset? = null
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.type == PointerEventType.Move || event.type == PointerEventType.Enter) {
+                            val position = event.changes.firstOrNull()?.position
+                            if (event.type == PointerEventType.Enter || position != lastPosition) motion++
+                            lastPosition = position
+                        }
+                    }
                 }
             }
-        }) {
+        } else Modifier
+        Box(Modifier.fillMaxSize().then(revealOnPointerMotion)) {
             Box(Modifier.fillMaxSize().hazeSource(haze).padding(start = if (sidebar) {
                 if (style == NavBarStyle.EXPANDED) DesktopSidebarExpandedWidth else DesktopSidebarCollapsedWidth
             } else 0.dp)) { content() }

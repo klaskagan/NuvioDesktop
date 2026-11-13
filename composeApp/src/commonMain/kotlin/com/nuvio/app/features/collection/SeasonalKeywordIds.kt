@@ -7,6 +7,7 @@ package com.nuvio.app.features.collection
 internal val seasonalKeywordIds: Map<String, Int> = mapOf(
     "alien" to 9951,
     "animal" to 361118,
+    "animals" to 18165,
     "beach" to 966,
     "christmas" to 207317,
     "christmas eve" to 260365,

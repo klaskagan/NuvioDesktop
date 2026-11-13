@@ -24,7 +24,18 @@ Paths are relative to the repository root:
   artwork from the selected collection identity, independently of movie results.
   Do not choose the first movie's backdrop as the collection background.
 - Seasonal Home Explore opens the configured season folder. Folder `seasonalThemeId`
-  resolves bundled artwork and survives renaming/reordering. Legacy seasonal catalogs resolve
+  resolves bundled artwork and survives renaming/reordering. Collection sync can
+  round-trip a folder without that field. Recover missing themes at the collection
+  repository boundary from exact built-in folder IDs inside `nuvio-seasonal`.
+  Preserve explicit assignments, folder edits and deletions, and other collections.
+  `SeasonalMigrationTest` covers saved and pulled payloads. The Home → Explore
+  case in `SeasonalCollectionNavigationTest` starts with a missing theme and
+  checks the matching backdrop. Sync payloads can also omit seasonal source
+  keywords. Recover them in raw JSON for uniquely matching starter sources before
+  computing source route keys, preserving the saved media type, explicit filters,
+  and unknown source fields. `SeasonalMigrationTest` covers all 95 starter rows,
+  including Witches' TMDB keyword 616 and the two revised defaults for Animal
+  Friends and Festive Stories. Legacy seasonal catalogs resolve
   `CatalogTarget.Seasonal.themeId` through
   `SeasonalTheme`. Halloween uses the supplied bundled WebP; the remaining eight
   themes use their own bundled backgrounds. Keep the season selected at navigation

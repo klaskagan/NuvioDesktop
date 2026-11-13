@@ -19,8 +19,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.Alignment
@@ -38,6 +42,9 @@ import com.nuvio.app.features.player.desktop.DesktopPlayerPictureInPicture
 import com.nuvio.app.features.player.desktop.NativePlayerController
 import com.nuvio.app.features.player.desktop.NativePlayerHost
 import com.nuvio.app.features.player.desktop.desktopFullscreenChanges
+import com.nuvio.app.features.autosync.AutoSyncMpvCoordinator
+import com.nuvio.app.features.autosync.DesktopAutoSyncMpvPlatform
+import com.nuvio.app.features.autosync.withAutoSyncMessage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 
@@ -79,6 +86,7 @@ actual fun PlatformPlayerSurface(
             useYoutubeChunkedPlayback = useYoutubeChunkedPlayback,
             sourceAvailable = sourceAvailable,
             sourceHeaders = sourceHeaders,
+            externalSubtitles = externalSubtitles,
             modifier = modifier,
             playWhenReady = playWhenReady,
             resizeMode = resizeMode,
@@ -114,6 +122,7 @@ private fun NativePlayerSurface(
     useYoutubeChunkedPlayback: Boolean,
     sourceAvailable: Boolean,
     sourceHeaders: Map<String, String>,
+    externalSubtitles: List<com.nuvio.app.features.streams.StreamSubtitle>,
     modifier: Modifier,
     playWhenReady: Boolean,
     resizeMode: PlayerResizeMode,
@@ -129,6 +138,10 @@ private fun NativePlayerSurface(
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
 ) {
+    val lineupsRequested = remember(sourceUrl, playerControlsState.lineupsAvailable) { mutableStateOf(false) }
+    val latestLineupsRequested by rememberUpdatedState(lineupsRequested)
+    val lineupsOpen = playerControlsState.lineupsAvailable && lineupsRequested.value
+    val lineupSession = remember(sourceUrl) { FootballLineupSession(playerControlsState.title) }
     val platformDensity = LocalNuvioPlatformDensity.current
     val host = remember(useYoutubeChunkedPlayback) { NativePlayerHost(embedded = useYoutubeChunkedPlayback) }
     val controller = remember(host) { NativePlayerController(host) }
@@ -146,24 +159,56 @@ private fun NativePlayerSurface(
         onDispose { playbackSource.close() }
     }
     SideEffect {
-        host.presentationFullscreen = playerControlsState.presentationFullscreen == true
+        host.presentationFullscreen = playerControlsState.presentationFullscreen == true && !lineupsOpen
         host.cornerRadius = if (playerControlsState.presentationFullscreen == true) 0.0 else 18.0
         controller.setNativeControlsEnabled(useNativeController)
         controller.setPresentationFullscreen(playerControlsState.presentationFullscreen)
     }
+    val latestExternalSubtitles = rememberUpdatedState(externalSubtitles)
+    val latestPlayerControlsState = rememberUpdatedState(playerControlsState)
+    val autoSyncScope = rememberCoroutineScope()
+    // Kept across sources so its message count, part of the overlay's notification token, only grows.
+    val autoSyncPlatform = remember {
+        DesktopAutoSyncMpvPlatform(
+            currentNotificationToken = { latestPlayerControlsState.value.notificationToken },
+        )
+    }
+    val autoSyncCoordinator = remember(sourceUrl, playbackHeaders, autoSyncScope) {
+        AutoSyncMpvCoordinator(
+            scope = autoSyncScope,
+            sourceUrl = sourceUrl,
+            sourceHeaders = playbackHeaders,
+            getSubtitleHeaders = { subtitleUrl ->
+                latestExternalSubtitles.value
+                    .firstOrNull { it.url == subtitleUrl }
+                    ?.headers
+                    .orEmpty()
+            },
+            getPreferredLanguage = { PlayerSettingsRepository.uiState.value.preferredSubtitleLanguage },
+            platform = autoSyncPlatform,
+        )
+    }
+    DisposableEffect(autoSyncCoordinator) {
+        onDispose { autoSyncCoordinator.dispose() }
+    }
+    val readyController = remember(controller, autoSyncCoordinator) {
+        // setSubtitleUri replaces the external subtitles, so the retimed copy takes the original's place.
+        autoSyncCoordinator.wrap(controller) { _, path -> controller.setSubtitleUri(path) }
+    }
+    val controlsState = playerControlsState.withAutoSyncMessage(autoSyncPlatform.message)
+    val latestControlsState = rememberUpdatedState(controlsState)
     val latestOnPlayerControlsAction = rememberUpdatedState(onPlayerControlsAction)
     val latestOnPlayerControlsEvent = rememberUpdatedState(onPlayerControlsEvent)
     val latestOnPlayerControlsScrubChange = rememberUpdatedState(onPlayerControlsScrubChange)
     val latestOnPlayerControlsScrubFinished = rememberUpdatedState(onPlayerControlsScrubFinished)
     val latestOnInitialPositionHandled = rememberUpdatedState(onInitialPositionHandled)
     val latestOnError = rememberUpdatedState(onError)
-    val latestPlayerControlsState = rememberUpdatedState(playerControlsState)
     val playerSettings by PlayerSettingsRepository.uiState.collectAsState()
     val decoderPriority = playerSettings.decoderPriority
     val nvidiaRtxSuperResolutionEnabled = playerSettings.nvidiaRtxSuperResolutionEnabled
 
     SideEffect {
-        onControllerReady(controller)
+        onControllerReady(readyController)
     }
 
     DisposableEffect(host) {
@@ -194,13 +239,29 @@ private fun NativePlayerSurface(
     LaunchedEffect(controller) {
         controller.setControlCallbacks(
             onAction = { action -> latestOnPlayerControlsAction.value(action) },
-            onEvent = { type, value -> latestOnPlayerControlsEvent.value(type, value) },
+            onEvent = { type, value ->
+                when (type) {
+                    "lineups" -> {
+                        if (!latestPlayerControlsState.value.lineupsAvailable) false
+                        else {
+                            DesktopPlayerPictureInPicture.clear()
+                            latestLineupsRequested.let { it.value = !it.value }
+                            true
+                        }
+                    }
+                    "pictureInPicture", "pip" -> {
+                        latestLineupsRequested.value = false
+                        latestOnPlayerControlsEvent.value(type, value)
+                    }
+                    else -> latestOnPlayerControlsEvent.value(type, value)
+                }
+            },
             onScrubChange = { positionMs -> latestOnPlayerControlsScrubChange.value(positionMs) },
             onScrubFinished = { positionMs -> latestOnPlayerControlsScrubFinished.value(positionMs) },
         )
     }
 
-    DisposableEffect(controller, sourceAvailable, playbackSource, playbackHeaders) {
+    DisposableEffect(controller, sourceAvailable) {
         onDispose { controller.dispose() }
     }
 
@@ -232,7 +293,7 @@ private fun NativePlayerSurface(
             return@LaunchedEffect
         }
         delay(16L)
-        controller.attach(
+        if (!controller.consumeBufferedSource(playbackSource.videoUrl, playbackHeaders)) controller.attach(
             sourceUrl = playbackSource.videoUrl,
             sourceAudioUrl = playbackSource.audioUrl,
             sourceHeaders = playbackHeaders,
@@ -245,7 +306,7 @@ private fun NativePlayerSurface(
         initialPositionRequestKey?.let { key ->
             latestOnInitialPositionHandled.value(key, initialPositionMs > 0L)
         }
-        onControllerReady(controller)
+        onControllerReady(readyController)
     }
 
     LaunchedEffect(controller, sourceAvailable, playWhenReady) {
@@ -261,14 +322,15 @@ private fun NativePlayerSurface(
         controller.setResizeMode(resizeMode)
     }
 
-    LaunchedEffect(controller, playerControlsState) {
-        controller.updateControls(playerControlsState)
-        DesktopPlayerPictureInPicture.setWindowTitle(playerControlsState.pipWindowTitle)
+    LaunchedEffect(controller, controlsState, lineupsOpen) {
+        controller.updateControls(controlsState.copy(lineupsActive = lineupsOpen))
+        DesktopPlayerPictureInPicture.setWindowTitle(controlsState.pipWindowTitle)
     }
 
     LaunchedEffect(controller) {
         DesktopPlayerPictureInPicture.changes.drop(1).collect {
-            controller.updateControls(latestPlayerControlsState.value)
+            val controls = latestControlsState.value
+            controller.updateControls(controls.copy(lineupsActive = controls.lineupsAvailable && latestLineupsRequested.value))
         }
     }
 
@@ -301,6 +363,10 @@ private fun NativePlayerSurface(
             .background(Color.Black),
         contentAlignment = Alignment.Center,
     ) {
+        if (lineupsOpen) FootballLineupsPanel(
+            Modifier.fillMaxSize(),
+            close = { lineupsRequested.value = false }, session = lineupSession,
+        )
         // SwingPanel keeps the stable AWT host. PiP moves only the native player
         // surface to the independent window, so Compose never loses its host peer.
         CompositionLocalProvider(LocalDensity provides platformDensity) {
@@ -310,6 +376,8 @@ private fun NativePlayerSurface(
                     Modifier
                         .align(Alignment.BottomEnd)
                         .requiredSize(1.dp)
+                } else if (lineupsOpen && hostFirstPaintComplete.value) {
+                    Modifier.align(Alignment.TopEnd).padding(12.dp).width(416.dp).height(234.dp)
                 } else if (hostFirstPaintComplete.value) {
                     Modifier.fillMaxSize()
                 } else {

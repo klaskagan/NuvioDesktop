@@ -270,7 +270,7 @@ internal fun rememberHomeArtworkPrefetch(
     val planned = remember(rows, visibleCardCount) { rows.map { (key, section) ->
         ArtworkPrefetchRow(key, if (section == null || preservesOriginalLandscapeArtwork(section.title, section.target) || section.target is com.nuvio.app.features.catalog.CatalogTarget.Seasonal) emptyList() else section.items.take(visibleCardCount + 1),
             enhanceTitles = section != null && !preservesOriginalLandscapeArtwork(section.title, section.target) && section.target !is com.nuvio.app.features.catalog.CatalogTarget.Seasonal,
-            forceShape = if (section?.target is com.nuvio.app.features.catalog.CatalogTarget.Seasonal) PosterShape.Landscape else null,
+            forceShape = PosterShape.Landscape.takeIf { section?.target is com.nuvio.app.features.catalog.CatalogTarget.Seasonal },
             alwaysShowTitle = section?.target is com.nuvio.app.features.catalog.CatalogTarget.Seasonal)
     } }
     return rememberListArtworkPrefetch(listState, planned, profileKey, enabled = true, language = language, apiKey = apiKey)
@@ -300,8 +300,8 @@ internal fun rememberShelfArtworkPrefetch(
     allowPortraitFallback: Boolean = true,
     alwaysShowLandscapeTitle: Boolean = false,
 ): PreparedArtworkStore {
-    // Original-artwork shelves must not share result slots with enhanced cards of the same title.
-    val parent = LocalPreparedLandscapeArtwork.current.takeIf { enhanceTitles && !alwaysShowLandscapeTitle }
+    // Rows with their own artwork treatment use separate result slots for the same title.
+    val parent = LocalPreparedLandscapeArtwork.current.takeIf { forceShape == null && enhanceTitles && !alwaysShowLandscapeTitle }
     val rows = remember(items, enhanceTitles, forceShape, alwaysShowLandscapeTitle) { items.distinctBy(MetaPreview::stableKey).map {
         ArtworkPrefetchRow(it.stableKey(), listOf(it), enhanceTitles = enhanceTitles, forceShape = forceShape, alwaysShowTitle = alwaysShowLandscapeTitle)
     } }

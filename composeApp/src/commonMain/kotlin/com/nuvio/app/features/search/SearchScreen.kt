@@ -46,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.network.NetworkCondition
 import com.nuvio.app.core.network.NetworkStatusRepository
 import com.nuvio.app.core.ui.NuvioInputField
+import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.NuvioScreen
 import com.nuvio.app.core.ui.NuvioNetworkOfflineCard
 import com.nuvio.app.core.ui.NuvioScreenHeader
@@ -148,6 +149,15 @@ fun SearchScreen(
         if (!screenActive) return@ScreenActivityEffect
         scrollToTopRequests.collect {
             listState.animateScrollToItem(0)
+        }
+    }
+
+    ScreenActivityEffect(discoverUiState.selectedCatalogKey) { screenActive ->
+        if (!screenActive || discoverUiState.selectedCatalogKey?.startsWith("go3:") != true) return@ScreenActivityEffect
+        SearchRepository.refreshGo3IfStale()
+        while (true) {
+            delay(120_000)
+            SearchRepository.refreshGo3IfStale()
         }
     }
 
@@ -296,6 +306,7 @@ fun SearchScreen(
                                 query = it
                             },
                             placeholder = stringResource(Res.string.compose_search_placeholder),
+                            shape = RoundedCornerShape(NuvioTokens.Radius.xl),
                             modifier = Modifier
                                 .focusRequester(focusRequester)
                                 .onFocusChanged {
