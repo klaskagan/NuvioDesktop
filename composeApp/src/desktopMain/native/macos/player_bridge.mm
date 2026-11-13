@@ -1673,6 +1673,16 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
         setMpvOptionString(_mpv, "cache", "yes");
         setMpvOptionString(_mpv, "cache-secs", "10");
     }
+    NSString *scheme = [NSURLComponents componentsWithString:sourceUrl].scheme.lowercaseString;
+    if ([scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"]) {
+        // A subtitle change can reread media from roughly 11 seconds back.
+        // Limit read-ahead so it doesn't evict those bytes from the stream buffer.
+        setMpvOptionString(_mpv, "stream-buffer-size", "64MiB");
+        setMpvOptionString(_mpv, "cache-secs", "8");
+        // Read Matroska's seek index on open. Deferring this until the first
+        // track switch jumps to the end of the file and drops the stream buffer.
+        setMpvOptionString(_mpv, "demuxer-mkv-probe-video-duration", "yes");
+    }
     setMpvOptionString(
         _mpv,
         "stream-lavf-o",

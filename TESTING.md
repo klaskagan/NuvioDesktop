@@ -59,6 +59,15 @@ with the isolation init script. On macOS, run `:composeApp:buildMacosPlayerBridg
 before the live test after changing the native bridge. `:composeApp:desktopTest`
 can reuse a previously built player bridge.
 
+To investigate a pause when switching built-in subtitles, serve the MKV over HTTP
+and delay new range responses after playback starts. Compare built-in and
+external track changes while observing mpv's `time-pos` and `paused-for-cache`.
+Use a high-bitrate MKV larger than the byte buffer with its Cues at the end.
+An embedded track change can flush the packet cache and reread media from about
+11 seconds earlier. The macOS bridge reads the Matroska seek index at startup
+and limits HTTP read-ahead to 8 seconds so the 64 MiB stream buffer can retain
+those bytes. Check the first switch and a later switch after a rewind.
+
 ## Android Studio
 
 1. Open **Settings → Build, Execution, Deployment → Build Tools → Gradle**.
