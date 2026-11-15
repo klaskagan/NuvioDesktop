@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Star
@@ -715,16 +716,8 @@ fun MetaDetailsScreen(
                     seriesActionVideo?.id?.takeIf { it.isNotBlank() } ?: action.videoId
                 }
                 val hasEpisodes = meta.videos.any { it.season != null || it.episode != null }
-                val episodeListGroupedEpisodes = remember(
-                    meta.videos,
-                    meta.type,
-                    metaScreenSettingsUiState.episodeCardStyle,
-                ) {
-                    if (metaScreenSettingsUiState.episodeCardStyle == MetaEpisodeCardStyle.List) {
-                        meta.groupedEpisodesForDisplay()
-                    } else {
-                        emptyMap()
-                    }
+                val episodeListGroupedEpisodes = remember(meta.videos, meta.type) {
+                    meta.groupedEpisodesForDisplay()
                 }
                 val episodeListSeasons = remember(episodeListGroupedEpisodes) {
                     episodeListGroupedEpisodes.keys.sortedBy(::seasonSortKey)
@@ -738,6 +731,13 @@ fun MetaDetailsScreen(
                 val currentEpisodeListSeason = selectedEpisodeListSeason
                     ?.takeIf { it in episodeListGroupedEpisodes }
                     ?: defaultEpisodeListSeason
+                val audienceState = remember(meta.id, meta.imdbId) { SeriesAudienceState() }
+                val seasonProgress = remember(meta, todayIsoDate, watchedUiState.isLoaded, watchedUiState.watchedKeys, progressByVideoId) {
+                    if (!isDesktop || meta.type != "series" || !watchedUiState.isLoaded) null
+                    else meta.seasonWatchedCounts(todayIsoDate) {
+                        isEpisodeWatchedForActions(meta, it, watchedUiState.watchedKeys, progressByVideoId)
+                    }
+                }
                 val hasProductionSection = remember(meta) {
                     meta.productionCompanies.isNotEmpty() || meta.networks.isNotEmpty()
                 }
@@ -1400,6 +1400,9 @@ fun MetaDetailsScreen(
                                         episodeListSeasons = episodeListSeasons,
                                         episodeListCurrentSeason = currentEpisodeListSeason,
                                         onEpisodeListSeasonSelect = { selectedEpisodeListSeason = it },
+                                        detailListState = listState,
+                                        seriesProgress = seasonProgress,
+                                        audienceState = audienceState,
                                         onRetryComments = {
                                             detailsScope.launch {
                                                 isCommentsLoading = true
@@ -1573,6 +1576,9 @@ fun MetaDetailsScreen(
                                         episodeListSeasons = episodeListSeasons,
                                         episodeListCurrentSeason = currentEpisodeListSeason,
                                         onEpisodeListSeasonSelect = { selectedEpisodeListSeason = it },
+                                        detailListState = listState,
+                                        seriesProgress = seasonProgress,
+                                        audienceState = audienceState,
                                         onRetryComments = {
                                             detailsScope.launch {
                                                 isCommentsLoading = true
@@ -2298,6 +2304,9 @@ private fun LazyListScope.configuredMetaSectionItems(
     episodeListSeasons: List<Int>,
     episodeListCurrentSeason: Int?,
     onEpisodeListSeasonSelect: (Int) -> Unit,
+    detailListState: LazyListState,
+    seriesProgress: List<SeasonWatchedCount>?,
+    audienceState: SeriesAudienceState,
     onRetryComments: () -> Unit,
     onLoadMoreComments: () -> Unit,
     onCommentClick: (TraktCommentReview) -> Unit,
@@ -2332,6 +2341,20 @@ private fun LazyListScope.configuredMetaSectionItems(
             commentsError = commentsError,
         )
 
+    val showSeriesAudience = isDesktop && meta.type == "series" && episodeListCurrentSeason != null
+    val audienceCards: @Composable (onOpenSeason: (Int) -> Unit) -> Unit = { onOpenSeason ->
+        if (showSeriesAudience) {
+            SeriesAudienceSection(
+                meta = meta,
+                season = requireNotNull(episodeListCurrentSeason),
+                progress = seriesProgress,
+                state = audienceState,
+                onSeasonSelected = onEpisodeListSeasonSelect,
+                onOpenSeason = onOpenSeason,
+            )
+        }
+    }
+
     fun addSectionItem(
         key: String,
         sectionItems: List<MetaScreenSectionItem>,
@@ -2365,6 +2388,15 @@ private fun LazyListScope.configuredMetaSectionItems(
                     showManualPlayOption = showManualPlayOption,
                     preferredEpisodeSeasonNumber = preferredEpisodeSeasonNumber,
                     preferredEpisodeNumber = preferredEpisodeNumber,
+                    controlledEpisodeSeason = episodeListCurrentSeason.takeIf { isDesktop },
+                    onControlledSeasonSelect = onEpisodeListSeasonSelect.takeIf { isDesktop },
+                    seriesAudience = {
+                        audienceCards { season ->
+                            val index = detailListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key }?.index
+                            onEpisodeListSeasonSelect(season)
+                            if (index != null) detailListState.requestScrollToItem(index)
+                        }
+                    },
                     hasProductionSection = hasProductionSection,
                     hasTrailersSection = hasTrailersSection,
                     hasEpisodes = hasEpisodes,
@@ -2448,6 +2480,22 @@ private fun LazyListScope.configuredMetaSectionItems(
                     onEpisodeClick = onEpisodeClick,
                     onEpisodeLongPress = onEpisodeLongPress,
                 )
+            }
+        }
+        if (showSeriesAudience) {
+            val audienceKey = "$key-audience"
+            item(key = audienceKey, contentType = "detail-series-audience") {
+                DetailSectionContainer(
+                    horizontalPadding = contentHorizontalPadding,
+                    contentMaxWidth = contentMaxWidth,
+                ) {
+                    audienceCards { season ->
+                        val audienceIndex = detailListState.layoutInfo.visibleItemsInfo
+                            .firstOrNull { it.key == audienceKey }?.index
+                        onEpisodeListSeasonSelect(season)
+                        if (audienceIndex != null) detailListState.requestScrollToItem(audienceIndex - episodes.size - 1)
+                    }
+                }
             }
         }
     }
@@ -2594,6 +2642,9 @@ private fun ConfiguredMetaSections(
     showManualPlayOption: Boolean,
     preferredEpisodeSeasonNumber: Int?,
     preferredEpisodeNumber: Int?,
+    controlledEpisodeSeason: Int?,
+    onControlledSeasonSelect: ((Int) -> Unit)?,
+    seriesAudience: @Composable () -> Unit,
     hasProductionSection: Boolean,
     hasTrailersSection: Boolean,
     hasEpisodes: Boolean,
@@ -2713,22 +2764,29 @@ private fun ConfiguredMetaSections(
             }
             MetaScreenSectionKey.EPISODES -> {
                 if (hasEpisodes) {
-                    DetailSeriesContent(
-                        meta = meta,
-                        showHeader = showHeader,
-                        horizontalScrollPadding = horizontalScrollPadding,
-                        preferredSeasonNumber = preferredEpisodeSeasonNumber,
-                        preferredEpisodeNumber = preferredEpisodeNumber,
-                        episodeCardStyle = settings.episodeCardStyle,
-                        progressByVideoId = progressByVideoId,
-                        watchedKeys = watchedKeys,
-                        episodeRatings = episodeImdbRatings,
-                        episodeRatingsVisibility = settings.episodeRatingsVisibility,
-                        blurUnwatchedEpisodes = blurUnwatchedEpisodes,
-                        onEpisodeClick = onEpisodeClick,
-                        onEpisodeLongPress = onEpisodeLongPress,
-                        onSeasonLongPress = onSeasonLongPress,
-                    )
+                    Column {
+                        DetailSeriesContent(
+                            meta = meta,
+                            showHeader = showHeader,
+                            horizontalScrollPadding = horizontalScrollPadding,
+                            preferredSeasonNumber = preferredEpisodeSeasonNumber,
+                            preferredEpisodeNumber = preferredEpisodeNumber,
+                            controlledSeason = controlledEpisodeSeason,
+                            onControlledSeasonSelect = onControlledSeasonSelect,
+                            episodeCardStyle = settings.episodeCardStyle,
+                            progressByVideoId = progressByVideoId,
+                            watchedKeys = watchedKeys,
+                            episodeRatings = episodeImdbRatings,
+                            episodeRatingsVisibility = settings.episodeRatingsVisibility,
+                            blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                            onEpisodeClick = onEpisodeClick,
+                            onEpisodeLongPress = onEpisodeLongPress,
+                            onSeasonLongPress = onSeasonLongPress,
+                        )
+                        if (isDesktop && meta.type == "series") {
+                            Box(Modifier.padding(top = 18.dp)) { seriesAudience() }
+                        }
+                    }
                 }
             }
             MetaScreenSectionKey.DETAILS -> {

@@ -107,6 +107,8 @@ fun DetailSeriesContent(
     horizontalScrollPadding: Dp = 0.dp,
     preferredSeasonNumber: Int? = null,
     preferredEpisodeNumber: Int? = null,
+    controlledSeason: Int? = null,
+    onControlledSeasonSelect: ((Int) -> Unit)? = null,
     episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal,
     progressByVideoId: Map<String, WatchProgressEntry> = emptyMap(),
     watchedKeys: Set<String> = emptySet(),
@@ -172,7 +174,7 @@ fun DetailSeriesContent(
         ?.takeIf { it in groupedEpisodes }
         ?: seasons.first()
     var selectedSeasonOverride by rememberSaveable(meta.id) { mutableStateOf<Int?>(null) }
-    val currentSeason = selectedSeasonOverride
+    val currentSeason = (controlledSeason ?: selectedSeasonOverride)
         ?.takeIf { it in groupedEpisodes }
         ?: defaultSeason
 
@@ -190,7 +192,10 @@ fun DetailSeriesContent(
                 currentSeason = currentSeason,
                 sizing = sizing,
                 horizontalScrollPadding = horizontalScrollPadding,
-                onSelect = { selectedSeasonOverride = it },
+                onSelect = { season ->
+                    if (onControlledSeasonSelect != null) onControlledSeasonSelect(season)
+                    else selectedSeasonOverride = season
+                },
                 onLongPress = onSeasonLongPress,
             )
 
