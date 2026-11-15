@@ -40,7 +40,14 @@ data class MetaDetails(
     val links: List<MetaLink> = emptyList(),
     val seasonPosters: Map<Int, String> = emptyMap(),
     val videos: List<MetaVideo> = emptyList(),
-)
+    val budgetUsd: Long? = null,
+    val revenueUsd: Long? = null,
+) {
+    internal val hasMovieFinancialDetails: Boolean
+        get() = type == "movie" &&
+            ((budgetUsd ?: 0) > 0 || (revenueUsd ?: 0) > 0) &&
+            videos.none { it.season != null || it.episode != null }
+}
 
 enum class MoreLikeThisSource {
     TMDB,

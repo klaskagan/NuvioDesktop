@@ -53,6 +53,56 @@ class TmdbMetadataServiceTest {
     }
 
     @Test
+    fun `movie financial details map independently on both metadata paths`() {
+        val base = MetaDetails(id = "tt1234567", type = "movie", name = "Addon Movie")
+        val settings = TmdbSettings(enabled = true)
+        val enrichment = TmdbEnrichment(
+            localizedTitle = null,
+            description = null,
+            genres = emptyList(),
+            backdrop = null,
+            logo = null,
+            poster = null,
+            people = emptyList(),
+            director = emptyList(),
+            writer = emptyList(),
+            releaseInfo = null,
+            rating = null,
+            runtimeMinutes = null,
+            ageRating = null,
+            status = null,
+            countries = emptyList(),
+            language = null,
+            productionCompanies = emptyList(),
+            networks = emptyList(),
+        )
+
+        assertFalse(enrichment.hasContent())
+        assertFalse(enrichment.copy(budgetUsd = 0, revenueUsd = 0).hasContent())
+        val revenueOnly = enrichment.copy(budgetUsd = 0, revenueUsd = 2_923_706_026L)
+        val budgetOnly = enrichment.copy(budgetUsd = 237_000_000L)
+        for ((payload, expected) in listOf(
+            revenueOnly to (null to 2_923_706_026L),
+            budgetOnly to (237_000_000L to null),
+        )) {
+            assertTrue(payload.hasContent())
+            val standalone = TmdbMetadataService.buildStandaloneMeta("movie", "tmdb:123", 123, payload)
+            val enriched = TmdbMetadataService.applyEnrichment(base, payload, emptyMap(), settings)
+            assertEquals(expected, standalone.budgetUsd to standalone.revenueUsd)
+            assertEquals(expected, enriched.budgetUsd to enriched.revenueUsd)
+            assertTrue(standalone.hasMovieFinancialDetails)
+            assertTrue(enriched.hasMovieFinancialDetails)
+            assertFalse(enriched.copy(type = "series").hasMovieFinancialDetails)
+        }
+
+        val disabled = TmdbMetadataService.applyEnrichment(
+            base, revenueOnly, emptyMap(), settings.copy(useDetails = false),
+        )
+        assertNull(disabled.revenueUsd)
+        assertFalse(disabled.hasMovieFinancialDetails)
+    }
+
+    @Test
     fun `applyEnrichment replaces enabled metadata groups`() {
         val base = MetaDetails(
             id = "tt1234567",
