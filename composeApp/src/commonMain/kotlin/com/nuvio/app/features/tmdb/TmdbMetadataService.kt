@@ -831,6 +831,8 @@ object TmdbMetadataService {
             networks = enrichment.networks,
             country = enrichment.countries.takeIf { it.isNotEmpty() }?.joinToString(", "),
             language = enrichment.language,
+            budgetUsd = enrichment.budgetUsd?.takeIf { it > 0 },
+            revenueUsd = enrichment.revenueUsd?.takeIf { it > 0 },
             moreLikeThis = enrichment.moreLikeThis,
             moreLikeThisSource = MoreLikeThisSource.TMDB.takeIf { enrichment.moreLikeThis.isNotEmpty() },
             collectionName = enrichment.collectionName,
@@ -873,6 +875,8 @@ object TmdbMetadataService {
                 runtime = enrichment.runtimeMinutes?.formatRuntime() ?: updated.runtime,
                 country = enrichment.countries.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: updated.country,
                 language = enrichment.language ?: updated.language,
+                budgetUsd = enrichment.budgetUsd?.takeIf { it > 0 } ?: updated.budgetUsd,
+                revenueUsd = enrichment.revenueUsd?.takeIf { it > 0 } ?: updated.revenueUsd,
             )
         }
 
@@ -1097,6 +1101,8 @@ object TmdbMetadataService {
                 .mapNotNull { it.iso31661?.trim()?.takeIf(String::isNotBlank) }
                 .ifEmpty { details.originCountry.filter(String::isNotBlank) },
             language = details.originalLanguage?.trim()?.takeIf(String::isNotBlank),
+            budgetUsd = details.budget?.takeIf { mediaType == "movie" },
+            revenueUsd = details.revenue?.takeIf { mediaType == "movie" },
             productionCompanies = details.productionCompanies.mapNotNull { it.toMetaCompany() },
             networks = details.networks.mapNotNull { it.toMetaCompany() },
             collectionName = details.belongsToCollection?.name?.trim()?.takeIf(String::isNotBlank),
@@ -1480,6 +1486,8 @@ internal data class TmdbEnrichment(
     val collectionItems: List<MetaPreview> = emptyList(),
     val moreLikeThis: List<MetaPreview> = emptyList(),
     val trailers: List<MetaTrailer> = emptyList(),
+    val budgetUsd: Long? = null,
+    val revenueUsd: Long? = null,
 ) {
     fun hasContent(): Boolean =
         localizedTitle != null ||
@@ -1499,6 +1507,8 @@ internal data class TmdbEnrichment(
             status != null ||
             countries.isNotEmpty() ||
             language != null ||
+            (budgetUsd ?: 0) > 0 ||
+            (revenueUsd ?: 0) > 0 ||
             productionCompanies.isNotEmpty() ||
             networks.isNotEmpty() ||
             collectionItems.isNotEmpty() ||
@@ -1889,6 +1899,8 @@ private data class TmdbDetailsResponse(
     val status: String? = null,
     @SerialName("vote_average") val voteAverage: Double? = null,
     val runtime: Int? = null,
+    val budget: Long? = null,
+    val revenue: Long? = null,
     @SerialName("episode_run_time") val episodeRunTime: List<Int> = emptyList(),
     @SerialName("production_countries") val productionCountries: List<TmdbProductionCountry> = emptyList(),
     @SerialName("origin_country") val originCountry: List<String> = emptyList(),

@@ -747,7 +747,8 @@ fun MetaDetailsScreen(
                         meta.runtime != null ||
                         meta.ageRating != null ||
                         meta.country != null ||
-                        meta.language != null
+                        meta.language != null ||
+                        meta.hasMovieFinancialDetails
                 }
                 val hasCollectionSection = remember(meta) {
                     meta.collectionName != null && meta.collectionItems.isNotEmpty()
