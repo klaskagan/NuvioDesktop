@@ -46,7 +46,9 @@ import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
@@ -59,6 +61,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.core.ui.NuvioAsyncImage as AsyncImage
 import com.nuvio.app.core.ui.NuvioDesktopImageScaling
@@ -92,17 +95,13 @@ import org.jetbrains.compose.resources.stringResource
 fun DesktopDetailBackdrop(
     meta: MetaDetails,
     viewportHeight: Dp,
-    heroTrailerSourceUrl: String?,
-    heroTrailerSourceAudioUrl: String?,
-    heroTrailerReady: Boolean,
-    heroTrailerPlayWhenReady: Boolean,
-    heroTrailerMuted: Boolean,
+    heroTrailerReady: Boolean = false,
+    heroTrailer: (@Composable (Modifier, Boolean) -> Unit)? = null,
+    cornerTrailer: Boolean = false,
+    heroHeight: Dp = viewportHeight,
     heroGradientColor: Color? = null,
     blurBackdrop: Boolean = false,
     onBackdropLoaded: (Painter) -> Unit = {},
-    onHeroTrailerReady: () -> Unit,
-    onHeroTrailerEnded: () -> Unit,
-    onHeroTrailerError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -114,7 +113,7 @@ fun DesktopDetailBackdrop(
         label = "desktop_detail_hero_trailer_alpha",
     )
     val gradientIntensity by animateFloatAsState(
-        targetValue = if (heroTrailerReady) 0.3f else 1f,
+        targetValue = if (heroTrailerReady && !cornerTrailer) 0.3f else 1f,
         animationSpec = tween(durationMillis = NuvioTokens.Motion.sheetEnterMillis),
         label = "desktop_detail_hero_gradient_intensity",
     )
@@ -163,18 +162,41 @@ fun DesktopDetailBackdrop(
             DesktopStripePlaceholder(modifier = backdropModifier)
         }
 
-        if (heroTrailerSourceUrl != null) {
-            HeroTrailerPlayerSurface(
-                sourceUrl = heroTrailerSourceUrl,
-                sourceAudioUrl = heroTrailerSourceAudioUrl,
-                playWhenReady = heroTrailerPlayWhenReady,
-                muted = heroTrailerMuted,
-                fillFrame = true,
-                modifier = artworkModifier.graphicsLayer { alpha = trailerAlpha },
-                onReady = onHeroTrailerReady,
-                onEnded = onHeroTrailerEnded,
-                onError = onHeroTrailerError,
-            )
+        if (heroTrailer != null) {
+            val cornerWidth = minOf(maxWidth * 0.60f, heroHeight.takeIf { it > 0.dp }?.times(16f / 9f) ?: maxWidth)
+            val trailerModifier = if (cornerTrailer) {
+                Modifier.align(Alignment.TopEnd)
+                    .zIndex(1f)
+                    .width(cornerWidth)
+                    .height(cornerWidth * (9f / 16f))
+                    .graphicsLayer(alpha = trailerAlpha, compositingStrategy = CompositingStrategy.Offscreen)
+                    .drawWithCache {
+                        val side = Brush.horizontalGradient(
+                            0f to Color.Transparent,
+                            0.22f to Color.Black.copy(alpha = 0.14f),
+                            0.46f to Color.Black.copy(alpha = 0.44f),
+                            0.76f to Color.Black.copy(alpha = 0.84f),
+                            1f to Color.Black,
+                            endX = size.width * 0.08f,
+                        )
+                        val bottom = Brush.verticalGradient(
+                            0f to Color.Black,
+                            0.40f to Color.Black.copy(alpha = 0.75f),
+                            0.75f to Color.Black.copy(alpha = 0.35f),
+                            1f to Color.Transparent,
+                            startY = size.height * 0.90f,
+                            endY = size.height,
+                        )
+                        onDrawWithContent {
+                            drawContent()
+                            drawRect(side, blendMode = BlendMode.DstIn)
+                            drawRect(bottom, blendMode = BlendMode.DstIn)
+                        }
+                    }
+            } else {
+                backdropModifier.graphicsLayer(alpha = trailerAlpha)
+            }
+            heroTrailer(trailerModifier, true)
         }
 
         Box(
@@ -219,6 +241,7 @@ fun DesktopDetailHero(
     onWatchedClick: () -> Unit,
     onSaveClick: () -> Unit,
     onSaveLongClick: (() -> Unit)?,
+    cornerTrailer: Boolean = false,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val space = NuvioTokens.Space
@@ -239,10 +262,11 @@ fun DesktopDetailHero(
         val actionHorizontalInset = fullscreenActionHorizontalInsetForWidth(maxWidth.value)
         val pageHorizontalPadding = desktopPageHorizontalPaddingForWidth(maxWidth.value)
 
+        val heroTextWidth = if (cornerTrailer) minOf(760.dp, maxWidth * 0.53f) else 760.dp
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .widthIn(max = 760.dp)
+                .widthIn(max = heroTextWidth)
                 .padding(
                     start = pageHorizontalPadding,
                     end = space.s32,

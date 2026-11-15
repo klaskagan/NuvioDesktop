@@ -40,6 +40,8 @@ internal object TrailerExtractionPlatform {
         .followSslRedirects(true)
         .build()
 
+    fun supportsHeroHlsCodecs(codecs: String?): Boolean = true
+
     fun supportsSeparateVideo(candidate: StreamCandidate): Boolean = true
 
     fun supportsSeparateAudio(candidate: StreamCandidate): Boolean = true

@@ -52,10 +52,7 @@ fun Go3EventScreen(id: String, onBack: () -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds().background(MaterialTheme.colorScheme.background)) {
         val inset=desktopPageHorizontalPaddingForWidth(maxWidth.value)
         val meta=remember(event) {MetaDetails(id=id,type="sport",name=event?.title ?: "Go3",background=event?.artwork,poster=event?.artwork)}
-        DesktopDetailBackdrop(meta=meta,viewportHeight=maxHeight,modifier=Modifier.testTag("go3-detail-backdrop"),
-            heroTrailerSourceUrl=null,heroTrailerSourceAudioUrl=null,heroTrailerReady=false,
-            heroTrailerPlayWhenReady=false,heroTrailerMuted=true,
-            onHeroTrailerReady={},onHeroTrailerEnded={},onHeroTrailerError={})
+        DesktopDetailBackdrop(meta = meta, viewportHeight = maxHeight, modifier = Modifier.testTag("go3-detail-backdrop"))
         Column(Modifier.align(Alignment.CenterStart).widthIn(max=820.dp).fillMaxWidth()
             .padding(horizontal=inset,vertical=104.dp).verticalScroll(rememberScrollState()),
             verticalArrangement=Arrangement.spacedBy(24.dp)) {

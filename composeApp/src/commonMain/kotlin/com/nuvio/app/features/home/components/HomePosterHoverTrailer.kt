@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.details.components.HeroTrailerPlayerSurface
+import com.nuvio.app.features.details.logPreviewResolution
 import com.nuvio.app.features.details.selectHeroTrailer
 import com.nuvio.app.features.details.youtubePlaybackUrl
 import com.nuvio.app.features.home.MetaPreview
@@ -81,11 +82,13 @@ internal suspend fun resolveHomePosterHoverTrailerPlaybackSource(
         ?: MetaDetailsRepository.fetch(type = item.type, id = item.id)
     val trailer = selectHeroTrailer(meta?.trailers.orEmpty())
         ?: return null
-    return try {
+    val source = try {
         TrailerPlaybackResolver.resolveFromYouTubeUrl(trailer.youtubePlaybackUrl(), target = TrailerPlaybackTarget.FRAME_PREVIEW)
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (_: Throwable) {
         null
     }
+    trailer.logPreviewResolution("hover-card", item.name, source != null)
+    return source
 }

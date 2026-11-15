@@ -29,9 +29,11 @@ actual object TrailerPlaybackResolver {
             cacheMutex.unlock()
         }
 
-        val source = if (target == TrailerPlaybackTarget.FRAME_PREVIEW) {
-            extractor.extractPreviewPlaybackSource(youtubeUrl)
-        } else extractor.extractPlaybackSource(youtubeUrl)
+        val source = when (target) {
+            TrailerPlaybackTarget.FRAME_PREVIEW -> extractor.extractPreviewPlaybackSource(youtubeUrl)
+            TrailerPlaybackTarget.DESKTOP_DETAILS_HERO -> extractor.extractDesktopHeroPlaybackSource(youtubeUrl)
+            TrailerPlaybackTarget.NATIVE_PLAYER -> extractor.extractPlaybackSource(youtubeUrl)
+        }
         if (source != null) {
             cacheMutex.lock()
             try {

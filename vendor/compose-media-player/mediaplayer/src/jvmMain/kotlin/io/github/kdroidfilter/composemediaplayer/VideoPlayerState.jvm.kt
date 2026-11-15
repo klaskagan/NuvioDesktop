@@ -1,13 +1,18 @@
 package io.github.kdroidfilter.composemediaplayer
 
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.IntSize
 import io.github.kdroidfilter.composemediaplayer.linux.LinuxVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.mac.MacVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.util.CurrentPlatform
 import io.github.kdroidfilter.composemediaplayer.windows.WindowsVideoPlayerState
 import io.github.vinceglb.filekit.PlatformFile
+
+/** Pixel dimensions of the frame bitmap and video canvas, delivered from the draw pass. */
+val LocalVideoFrameDrawn = staticCompositionLocalOf<((IntSize, IntSize) -> Unit)?> { null }
 
 actual fun createVideoPlayerState(
     audioMode: AudioMode,
@@ -46,6 +51,12 @@ open class DefaultVideoPlayerState : VideoPlayerState {
         }
 
     override val hasMedia: Boolean get() = delegate.hasMedia
+    override val hasVideoFrame: Boolean
+        get() = when (val state = delegate) {
+            is LinuxVideoPlayerState -> state.currentFrameState.value != null
+            is WindowsVideoPlayerState -> state.currentFrameState.value != null
+            else -> state.hasVideoFrame
+        }
     override val isPlaying: Boolean get() = delegate.isPlaying
     override val isLoading: Boolean get() = delegate.isLoading
     override val error: VideoPlayerError? get() = delegate.error

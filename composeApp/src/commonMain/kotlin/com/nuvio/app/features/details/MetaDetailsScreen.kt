@@ -125,6 +125,8 @@ import com.nuvio.app.features.details.components.DetailMetaInfo
 import com.nuvio.app.features.details.components.DetailPosterRailSection
 import com.nuvio.app.features.details.components.DetailProductionSection
 import com.nuvio.app.features.details.components.DetailSeriesContent
+import com.nuvio.app.features.details.components.DesktopHeroTrailerPreview
+import com.nuvio.app.features.details.components.rememberDesktopHeroTrailer
 import com.nuvio.app.features.details.components.DesktopDetailBackdrop
 import com.nuvio.app.features.details.components.DesktopDetailHero
 import com.nuvio.app.features.details.components.DetailSeriesListEpisode
@@ -767,35 +769,56 @@ fun MetaDetailsScreen(
                     onDispose { trailerRequest.cancel() }
                 }
                 var isLeavingDetails by remember(meta.id) { mutableStateOf(false) }
-                val heroTrailerCandidate = remember(meta.trailers) {
-                    selectHeroTrailer(meta.trailers)
+                val heroTrailerCandidates = remember(meta.trailers) {
+                    if (isDesktop) rankDesktopHeroTrailers(meta.trailers) else listOfNotNull(selectHeroTrailer(meta.trailers))
                 }
                 val heroTrailerPlaybackEnabled = AppFeaturePolicy.heroTrailerPlaybackSupported &&
                     inAppTrailerPlaybackEnabled &&
                     metaScreenSettingsUiState.heroTrailerPlayback
-                var heroTrailerPlaybackSource by remember(meta.id, heroTrailerCandidate?.id) { mutableStateOf<TrailerPlaybackSource?>(null) }
-                var heroTrailerReady by remember(meta.id, heroTrailerCandidate?.id) { mutableStateOf(false) }
-                var heroTrailerFinished by remember(meta.id, heroTrailerCandidate?.id) { mutableStateOf(false) }
+                var heroTrailerPlaybackSource by remember(meta.id, heroTrailerCandidates) { mutableStateOf<TrailerPlaybackSource?>(null) }
+                var desktopHeroAttempt by remember(meta.id, heroTrailerCandidates) { mutableStateOf<DesktopHeroTrailerAttempt?>(null) }
+                var heroTrailerReady by remember(meta.id, heroTrailerCandidates) { mutableStateOf(false) }
+                var heroTrailerFinished by remember(meta.id, heroTrailerCandidates) { mutableStateOf(false) }
                 val heroTrailerMuted by HeroTrailerAudioState.muted.collectAsStateWithLifecycle()
-                LaunchedEffect(
-                    heroTrailerPlaybackEnabled,
-                    heroTrailerCandidate?.id,
-                    heroTrailerCandidate?.key,
-                    deferredMetaWorkAllowed,
-                ) {
+                LaunchedEffect(meta.id, heroTrailerPlaybackEnabled, heroTrailerCandidates, deferredMetaWorkAllowed, isLeavingDetails) {
                     heroTrailerPlaybackSource = null
+                    desktopHeroAttempt = null
                     heroTrailerReady = false
                     heroTrailerFinished = false
-                    if (!deferredMetaWorkAllowed || !heroTrailerPlaybackEnabled || heroTrailerCandidate == null) {
+                    if (!deferredMetaWorkAllowed || !heroTrailerPlaybackEnabled || isLeavingDetails || heroTrailerCandidates.isEmpty()) {
                         return@LaunchedEffect
                     }
-                    val resolvedSource = runCatching {
-                        TrailerPlaybackResolver.resolveFromYouTubeUrl(heroTrailerCandidate.youtubePlaybackUrl(), target = TrailerPlaybackTarget.FRAME_PREVIEW)
-                    }.getOrNull()
-                    if (resolvedSource == null) {
-                        heroTrailerFinished = true
+                    if (isDesktop) {
+                        val started = startDesktopHeroTrailer(
+                            trailers = heroTrailerCandidates,
+                            resolve = { trailer ->
+                                val renditions = TrailerPlaybackResolver.resolveFromYouTubeUrl(
+                                    trailer.youtubePlaybackUrl(),
+                                    target = TrailerPlaybackTarget.DESKTOP_DETAILS_HERO,
+                                )?.heroRenditions.orEmpty()
+                                trailer.logPreviewResolution("hero", meta.name, renditions.isNotEmpty())
+                                renditions
+                            },
+                            tryRendition = { attempt ->
+                                heroTrailerReady = false
+                                desktopHeroAttempt = attempt
+                                var renditionReady = false
+                                try {
+                                    attempt.ready.await().also { renditionReady = it }
+                                } finally {
+                                    if (!renditionReady && desktopHeroAttempt === attempt) {
+                                        desktopHeroAttempt = null
+                                    }
+                                }
+                            },
+                        )
+                        if (!started) heroTrailerFinished = true
                     } else {
-                        heroTrailerPlaybackSource = resolvedSource
+                        heroTrailerPlaybackSource = TrailerPlaybackResolver.resolveFromYouTubeUrl(
+                            heroTrailerCandidates.first().youtubePlaybackUrl(),
+                            target = TrailerPlaybackTarget.FRAME_PREVIEW,
+                        )
+                        heroTrailerFinished = heroTrailerPlaybackSource == null
                     }
                 }
                 val onBackFromDetails: () -> Unit = {
@@ -1049,16 +1072,41 @@ fun MetaDetailsScreen(
                         }
                     }
                 }
-                val heroTrailerSourceUrl = heroTrailerPlaybackSource
-                    ?.videoUrl
+                val heroTrailerSourceUrl = (desktopHeroAttempt?.rendition?.videoUrl ?: heroTrailerPlaybackSource?.videoUrl)
                     ?.takeIf { it.isNotBlank() && heroTrailerPlaybackEnabled && !heroTrailerFinished && !isLeavingDetails }
-                val heroTrailerSourceAudioUrl = heroTrailerPlaybackSource
-                    ?.audioUrl
+                val heroTrailerSourceAudioUrl = (desktopHeroAttempt?.rendition?.audioUrl ?: heroTrailerPlaybackSource?.audioUrl)
                     ?.takeIf { heroTrailerSourceUrl != null && it.isNotBlank() }
                 val heroTrailerPlayWhenReady = heroTrailerSourceUrl != null &&
                     selectedTrailer == null &&
                     !isLeavingDetails &&
                     !isHeroCollapsed.value
+                val attempt = desktopHeroAttempt
+                val desktopTrailer = rememberDesktopHeroTrailer(
+                    preview = if (attempt != null && heroTrailerSourceUrl != null) {
+                        DesktopHeroTrailerPreview(
+                            rendition = attempt.rendition,
+                            title = meta.name,
+                            watchUrl = attempt.trailer.youtubePlaybackUrl(),
+                            visible = heroTrailerReady && !isHeroCollapsed.value,
+                        )
+                    } else {
+                        null
+                    },
+                    playWhenReady = heroTrailerPlayWhenReady,
+                    muted = heroTrailerMuted,
+                    onReady = {
+                        if (attempt != null && desktopHeroAttempt === attempt && !attempt.ready.isCompleted) {
+                            heroTrailerReady = true
+                            attempt.ready.complete(true)
+                        }
+                    },
+                    onTerminal = {
+                        if (attempt != null && desktopHeroAttempt === attempt && !attempt.ready.complete(false)) {
+                            heroTrailerReady = false
+                            heroTrailerFinished = true
+                        }
+                    },
+                )
                 val headerTarget = if (isHeroCollapsed.value) 1f else 0f
                 val headerProgressState = animateFloatAsState(
                     targetValue = headerTarget,
@@ -1220,39 +1268,19 @@ fun MetaDetailsScreen(
                             DesktopDetailBackdrop(
                                 meta = meta,
                                 viewportHeight = viewportHeight,
-                                heroTrailerSourceUrl = heroTrailerSourceUrl,
-                                heroTrailerSourceAudioUrl = heroTrailerSourceAudioUrl,
                                 heroTrailerReady = heroTrailerReady,
-                                heroTrailerPlayWhenReady = heroTrailerPlayWhenReady,
-                                heroTrailerMuted = heroTrailerMuted,
+                                heroTrailer = desktopTrailer,
+                                cornerTrailer = metaScreenSettingsUiState.heroTrailerLayout == HeroTrailerLayout.Corner,
+                                heroHeight = with(LocalDensity.current) { heroHeightPx.intValue.toDp() },
                                 heroGradientColor = dominantBackdropColor.takeIf { dominantColorEnabled },
                                 onBackdropLoaded = { painter -> dominantBackdropPainter = painter },
-                                onHeroTrailerReady = {
-                                    if (!heroTrailerFinished) heroTrailerReady = true
-                                },
-                                onHeroTrailerEnded = {
-                                    heroTrailerReady = false
-                                    heroTrailerFinished = true
-                                },
-                                onHeroTrailerError = {
-                                    heroTrailerReady = false
-                                    heroTrailerFinished = true
-                                },
                             )
 
                             if (backgroundMode == MetaScreenBackgroundMode.Cinematic) {
                                 DesktopDetailBackdrop(
                                     meta = meta,
                                     viewportHeight = viewportHeight,
-                                    heroTrailerSourceUrl = null,
-                                    heroTrailerSourceAudioUrl = null,
-                                    heroTrailerReady = false,
-                                    heroTrailerPlayWhenReady = false,
-                                    heroTrailerMuted = true,
                                     blurBackdrop = true,
-                                    onHeroTrailerReady = {},
-                                    onHeroTrailerEnded = {},
-                                    onHeroTrailerError = {},
                                     modifier = Modifier
                                         .zIndex(0.25f)
                                         .graphicsLayer {
@@ -1311,6 +1339,7 @@ fun MetaDetailsScreen(
                                             onHeightChanged = { heroHeightPx.intValue = it },
                                             heroTrailerSourceUrl = heroTrailerSourceUrl,
                                             heroTrailerReady = heroTrailerReady,
+                                            cornerTrailer = metaScreenSettingsUiState.heroTrailerLayout == HeroTrailerLayout.Corner,
                                             heroTrailerMuted = heroTrailerMuted,
                                             onHeroTrailerMuteToggle = {
                                                 HeroTrailerAudioState.toggleMuted()
@@ -1459,40 +1488,41 @@ fun MetaDetailsScreen(
                                             )
                                         } else {
                                             DetailHero(
-                                            meta = meta,
-                                            isTablet = isTablet,
-                                            contentMaxWidth = contentMaxWidth,
-                                            viewportHeight = viewportHeight,
-                                            scrollOffset = heroScrollOffset,
-                                            stretchPx = { heroStretchState.stretchPx },
-                                            onHeightChanged = { heroHeightPx.intValue = it },
-                                            heroTrailerSourceUrl = heroTrailerSourceUrl,
-                                            heroTrailerSourceAudioUrl = heroTrailerSourceAudioUrl,
-                                            heroTrailerReady = heroTrailerReady,
-                                            heroTrailerPlayWhenReady = { heroTrailerPlayWhenReady },
-                                            heroTrailerMuted = heroTrailerMuted,
-                                            heroGradientColor = dominantBackdropColor.takeIf { dominantColorEnabled },
-                                            onBackdropLoaded = { painter, imageBitmap ->
-                                                dominantBackdropPainter = painter
-                                                dominantBackdropImageBitmap = imageBitmap
-                                            },
-                                            onHeroTrailerMuteToggle = {
-                                                HeroTrailerAudioState.toggleMuted()
-                                            },
-                                            onHeroTrailerReady = {
-                                                if (!heroTrailerFinished) {
-                                                    heroTrailerReady = true
-                                                }
-                                            },
-                                            onHeroTrailerEnded = {
-                                                heroTrailerReady = false
-                                                heroTrailerFinished = true
-                                            },
-                                            onHeroTrailerError = {
-                                                heroTrailerReady = false
-                                                heroTrailerFinished = true
-                                            },
-                                        )
+                                                meta = meta,
+                                                isTablet = isTablet,
+                                                contentMaxWidth = contentMaxWidth,
+                                                viewportHeight = viewportHeight,
+                                                scrollOffset = heroScrollOffset,
+                                                stretchPx = { heroStretchState.stretchPx },
+                                                onHeightChanged = { heroHeightPx.intValue = it },
+                                                heroTrailerSourceUrl = heroTrailerSourceUrl,
+                                                heroTrailerSourceAudioUrl = heroTrailerSourceAudioUrl,
+                                                heroTrailerReady = heroTrailerReady,
+                                                heroTrailerContent = desktopTrailer,
+                                                heroTrailerPlayWhenReady = { heroTrailerPlayWhenReady },
+                                                heroTrailerMuted = heroTrailerMuted,
+                                                heroGradientColor = dominantBackdropColor.takeIf { dominantColorEnabled },
+                                                onBackdropLoaded = { painter, imageBitmap ->
+                                                    dominantBackdropPainter = painter
+                                                    dominantBackdropImageBitmap = imageBitmap
+                                                },
+                                                onHeroTrailerMuteToggle = {
+                                                    HeroTrailerAudioState.toggleMuted()
+                                                },
+                                                onHeroTrailerReady = {
+                                                    if (!heroTrailerFinished) {
+                                                        heroTrailerReady = true
+                                                    }
+                                                },
+                                                onHeroTrailerEnded = {
+                                                    heroTrailerReady = false
+                                                    heroTrailerFinished = true
+                                                },
+                                                onHeroTrailerError = {
+                                                    heroTrailerReady = false
+                                                    heroTrailerFinished = true
+                                                },
+                                            )
                                         }
                                     }
 

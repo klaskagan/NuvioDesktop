@@ -52,6 +52,7 @@ internal data class StreamCandidate(
     // alternate-language dub track, not the video's original/default audio.
     // Always true for video/progressive candidates, so it never affects them.
     val isDefaultAudioTrack: Boolean = true,
+    val width: Int = 0,
 )
 
 private data class ManifestBestVariant(
@@ -144,6 +145,9 @@ class InAppYouTubeExtractor {
     suspend fun extractPreviewPlaybackSource(youtubeUrl: String): TrailerPlaybackSource? =
         extract(youtubeUrl, singleUrl = true, previewFallback = true)
 
+    suspend fun extractDesktopHeroPlaybackSource(youtubeUrl: String): TrailerPlaybackSource? =
+        extract(youtubeUrl, singleUrl = false, desktopHero = true)
+
     suspend fun extractSingleUrl(youtubeUrl: String): String? =
         extract(youtubeUrl, singleUrl = true)?.videoUrl
 
@@ -151,6 +155,7 @@ class InAppYouTubeExtractor {
         youtubeUrl: String,
         singleUrl: Boolean,
         previewFallback: Boolean = false,
+        desktopHero: Boolean = false,
     ): TrailerPlaybackSource? = withContext(Dispatchers.Default) {
         if (youtubeUrl.isBlank()) {
             TrailerExtractionPlatform.diagnostic("blocked stage=input reason=blank_url")
@@ -159,7 +164,7 @@ class InAppYouTubeExtractor {
 
         runCatching {
             withTimeout(EXTRACTOR_TIMEOUT_MS) {
-                extractPlaybackSourceInternal(youtubeUrl, singleUrl, previewFallback)
+                extractPlaybackSourceInternal(youtubeUrl, singleUrl, previewFallback, desktopHero)
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
@@ -174,6 +179,7 @@ class InAppYouTubeExtractor {
         youtubeUrl: String,
         singleUrl: Boolean,
         previewFallback: Boolean,
+        desktopHero: Boolean,
     ): TrailerPlaybackSource? {
         val videoId = extractVideoId(youtubeUrl)
         if (videoId == null) {
@@ -207,6 +213,7 @@ class InAppYouTubeExtractor {
         val manifestUrls = mutableListOf<Triple<String, Int, String>>()
 
         for (client in CLIENTS) {
+            currentCoroutineContext().ensureActive()
             runCatching {
                 val progressiveStart = progressive.size
                 val videoStart = adaptiveVideo.size
@@ -252,6 +259,7 @@ class InAppYouTubeExtractor {
                         height = height,
                         fps = fps,
                         ext = if (mimeType.contains("webm")) "webm" else "mp4",
+                        width = format.numberValue("width")?.toInt() ?: 0,
                     )
                 }
 
@@ -283,6 +291,7 @@ class InAppYouTubeExtractor {
                             height = height,
                             fps = fps,
                             ext = if (mimeType.contains("webm")) "webm" else "mp4",
+                            width = format.numberValue("width")?.toInt() ?: 0,
                         )
                     } else if (hasAudio) {
                         val bitrate = format.numberValue("bitrate")
@@ -327,6 +336,34 @@ class InAppYouTubeExtractor {
         if (manifestUrls.isEmpty() && progressive.isEmpty() && adaptiveVideo.isEmpty() && adaptiveAudio.isEmpty()) {
             TrailerExtractionPlatform.diagnostic("blocked stage=candidates reason=no_streams")
             return null
+        }
+
+        if (desktopHero) {
+            val renditions = buildList {
+                for ((clientKey, _, manifestUrl) in manifestUrls.distinctBy { it.third }) {
+                    currentCoroutineContext().ensureActive()
+                    runCatching { fetchHlsManifest(manifestUrl) }
+                        .onSuccess {
+                            addAll(parseHeroHlsRenditions(it.url, it.body, TrailerExtractionPlatform::supportsHeroHlsCodecs))
+                        }
+                        .onFailure {
+                            currentCoroutineContext().ensureActive()
+                            TrailerExtractionPlatform.diagnostic("blocked stage=hero_hls client=$clientKey error=${it::class.simpleName}")
+                        }
+                }
+                val audio = adaptiveAudio.filter(TrailerExtractionPlatform::supportsSeparateAudio)
+                    .filter { it.mimeType.contains("mp4a", ignoreCase = true) && !it.hasN }
+                adaptiveVideo.filter(TrailerExtractionPlatform::supportsSeparateVideo)
+                    .filter { it.mimeType.contains("avc1", ignoreCase = true) && !it.hasN }
+                    .forEach { video ->
+                        val track = pickBestForClient(audio, video.client) ?: return@forEach
+                        add(HeroTrailerRendition(video.url, track.url, video.width, video.height, video.bitrate))
+                    }
+                progressive.filter { it.ext == "mp4" && !it.hasN }.forEach {
+                    add(HeroTrailerRendition(it.url, width = it.width, height = it.height, bandwidth = it.bitrate))
+                }
+            }
+            return rankHeroRenditions(renditions).takeIf { it.isNotEmpty() }?.let(::TrailerPlaybackSource)
         }
 
         var bestManifest: ManifestCandidate? = null
@@ -457,7 +494,7 @@ class InAppYouTubeExtractor {
         return parsed as? JsonObject ?: JsonObject(emptyMap())
     }
 
-    private suspend fun parseHlsManifest(manifestUrl: String): ManifestBestVariant? {
+    private suspend fun fetchHlsManifest(manifestUrl: String): TrailerRequestResponse {
         val response = TrailerExtractionPlatform.performRequest(
             url = manifestUrl,
             method = "GET",
@@ -469,7 +506,11 @@ class InAppYouTubeExtractor {
             throw IllegalStateException("Failed to fetch HLS manifest (${response.status})")
         }
 
-        val lines = response.body
+        return response
+    }
+
+    private suspend fun parseHlsManifest(manifestUrl: String): ManifestBestVariant? {
+        val lines = fetchHlsManifest(manifestUrl).body
             .lineSequence()
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -545,54 +586,6 @@ class InAppYouTubeExtractor {
         val apiKey = API_KEY_REGEX.find(html)?.groupValues?.getOrNull(1)
         val visitorData = VISITOR_DATA_REGEX.find(html)?.groupValues?.getOrNull(1)
         return WatchConfig(apiKey = apiKey, visitorData = visitorData)
-    }
-
-    private fun parseHlsAttributeList(line: String): Map<String, String> {
-        val index = line.indexOf(':')
-        if (index == -1) return emptyMap()
-
-        val raw = line.substring(index + 1)
-        val out = LinkedHashMap<String, String>()
-        val key = StringBuilder()
-        val value = StringBuilder()
-        var inKey = true
-        var inQuote = false
-
-        for (ch in raw) {
-            if (inKey) {
-                if (ch == '=') {
-                    inKey = false
-                } else {
-                    key.append(ch)
-                }
-                continue
-            }
-
-            if (ch == '"') {
-                inQuote = !inQuote
-                continue
-            }
-
-            if (ch == ',' && !inQuote) {
-                val parsedKey = key.toString().trim()
-                if (parsedKey.isNotEmpty()) {
-                    out[parsedKey] = value.toString().trim()
-                }
-                key.clear()
-                value.clear()
-                inKey = true
-                continue
-            }
-
-            value.append(ch)
-        }
-
-        val lastKey = key.toString().trim()
-        if (lastKey.isNotEmpty()) {
-            out[lastKey] = value.toString().trim()
-        }
-
-        return out
     }
 
     private fun parseResolution(raw: String): Pair<Int, Int> {

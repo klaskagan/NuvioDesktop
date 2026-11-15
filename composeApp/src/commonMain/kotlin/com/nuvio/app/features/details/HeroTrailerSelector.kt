@@ -15,6 +15,16 @@ internal fun selectHeroTrailer(trailers: List<MetaTrailer>): MetaTrailer? =
             ),
         )
 
+internal fun rankDesktopHeroTrailers(trailers: List<MetaTrailer>): List<MetaTrailer> =
+    trailers
+        .filter { it.isPlayableYouTubeTrailerCandidate() }
+        .sortedWith(
+            compareByDescending<MetaTrailer> { it.size ?: 0 }
+                .thenByDescending { it.heroTrailerPriority() }
+                .thenByDescending { it.publishedAt.orEmpty() },
+        )
+        .distinctBy { it.key }
+
 internal fun MetaTrailer.youtubePlaybackUrl(): String =
     key.takeIf { it.startsWith("http://") || it.startsWith("https://") }
         ?: "https://www.youtube.com/watch?v=$key"
@@ -45,3 +55,8 @@ private fun MetaTrailer.heroTrailerSizePriority(): Int =
         (size ?: 0) >= 720 -> 1
         else -> 0
     }
+
+internal fun MetaTrailer.logPreviewResolution(surface: String, title: String, resolved: Boolean) {
+    val status = if (resolved) "resolved" else "unavailable"
+    println("[TrailerPreview] $status surface=$surface title=$title url=${youtubePlaybackUrl()}")
+}
