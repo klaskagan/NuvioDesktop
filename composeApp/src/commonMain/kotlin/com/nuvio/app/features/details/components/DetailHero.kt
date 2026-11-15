@@ -85,6 +85,7 @@ fun DetailHero(
     onHeroTrailerEnded: () -> Unit = {},
     onHeroTrailerError: () -> Unit = {},
     modifier: Modifier = Modifier,
+    heroTrailerContent: (@Composable (Modifier, Boolean) -> Unit)? = null,
 ) {
     BoxWithConstraints(
         modifier = modifier.fillMaxWidth(),
@@ -168,26 +169,31 @@ fun DetailHero(
                         )
                     }
                     if (heroTrailerSourceUrl != null) {
-                        HeroTrailerPlayerSurface(
-                            sourceUrl = heroTrailerSourceUrl,
-                            sourceAudioUrl = heroTrailerSourceAudioUrl,
-                            playWhenReady = heroTrailerPlayWhenReady(),
-                            muted = heroTrailerMuted,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .fillMaxWidth()
-                                .height(heroHeight)
-                                .heroStretchZoom(stretchPx)
-                                .graphicsLayer {
-                                    alpha = trailerAlpha
-                                    translationY = scrollOffset() * 0.5f
-                                    scaleX = backdropScale
-                                    scaleY = backdropScale
-                                },
-                            onReady = onHeroTrailerReady,
-                            onEnded = onHeroTrailerEnded,
-                            onError = onHeroTrailerError,
-                        )
+                        val trailerModifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(heroHeight)
+                            .heroStretchZoom(stretchPx)
+                            .graphicsLayer {
+                                translationY = scrollOffset() * 0.5f
+                                scaleX = backdropScale
+                                scaleY = backdropScale
+                            }
+                            .graphicsLayer(alpha = trailerAlpha)
+                        if (heroTrailerContent != null) {
+                            heroTrailerContent(trailerModifier, false)
+                        } else {
+                            HeroTrailerPlayerSurface(
+                                sourceUrl = heroTrailerSourceUrl,
+                                sourceAudioUrl = heroTrailerSourceAudioUrl,
+                                playWhenReady = heroTrailerPlayWhenReady(),
+                                muted = heroTrailerMuted,
+                                modifier = trailerModifier,
+                                onReady = onHeroTrailerReady,
+                                onEnded = onHeroTrailerEnded,
+                                onError = onHeroTrailerError,
+                            )
+                        }
                     }
                 }
                 if (heroTrailerSourceUrl != null) {

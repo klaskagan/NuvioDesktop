@@ -1,18 +1,25 @@
 package com.nuvio.app.features.trailer
 
+import com.nuvio.app.features.player.desktop.DesktopHostOs
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resumeWithException
 
 internal object TrailerExtractionPlatform {
     val diagnosticsEnabled: Boolean = System.getenv("NUVIO_TRAILER_DEBUG")
@@ -42,6 +49,11 @@ internal object TrailerExtractionPlatform {
         .followSslRedirects(true)
         .build()
 
+    // AVFoundation's HLS decoder does not accept YouTube's VP9 variants.
+    fun supportsHeroHlsCodecs(codecs: String?): Boolean =
+        DesktopHostOs.current != DesktopHostOs.MACOS ||
+            codecs?.split(',').orEmpty().none { it.trim().startsWith("vp09", ignoreCase = true) }
+
     fun supportsSeparateVideo(candidate: StreamCandidate): Boolean = candidate.ext == "mp4"
 
     fun supportsSeparateAudio(candidate: StreamCandidate): Boolean = candidate.ext == "m4a"
@@ -63,7 +75,7 @@ internal object TrailerExtractionPlatform {
         headers: Map<String, String>,
         body: String?,
         timeoutMillis: Long,
-    ): TrailerRequestResponse = withContext(Dispatchers.IO) {
+    ): TrailerRequestResponse {
         val requestBuilder = Request.Builder()
             .url(url)
             .headers(buildHeaders(headers))
@@ -75,21 +87,32 @@ internal object TrailerExtractionPlatform {
             else -> requestBuilder.get()
         }
 
-        httpClient.newBuilder()
+        val call = httpClient.newBuilder()
             .connectTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
             .readTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
             .writeTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
             .build()
             .newCall(requestBuilder.build())
-            .execute().use { response ->
-                TrailerRequestResponse(
-                    ok = response.isSuccessful,
-                    status = response.code,
-                    statusText = response.message,
-                    url = response.request.url.toString(),
-                    body = response.body?.string().orEmpty(),
-                )
-            }
+        return suspendCancellableCoroutine { continuation ->
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) = continuation.resumeWithException(e)
+
+                override fun onResponse(call: Call, response: Response) {
+                    continuation.resumeWith(runCatching {
+                        response.use {
+                            TrailerRequestResponse(
+                                ok = it.isSuccessful,
+                                status = it.code,
+                                statusText = it.message,
+                                url = it.request.url.toString(),
+                                body = it.body?.string().orEmpty(),
+                            )
+                        }
+                    })
+                }
+            })
+        }
     }
 
     suspend fun buildPlaybackSource(

@@ -16,3 +16,12 @@ actual fun HeroTrailerPlayerSurface(
     onEnded: () -> Unit,
     onError: () -> Unit,
 ) = Unit
+
+@Composable
+internal actual fun rememberDesktopHeroTrailer(
+    preview: DesktopHeroTrailerPreview?,
+    playWhenReady: Boolean,
+    muted: Boolean,
+    onReady: () -> Unit,
+    onTerminal: () -> Unit,
+): (@Composable (Modifier, Boolean) -> Unit)? = null

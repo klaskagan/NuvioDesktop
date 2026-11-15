@@ -70,6 +70,7 @@ import com.nuvio.app.features.details.MetaScreenSectionKey
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
 import com.nuvio.app.features.details.MetaScreenSettingsUiState
 import com.nuvio.app.features.details.desktopHeroOwnedMetaSectionKeys
+import com.nuvio.app.features.details.HeroTrailerLayout
 import com.nuvio.app.isDesktop
 import com.nuvio.app.supportsPosterNavigationMotion
 import nuvio.composeapp.generated.resources.Res
@@ -88,6 +89,10 @@ import nuvio.composeapp.generated.resources.settings_meta_comments_description
 import nuvio.composeapp.generated.resources.settings_meta_details
 import nuvio.composeapp.generated.resources.settings_meta_details_description
 import nuvio.composeapp.generated.resources.settings_meta_hero_trailer_playback
+import nuvio.composeapp.generated.resources.settings_meta_hero_trailer_layout
+import nuvio.composeapp.generated.resources.settings_meta_hero_trailer_layout_description
+import nuvio.composeapp.generated.resources.settings_meta_hero_trailer_backdrop
+import nuvio.composeapp.generated.resources.settings_meta_hero_trailer_corner
 import nuvio.composeapp.generated.resources.settings_meta_hero_trailer_playback_description
 import nuvio.composeapp.generated.resources.settings_meta_episode_cards
 import nuvio.composeapp.generated.resources.settings_meta_episode_cards_description
@@ -191,6 +196,26 @@ internal fun LazyListScope.metaScreenSettingsContent(
                         isTablet = isTablet,
                         onCheckedChange = { MetaScreenSettingsRepository.setHeroTrailerPlayback(it) },
                     )
+                    if (isDesktop) {
+                        SettingsGroupDivider(isTablet = isTablet)
+                        SettingsChipRow(
+                            title = stringResource(Res.string.settings_meta_hero_trailer_layout),
+                            description = stringResource(Res.string.settings_meta_hero_trailer_layout_description),
+                            isTablet = isTablet,
+                        ) {
+                            HeroTrailerLayout.entries.forEach { layout ->
+                                val label = when (layout) {
+                                    HeroTrailerLayout.Backdrop -> Res.string.settings_meta_hero_trailer_backdrop
+                                    HeroTrailerLayout.Corner -> Res.string.settings_meta_hero_trailer_corner
+                                }
+                                Chip(
+                                    label = stringResource(label),
+                                    selected = uiState.heroTrailerLayout == layout,
+                                    onClick = { MetaScreenSettingsRepository.setHeroTrailerLayout(layout) },
+                                )
+                            }
+                        }
+                    }
                 }
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(

@@ -1,7 +1,7 @@
 package com.nuvio.app.features.trailer
 
 /** Renderer requirements must be part of stream selection and the cache identity. */
-enum class TrailerPlaybackTarget { NATIVE_PLAYER, FRAME_PREVIEW }
+enum class TrailerPlaybackTarget { NATIVE_PLAYER, FRAME_PREVIEW, DESKTOP_DETAILS_HERO }
 
 expect object TrailerPlaybackResolver {
     suspend fun resolveFromYouTubeUrl(youtubeUrl: String, forceRefresh: Boolean = false, target: TrailerPlaybackTarget = TrailerPlaybackTarget.NATIVE_PLAYER): TrailerPlaybackSource?

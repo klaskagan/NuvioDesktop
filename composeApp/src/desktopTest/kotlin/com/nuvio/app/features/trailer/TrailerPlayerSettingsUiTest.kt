@@ -5,6 +5,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.*
 import com.nuvio.app.AppEnvironment
+import com.nuvio.app.features.details.HeroTrailerLayout
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
 import com.nuvio.app.features.settings.metaScreenSettingsContent
 import org.junit.Test
@@ -34,4 +35,23 @@ class TrailerPlayerSettingsUiTest {
             assertEquals(TrailerPlayerBackend.YouTube, MetaScreenSettingsRepository.uiState.value.trailerPlayerBackend)
         }
     }
+
+    @Test fun heroLayoutDefaultsToBackdropAndPersistsCornerAcrossProfileReload() = runDesktopComposeUiTest(width = 1000, height = 900) {
+        check(System.getProperty("nuvio.test.isolatedHome") == "true")
+        MetaScreenSettingsRepository.resetToDefaults()
+        setContent {
+            AppEnvironment {
+                val settings by MetaScreenSettingsRepository.uiState.collectAsState()
+                LazyColumn { metaScreenSettingsContent(isTablet = true, uiState = settings) }
+            }
+        }
+        onNodeWithText("Backdrop").performScrollTo().assertIsSelected()
+        onNodeWithText("Corner").performClick().assertIsSelected()
+        runOnIdle {
+            MetaScreenSettingsRepository.onProfileChanged()
+            assertEquals(HeroTrailerLayout.Corner, MetaScreenSettingsRepository.uiState.value.heroTrailerLayout)
+        }
+        onNodeWithText("Corner").assertIsSelected()
+    }
+
 }

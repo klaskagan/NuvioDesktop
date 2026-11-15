@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
+import io.github.kdroidfilter.composemediaplayer.LocalVideoFrameDrawn
 import io.github.kdroidfilter.composemediaplayer.subtitle.ComposeSubtitleLayer
 import io.github.kdroidfilter.composemediaplayer.util.drawScaledImage
 import io.github.kdroidfilter.composemediaplayer.util.toCanvasModifier
@@ -49,6 +50,7 @@ fun MacVideoPlayerSurface(
             // Force recomposition when currentFrameState changes
             val currentFrame by remember(playerState) { playerState.currentFrameState }
 
+            val onFrameDrawn = LocalVideoFrameDrawn.current
             currentFrame?.let { frame ->
                 Canvas(
                     modifier =
@@ -58,11 +60,13 @@ fun MacVideoPlayerSurface(
                             playerState.metadata.height,
                         ),
                 ) {
+                    val canvasSize = IntSize(size.width.toInt(), size.height.toInt())
                     drawScaledImage(
                         image = frame,
-                        dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                        dstSize = canvasSize,
                         contentScale = contentScale,
                     )
+                    onFrameDrawn?.invoke(IntSize(frame.width, frame.height), canvasSize)
                 }
             }
 

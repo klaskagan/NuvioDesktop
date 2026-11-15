@@ -3,6 +3,7 @@ package com.nuvio.app.features.details.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,14 +18,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.IntSize
 import com.nuvio.app.features.player.desktop.DesktopPlaybackSource
+import com.nuvio.app.features.trailer.DesktopHeroPlaylist
 import com.nuvio.app.features.trailer.TrailerExtractionPlatform
 import io.github.kdroidfilter.composemediaplayer.InitialPlayerState
+import io.github.kdroidfilter.composemediaplayer.LocalVideoFrameDrawn
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
 import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.IOException
 
 private const val TrailerFillFrameScale = 1.35f
 
@@ -42,39 +48,63 @@ actual fun HeroTrailerPlayerSurface(
     onError: () -> Unit,
 ) {
     key(sourceUrl, sourceAudioUrl, startPositionMillis) {
-        DesktopTrailerPlayerSession(
+        val surface = rememberDesktopTrailerSession(
             sourceUrl = sourceUrl,
             sourceAudioUrl = sourceAudioUrl,
             playWhenReady = playWhenReady,
             muted = muted,
             startPositionMillis = startPositionMillis,
-            fillFrame = fillFrame,
-            modifier = modifier,
             onReady = onReady,
             onEnded = onEnded,
             onError = onError,
+        )
+        surface(modifier, fillFrame)
+    }
+}
+
+@Composable
+internal actual fun rememberDesktopHeroTrailer(
+    preview: DesktopHeroTrailerPreview?,
+    playWhenReady: Boolean,
+    muted: Boolean,
+    onReady: () -> Unit,
+    onTerminal: () -> Unit,
+): (@Composable (Modifier, Boolean) -> Unit)? = if (preview == null) {
+    null
+} else {
+    key(preview.watchUrl, preview.rendition) {
+        rememberDesktopTrailerSession(
+            sourceUrl = preview.rendition.videoUrl,
+            sourceAudioUrl = preview.rendition.audioUrl,
+            playWhenReady = playWhenReady,
+            muted = muted,
+            startPositionMillis = 0,
+            onReady = onReady,
+            onEnded = onTerminal,
+            onError = onTerminal,
+            preview = preview,
         )
     }
 }
 
 @Composable
-private fun DesktopTrailerPlayerSession(
+private fun rememberDesktopTrailerSession(
     sourceUrl: String,
     sourceAudioUrl: String?,
     playWhenReady: Boolean,
     muted: Boolean,
     startPositionMillis: Long,
-    fillFrame: Boolean,
-    modifier: Modifier,
     onReady: () -> Unit,
     onEnded: () -> Unit,
     onError: () -> Unit,
-) {
+    preview: DesktopHeroTrailerPreview? = null,
+): @Composable (Modifier, Boolean) -> Unit {
     val player = rememberVideoPlayerState()
-    val preparedSource = remember(sourceUrl, sourceAudioUrl) {
+    val preparedSource = remember(sourceUrl, sourceAudioUrl, preview?.rendition) {
         DesktopPlaybackSource(sourceUrl, sourceAudioUrl, true, TrailerExtractionPlatform.defaultHeaders)
     }
     DisposableEffect(preparedSource) { onDispose { preparedSource.close() } }
+    val latestPlayWhenReady = rememberUpdatedState(playWhenReady)
     val callbackScope = rememberCoroutineScope()
     val latestOnReady = rememberUpdatedState(onReady)
     val latestOnEnded = rememberUpdatedState(onEnded)
@@ -108,52 +138,73 @@ private fun DesktopTrailerPlayerSession(
             "compose player open ${TrailerExtractionPlatform.describeUrl(sourceUrl)} " +
                 "separateAudio=${!sourceAudioUrl.isNullOrBlank()} startMs=$startPositionMillis",
         )
-        player.openUri(
-            uri = preparedSource.videoUrl,
-            audioUri = preparedSource.audioUrl,
-            initializeplayerState = InitialPlayerState.PAUSE,
-        )
-
-        val opened = withTimeoutOrNull(12_000L) {
-            snapshotFlow { (player.hasMedia && player.hasVideoFrame) to player.error }
-                .first { (hasFrame, error) -> hasFrame || error != null }
+        if (preview != null && TrailerExtractionPlatform.diagnosticsEnabled) {
+            val rendition = preview.rendition
+            TrailerExtractionPlatform.diagnostic(
+                "hero opening title=${preview.title} url=${preview.watchUrl} " +
+                    "rendition=${dimensions(rendition.width, rendition.height)} pinnedHls=${rendition.pinnedPlaylist != null} " +
+                    "codecs=${rendition.codecs ?: "unknown"}",
+            )
         }
-        val error = opened?.second ?: player.error
-        if (opened == null || error != null) {
-            if (!terminalReported) {
-                terminalReported = true
-                TrailerExtractionPlatform.diagnostic(
-                    "blocked stage=compose_player_open detail=${error ?: "timeout"}",
-                )
-                latestOnError.value()
-            }
+        val playlist = try {
+            preview?.rendition?.pinnedPlaylist?.let(::DesktopHeroPlaylist)
+        } catch (error: IOException) {
+            terminalReported = true
+            TrailerExtractionPlatform.diagnostic("blocked stage=hero_playlist error=${error::class.simpleName}")
+            latestOnError.value()
             return@LaunchedEffect
         }
+        try {
+            val startPlaying = preview != null && latestPlayWhenReady.value
+            player.openUri(
+                uri = playlist?.url ?: preparedSource.videoUrl,
+                audioUri = preparedSource.audioUrl,
+                initializeplayerState = if (startPlaying) InitialPlayerState.PLAY else InitialPlayerState.PAUSE,
+            )
 
-        if (startPositionMillis > 0L && player.duration > 0.0) {
-            val normalizedPosition = (
-                startPositionMillis.toDouble() /
-                    (player.duration * 1_000.0) *
-                    1_000.0
-                ).toFloat()
-            player.seekTo(normalizedPosition)
+            val opened = withTimeoutOrNull(12_000L) {
+                snapshotFlow {
+                    val hasFrame = player.hasMedia && (preview == null || player.hasVideoFrame)
+                    val started = preview == null || !latestPlayWhenReady.value || player.currentTime > 0.0
+                    (hasFrame && started) to player.error
+                }.first { (hasFrame, error) -> hasFrame || error != null }
+            }
+            val error = opened?.second ?: player.error
+            if (opened == null || error != null) {
+                if (!terminalReported) {
+                    terminalReported = true
+                    TrailerExtractionPlatform.diagnostic(
+                        "blocked stage=compose_player_open detail=${error ?: "timeout"}",
+                    )
+                    latestOnError.value()
+                }
+                return@LaunchedEffect
+            }
+
+            if (startPositionMillis > 0L && player.duration > 0.0) {
+                val normalizedPosition = (
+                    startPositionMillis.toDouble() /
+                        (player.duration * 1_000.0) *
+                        1_000.0
+                    ).toFloat()
+                player.seekTo(normalizedPosition)
+            }
+            mediaReady = true
+            TrailerExtractionPlatform.diagnostic("compose player ready playing=${latestPlayWhenReady.value}")
+            latestOnReady.value()
+            if (playlist != null) awaitCancellation()
+        } finally {
+            playlist?.close()
         }
-        mediaReady = true
-        if (playWhenReady) {
-            player.play()
-        }
-        TrailerExtractionPlatform.diagnostic("compose player ready playing=$playWhenReady")
-        latestOnReady.value()
     }
 
-    LaunchedEffect(player, playWhenReady, mediaReady) {
-        if (mediaReady) {
-            if (playWhenReady) {
-                player.play()
-            } else {
-                player.pause()
-            }
+    LaunchedEffect(player, playWhenReady, mediaReady, terminalReported) {
+        if (terminalReported || (preview == null && !mediaReady)) return@LaunchedEffect
+        if (!mediaReady) {
+            // A pinned HLS preview may need to play before its first frame arrives.
+            snapshotFlow { player.hasMedia }.first { it }
         }
+        if (playWhenReady) player.play() else player.pause()
     }
 
     LaunchedEffect(player, muted) {
@@ -175,18 +226,50 @@ private fun DesktopTrailerPlayerSession(
             }
     }
 
-    Box(modifier = modifier.clipToBounds()) {
-        VideoPlayerSurface(
-            playerState = player,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    if (fillFrame) {
-                        scaleX = TrailerFillFrameScale
-                        scaleY = TrailerFillFrameScale
-                    }
-                },
-            contentScale = if (fillFrame) ContentScale.Crop else ContentScale.Fit,
-        )
+    val onFrameDrawn: ((IntSize, IntSize) -> Unit)? =
+        if (preview != null && TrailerExtractionPlatform.diagnosticsEnabled) {
+            val sizes = remember { HeroFrameMeasurements() }
+            val reportFrame: (IntSize, IntSize) -> Unit = { frameBuffer, drawingSurface ->
+                val current = frameBuffer to drawingSurface
+                val previous = sizes.last
+                if (preview.visible && previous != current) {
+                    sizes.last = current
+                    val event = if (previous == null) "first_frame" else "size_changed"
+                    TrailerExtractionPlatform.diagnostic(
+                        "hero $event title=${preview.title} url=${preview.watchUrl} " +
+                            "rendition=${dimensions(preview.rendition.width, preview.rendition.height)} " +
+                            "frameBuffer=${dimensions(frameBuffer.width, frameBuffer.height)} " +
+                            "drawingSurfacePx=${dimensions(drawingSurface.width, drawingSurface.height)}",
+                    )
+                }
+            }
+            reportFrame
+        } else {
+            null
+        }
+    return { modifier, fillFrame ->
+        Box(modifier = modifier.clipToBounds()) {
+            CompositionLocalProvider(LocalVideoFrameDrawn provides onFrameDrawn) {
+                VideoPlayerSurface(
+                    playerState = player,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            if (fillFrame) {
+                                scaleX = TrailerFillFrameScale
+                                scaleY = TrailerFillFrameScale
+                            }
+                        },
+                    contentScale = if (fillFrame) ContentScale.Crop else ContentScale.Fit,
+                )
+            }
+        }
     }
 }
+
+private class HeroFrameMeasurements {
+    var last: Pair<IntSize, IntSize>? = null
+}
+
+private fun dimensions(width: Int, height: Int): String =
+    if (width > 0 && height > 0) "${width}x$height" else "unknown"
