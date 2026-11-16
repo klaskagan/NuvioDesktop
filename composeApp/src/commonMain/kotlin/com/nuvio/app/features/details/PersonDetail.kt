@@ -13,4 +13,17 @@ data class PersonDetail(
     val knownFor: String?,
     val movieCredits: List<MetaPreview>,
     val tvCredits: List<MetaPreview>,
+    val creditGenreIds: Map<String, Set<Int>> = emptyMap(),
+    val actingCredits: List<ActingCredit> = emptyList(),
+    val allCredits: List<MetaPreview> = emptyList(),
+)
+
+enum class ActingCreditKind { Movie, TvMovie, Video, TvSeries }
+
+data class ActingCredit(
+    val media: MetaPreview,
+    val characters: List<String>,
+    val kind: ActingCreditKind = if (media.type == "series") ActingCreditKind.TvSeries else ActingCreditKind.Movie,
+    val episodeCount: Int? = null,
+    val episodeCountIsMinimum: Boolean = false,
 )

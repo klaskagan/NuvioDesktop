@@ -51,6 +51,8 @@ fun DetailPosterRailSection(
     sourceLabel: String? = null,
     onPosterClick: ((MetaPreview) -> Unit)? = null,
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
+    onViewAllClick: (() -> Unit)? = null,
+    viewAllPillSize: com.nuvio.app.core.ui.NuvioViewAllPillSize = com.nuvio.app.core.ui.NuvioViewAllPillSize.Default,
 ) {
     if (items.isEmpty()) return
     val posterCardStyle = rememberPosterCardStyleUiState()
@@ -92,6 +94,9 @@ fun DetailPosterRailSection(
                 bottom = rowHoverInset,
             ),
             key = { item -> item.stableKey() },
+            onViewAllClick = onViewAllClick,
+            viewAllPillSize = viewAllPillSize,
+            onTitleClick = onViewAllClick?.takeIf { isDesktop },
         ) { item ->
             val landscape = posterCardStyle.catalogLandscapeModeEnabled || item.posterShape == PosterShape.Landscape
             HomePosterCard(

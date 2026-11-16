@@ -1715,6 +1715,25 @@
     <string name="person_born">Born %1$s%2$s</string>
     <string name="person_died">Died %1$s</string>
     <string name="person_known_for">Known for: %1$s</string>
+    <string name="person_known_for_shelf">Known For</string>
+    <string name="person_acting_timeline">Acting Timeline</string>
+    <string name="person_unknown_date">Unknown date</string>
+    <string name="person_year_newest">Release year • Newest first</string>
+    <string name="person_year_oldest">Release year • Oldest first</string>
+    <string name="person_all_release_dates">All release dates</string>
+    <string name="person_credit_tv_movie">TV Movie</string>
+    <string name="person_credit_video">Video</string>
+    <string name="person_credit_tv_series">TV Series</string>
+    <string name="person_credit_episode_minimum">%1$d+ episodes</string>
+    <plurals name="person_credit_episode_count">
+        <item quantity="one">%1$d episode</item>
+        <item quantity="other">%1$d episodes</item>
+    </plurals>
+    <string name="person_release_status">Release status</string>
+    <string name="person_released">Released</string>
+    <string name="person_aired">Aired</string>
+    <string name="person_no_matching_credits">No credits match these filters.</string>
+    <string name="person_clear_filters">Clear filters</string>
     <string name="person_latest">Latest</string>
     <string name="person_load_failed">Could not load details for %1$s</string>
     <string name="person_popular">Popular</string>

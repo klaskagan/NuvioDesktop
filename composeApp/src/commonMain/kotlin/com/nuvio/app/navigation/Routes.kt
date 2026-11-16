@@ -47,6 +47,7 @@ data class PersonDetailRoute(
     val personPhoto: String? = null,
     val castAvatarTransitionKey: String? = null,
     val preferCrew: Boolean = false,
+    val subview: com.nuvio.app.features.details.PersonSubview? = null,
 ) : AppRoute {
     override val title: String
         get() = personName

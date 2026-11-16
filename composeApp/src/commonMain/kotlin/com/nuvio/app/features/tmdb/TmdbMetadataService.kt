@@ -3,7 +3,9 @@ package com.nuvio.app.features.tmdb
 import com.nuvio.app.isDesktop
 
 import co.touchlab.kermit.Logger
+import io.ktor.http.encodeURLParameter
 import com.nuvio.app.features.addons.httpGetText
+import com.nuvio.app.features.addons.httpRequestRaw
 import com.nuvio.app.features.details.MetaCompany
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.MetaPerson
@@ -11,6 +13,7 @@ import com.nuvio.app.features.details.MetaTrailer
 import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.details.MoreLikeThisSource
 import com.nuvio.app.features.details.PersonDetail
+import kotlinx.coroutines.CancellationException
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.PosterShape
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -49,6 +52,7 @@ object TmdbMetadataService {
     private val moreLikeThisCache = mutableMapOf<String, List<MetaPreview>>()
     private val collectionCache = mutableMapOf<String, Pair<String?, List<MetaPreview>>>()
     private val trailerCache = mutableMapOf<String, List<MetaTrailer>>()
+    private val personCacheLock = SynchronizedObject()
     private val personCache = mutableMapOf<String, PersonDetail>()
     private val entityBrowseCache = mutableMapOf<String, TmdbEntityBrowseData>()
     private val entityHeaderCache = mutableMapOf<String, TmdbEntityHeader>()
@@ -130,7 +134,7 @@ object TmdbMetadataService {
         if (!settings.enabled) return@withContext null
         val language = normalizeTmdbLanguage(settings.language)
         val cacheKey = "$personId:${preferCrewCredits?.toString() ?: "auto"}:$language"
-        personCache[cacheKey]?.let { return@withContext it }
+        synchronized(personCacheLock) { personCache[cacheKey] }?.let { return@withContext it }
 
         try {
             val (person, credits) = coroutineScope {
@@ -149,7 +153,7 @@ object TmdbMetadataService {
                 personDeferred.await() to creditsDeferred.await()
             }
 
-            if (person == null) return@withContext null
+            if (person == null || credits == null) return@withContext null
 
             val isCjkLanguage = language.startsWith("ja") ||
                 language.startsWith("ko") ||
@@ -209,43 +213,7 @@ object TmdbMetadataService {
 
             val preferCrew = preferCrewCredits ?: shouldPreferCrewCredits(person.knownForDepartment)
 
-            val (castMovieCredits, crewMovieCredits, castTvCredits, crewTvCredits) = coroutineScope {
-                val castMovieDeferred = async {
-                    mapPersonMovieCreditsFromCast(
-                        cast = credits?.cast.orEmpty(),
-                        preferredLanguage = language,
-                        englishTitlesById = englishTitlesById,
-                    )
-                }
-                val crewMovieDeferred = async {
-                    mapPersonMovieCreditsFromCrew(
-                        crew = credits?.crew.orEmpty(),
-                        preferredLanguage = language,
-                        englishTitlesById = englishTitlesById,
-                    )
-                }
-                val castTvDeferred = async {
-                    mapPersonTvCreditsFromCast(
-                        cast = credits?.cast.orEmpty(),
-                        preferredLanguage = language,
-                        englishTitlesById = englishTitlesById,
-                    )
-                }
-                val crewTvDeferred = async {
-                    mapPersonTvCreditsFromCrew(
-                        crew = credits?.crew.orEmpty(),
-                        preferredLanguage = language,
-                        englishTitlesById = englishTitlesById,
-                    )
-                }
-                PersonCreditBuckets(
-                    castMovieCredits = castMovieDeferred.await(),
-                    crewMovieCredits = crewMovieDeferred.await(),
-                    castTvCredits = castTvDeferred.await(),
-                    crewTvCredits = crewTvDeferred.await(),
-                )
-            }
-
+            val filmography = mapPersonFilmography(credits, language, englishTitlesById, preferCrew)
             val detail = PersonDetail(
                 tmdbId = person.id ?: personId,
                 name = resolvePersonName(
@@ -260,185 +228,91 @@ object TmdbMetadataService {
                 placeOfBirth = person.placeOfBirth?.takeIf { it.isNotBlank() },
                 profilePhoto = buildImageUrl(person.profilePath, "w500"),
                 knownFor = person.knownForDepartment?.takeIf { it.isNotBlank() },
-                movieCredits = selectPreferredCredits(
-                    preferCrew = preferCrew,
-                    castCredits = castMovieCredits,
-                    crewCredits = crewMovieCredits,
-                ),
-                tvCredits = selectPreferredCredits(
-                    preferCrew = preferCrew,
-                    castCredits = castTvCredits,
-                    crewCredits = crewTvCredits,
-                ),
+                creditGenreIds = filmography.genreIds,
+                actingCredits = filmography.actingCredits,
+                allCredits = filmography.allCredits,
+                movieCredits = filmography.movies,
+                tvCredits = filmography.series,
             )
-            personCache[cacheKey] = detail
+            synchronized(personCacheLock) { personCache[cacheKey] = detail }
             detail
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             log.w(e) { "Failed to fetch person detail for $personId" }
             null
         }
     }
 
+    private val knownForCache = mutableMapOf<Pair<Int, String>, List<MetaPreview>>()
+    private val knownForCacheLock = SynchronizedObject()
+
+    internal fun cachedPersonKnownFor(personId: Int): List<MetaPreview>? {
+        val language = normalizeTmdbLanguage(TmdbSettingsRepository.snapshot().language)
+        return synchronized(knownForCacheLock) { knownForCache[personId to language] }
+    }
+
+    suspend fun fetchPersonKnownFor(person: PersonDetail): List<MetaPreview> =
+        withContext(Dispatchers.Default) {
+            val personId = person.tmdbId
+            val name = person.name
+            val language = normalizeTmdbLanguage(TmdbSettingsRepository.snapshot().language)
+            val key = personId to language
+            synchronized(knownForCacheLock) { knownForCache[key] }?.let { return@withContext it }
+            val websiteKeys = kotlinx.coroutines.withTimeoutOrNull(4_000) {
+                try {
+                    // This public page exposes the full curated order; no API key goes to the website.
+                    val page = httpRequestRaw(
+                        method = "GET",
+                        url = "https://www.themoviedb.org/person/$personId?language=${language.encodeURLParameter()}",
+                        headers = mapOf("Accept" to "text/html"),
+                        body = "",
+                    )
+                    if (page.status in 200..299) websiteKnownForKeys(page.body) else emptyList()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }.orEmpty()
+            if (websiteKeys.isNotEmpty()) {
+                val credits = person.allCredits.associateBy { "${it.type}:${it.id}" }
+                val titles = coroutineScope {
+                    websiteKeys.map { (type, id) ->
+                        async {
+                            val appType = if (type == "tv") "series" else "movie"
+                            credits["$appType:tmdb:$id"] ?: fetch<TmdbPersonCredit>(
+                                "$type/$id", mapOf("language" to language),
+                            )?.copy(mediaType = type)?.toPreview(language, emptyMap())
+                        }
+                    }.mapNotNull { it.await() }
+                }
+                if (titles.size == websiteKeys.size) {
+                    synchronized(knownForCacheLock) { knownForCache[key] = titles }
+                    return@withContext titles
+                }
+                if (titles.isNotEmpty()) return@withContext titles
+            }
+            if (name.isBlank()) return@withContext emptyList()
+            var page = 1
+            while (true) {
+                val response = fetch<TmdbPersonSearchResponse>("search/person", mapOf(
+                    "query" to name, "language" to language, "page" to page.toString(),
+                )) ?: return@withContext emptyList()
+                val items = mapPersonKnownFor(response, personId, language)
+                if (items != null) {
+                    synchronized(knownForCacheLock) { knownForCache[key] = items }
+                    return@withContext items
+                }
+                if (page >= response.totalPages.coerceAtMost(500) || response.results.isEmpty()) break
+                page++
+            }
+            synchronized(knownForCacheLock) { knownForCache[key] = emptyList() }
+            emptyList()
+        }
+
     private fun shouldPreferCrewCredits(knownForDepartment: String?): Boolean {
         val department = knownForDepartment?.trim()?.lowercase() ?: return false
         return department.isNotBlank() && department != "acting" && department != "actors"
-    }
-
-    private data class PersonCreditBuckets(
-        val castMovieCredits: List<MetaPreview>,
-        val crewMovieCredits: List<MetaPreview>,
-        val castTvCredits: List<MetaPreview>,
-        val crewTvCredits: List<MetaPreview>,
-    )
-
-    private fun selectPreferredCredits(
-        preferCrew: Boolean,
-        castCredits: List<MetaPreview>,
-        crewCredits: List<MetaPreview>,
-    ): List<MetaPreview> = when {
-        preferCrew && crewCredits.isNotEmpty() -> crewCredits
-        castCredits.isNotEmpty() -> castCredits
-        else -> crewCredits
-    }
-
-    private fun mapPersonMovieCreditsFromCast(
-        cast: List<TmdbPersonCreditCast>,
-        preferredLanguage: String,
-        englishTitlesById: Map<Int, String>,
-    ): List<MetaPreview> {
-        val seen = mutableSetOf<Int>()
-        return cast
-            .filter { it.mediaType == "movie" && (it.posterPath != null || it.backdropPath != null) }
-            .sortedByDescending { it.voteAverage ?: 0.0 }
-            .mapNotNull { credit ->
-                if (!seen.add(credit.id)) return@mapNotNull null
-                val title = resolvePersonName(
-                    localizedName = credit.title ?: credit.name,
-                    originalName = credit.originalTitle ?: credit.originalName,
-                    fallbackEnglishName = englishTitlesById[credit.id],
-                    preferredLanguage = preferredLanguage,
-                ) ?: return@mapNotNull null
-                val poster = buildImageUrl(credit.posterPath, "w500")
-                    ?: buildImageUrl(credit.backdropPath, "w780")
-                    ?: return@mapNotNull null
-                MetaPreview(
-                    id = "tmdb:${credit.id}",
-                    type = "movie",
-                    name = title,
-                    poster = poster,
-                    banner = buildImageUrl(credit.backdropPath, "w780"),
-                    logo = null,
-                    description = credit.overview?.takeIf { it.isNotBlank() },
-                    releaseInfo = credit.releaseDate?.take(4),
-                    rawReleaseDate = credit.releaseDate,
-                    popularity = credit.popularity,
-                )
-            }
-    }
-
-    private fun mapPersonMovieCreditsFromCrew(
-        crew: List<TmdbPersonCreditCrew>,
-        preferredLanguage: String,
-        englishTitlesById: Map<Int, String>,
-    ): List<MetaPreview> {
-        val seen = mutableSetOf<Int>()
-        return crew
-            .filter { it.mediaType == "movie" && (it.posterPath != null || it.backdropPath != null) }
-            .sortedByDescending { it.voteAverage ?: 0.0 }
-            .mapNotNull { credit ->
-                if (!seen.add(credit.id)) return@mapNotNull null
-                val title = resolvePersonName(
-                    localizedName = credit.title ?: credit.name,
-                    originalName = credit.originalTitle ?: credit.originalName,
-                    fallbackEnglishName = englishTitlesById[credit.id],
-                    preferredLanguage = preferredLanguage,
-                ) ?: return@mapNotNull null
-                val poster = buildImageUrl(credit.posterPath, "w500")
-                    ?: buildImageUrl(credit.backdropPath, "w780")
-                    ?: return@mapNotNull null
-                MetaPreview(
-                    id = "tmdb:${credit.id}",
-                    type = "movie",
-                    name = title,
-                    poster = poster,
-                    banner = buildImageUrl(credit.backdropPath, "w780"),
-                    logo = null,
-                    description = credit.overview?.takeIf { it.isNotBlank() },
-                    releaseInfo = credit.releaseDate?.take(4),
-                    rawReleaseDate = credit.releaseDate,
-                    popularity = credit.popularity,
-                )
-            }
-    }
-
-    private fun mapPersonTvCreditsFromCast(
-        cast: List<TmdbPersonCreditCast>,
-        preferredLanguage: String,
-        englishTitlesById: Map<Int, String>,
-    ): List<MetaPreview> {
-        val seen = mutableSetOf<Int>()
-        return cast
-            .filter { it.mediaType == "tv" && (it.posterPath != null || it.backdropPath != null) }
-            .sortedByDescending { it.voteAverage ?: 0.0 }
-            .mapNotNull { credit ->
-                if (!seen.add(credit.id)) return@mapNotNull null
-                val title = resolvePersonName(
-                    localizedName = credit.name ?: credit.title,
-                    originalName = credit.originalName ?: credit.originalTitle,
-                    fallbackEnglishName = englishTitlesById[credit.id],
-                    preferredLanguage = preferredLanguage,
-                ) ?: return@mapNotNull null
-                val poster = buildImageUrl(credit.posterPath, "w500")
-                    ?: buildImageUrl(credit.backdropPath, "w780")
-                    ?: return@mapNotNull null
-                MetaPreview(
-                    id = "tmdb:${credit.id}",
-                    type = "series",
-                    name = title,
-                    poster = poster,
-                    banner = buildImageUrl(credit.backdropPath, "w780"),
-                    logo = null,
-                    description = credit.overview?.takeIf { it.isNotBlank() },
-                    releaseInfo = credit.firstAirDate?.take(4),
-                    rawReleaseDate = credit.firstAirDate,
-                    popularity = credit.popularity,
-                )
-            }
-    }
-
-    private fun mapPersonTvCreditsFromCrew(
-        crew: List<TmdbPersonCreditCrew>,
-        preferredLanguage: String,
-        englishTitlesById: Map<Int, String>,
-    ): List<MetaPreview> {
-        val seen = mutableSetOf<Int>()
-        return crew
-            .filter { it.mediaType == "tv" && (it.posterPath != null || it.backdropPath != null) }
-            .sortedByDescending { it.voteAverage ?: 0.0 }
-            .mapNotNull { credit ->
-                if (!seen.add(credit.id)) return@mapNotNull null
-                val title = resolvePersonName(
-                    localizedName = credit.name ?: credit.title,
-                    originalName = credit.originalName ?: credit.originalTitle,
-                    fallbackEnglishName = englishTitlesById[credit.id],
-                    preferredLanguage = preferredLanguage,
-                ) ?: return@mapNotNull null
-                val poster = buildImageUrl(credit.posterPath, "w500")
-                    ?: buildImageUrl(credit.backdropPath, "w780")
-                    ?: return@mapNotNull null
-                MetaPreview(
-                    id = "tmdb:${credit.id}",
-                    type = "series",
-                    name = title,
-                    poster = poster,
-                    banner = buildImageUrl(credit.backdropPath, "w780"),
-                    logo = null,
-                    description = credit.overview?.takeIf { it.isNotBlank() },
-                    releaseInfo = credit.firstAirDate?.take(4),
-                    rawReleaseDate = credit.firstAirDate,
-                    popularity = credit.popularity,
-                )
-            }
     }
 
     suspend fun fetchEntityBrowse(
@@ -1580,19 +1454,19 @@ private fun personCreditsContainCjkTitles(credits: TmdbPersonCombinedCreditsResp
         credits.crew.any { containsCjkOrHangul(it.title ?: it.name ?: return@any false) }
 }
 
-private fun englishCreditTitlesById(credits: TmdbPersonCombinedCreditsResponse?): Map<Int, String> {
+private fun englishCreditTitlesById(credits: TmdbPersonCombinedCreditsResponse?): Map<Pair<String?, Int>, String> {
     if (credits == null) return emptyMap()
-    val titles = linkedMapOf<Int, String>()
-    fun putTitle(id: Int, title: String?, name: String?) {
+    val titles = linkedMapOf<Pair<String?, Int>, String>()
+    fun putTitle(type: String?, id: Int, title: String?, name: String?) {
         val text = title?.trim()?.takeIf { it.isNotBlank() }
             ?: name?.trim()?.takeIf { it.isNotBlank() }
             ?: return
         if (!containsCjkOrHangul(text)) {
-            titles.getOrPut(id) { text }
+            titles.getOrPut(type to id) { text }
         }
     }
-    credits.cast.forEach { putTitle(it.id, it.title, it.name) }
-    credits.crew.forEach { putTitle(it.id, it.title, it.name) }
+    credits.cast.forEach { putTitle(it.mediaType, it.id, it.title, it.name) }
+    credits.crew.forEach { putTitle(it.mediaType, it.id, it.title, it.name) }
     return titles
 }
 
@@ -1828,7 +1702,7 @@ private fun List<MetaPerson>.dedupePeople(): List<MetaPerson> {
     return merged.values.toList()
 }
 
-private fun buildImageUrl(path: String?, size: String): String? {
+internal fun buildImageUrl(path: String?, size: String): String? {
     val clean = path?.trim()?.takeIf(String::isNotBlank) ?: return null
     return "https://image.tmdb.org/t/p/$size$clean"
 }
@@ -2161,48 +2035,6 @@ private data class TmdbPersonResponse(
     @SerialName("place_of_birth") val placeOfBirth: String? = null,
     @SerialName("profile_path") val profilePath: String? = null,
     @SerialName("known_for_department") val knownForDepartment: String? = null,
-)
-
-@Serializable
-private data class TmdbPersonCombinedCreditsResponse(
-    val cast: List<TmdbPersonCreditCast> = emptyList(),
-    val crew: List<TmdbPersonCreditCrew> = emptyList(),
-)
-
-@Serializable
-private data class TmdbPersonCreditCast(
-    val id: Int = 0,
-    @SerialName("media_type") val mediaType: String? = null,
-    val title: String? = null,
-    val name: String? = null,
-    @SerialName("original_title") val originalTitle: String? = null,
-    @SerialName("original_name") val originalName: String? = null,
-    val character: String? = null,
-    @SerialName("poster_path") val posterPath: String? = null,
-    @SerialName("backdrop_path") val backdropPath: String? = null,
-    val overview: String? = null,
-    @SerialName("release_date") val releaseDate: String? = null,
-    @SerialName("first_air_date") val firstAirDate: String? = null,
-    @SerialName("vote_average") val voteAverage: Double? = null,
-    val popularity: Double? = null,
-)
-
-@Serializable
-private data class TmdbPersonCreditCrew(
-    val id: Int = 0,
-    @SerialName("media_type") val mediaType: String? = null,
-    val title: String? = null,
-    val name: String? = null,
-    @SerialName("original_title") val originalTitle: String? = null,
-    @SerialName("original_name") val originalName: String? = null,
-    val job: String? = null,
-    @SerialName("poster_path") val posterPath: String? = null,
-    @SerialName("backdrop_path") val backdropPath: String? = null,
-    val overview: String? = null,
-    @SerialName("release_date") val releaseDate: String? = null,
-    @SerialName("first_air_date") val firstAirDate: String? = null,
-    @SerialName("vote_average") val voteAverage: Double? = null,
-    val popularity: Double? = null,
 )
 
 // ─── Entity Browse (Company / Network) Models ───
