@@ -1,6 +1,9 @@
 package com.nuvio.app.features.home.components
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import com.nuvio.app.core.ui.NuvioDesktopAnimation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,14 +41,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -54,6 +62,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,8 +88,10 @@ import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.stableKey
 import com.nuvio.app.features.tmdb.originalTmdbImageUrl
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
@@ -143,6 +157,9 @@ fun HomeHeroSection(
         )
     }
     val coroutineScope = rememberCoroutineScope()
+    val autoAdvanceProgress = remember(pagerState) { Animatable(0f) }
+    var timedPage by remember(pagerState) { mutableIntStateOf(pagerState.settledPage) }
+    var heroHoldActive by remember { mutableStateOf(false) }
     var pagerDragActive by remember { mutableStateOf(false) }
     val autoScrollPage = pagerState.settledPage
 
@@ -158,8 +175,13 @@ fun HomeHeroSection(
     }
 
     ScreenActivityEffect(autoScrollPage, items.size) { active ->
-        if (!active || items.size <= 1) return@ScreenActivityEffect
-        delay(HERO_AUTO_SCROLL_INTERVAL_MS)
+        if (!active || items.size <= 1) {
+            autoAdvanceProgress.snapTo(0f)
+            return@ScreenActivityEffect
+        }
+        autoAdvanceProgress.snapTo(0f)
+        timedPage = autoScrollPage
+        autoAdvanceProgress.runHeroCountdown { heroHoldActive }
         while (pagerState.isScrollInProgress) {
             delay(100L)
         }
@@ -175,6 +197,7 @@ fun HomeHeroSection(
                 pagerState = pagerState,
                 itemCount = items.size,
                 coroutineScope = coroutineScope,
+                onHoldChange = { heroHoldActive = it },
                 onDragActiveChange = { pagerDragActive = it },
             )
             .then(
@@ -224,6 +247,8 @@ fun HomeHeroSection(
                         layout.contentHorizontalPadding,
                     ),
                     coroutineScope = coroutineScope,
+                    timedPage = timedPage,
+                    progress = { autoAdvanceProgress.value },
                     showImdbRating = showImdbRating,
                     showMdbListRatings = showMdbListRatings,
                     onItemClick = onItemClick,
@@ -239,6 +264,8 @@ fun HomeHeroSection(
                     stretchPx = stretchPx,
                     includePagerNeighbors = pagerDragActive,
                     coroutineScope = coroutineScope,
+                    timedPage = timedPage,
+                    progress = { autoAdvanceProgress.value },
                     showImdbRating = showImdbRating,
                     showMdbListRatings = showMdbListRatings,
                     onItemClick = onItemClick,
@@ -442,6 +469,8 @@ private fun DefaultHomeHeroFrame(
     stretchPx: () -> Float,
     includePagerNeighbors: Boolean,
     coroutineScope: CoroutineScope,
+    timedPage: Int,
+    progress: () -> Float,
     showImdbRating: Boolean,
     showMdbListRatings: Boolean,
     onItemClick: ((MetaPreview) -> Unit)?,
@@ -546,6 +575,8 @@ private fun DefaultHomeHeroFrame(
                 itemCount = items.size,
                 pagerState = pagerState,
                 coroutineScope = coroutineScope,
+                timedPage = timedPage,
+                progress = progress,
                 modifier = Modifier.padding(top = if (layout.isTablet) 14.dp else 12.dp),
             )
         }
@@ -564,6 +595,8 @@ private fun DesktopHomeHeroFrame(
     includePagerNeighbors: Boolean,
     contentHorizontalPadding: Dp,
     coroutineScope: CoroutineScope,
+    timedPage: Int,
+    progress: () -> Float,
     showImdbRating: Boolean,
     showMdbListRatings: Boolean,
     onItemClick: ((MetaPreview) -> Unit)?,
@@ -688,6 +721,8 @@ private fun DesktopHomeHeroFrame(
                 itemCount = items.size,
                 pagerState = pagerState,
                 coroutineScope = coroutineScope,
+                timedPage = timedPage,
+                progress = progress,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(
@@ -704,9 +739,13 @@ private fun HeroPageIndicatorRow(
     itemCount: Int,
     pagerState: PagerState,
     coroutineScope: CoroutineScope,
+    timedPage: Int,
+    progress: () -> Float,
     modifier: Modifier = Modifier,
 ) {
     if (itemCount <= 1) return
+
+    val onBackground = MaterialTheme.colorScheme.onBackground
 
     Row(
         modifier = modifier,
@@ -716,6 +755,7 @@ private fun HeroPageIndicatorRow(
         repeat(itemCount) { index ->
             val page = heroPageForItem(pagerState.currentPage, index, itemCount)
             val activeFraction = heroPageVisibility(pagerState, page)
+            val isTimed = index == timedPage % itemCount
             Box(
                 modifier = Modifier
                     .clickable {
@@ -724,13 +764,66 @@ private fun HeroPageIndicatorRow(
                         }
                     }
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.onBackground)
-                    .graphicsLayer {
-                        alpha = 0.35f + (0.57f * activeFraction)
-                    }
+                    .background(onBackground.copy(alpha = 0.35f))
+                    .then(
+                        if (isTimed) {
+                            Modifier.drawBehind {
+                                val fill = heroIndicatorFill(progress())
+                                val fillWidth = size.width * fill
+                                if (fillWidth > 0f) {
+                                    drawRoundRect(
+                                        color = onBackground.copy(alpha = 0.92f * activeFraction),
+                                        size = Size(fillWidth, size.height),
+                                        cornerRadius = CornerRadius(size.height / 2f),
+                                    )
+                                }
+                            }
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .then(
+                        if (isTimed) {
+                            Modifier
+                                .semantics {
+                                    progressBarRangeInfo = ProgressBarRangeInfo(
+                                        current = heroIndicatorFill(progress()),
+                                        range = 0f..1f,
+                                    )
+                                }
+                                .testTag("hero-indicator-progress")
+                        } else {
+                            Modifier
+                        },
+                    )
                     .width(8.dp + (24.dp * activeFraction))
                     .height(8.dp),
             )
+        }
+    }
+}
+
+internal fun heroIndicatorFill(progress: Float): Float = progress.coerceIn(0f, 1f)
+
+private suspend fun Animatable<Float, *>.runHeroCountdown(isHeld: () -> Boolean) {
+    while (value < 1f) {
+        snapshotFlow { isHeld() }.first { !it }
+        coroutineScope {
+            val animation = launch {
+                val remainingMs = ((1f - value) * HERO_AUTO_SCROLL_INTERVAL_MS)
+                    .toInt()
+                    .coerceAtLeast(1)
+                animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(remainingMs, easing = LinearEasing),
+                )
+            }
+            val pause = launch {
+                snapshotFlow { isHeld() }.first { it }
+                animation.cancel()
+            }
+            animation.join()
+            pause.cancel()
         }
     }
 }
@@ -1172,6 +1265,7 @@ private fun Modifier.homeHeroPagerGesture(
     pagerState: PagerState,
     itemCount: Int,
     coroutineScope: CoroutineScope,
+    onHoldChange: (Boolean) -> Unit,
     onDragActiveChange: (Boolean) -> Unit,
 ): Modifier {
     if (itemCount <= 1) return this
@@ -1179,17 +1273,20 @@ private fun Modifier.homeHeroPagerGesture(
     return pointerInput(pagerState, itemCount) {
         awaitEachGesture {
             val down = awaitFirstDown(pass = PointerEventPass.Initial)
-            val widthPx = size.width.toFloat().takeIf { it > 0f } ?: return@awaitEachGesture
-            val velocityTracker = VelocityTracker().apply {
-                addPosition(down.uptimeMillis, down.position)
-            }
-            val startPage = pagerState.currentPage
-            var totalDx = 0f
-            var totalDy = 0f
             var dragging = false
             var settleAnimationStarted = false
 
             try {
+                onHoldChange(true)
+                val widthPx = size.width.toFloat().takeIf { it > 0f } ?: return@awaitEachGesture
+                val velocityTracker = VelocityTracker().apply {
+                    addPosition(down.uptimeMillis, down.position)
+                }
+                val startPage = pagerState.currentPage
+                var totalDx = 0f
+                var totalDy = 0f
+                var verticalDragStarted = false
+
                 while (true) {
                     val event = awaitPointerEvent(pass = PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -1220,14 +1317,17 @@ private fun Modifier.homeHeroPagerGesture(
                     totalDx += delta.x
                     totalDy += delta.y
 
-                    if (!dragging) {
+                    if (!dragging && !verticalDragStarted) {
                         val horizontalDrag =
                             abs(totalDx) > viewConfiguration.touchSlop && abs(totalDx) > abs(totalDy)
                         val verticalDrag =
                             abs(totalDy) > viewConfiguration.touchSlop && abs(totalDy) > abs(totalDx)
 
                         when {
-                            verticalDrag -> break
+                            verticalDrag -> {
+                                verticalDragStarted = true
+                                continue
+                            }
                             horizontalDrag -> {
                                 dragging = true
                                 onDragActiveChange(true)
@@ -1236,12 +1336,18 @@ private fun Modifier.homeHeroPagerGesture(
                         }
                     }
 
+                    if (verticalDragStarted) continue
+
                     pagerState.dispatchRawDelta(-delta.x)
                     change.consume()
                 }
             } finally {
-                if (dragging && !settleAnimationStarted) {
-                    onDragActiveChange(false)
+                try {
+                    if (dragging && !settleAnimationStarted) {
+                        onDragActiveChange(false)
+                    }
+                } finally {
+                    onHoldChange(false)
                 }
             }
         }
