@@ -16,6 +16,10 @@ take precedence; feature-specific contracts remain in feature documentation.
   preserving normal popup scrolling and offscreen/card focus requests, including
   wrapped headers. `ConfiguredCollectionHeroTest` and
   `SeasonalCollectionNavigationTest` cover those boundaries.
+  For grids with an intro or pinned controls, verify full-span items use the
+  viewport width. Fixed-size cells can leave unused width at the end and
+  shift a centered intro to the left. `PersonCreditsNavigationTest` checks
+  centering and opens the pinned filter below Back.
 - Keep toolbar control positions stable across related modes and label changes.
   Reserve the slots of temporarily unavailable controls without leaving invisible
   controls focusable. Account for localized labels when reserving label width.
@@ -36,9 +40,17 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   Do not flash an empty message or a zero count while replacement data is pending.
   Keep successful content/artwork visible during same-account refresh; account or
   profile changes must still clear private content and invalidate stale responses.
+- Retry must restart the failed request. Setting an error screen back to Loading
+  leaves it there when the request effect is keyed only by an unchanged ID.
+  Use the retry counter in `PersonDetailScreen` as the reference.
+  `PersonCreditsNavigationTest` exercises failure, Retry, and the loaded destination.
 - Preserve the visible item's stable key and pixel offset when prepending data.
   Do not reveal earlier items by rebuilding the list at index zero. If an index is
   necessary, derive it from the actual rendered list, including synthetic headers.
+  Reserve the key of an optional initial shelf before its request completes.
+  In the wide actor overview, adding Known For after Movies had already become
+  the first item kept Movies at the viewport top and hid the shelf above it.
+  `PersonCreditsNavigationTest` delays the request and checks the visible order.
 - Wait for the requested data and list layout before revealing a target item.
   In Compose, prefer the existing deferred `requestScrollToItem` pattern when
   reacting to layout updates; forcing `scrollToItem` during measurement caused
@@ -103,11 +115,11 @@ branch integration. `settingsCategoryForName` preserves saved names;
   their date. Distinguish today from selection/focus; skipping an empty date does
   not make the next visible date today. Follow locale week boundaries and labels.
 
-Standalone panels that set a dark background must also own their foreground
-content color. The football lineup screenshot exposed black inherited text on a
-dark Box; use a Material Surface with explicit on-background content color, as
-SettingsCard does. Check the captured FootballLineupsUiTest panel as well as
-semantic text existence, which alone cannot verify readable contrast.
+Panels that own a background must also own readable foreground colors.
+The football lineup and actor catalog screenshots exposed black inherited
+text on dark panels. Use a Material Surface with an explicit content color,
+or use the theme text tokens as the actor catalog does with the shared shelf
+heading. Check rendered captures as well as semantic text existence.
 
 ## Playback control ownership
 
@@ -121,6 +133,22 @@ exercise visible pause/seek/menu buttons in the packaged UI. A lower-level test
 that explicitly passes `true` or only checks decoding cannot catch this regression.
 
 ## Verify transitions, not only settled screens
+
+- When an expansion keeps the same identity panel, preserve that panel and
+  its data while swapping the browse content. Re-entering the actor screen
+  for a catalog recreated the sidebar and replayed its loading placeholder.
+  `PersonCreditsNavigationTest` checks the sidebar bounds and request count
+  during catalog expansion. Clip shelf hover overdraw at the pane boundary so
+  scrolled posters cannot cover the sidebar. Use the same column count for
+  the grid and artwork readiness when fitting a card into the embedded pane.
+  The test compares sidebar pixels after horizontal scrolling and checks the
+  first row against a width that fits four landscape cards.
+  Feed the real scroll offset into the shared narrow actor profile in both
+  views. Reusing its layout with a zero offset suppressed the collapse.
+  The same test partially scrolls the catalog and measures the avatar.
+  Match its starting bounds across the overview and expanded grid. Apply
+  navigation clearance to the pinned filter bar so catalog padding does not
+  move the photo, name, or biography. The test compares all three bounds.
 
 Finish Gradle compilation and tests before launching MainKt for review. A second
 build can rewrite the JAR/classes used by an already running development JVM,

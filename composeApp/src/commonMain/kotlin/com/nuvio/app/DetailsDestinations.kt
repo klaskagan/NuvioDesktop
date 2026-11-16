@@ -17,6 +17,7 @@ import com.nuvio.app.navigation.DetailRoute
 import com.nuvio.app.navigation.EntityBrowseRoute
 import com.nuvio.app.navigation.NuvioNavigator
 import com.nuvio.app.navigation.PersonDetailRoute
+import com.nuvio.app.navigation.LocalUseNativeNavigation
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.person_role_creator
@@ -144,6 +145,10 @@ internal fun PersonDestination(
         initialProfilePhoto = route.personPhoto,
         avatarTransitionKey = route.castAvatarTransitionKey,
         preferCrew = route.preferCrew,
+        initialSubview = route.subview,
+        onOpenNativeSubview = if (LocalUseNativeNavigation.current) {
+            { subview -> if (navController.currentRoute == route) navController.navigate(route.copy(subview = subview)) }
+        } else null,
         onBack = onBack,
         onOpenMeta = rememberOpenMeta(navController),
         sharedTransitionScope = sharedTransitionScope,

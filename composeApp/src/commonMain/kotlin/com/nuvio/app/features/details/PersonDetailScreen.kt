@@ -1,11 +1,12 @@
 package com.nuvio.app.features.details
 
 import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import com.nuvio.app.features.details.components.InlineTmdbRating
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,14 +38,44 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.platform.testTag
+import com.nuvio.app.core.ui.NuvioShelfSectionHeader
+import com.nuvio.app.core.ui.NuvioViewAllPillSize
+import com.nuvio.app.core.ui.PlatformBackHandler
+import com.nuvio.app.core.ui.nuvio
+import com.nuvio.app.features.home.PosterShape
+import com.nuvio.app.features.home.components.ArtworkPrefetchRow
+import com.nuvio.app.features.home.components.HomePosterCard
+import com.nuvio.app.features.home.components.LocalLandscapeRowReveal
+import com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork
+import com.nuvio.app.features.home.components.rememberGridArtworkGates
+import com.nuvio.app.features.home.components.rememberListArtworkPrefetch
+import com.nuvio.app.features.home.stableKey
+import com.nuvio.app.features.watching.application.WatchingState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+
+import kotlinx.datetime.LocalDate
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -80,6 +111,7 @@ import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.features.watchprogress.CurrentDateProvider
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import com.nuvio.app.navigation.LocalUseNativeNavigation
 
@@ -88,6 +120,14 @@ private sealed interface PersonDetailUiState {
     data class Success(val personDetail: PersonDetail) : PersonDetailUiState
     data class Error(val message: String) : PersonDetailUiState
 }
+
+internal class PersonDetailLoaders(
+    val detail: suspend (Int, Boolean) -> PersonDetail? = TmdbMetadataService::fetchPersonDetail,
+    val knownFor: suspend (PersonDetail) -> List<MetaPreview> = TmdbMetadataService::fetchPersonKnownFor,
+    val cachedKnownFor: (Int) -> List<MetaPreview>? = TmdbMetadataService::cachedPersonKnownFor,
+)
+
+internal val LocalPersonDetailLoaders = staticCompositionLocalOf { PersonDetailLoaders() }
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -102,8 +142,16 @@ fun PersonDetailScreen(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier,
+    initialSubview: PersonSubview? = null,
+    onOpenNativeSubview: ((PersonSubview) -> Unit)? = null,
 ) {
-    var uiState by remember(personId) { mutableStateOf<PersonDetailUiState>(PersonDetailUiState.Loading) }
+    val loaders = LocalPersonDetailLoaders.current
+    var localSubview by rememberSaveable(personId, preferCrew) { mutableStateOf<String?>(null) }
+    val subview = initialSubview ?: localSubview?.let(PersonSubview::valueOf)
+    val goBack = { if (localSubview != null) localSubview = null else onBack() }
+    PlatformBackHandler(enabled = localSubview != null, onBack = goBack)
+    var retry by remember(personId, preferCrew) { mutableStateOf(0) }
+    var uiState by remember(personId, preferCrew) { mutableStateOf<PersonDetailUiState>(PersonDetailUiState.Loading) }
     val watchedUiState by remember {
         WatchedRepository.ensureLoaded()
         WatchedRepository.uiState
@@ -111,12 +159,9 @@ fun PersonDetailScreen(
     val fullyWatchedSeriesKeys by WatchedRepository.fullyWatchedSeriesKeys.collectAsStateWithLifecycle()
     val resolvedAvatarTransitionKey = avatarTransitionKey ?: castAvatarSharedTransitionKey(personId)
 
-    LaunchedEffect(personId) {
+    LaunchedEffect(personId, preferCrew, retry, loaders) {
         uiState = PersonDetailUiState.Loading
-        val detail = TmdbMetadataService.fetchPersonDetail(
-            personId = personId,
-            preferCrewCredits = preferCrew,
-        )
+        val detail = loaders.detail(personId, preferCrew)
         uiState = if (detail != null) {
             val pattern = com.nuvio.app.core.poster.CustomPosterUrlRepository.let { repo ->
                 repo.ensureLoaded()
@@ -144,28 +189,41 @@ fun PersonDetailScreen(
             )
             is PersonDetailUiState.Error -> PersonDetailError(
                 message = state.message,
-                onRetry = {
-                    uiState = PersonDetailUiState.Loading
-                    // Retry will be triggered by the LaunchedEffect above if we reset
-                },
+                onRetry = { retry++ },
             )
-            is PersonDetailUiState.Success -> PersonDetailContent(
-                person = state.personDetail,
-                watchedKeys = watchedUiState.watchedKeys,
-                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                onOpenMeta = onOpenMeta,
-                initialProfilePhoto = initialProfilePhoto,
-                avatarTransitionKey = resolvedAvatarTransitionKey,
-                sharedTransitionScope = sharedTransitionScope,
-                animatedVisibilityScope = animatedVisibilityScope,
-            )
+            is PersonDetailUiState.Success -> {
+                val person = state.personDetail
+                val pattern = com.nuvio.app.core.poster.CustomPosterUrlRepository
+                    .patternForScreen(com.nuvio.app.core.poster.CustomPosterScreen.DETAILS)
+                var knownFor by remember(person, loaders, pattern) {
+                    mutableStateOf(loaders.cachedKnownFor(person.tmdbId)?.withCustomPosterUrls(pattern))
+                }
+                LaunchedEffect(person, loaders, pattern) {
+                    if (knownFor == null) knownFor = loaders.knownFor(person).withCustomPosterUrls(pattern)
+                }
+                PersonDetailContent(
+                    person = person,
+                    knownFor = knownFor,
+                    subview = subview,
+                    onOpenSubview = onOpenNativeSubview ?: { localSubview = it.name },
+                    watchedKeys = watchedUiState.watchedKeys,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                    onOpenMeta = onOpenMeta,
+                    onBack = goBack,
+                    initialProfilePhoto = initialProfilePhoto,
+                    avatarTransitionKey = resolvedAvatarTransitionKey,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                )
             }
+        }
+
 
         if (!LocalUseNativeNavigation.current) {
             if (isDesktop) {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                     NuvioBackButton(
-                        onClick = onBack,
+                        onClick = goBack,
                         modifier = Modifier
                             .windowInsetsPadding(WindowInsets.statusBars)
                             .padding(
@@ -181,7 +239,7 @@ fun PersonDetailScreen(
                 }
             } else {
                 IconButton(
-                    onClick = onBack,
+                    onClick = goBack,
                     modifier = Modifier
                         .windowInsetsPadding(WindowInsets.statusBars)
                         .padding(start = 4.dp, top = 4.dp)
@@ -202,183 +260,87 @@ fun PersonDetailScreen(
 @OptIn(ExperimentalSharedTransitionApi::class)
 private fun PersonDetailContent(
     person: PersonDetail,
+    knownFor: List<MetaPreview>?,
+    subview: PersonSubview?,
+    onOpenSubview: (PersonSubview) -> Unit,
     watchedKeys: Set<String>,
-    fullyWatchedSeriesKeys: Set<String> = emptySet(),
+    fullyWatchedSeriesKeys: Set<String>,
     onOpenMeta: (MetaPreview) -> Unit,
-    initialProfilePhoto: String? = null,
+    onBack: () -> Unit,
+    initialProfilePhoto: String?,
     avatarTransitionKey: String,
-    sharedTransitionScope: SharedTransitionScope? = null,
-    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
-    val posterCardStyle = rememberPosterCardStyleUiState()
-    val isLandscapeShelfMode = posterCardStyle.catalogLandscapeModeEnabled
-    val skeletonPosterWidth = if (isLandscapeShelfMode) {
-        landscapePosterWidth(posterCardStyle.widthDp)
-    } else {
-        posterCardStyle.widthDp.dp
-    }
-    val skeletonPosterHeight = if (isLandscapeShelfMode) {
-        landscapePosterHeightForWidth(skeletonPosterWidth)
-    } else {
-        posterCardStyle.heightDp.dp
-    }
-    val accentColor = MaterialTheme.colorScheme.primary
-
-    val allCredits = remember(person.movieCredits, person.tvCredits) {
-        (person.movieCredits + person.tvCredits)
-            .distinctBy { it.id }
-    }
-
-    val todayDate = remember { CurrentDateProvider.todayIsoDate() }
-
-    val popularCredits = remember(allCredits) {
-        allCredits
-            .sortedByDescending { it.popularity ?: 0.0 }
-    }
-
-    val latestCredits = remember(allCredits, todayDate) {
-        allCredits
-            .filter { credit ->
-                val date = credit.rawReleaseDate
-                date != null && date <= todayDate
-            }
-            .sortedByDescending { it.rawReleaseDate ?: "" }
-    }
-
-    val upcomingCredits = remember(allCredits, todayDate) {
-        allCredits
-            .filter { credit ->
-                val date = credit.rawReleaseDate
-                date != null && date > todayDate
-            }
-            .sortedBy { it.rawReleaseDate ?: "" }
-    }
-
-    val scrollState = rememberScrollState()
-    val haptic = LocalHapticFeedback.current
-
-    // Hero collapse: 0 = fully expanded, 1 = fully collapsed
-    val collapseProgress by remember {
-        derivedStateOf {
-            (scrollState.value / HERO_COLLAPSE_SCROLL_RANGE).coerceIn(0f, 1f)
-        }
-    }
-
-    val shouldTriggerCatalogHaptic by remember {
-        derivedStateOf { scrollState.value >= HAPTIC_TRIGGER_SCROLL_THRESHOLD_PX }
-    }
-    var didTriggerCatalogHaptic by remember(person.tmdbId) { mutableStateOf(false) }
-    LaunchedEffect(shouldTriggerCatalogHaptic, didTriggerCatalogHaptic) {
-        if (shouldTriggerCatalogHaptic && !didTriggerCatalogHaptic) {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            didTriggerCatalogHaptic = true
-        }
-    }
-
-    val accentGradient = remember(accentColor) {
+    val accent = MaterialTheme.colorScheme.primary
+    val background = MaterialTheme.colorScheme.background
+    val gradient = remember(accent, background) {
         Brush.verticalGradient(
-            colorStops = arrayOf(
-                0.0f to accentColor.copy(alpha = 0.18f),
-                0.15f to accentColor.copy(alpha = 0.10f),
-                0.30f to accentColor.copy(alpha = 0.04f),
-                0.50f to Color.Transparent,
-            ),
+            0.0f to accent.copy(alpha = 0.18f),
+            0.15f to accent.copy(alpha = 0.10f),
+            0.30f to accent.copy(alpha = 0.04f),
+            0.50f to Color.Transparent,
         )
     }
+    val today = LocalDate.parse(CurrentDateProvider.todayIsoDate())
+    val sections = remember(person, today) {
+        listOf(
+            PersonSubview.Movies to filterPersonCredits(person.movieCredits, PersonCreditQuery(), today),
+            PersonSubview.Series to filterPersonCredits(person.tvCredits, PersonCreditQuery(), today),
+            PersonSubview.Upcoming to upcomingPersonCredits(person, today),
+        ).filter { it.second.isNotEmpty() }
+    }
+    val timeline = remember(person.actingCredits, today) { personActingTimeline(person.actingCredits, today).values.flatten() }
+    val wideList = rememberLazyListState()
+    val compactList = rememberLazyListState()
+    val paneState = rememberSaveableStateHolder()
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(accentGradient),
-        )
-
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val useWideLayout = maxWidth >= PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(),
-            ) {
-                if (useWideLayout) {
-                    WidePersonDetailContent(
-                        person = person,
-                        popularCredits = popularCredits,
-                        latestCredits = latestCredits,
-                        upcomingCredits = upcomingCredits,
-                        watchedKeys = watchedKeys,
-                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                        onOpenMeta = onOpenMeta,
-                        fallbackProfilePhoto = initialProfilePhoto,
-                        avatarTransitionKey = avatarTransitionKey,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                    )
+    BoxWithConstraints(Modifier.fillMaxSize().background(background).background(gradient)) {
+        val wide = maxWidth >= PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH
+        val padding = if (wide) 40.dp else 20.dp
+        val list = if (wide) wideList else compactList
+        val topPadding = if (wide) 34.dp else 48.dp
+        val controlsTopInset = when {
+            wide || LocalUseNativeNavigation.current -> 0.dp
+            isDesktop -> 36.dp
+            else -> 8.dp
+        }
+        Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).padding(top = topPadding)) {
+            if (wide) {
+                PersonIdentitySidebar(
+                    person, initialProfilePhoto, avatarTransitionKey, sharedTransitionScope, animatedVisibilityScope,
+                    Modifier.width(PERSON_DETAIL_WIDE_SIDEBAR_WIDTH).fillMaxHeight().testTag("actor_preview_wide"),
+                )
+                Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outline.copy(alpha = 0.30f)))
+            }
+            Column(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+                if (subview != null) {
+                    paneState.SaveableStateProvider(subview.name) {
+                        PersonExpandedContent(
+                            person, subview, knownFor, padding,
+                            profileHeader = if (!wide) {
+                                { grid ->
+                                    HeroSection(
+                                        person, initialProfilePhoto, avatarTransitionKey, horizontalPadding = 0.dp,
+                                        scrollOffset = {
+                                            heroScrollOffset(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset)
+                                        },
+                                    )
+                                }
+                            } else null,
+                            controlsTopInset = controlsTopInset,
+                            watchedKeys = watchedKeys,
+                            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                            onOpenMeta = onOpenMeta,
+                            onBack = onBack,
+                        )
+                    }
                 } else {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(scrollState)
-                                .windowInsetsPadding(WindowInsets.statusBars)
-                                .padding(top = 48.dp),
-                        ) {
-                            HeroSection(
-                                person = person,
-                                collapseProgress = collapseProgress,
-                                fallbackProfilePhoto = initialProfilePhoto,
-                                avatarTransitionKey = avatarTransitionKey,
-                                sharedTransitionScope = sharedTransitionScope,
-                                animatedVisibilityScope = animatedVisibilityScope,
-                            )
-
-                            if (popularCredits.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(24.dp))
-                                DetailPosterRailSection(
-                                    title = stringResource(Res.string.person_popular),
-                                    items = popularCredits,
-                                    watchedKeys = watchedKeys,
-                                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                                    headerHorizontalPadding = 20.dp,
-                                    onPosterClick = onOpenMeta,
-                                )
-                            }
-
-                            if (latestCredits.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(24.dp))
-                                DetailPosterRailSection(
-                                    title = stringResource(Res.string.person_latest),
-                                    items = latestCredits,
-                                    watchedKeys = watchedKeys,
-                                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                                    headerHorizontalPadding = 20.dp,
-                                    onPosterClick = onOpenMeta,
-                                )
-                            }
-
-                            if (upcomingCredits.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(24.dp))
-                                DetailPosterRailSection(
-                                    title = stringResource(Res.string.person_upcoming),
-                                    items = upcomingCredits,
-                                    watchedKeys = watchedKeys,
-                                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                                    headerHorizontalPadding = 20.dp,
-                                    onPosterClick = onOpenMeta,
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(32.dp))
-                        }
-                        NuvioDesktopVerticalScrollbar(
-                            state = scrollState,
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .fillMaxHeight()
-                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                    paneState.SaveableStateProvider(if (wide) "wide-overview" else "compact-overview") {
+                        PersonOverview(
+                            person, knownFor, sections, timeline, today, list, wide, padding, initialProfilePhoto, avatarTransitionKey,
+                            sharedTransitionScope, animatedVisibilityScope, watchedKeys, fullyWatchedSeriesKeys,
+                            onOpenSubview, onOpenMeta,
                         )
                     }
                 }
@@ -389,108 +351,218 @@ private fun PersonDetailContent(
 
 private val PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH = 900.dp
 private val PERSON_DETAIL_WIDE_SIDEBAR_WIDTH = 392.dp
-
-private const val HERO_COLLAPSE_SCROLL_RANGE = 220f
+private const val HERO_COLLAPSE_SCROLL_RANGE = 220
+private fun heroScrollOffset(firstItem: Int, offset: Int): Int =
+    if (firstItem > 0) HERO_COLLAPSE_SCROLL_RANGE else offset
 private const val HAPTIC_TRIGGER_SCROLL_THRESHOLD_PX = 56
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
-private fun WidePersonDetailContent(
+private fun PersonOverview(
     person: PersonDetail,
-    popularCredits: List<MetaPreview>,
-    latestCredits: List<MetaPreview>,
-    upcomingCredits: List<MetaPreview>,
-    watchedKeys: Set<String>,
-    fullyWatchedSeriesKeys: Set<String> = emptySet(),
-    onOpenMeta: (MetaPreview) -> Unit,
+    knownFor: List<MetaPreview>?,
+    sections: List<Pair<PersonSubview, List<MetaPreview>>>,
+    timeline: List<ActingCredit>,
+    today: LocalDate,
+    list: LazyListState,
+    wide: Boolean,
+    padding: Dp,
     fallbackProfilePhoto: String?,
     avatarTransitionKey: String,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
+    watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String>,
+    onOpenSubview: (PersonSubview) -> Unit,
+    onOpenMeta: (MetaPreview) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(top = 34.dp),
-    ) {
-        PersonIdentitySidebar(
-            person = person,
-            fallbackProfilePhoto = fallbackProfilePhoto,
-            avatarTransitionKey = avatarTransitionKey,
-            sharedTransitionScope = sharedTransitionScope,
-            animatedVisibilityScope = animatedVisibilityScope,
-            modifier = Modifier
-                .width(PERSON_DETAIL_WIDE_SIDEBAR_WIDTH)
-                .fillMaxHeight(),
-        )
-        Box(
-            modifier = Modifier
-                .width(1.dp)
-                .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.30f)),
-        )
-
-        val contentScrollState = rememberScrollState()
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
+    val artworkRows = remember(timeline) {
+        timeline.map { credit ->
+            ArtworkPrefetchRow(credit.media.stableKey(), listOf(credit.media), enhanceTitles = false, forceShape = PosterShape.Poster)
+        }
+    }
+    val artworkIdentity = "actor-timeline:${person.tmdbId}"
+    val prepared = rememberListArtworkPrefetch(list, artworkRows, artworkIdentity)
+    val gates = rememberGridArtworkGates(artworkRows, artworkIdentity, prepared)
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = list,
+            modifier = Modifier.fillMaxSize().testTag("actor_overview"),
+            contentPadding = PaddingValues(bottom = 40.dp),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(contentScrollState)
-                    .padding(start = 40.dp, bottom = 40.dp),
-                verticalArrangement = Arrangement.spacedBy(34.dp),
-            ) {
-                if (popularCredits.isNotEmpty()) {
-                    DetailPosterRailSection(
-                        title = stringResource(Res.string.person_popular),
-                        items = popularCredits,
-                        watchedKeys = watchedKeys,
-                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                        headerHorizontalPadding = 0.dp,
-                        onPosterClick = onOpenMeta,
-                    )
-                }
-
-                if (latestCredits.isNotEmpty()) {
-                    DetailPosterRailSection(
-                        title = stringResource(Res.string.person_latest),
-                        items = latestCredits,
-                        watchedKeys = watchedKeys,
-                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                        headerHorizontalPadding = 0.dp,
-                        onPosterClick = onOpenMeta,
-                    )
-                }
-
-                if (upcomingCredits.isNotEmpty()) {
-                    DetailPosterRailSection(
-                        title = stringResource(Res.string.person_upcoming),
-                        items = upcomingCredits,
-                        watchedKeys = watchedKeys,
-                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                        headerHorizontalPadding = 0.dp,
-                        onPosterClick = onOpenMeta,
+            if (!wide) {
+                item("actor-hero") {
+                    HeroSection(
+                        person, fallbackProfilePhoto, avatarTransitionKey, sharedTransitionScope, animatedVisibilityScope,
+                        scrollOffset = { heroScrollOffset(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset) },
                     )
                 }
             }
-            NuvioDesktopVerticalScrollbar(
-                state = contentScrollState,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .padding(vertical = 8.dp, horizontal = 4.dp),
-            )
+            if (knownFor == null || knownFor.isNotEmpty()) {
+                item("shelf:KnownFor") {
+                    if (knownFor == null) {
+                        // Keep this key at the top while the curated shelf loads. A prepended item
+                        // would leave LazyColumn anchored to Movies after the response arrives.
+                        Spacer(Modifier.height(1.dp))
+                    } else {
+                        DetailPosterRailSection(
+                            title = stringResource(Res.string.person_known_for_shelf),
+                            items = knownFor,
+                            modifier = Modifier.padding(top = if (wide) 0.dp else 24.dp),
+                            watchedKeys = watchedKeys,
+                            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                            headerHorizontalPadding = padding,
+                            onPosterClick = onOpenMeta,
+                            onViewAllClick = { onOpenSubview(PersonSubview.KnownFor) },
+                            viewAllPillSize = NuvioViewAllPillSize.Compact,
+                        )
+                    }
+                }
+            }
+            items(sections, key = { "shelf:${it.first.name}" }) { (section, credits) ->
+                DetailPosterRailSection(
+                    title = stringResource(section.titleResource),
+                    items = credits,
+                    modifier = Modifier.padding(top = if (wide && knownFor.isNullOrEmpty() && section == sections.first().first) 0.dp else 24.dp),
+                    watchedKeys = watchedKeys,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                    headerHorizontalPadding = padding,
+                    onPosterClick = onOpenMeta,
+                    onViewAllClick = { onOpenSubview(section) },
+                    viewAllPillSize = NuvioViewAllPillSize.Compact,
+                )
+            }
+            if (timeline.isNotEmpty()) {
+                item("timeline-heading") {
+                    NuvioShelfSectionHeader(
+                        stringResource(Res.string.person_acting_timeline),
+                        Modifier.padding(start = padding, end = padding, top = 24.dp),
+                        viewAllPillSize = NuvioViewAllPillSize.Compact,
+                    )
+                }
+            }
+            itemsIndexed(timeline, key = { _, credit -> credit.media.stableKey() }) { index, credit ->
+                val media = credit.media
+                val open = { onOpenMeta(media) }
+                val lineColor = MaterialTheme.colorScheme.outline
+                val dotColor = MaterialTheme.nuvio.colors.textMuted
+                val yearWidth = 44.dp
+                val gap = 8.dp
+                val markerWidth = 10.dp
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = padding)
+                        .drawBehind {
+                            val fromStart = (yearWidth + gap + markerWidth / 2).toPx()
+                            val x = if (layoutDirection == LayoutDirection.Ltr) fromStart else size.width - fromStart
+                            val mid = size.height / 2
+                            drawLine(
+                                lineColor, Offset(x, if (index == 0) mid else 0f),
+                                Offset(x, if (index == timeline.lastIndex) mid else size.height), 1.dp.toPx(),
+                            )
+                            drawCircle(dotColor, 3.dp.toPx(), Offset(x, mid))
+                        }
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    val date = media.creditDate()
+                    Text(
+                        date?.year?.toString() ?: "—",
+                        Modifier.width(yearWidth),
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.nuvio.colors.textMuted,
+                    )
+                    Spacer(Modifier.width(markerWidth))
+                    CompositionLocalProvider(
+                        LocalPreparedLandscapeArtwork provides prepared,
+                        LocalLandscapeRowReveal provides gates[media.stableKey()],
+                    ) {
+                        HomePosterCard(
+                            item = media, basePosterWidthDp = 56, respectGlobalPosterStyle = false,
+                            enhanceLandscapeTitles = false, showTitleBelow = false, placeholderTitle = "",
+                            isWatched = WatchingState.isPosterWatched(watchedKeys, media, fullyWatchedSeriesKeys),
+                            onClick = open,
+                        )
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            media.name,
+                            Modifier.clickable(role = Role.Button, onClick = open).padding(vertical = 2.dp),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.nuvio.colors.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        val type = when (credit.kind) {
+                            ActingCreditKind.Movie -> null
+                            ActingCreditKind.TvMovie -> stringResource(Res.string.person_credit_tv_movie)
+                            ActingCreditKind.Video -> stringResource(Res.string.person_credit_video)
+                            ActingCreditKind.TvSeries -> stringResource(Res.string.person_credit_tv_series)
+                        }
+                        val upcoming = date != null && date > today
+                        if (media.sortRating != null || type != null || upcoming) {
+                            val muted = MaterialTheme.nuvio.colors.textMuted
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                media.sortRating?.let { InlineTmdbRating(it, media.voteCount) }
+                                if (media.sortRating != null && type != null) {
+                                    Box(Modifier.size(3.dp).background(muted, CircleShape))
+                                }
+                                val label = listOfNotNull(
+                                    type,
+                                    if (upcoming) stringResource(Res.string.person_upcoming) else null,
+                                ).joinToString(" · ")
+                                if (label.isNotEmpty()) {
+                                    Text(
+                                        label,
+                                        modifier = if (credit.episodeCount != null) Modifier.weight(1f) else Modifier,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = muted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                credit.episodeCount?.let { count ->
+                                    Text(
+                                        if (credit.episodeCountIsMinimum) {
+                                            stringResource(Res.string.person_credit_episode_minimum, count)
+                                        } else {
+                                            pluralStringResource(Res.plurals.person_credit_episode_count, count, count)
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = muted,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
+                        if (credit.characters.isNotEmpty()) {
+                            Text(
+                                credit.characters.joinToString(" · "),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.nuvio.colors.textMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
         }
+        NuvioDesktopVerticalScrollbar(
+            state = list,
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 8.dp, horizontal = 4.dp),
+        )
     }
 }
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
-private fun PersonIdentitySidebar(
+internal fun PersonIdentitySidebar(
     person: PersonDetail,
     fallbackProfilePhoto: String?,
     avatarTransitionKey: String,
@@ -672,12 +744,24 @@ private fun SidebarLabel(text: String) {
 @OptIn(ExperimentalSharedTransitionApi::class)
 private fun HeroSection(
     person: PersonDetail,
-    collapseProgress: Float = 0f,
     fallbackProfilePhoto: String? = null,
     avatarTransitionKey: String,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    horizontalPadding: Dp = 20.dp,
+    scrollOffset: () -> Int,
 ) {
+    val offset = scrollOffset()
+    val collapseProgress = (offset.toFloat() / HERO_COLLAPSE_SCROLL_RANGE).coerceIn(0f, 1f)
+    val haptic = LocalHapticFeedback.current
+    var hapticPlayed by rememberSaveable(person.tmdbId) { mutableStateOf(false) }
+    val shouldPlay = offset >= HAPTIC_TRIGGER_SCROLL_THRESHOLD_PX
+    LaunchedEffect(shouldPlay) {
+        if (shouldPlay && !hapticPlayed) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            hapticPlayed = true
+        }
+    }
     val avatarSize = lerp(140.dp, 72.dp, collapseProgress)
     val heroScale = 1f - (collapseProgress * 0.12f)
     val heroAlpha = 1f - (collapseProgress * 0.35f)
@@ -712,7 +796,7 @@ private fun HeroSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = horizontalPadding)
             .graphicsLayer {
                 scaleX = heroScale
                 scaleY = heroScale
@@ -726,6 +810,7 @@ private fun HeroSection(
             modifier = Modifier
                 .then(avatarSharedElementModifier)
                 .size(avatarSize)
+                .testTag("actor_profile_photo")
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,

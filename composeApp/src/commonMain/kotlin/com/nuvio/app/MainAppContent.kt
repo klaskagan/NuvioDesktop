@@ -1442,7 +1442,10 @@ internal fun MainAppContent(
                 canGoBack = navController.canPopBackStack(),
                 canGoForward = navController.canGoForward,
                 gestureResetKey = desktopHistory?.generation to desktopProfileIdentity,
-                onBack = { navController.popBackStack() },
+                onBack = {
+                    if (navController.currentRoute is PersonDetailRoute) mouseBackInput.backCompleted()
+                    else navController.popBackStack()
+                },
                 onForward = { navController.goForward() },
             ) {
             Box(

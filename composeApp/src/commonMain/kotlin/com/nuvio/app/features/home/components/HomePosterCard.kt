@@ -30,6 +30,8 @@ fun HomePosterCard(
     fillWidth: Boolean = false,
     respectGlobalPosterStyle: Boolean = true,
     rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
+    basePosterWidthDp: Int? = null,
+    placeholderTitle: String? = null,
 ) {
     val providerEvent = item.id.startsWith("go3:programme:")
     val calendar = item.calendarCard
@@ -79,11 +81,11 @@ fun HomePosterCard(
             fallbackImageUrl = if (cleanBackdrop != null) null else fallbackImageUrl,
             onImageError = if (cleanBackdrop != null) ({ cleanImageFailed = true }) else null,
             fillWidth = fillWidth,
-            basePosterWidthDp = (desktopCatalogShelfPosterBaseWidthDp(posterCardStyle.widthDp) * rowStyle.landscapeWidthFactor).roundToInt(),
+            basePosterWidthDp = basePosterWidthDp ?: (desktopCatalogShelfPosterBaseWidthDp(posterCardStyle.widthDp) * rowStyle.landscapeWidthFactor).roundToInt(),
             shape = if (isLandscapeMode) NuvioPosterShape.Landscape else (forcedShape ?: item.posterShape).toNuvioPosterShape(),
             circularArtwork = round,
             artworkBadge = calendar?.let { calendarBadge(it) } ?: item.status?.takeIf { providerEvent }?.uppercase(),
-            placeholderTitle = if (providerEvent) "Go3" else item.name,
+            placeholderTitle = placeholderTitle ?: if (providerEvent) "Go3" else item.name,
             requiredLabels = calendar != null || providerEvent || round,
             secondaryDetailLine = if (isLandscapeMode) calendar?.let { calendarReleaseLabel(it) } else null,
             detailLine = if (calendar != null) calendar.episodeLabel ?: calendarMovieLabel(calendar.media.year) else if (round || isLandscapeMode || posterCardStyle.hideLabelsEnabled) null else item.releaseInfo?.let { formatReleaseDateForDisplay(it) },

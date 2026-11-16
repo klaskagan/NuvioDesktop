@@ -236,56 +236,62 @@ internal fun RatingsRow(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         orderedRatings.forEach { (visuals, rating) ->
-            val ratingTextStyle = MaterialTheme.typography.titleSmall.copy(
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.sp,
-            )
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                Row(
-                    modifier = Modifier.heightIn(min = scoreRowMinHeight),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (visuals.source == PROVIDER_IMDB && !AppFeaturePolicy.imdbRatingLogoEnabled) {
-                        ImdbRatingSourceLabel(
-                            storeTextStyle = ratingTextStyle,
-                            storeTextColor = visuals.valueColor,
-                        )
-                    } else {
-                        val logoHeight = when (rating.rottenTomatoesStatus) {
-                            RottenTomatoesStatus.CERTIFIED_FRESH, RottenTomatoesStatus.VERIFIED_HOT -> 24.dp
-                            else -> 16.dp
-                        }
-                        Image(
-                            painter = painterResource(visuals.logoFor(rating)),
-                            contentDescription = visuals.displayName,
-                            modifier = Modifier.size(width = maxOf(visuals.logoWidth, logoHeight), height = logoHeight),
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = visuals.format(rating.value),
-                        style = ratingTextStyle,
-                        color = visuals.valueColor,
-                    )
-                }
-                formatRatingVotes(rating.votes)?.let { votes ->
-                    Text(
-                        text = votes,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 0.sp,
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
-                }
+                RatingScore(visuals, rating, Modifier.heightIn(min = scoreRowMinHeight))
+                RatingVotes(rating.votes)
             }
         }
+    }
+}
+
+@Composable
+internal fun InlineTmdbRating(score: Double, votes: Int?) {
+    val rating = MetaExternalRating(PROVIDER_TMDB, score * 10, votes = votes?.toLong())
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        RatingScore(tmdbRatingVisuals, rating)
+        RatingVotes(rating.votes)
+    }
+}
+
+@Composable
+private fun RatingScore(visuals: RatingVisuals, rating: MetaExternalRating, modifier: Modifier = Modifier) {
+    val style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.sp)
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (visuals.source == PROVIDER_IMDB && !AppFeaturePolicy.imdbRatingLogoEnabled) {
+            ImdbRatingSourceLabel(storeTextStyle = style, storeTextColor = visuals.valueColor)
+        } else {
+            val logoHeight = when (rating.rottenTomatoesStatus) {
+                RottenTomatoesStatus.CERTIFIED_FRESH, RottenTomatoesStatus.VERIFIED_HOT -> 24.dp
+                else -> 16.dp
+            }
+            Image(
+                painter = painterResource(visuals.logoFor(rating)),
+                contentDescription = visuals.displayName,
+                modifier = Modifier.size(width = maxOf(visuals.logoWidth, logoHeight), height = logoHeight),
+            )
+        }
+        Spacer(Modifier.width(4.dp))
+        Text(visuals.format(rating.value), style = style, color = visuals.valueColor, maxLines = 1)
+    }
+}
+
+@Composable
+private fun RatingVotes(votes: Long?) {
+    formatRatingVotes(votes)?.let { label ->
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.SemiBold,
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
 
@@ -396,6 +402,15 @@ private fun RatingVisuals.logoFor(rating: MetaExternalRating): DrawableResource 
         null -> logo
     }
 
+private val tmdbRatingVisuals = RatingVisuals(
+    source = PROVIDER_TMDB,
+    displayName = "TMDB",
+    logo = Res.drawable.rating_tmdb,
+    logoWidth = 16.dp,
+    valueColor = Color(0xFF01B4E4),
+    format = ::formatWhole,
+)
+
 private val ratingVisuals = listOf(
     RatingVisuals(
         source = PROVIDER_IMDB,
@@ -405,14 +420,7 @@ private val ratingVisuals = listOf(
         valueColor = Color(0xFFF5C518),
         format = ::formatOneDecimal,
     ),
-    RatingVisuals(
-        source = PROVIDER_TMDB,
-        displayName = "TMDB",
-        logo = Res.drawable.rating_tmdb,
-        logoWidth = 16.dp,
-        valueColor = Color(0xFF01B4E4),
-        format = ::formatWhole,
-    ),
+    tmdbRatingVisuals,
     RatingVisuals(
         source = PROVIDER_TRAKT,
         displayName = "Trakt",
