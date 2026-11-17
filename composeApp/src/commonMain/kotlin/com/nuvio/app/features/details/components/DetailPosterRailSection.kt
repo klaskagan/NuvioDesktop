@@ -122,7 +122,7 @@ fun DetailPosterRailSection(
                         .align(Alignment.End)
                         .padding(end = headerHorizontalPadding, top = 4.dp),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = detailsSecondaryTextColor(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

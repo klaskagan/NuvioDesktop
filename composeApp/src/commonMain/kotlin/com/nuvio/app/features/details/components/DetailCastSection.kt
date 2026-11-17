@@ -188,7 +188,7 @@ private fun CastItem(
                 Text(
                     text = person.name.initials(),
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = detailsSecondaryTextColor(),
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -211,7 +211,7 @@ private fun CastItem(
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = sizing.subLabelSize,
                 ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = detailsSecondaryTextColor(),
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

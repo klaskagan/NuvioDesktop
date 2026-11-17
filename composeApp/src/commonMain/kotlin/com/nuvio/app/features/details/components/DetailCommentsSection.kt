@@ -100,7 +100,7 @@ fun DetailCommentsSection(
                     Text(
                         text = error,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = detailsSecondaryTextColor(),
                     )
                     Button(
                         onClick = onRetry,
@@ -118,7 +118,7 @@ fun DetailCommentsSection(
                 Text(
                     text = stringResource(Res.string.detail_comments_empty),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = detailsSecondaryTextColor(),
                 )
             }
 
@@ -223,7 +223,7 @@ private fun CommentCard(
                     color = if (review.hasSpoilerContent) {
                         MaterialTheme.nuvio.colors.warning
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        detailsSecondaryTextColor()
                     },
                     maxLines = 5,
                     overflow = TextOverflow.Ellipsis,
@@ -235,14 +235,14 @@ private fun CommentCard(
                         Text(
                             text = stringResource(Res.string.detail_comments_badge_rating, rating),
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            color = detailsSecondaryTextColor(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)),
                             maxLines = 1,
                         )
                     }
                     Text(
                         text = stringResource(Res.string.detail_comments_likes, review.likes),
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        color = detailsSecondaryTextColor(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -265,7 +265,7 @@ private fun CommentChip(text: String) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = detailsSecondaryTextColor(),
             maxLines = 1,
         )
     }

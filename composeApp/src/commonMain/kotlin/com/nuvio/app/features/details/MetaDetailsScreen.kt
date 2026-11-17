@@ -94,6 +94,7 @@ import com.nuvio.app.core.network.NetworkStatusRepository
 import com.nuvio.app.core.i18n.localizedEpisodeTitle
 import com.nuvio.app.core.i18n.localizedSeasonEpisodeCode
 import com.nuvio.app.core.ui.ArtworkBackdrop
+import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.LocalOnBackdrop
 import com.nuvio.app.core.ui.NuvioBackButton
 import com.nuvio.app.core.ui.NuvioDesktopVerticalScrollbar
@@ -128,6 +129,8 @@ import com.nuvio.app.features.details.components.DetailProductionSection
 import com.nuvio.app.features.details.components.DetailSeriesContent
 import com.nuvio.app.features.details.components.DesktopHeroTrailerPreview
 import com.nuvio.app.features.details.components.rememberDesktopHeroTrailer
+import com.nuvio.app.features.details.components.DesktopArtworkAccent
+import com.nuvio.app.features.details.components.LocalDetailsArtworkText
 import com.nuvio.app.features.details.components.DesktopDetailBackdrop
 import com.nuvio.app.features.details.components.DesktopDetailHero
 import com.nuvio.app.features.details.components.DetailSeriesListEpisode
@@ -780,10 +783,27 @@ fun MetaDetailsScreen(
                 var desktopHeroAttempt by remember(meta.id, heroTrailerCandidates) { mutableStateOf<DesktopHeroTrailerAttempt?>(null) }
                 var heroTrailerReady by remember(meta.id, heroTrailerCandidates) { mutableStateOf(false) }
                 var heroTrailerFinished by remember(meta.id, heroTrailerCandidates) { mutableStateOf(false) }
+                var completedDesktopTrailer by remember(meta.id, heroTrailerCandidates) { mutableStateOf<MetaTrailer?>(null) }
+                var replayDesktopTrailer by remember(meta.id, heroTrailerCandidates) { mutableStateOf<MetaTrailer?>(null) }
+                var replayCount by remember(meta.id, heroTrailerCandidates) { mutableIntStateOf(0) }
+                var fadingDesktopAttempt by remember(meta.id, heroTrailerCandidates) { mutableStateOf<DesktopHeroTrailerAttempt?>(null) }
                 val heroTrailerMuted by HeroTrailerAudioState.muted.collectAsStateWithLifecycle()
-                LaunchedEffect(meta.id, heroTrailerPlaybackEnabled, heroTrailerCandidates, deferredMetaWorkAllowed, isLeavingDetails) {
+                val fadingAttempt = fadingDesktopAttempt
+                LaunchedEffect(fadingAttempt) {
+                    if (fadingAttempt != null) {
+                        delay(NuvioTokens.Motion.sheetEnterMillis.toLong())
+                        if (fadingDesktopAttempt === fadingAttempt) fadingDesktopAttempt = null
+                    }
+                }
+                LaunchedEffect(
+                    meta.id, heroTrailerPlaybackEnabled, heroTrailerCandidates, deferredMetaWorkAllowed, isLeavingDetails, replayCount,
+                ) {
+                    val requestedReplay = replayDesktopTrailer
+                    replayDesktopTrailer = null
                     heroTrailerPlaybackSource = null
                     desktopHeroAttempt = null
+                    completedDesktopTrailer = null
+                    fadingDesktopAttempt = null
                     heroTrailerReady = false
                     heroTrailerFinished = false
                     if (!deferredMetaWorkAllowed || !heroTrailerPlaybackEnabled || isLeavingDetails || heroTrailerCandidates.isEmpty()) {
@@ -791,7 +811,7 @@ fun MetaDetailsScreen(
                     }
                     if (isDesktop) {
                         val started = startDesktopHeroTrailer(
-                            trailers = heroTrailerCandidates,
+                            trailers = listOfNotNull(requestedReplay) + heroTrailerCandidates.filterNot { it == requestedReplay },
                             resolve = { trailer ->
                                 val renditions = TrailerPlaybackResolver.resolveFromYouTubeUrl(
                                     trailer.youtubePlaybackUrl(),
@@ -1083,12 +1103,15 @@ fun MetaDetailsScreen(
                     !isHeroCollapsed.value
                 val attempt = desktopHeroAttempt
                 val desktopTrailer = rememberDesktopHeroTrailer(
-                    preview = if (attempt != null && heroTrailerSourceUrl != null) {
+                    preview = if (attempt != null && heroTrailerPlaybackEnabled && !isLeavingDetails &&
+                        (heroTrailerSourceUrl != null || fadingDesktopAttempt === attempt)
+                    ) {
                         DesktopHeroTrailerPreview(
                             rendition = attempt.rendition,
                             title = meta.name,
                             watchUrl = attempt.trailer.youtubePlaybackUrl(),
                             visible = heroTrailerReady && !isHeroCollapsed.value,
+                            attemptIdentity = attempt,
                         )
                     } else {
                         null
@@ -1096,18 +1119,33 @@ fun MetaDetailsScreen(
                     playWhenReady = heroTrailerPlayWhenReady,
                     muted = heroTrailerMuted,
                     onReady = {
-                        if (attempt != null && desktopHeroAttempt === attempt && !attempt.ready.isCompleted) {
+                        if (attempt != null && desktopHeroAttempt === attempt && !isLeavingDetails && attempt.markReady()) {
                             heroTrailerReady = true
-                            attempt.ready.complete(true)
                         }
                     },
-                    onTerminal = {
-                        if (attempt != null && desktopHeroAttempt === attempt && !attempt.ready.complete(false)) {
-                            heroTrailerReady = false
-                            heroTrailerFinished = true
+                    onTerminal = { end ->
+                        if (attempt != null && desktopHeroAttempt === attempt && !isLeavingDetails) {
+                            attempt.finish(end)?.let { result ->
+                                heroTrailerReady = false
+                                heroTrailerFinished = true
+                                if (result == DesktopHeroTrailerEnd.Completed) {
+                                    completedDesktopTrailer = attempt.trailer
+                                    fadingDesktopAttempt = attempt
+                                }
+                            }
                         }
                     },
                 )
+                val replayCornerTrailer: () -> Unit = {
+                    val completed = completedDesktopTrailer
+                    if (!isLeavingDetails && completed != null) {
+                        completedDesktopTrailer = null
+                        fadingDesktopAttempt = null
+                        desktopHeroAttempt = null
+                        replayDesktopTrailer = completed
+                        replayCount++
+                    }
+                }
                 val headerTarget = if (isHeroCollapsed.value) 1f else 0f
                 val headerProgressState = animateFloatAsState(
                     targetValue = headerTarget,
@@ -1149,6 +1187,12 @@ fun MetaDetailsScreen(
                         metaScreenSettingsUiState.items.any { it.key == key && it.enabled }
                     }
                     val useDesktopDetailLayout = isDesktop && screenMaxWidth >= 1000.dp
+                    val cornerTrailerStyle = metaScreenSettingsUiState.cornerTrailerStyle.takeIf {
+                        useDesktopDetailLayout && heroTrailerPlaybackEnabled &&
+                            metaScreenSettingsUiState.heroTrailerLayout == HeroTrailerLayout.Corner
+                    }
+                    val useCornerAccent = cornerTrailerStyle == CornerTrailerStyle.TvStyle ||
+                        cornerTrailerStyle == CornerTrailerStyle.CleanSplit
                     val viewportHeight = maxHeight
                     val screenHeight = maxHeight
                     val desktopPageHorizontalPadding = desktopPageHorizontalPaddingForWidth(screenMaxWidth.value)
@@ -1160,7 +1204,7 @@ fun MetaDetailsScreen(
                         18.dp
                     }
                     val contentMaxWidth = detailTabletContentMaxWidth(screenMaxWidth, isTablet)
-                    val backdropUrl = meta.background ?: meta.poster
+                    val backdropUrl = meta.background?.takeIf { it.isNotBlank() } ?: meta.poster
                     val backgroundMode = metaScreenSettingsUiState.backgroundMode
                     val cinematicBackground = backgroundMode == MetaScreenBackgroundMode.Cinematic &&
                         !backdropUrl.isNullOrBlank()
@@ -1208,10 +1252,12 @@ fun MetaDetailsScreen(
                     } else {
                         dominantPainterColorState.color
                     }
-                    val dominantBackdropTargetColor = if (dominantColorEnabled) {
-                        dominantBackdropBlendColor(extractedDominantColor, colorScheme.background)
-                    } else {
-                        colorScheme.background
+                    val dominantBackdropTargetColor = when {
+                        useCornerAccent && (dominantBackdropImageBitmap != null || dominantBackdropPainter != null) ->
+                            colorScheme.background.blendTowards(extractedDominantColor, fraction = 0.25f)
+                        !useCornerAccent && dominantColorEnabled ->
+                            dominantBackdropBlendColor(extractedDominantColor, colorScheme.background)
+                        else -> colorScheme.background
                     }
                     val dominantBackdropColor by animateColorAsState(
                         targetValue = dominantBackdropTargetColor,
@@ -1257,7 +1303,7 @@ fun MetaDetailsScreen(
                             MetaScreenBackgroundMode.Cinematic -> if (cinematicBackground && !useDesktopDetailLayout) {
                                 ArtworkBackdrop(image = cinematicBackdrop)
                             }
-                            MetaScreenBackgroundMode.DominantColor -> if (deferredMetaWorkAllowed) {
+                            MetaScreenBackgroundMode.DominantColor -> if (deferredMetaWorkAllowed && !useCornerAccent) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -1265,14 +1311,14 @@ fun MetaDetailsScreen(
                                 )
                             }
                         }
-                        if (useDesktopDetailLayout) {
+                        if (useCornerAccent) {
+                            DesktopArtworkAccent(backdrop = meta.background, poster = meta.poster)
+                        } else if (useDesktopDetailLayout) {
                             DesktopDetailBackdrop(
                                 meta = meta,
                                 viewportHeight = viewportHeight,
-                                heroTrailerReady = heroTrailerReady,
-                                heroTrailer = desktopTrailer,
-                                cornerTrailer = metaScreenSettingsUiState.heroTrailerLayout == HeroTrailerLayout.Corner,
-                                heroHeight = with(LocalDensity.current) { heroHeightPx.intValue.toDp() },
+                                heroTrailerReady = heroTrailerReady && cornerTrailerStyle == null,
+                                heroTrailer = desktopTrailer.takeIf { cornerTrailerStyle == null && heroTrailerSourceUrl != null },
                                 heroGradientColor = dominantBackdropColor.takeIf { dominantColorEnabled },
                                 onBackdropLoaded = { painter -> dominantBackdropPainter = painter },
                             )
@@ -1316,7 +1362,10 @@ fun MetaDetailsScreen(
                                     .background(scrolledBackgroundColor),
                             )
                         }
-                        CompositionLocalProvider(LocalOnBackdrop provides backgroundMode.usesBackdropBackground) {
+                        CompositionLocalProvider(
+                            LocalOnBackdrop provides (!useCornerAccent && backgroundMode.usesBackdropBackground),
+                            LocalDetailsArtworkText provides useCornerAccent,
+                        ) {
                             LazyColumn(
                                 state = listState,
                                 modifier = Modifier
@@ -1340,7 +1389,11 @@ fun MetaDetailsScreen(
                                             onHeightChanged = { heroHeightPx.intValue = it },
                                             heroTrailerSourceUrl = heroTrailerSourceUrl,
                                             heroTrailerReady = heroTrailerReady,
-                                            cornerTrailer = metaScreenSettingsUiState.heroTrailerLayout == HeroTrailerLayout.Corner,
+                                            cornerTrailerStyle = cornerTrailerStyle,
+                                            cornerTrailer = desktopTrailer,
+                                            onCornerArtworkLoaded = { dominantBackdropPainter = it },
+                                            cornerAccent = dominantBackdropColor,
+                                            onReplayCornerTrailer = replayCornerTrailer.takeIf { completedDesktopTrailer != null },
                                             heroTrailerMuted = heroTrailerMuted,
                                             onHeroTrailerMuteToggle = {
                                                 HeroTrailerAudioState.toggleMuted()

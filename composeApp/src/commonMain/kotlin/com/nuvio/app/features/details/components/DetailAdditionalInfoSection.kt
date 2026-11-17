@@ -112,7 +112,11 @@ private fun DetailInfoRow(
                 text = label,
                 modifier = if (isDesktop) Modifier.width(176.dp) else Modifier,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                color = if (LocalDetailsArtworkText.current) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                },
                 fontWeight = FontWeight.SemiBold,
             )
             Text(

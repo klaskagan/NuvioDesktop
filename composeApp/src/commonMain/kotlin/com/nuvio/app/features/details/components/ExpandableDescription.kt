@@ -61,7 +61,7 @@ internal fun ExpandableDescription(
                     stringResource(Res.string.details_show_more)
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = detailsSecondaryTextColor(),
             )
         }
     }

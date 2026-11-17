@@ -1,5 +1,8 @@
 package com.nuvio.app.features.trailer
 
+import com.nuvio.app.features.details.CornerTrailerStyle
+import com.nuvio.app.features.details.DesktopHeroTrailerAttempt
+import com.nuvio.app.features.details.DesktopHeroTrailerEnd
 import com.nuvio.app.features.details.MetaTrailer
 import com.nuvio.app.features.details.rankDesktopHeroTrailers
 import com.nuvio.app.features.details.startDesktopHeroTrailer
@@ -9,6 +12,7 @@ import java.net.URI
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DesktopHeroTrailerTest {
@@ -83,6 +87,30 @@ class DesktopHeroTrailerTest {
         assertTrue(started)
         assertEquals(listOf("4K", "1440p", "1080p"), attempts)
         assertFalse(startDesktopHeroTrailer(listOf(trailer("missing", 0)), { emptyList() }) { error("Unexpected attempt") })
+    }
+
+    @Test fun onlyAReadyRenditionCanReportCompletionAndLateEventsAreIgnored() = runTest {
+        val source = trailer("trailer", 1080)
+        val rendition = HeroTrailerRendition("1080p")
+        val failedStartup = DesktopHeroTrailerAttempt(source, rendition)
+        assertNull(failedStartup.finish(DesktopHeroTrailerEnd.Failed))
+        assertFalse(failedStartup.ready.await())
+        assertFalse(failedStartup.markReady())
+
+        val original = DesktopHeroTrailerAttempt(source, rendition)
+        assertTrue(original.markReady())
+        assertEquals(DesktopHeroTrailerEnd.Completed, original.finish(DesktopHeroTrailerEnd.Completed))
+
+        val replay = DesktopHeroTrailerAttempt(source, rendition)
+        assertNull(original.finish(DesktopHeroTrailerEnd.Failed))
+        assertFalse(replay.ready.isCompleted)
+        assertTrue(replay.markReady())
+        assertEquals(DesktopHeroTrailerEnd.Failed, replay.finish(DesktopHeroTrailerEnd.Failed))
+        assertNull(replay.finish(DesktopHeroTrailerEnd.Completed))
+    }
+
+    @Test fun unknownCornerTrailerStyleFallsBackToTvStyle() {
+        assertEquals(CornerTrailerStyle.TvStyle, CornerTrailerStyle.fromStoredValue("unknown"))
     }
 
     private fun trailer(

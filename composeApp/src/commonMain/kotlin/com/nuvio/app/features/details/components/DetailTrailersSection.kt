@@ -247,7 +247,7 @@ private fun TrailerCard(
             Text(
                 text = year,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = metaFontSize),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = detailsSecondaryTextColor(),
             )
         }
     }

@@ -8,11 +8,26 @@ import kotlinx.coroutines.withTimeoutOrNull
 private const val HeroStartupBudgetMillis = 42_000L
 private const val RenditionStartupMillis = 6_000L
 
+internal enum class DesktopHeroTrailerEnd {
+    Completed,
+    Failed,
+}
+
 internal class DesktopHeroTrailerAttempt(
     val trailer: MetaTrailer,
     val rendition: HeroTrailerRendition,
 ) {
     val ready = CompletableDeferred<Boolean>()
+    private var terminalReported = false
+
+    fun markReady(): Boolean = ready.complete(true)
+
+    // A terminal event before readiness rejects the rendition so startup can try the next one.
+    fun finish(end: DesktopHeroTrailerEnd): DesktopHeroTrailerEnd? {
+        if (terminalReported) return null
+        terminalReported = true
+        return end.takeUnless { ready.complete(false) }
+    }
 }
 
 internal suspend fun startDesktopHeroTrailer(

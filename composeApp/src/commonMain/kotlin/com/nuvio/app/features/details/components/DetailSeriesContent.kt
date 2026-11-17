@@ -136,7 +136,7 @@ fun DetailSeriesContent(
                         stringResource(Res.string.details_series_no_metadata)
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = detailsSecondaryTextColor(),
             )
         }
         return
@@ -162,7 +162,7 @@ fun DetailSeriesContent(
                 Text(
                     text = stringResource(Res.string.details_series_missing_numbers),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = detailsSecondaryTextColor(),
                 )
             }
         }
@@ -490,7 +490,7 @@ private fun SeasonViewModeToggle(
                 fontSize = sizing.seasonToggleTextSize,
                 fontWeight = FontWeight.SemiBold,
             ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = detailsSecondaryTextColor(),
         )
     }
 }
@@ -563,7 +563,7 @@ private fun SeasonTextChipScrollRow(
                     color = if (isSelected) {
                         MaterialTheme.colorScheme.onBackground
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        detailsSecondaryTextColor()
                     },
                 )
             }
@@ -685,7 +685,7 @@ private fun SeasonPosterButton(
                         text = label,
                         modifier = Modifier.padding(horizontal = 12.dp),
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = detailsSecondaryTextColor(),
                         textAlign = TextAlign.Center,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -702,7 +702,7 @@ private fun SeasonPosterButton(
             color = if (isSelected) {
                 MaterialTheme.colorScheme.onBackground
             } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
+                detailsSecondaryTextColor()
             },
             textAlign = TextAlign.Center,
             maxLines = 1,
@@ -1330,7 +1330,7 @@ private fun EpisodeListCard(
                                     fontSize = sizing.metaTextSize,
                                     fontWeight = FontWeight.Medium,
                                 ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                color = detailsSecondaryTextColor(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -1353,7 +1353,7 @@ private fun EpisodeListCard(
                             fontSize = sizing.bodyTextSize,
                             lineHeight = sizing.bodyLineHeight,
                         ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = detailsSecondaryTextColor(),
                         maxLines = sizing.overviewMaxLines,
                         overflow = TextOverflow.Ellipsis,
                     )

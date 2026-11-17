@@ -1,6 +1,7 @@
 package com.nuvio.app.features.details.components
 
 import androidx.compose.runtime.Composable
+import com.nuvio.app.features.details.DesktopHeroTrailerEnd
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 
@@ -28,5 +29,5 @@ internal actual fun rememberDesktopHeroTrailer(
     playWhenReady: Boolean,
     muted: Boolean,
     onReady: () -> Unit,
-    onTerminal: () -> Unit,
+    onTerminal: (DesktopHeroTrailerEnd) -> Unit,
 ): (@Composable (Modifier, Boolean) -> Unit)? = null

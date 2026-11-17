@@ -7,6 +7,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.graphics.toAwtImage
 import com.nuvio.app.AppEnvironment
 import com.nuvio.app.core.ui.NuvioTheme
+import com.nuvio.app.features.details.CornerTrailerStyle
 import com.nuvio.app.features.details.HeroTrailerLayout
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.MetaDetailsRepository
@@ -58,7 +59,7 @@ class TrailerPreviewLiveTest {
         }
     }
 
-    @Test fun detailsHeroDrawsChangingPixelsInBothLayouts() {
+    @Test fun detailsHeroDrawsChangingPixelsInBackdropAndAllCornerStyles() {
         assumeTrue(System.getenv("NUVIO_TRAILER_LIVE_TEST") == "1")
         check(System.getProperty("nuvio.test.isolatedHome") == "true")
         val meta = MetaDetails(
@@ -82,7 +83,10 @@ class TrailerPreviewLiveTest {
             setContent { AppEnvironment { MetaDetailsScreen("movie", meta.id, onBack = {}) } }
             verifyDetailsHeroPixels()
             runOnIdle { MetaScreenSettingsRepository.setHeroTrailerLayout(HeroTrailerLayout.Corner) }
-            verifyDetailsHeroPixels()
+            for (style in CornerTrailerStyle.entries) {
+                runOnIdle { MetaScreenSettingsRepository.setCornerTrailerStyle(style) }
+                verifyDetailsHeroPixels()
+            }
         }
     }
 

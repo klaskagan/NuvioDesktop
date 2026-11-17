@@ -3,6 +3,7 @@ package com.nuvio.app.features.details.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import com.nuvio.app.features.details.DesktopHeroTrailerEnd
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -68,11 +69,11 @@ internal actual fun rememberDesktopHeroTrailer(
     playWhenReady: Boolean,
     muted: Boolean,
     onReady: () -> Unit,
-    onTerminal: () -> Unit,
+    onTerminal: (DesktopHeroTrailerEnd) -> Unit,
 ): (@Composable (Modifier, Boolean) -> Unit)? = if (preview == null) {
     null
 } else {
-    key(preview.watchUrl, preview.rendition) {
+    key(preview.watchUrl, preview.rendition, preview.attemptIdentity) {
         rememberDesktopTrailerSession(
             sourceUrl = preview.rendition.videoUrl,
             sourceAudioUrl = preview.rendition.audioUrl,
@@ -80,8 +81,8 @@ internal actual fun rememberDesktopHeroTrailer(
             muted = muted,
             startPositionMillis = 0,
             onReady = onReady,
-            onEnded = onTerminal,
-            onError = onTerminal,
+            onEnded = { onTerminal(DesktopHeroTrailerEnd.Completed) },
+            onError = { onTerminal(DesktopHeroTrailerEnd.Failed) },
             preview = preview,
         )
     }

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -61,7 +63,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.core.ui.NuvioAsyncImage as AsyncImage
 import com.nuvio.app.core.ui.NuvioDesktopImageScaling
@@ -74,11 +75,15 @@ import com.nuvio.app.core.ui.fullscreenActionHorizontalInsetForWidth
 import com.nuvio.app.core.ui.expandingWideArtworkWidthDp
 import com.nuvio.app.core.ui.isFullscreenActionSupported
 import com.nuvio.app.core.ui.WideDesktopViewportAspectRatio
+import com.nuvio.app.features.details.CornerTrailerStyle
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.formatRuntimeForDisplay
 import com.nuvio.app.features.tmdb.originalTmdbImageUrl
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.detail_logo_content_description
+import nuvio.composeapp.generated.resources.detail_replay_trailer
+import nuvio.composeapp.generated.resources.detail_mute_trailer
+import nuvio.composeapp.generated.resources.detail_unmute_trailer
 import nuvio.composeapp.generated.resources.hero_add_to_library
 import nuvio.composeapp.generated.resources.hero_mark_unwatched
 import nuvio.composeapp.generated.resources.playback_unavailable
@@ -97,8 +102,6 @@ fun DesktopDetailBackdrop(
     viewportHeight: Dp,
     heroTrailerReady: Boolean = false,
     heroTrailer: (@Composable (Modifier, Boolean) -> Unit)? = null,
-    cornerTrailer: Boolean = false,
-    heroHeight: Dp = viewportHeight,
     heroGradientColor: Color? = null,
     blurBackdrop: Boolean = false,
     onBackdropLoaded: (Painter) -> Unit = {},
@@ -113,7 +116,7 @@ fun DesktopDetailBackdrop(
         label = "desktop_detail_hero_trailer_alpha",
     )
     val gradientIntensity by animateFloatAsState(
-        targetValue = if (heroTrailerReady && !cornerTrailer) 0.3f else 1f,
+        targetValue = if (heroTrailerReady) 0.3f else 1f,
         animationSpec = tween(durationMillis = NuvioTokens.Motion.sheetEnterMillis),
         label = "desktop_detail_hero_gradient_intensity",
     )
@@ -163,40 +166,7 @@ fun DesktopDetailBackdrop(
         }
 
         if (heroTrailer != null) {
-            val cornerWidth = minOf(maxWidth * 0.60f, heroHeight.takeIf { it > 0.dp }?.times(16f / 9f) ?: maxWidth)
-            val trailerModifier = if (cornerTrailer) {
-                Modifier.align(Alignment.TopEnd)
-                    .zIndex(1f)
-                    .width(cornerWidth)
-                    .height(cornerWidth * (9f / 16f))
-                    .graphicsLayer(alpha = trailerAlpha, compositingStrategy = CompositingStrategy.Offscreen)
-                    .drawWithCache {
-                        val side = Brush.horizontalGradient(
-                            0f to Color.Transparent,
-                            0.22f to Color.Black.copy(alpha = 0.14f),
-                            0.46f to Color.Black.copy(alpha = 0.44f),
-                            0.76f to Color.Black.copy(alpha = 0.84f),
-                            1f to Color.Black,
-                            endX = size.width * 0.08f,
-                        )
-                        val bottom = Brush.verticalGradient(
-                            0f to Color.Black,
-                            0.40f to Color.Black.copy(alpha = 0.75f),
-                            0.75f to Color.Black.copy(alpha = 0.35f),
-                            1f to Color.Transparent,
-                            startY = size.height * 0.90f,
-                            endY = size.height,
-                        )
-                        onDrawWithContent {
-                            drawContent()
-                            drawRect(side, blendMode = BlendMode.DstIn)
-                            drawRect(bottom, blendMode = BlendMode.DstIn)
-                        }
-                    }
-            } else {
-                backdropModifier.graphicsLayer(alpha = trailerAlpha)
-            }
-            heroTrailer(trailerModifier, true)
+            heroTrailer(backdropModifier.graphicsLayer(alpha = trailerAlpha), true)
         }
 
         Box(
@@ -241,7 +211,11 @@ fun DesktopDetailHero(
     onWatchedClick: () -> Unit,
     onSaveClick: () -> Unit,
     onSaveLongClick: (() -> Unit)?,
-    cornerTrailer: Boolean = false,
+    cornerTrailerStyle: CornerTrailerStyle? = null,
+    cornerTrailer: (@Composable (Modifier, Boolean) -> Unit)? = null,
+    cornerAccent: Color = Color.Unspecified,
+    onCornerArtworkLoaded: (Painter) -> Unit = {},
+    onReplayCornerTrailer: (() -> Unit)? = null,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val space = NuvioTokens.Space
@@ -256,19 +230,45 @@ fun DesktopDetailHero(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 660.dp)
+            .heightIn(min = if (cornerTrailerStyle == null) 660.dp else 460.dp)
             .onSizeChanged { onHeightChanged(it.height) },
     ) {
         val actionHorizontalInset = fullscreenActionHorizontalInsetForWidth(maxWidth.value)
         val pageHorizontalPadding = desktopPageHorizontalPaddingForWidth(maxWidth.value)
 
-        val heroTextWidth = if (cornerTrailer) minOf(760.dp, maxWidth * 0.53f) else 760.dp
+        val mediaInset = if (cornerTrailerStyle == CornerTrailerStyle.TvStyle) 0.dp else pageHorizontalPadding
+        val mediaWidth = (maxWidth - pageHorizontalPadding - mediaInset) * 0.55f
+        val metadataTop = if (cornerTrailerStyle == null) 0.dp else 104.dp
+        if (cornerTrailerStyle != null) {
+            val mediaTop = when (cornerTrailerStyle) {
+                CornerTrailerStyle.TvStyle -> 0.dp
+                CornerTrailerStyle.Framed -> 76.dp
+                CornerTrailerStyle.CleanSplit -> metadataTop
+            }
+            CornerTrailerPanel(
+                meta = meta,
+                style = cornerTrailerStyle,
+                trailer = cornerTrailer,
+                ready = heroTrailerReady,
+                accent = cornerAccent,
+                muted = heroTrailerMuted,
+                onMuteToggle = onHeroTrailerMuteToggle,
+                onArtworkLoaded = onCornerArtworkLoaded,
+                onReplay = onReplayCornerTrailer,
+                modifier = Modifier.align(Alignment.TopEnd)
+                    .padding(top = mediaTop, end = mediaInset)
+                    .width(mediaWidth)
+                    .height(mediaWidth * 9f / 16f),
+            )
+        }
+        val heroTextWidth = if (cornerTrailerStyle == null) 760.dp else minOf(760.dp, maxWidth - mediaWidth - mediaInset)
         Column(
             modifier = Modifier
-                .align(Alignment.BottomStart)
+                .align(if (cornerTrailerStyle == null) Alignment.BottomStart else Alignment.TopStart)
                 .widthIn(max = heroTextWidth)
                 .padding(
                     start = pageHorizontalPadding,
+                    top = metadataTop,
                     end = space.s32,
                     bottom = space.s40,
                 ),
@@ -302,10 +302,14 @@ fun DesktopDetailHero(
             DesktopHeroMetaRow(meta = meta, showOverallRatings = showOverallRatings && !isMdbListActive)
             if (isMdbListActive && meta.externalRatings.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(space.s12))
-                DetailRatingsRow(
-                    ratings = meta.externalRatings,
-                    modifier = Modifier.widthIn(max = 520.dp),
-                )
+                if (cornerTrailerStyle == null) {
+                    DetailRatingsRow(
+                        ratings = meta.externalRatings,
+                        modifier = Modifier.widthIn(max = 520.dp),
+                    )
+                } else {
+                    RatingsRow(ratings = meta.externalRatings, wrap = true)
+                }
             }
             if (meta.genres.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(space.s12))
@@ -316,7 +320,7 @@ fun DesktopDetailHero(
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = NuvioTokens.LetterSpacing.none,
                     ),
-                    color = colorScheme.onSurfaceVariant,
+                    color = detailsSecondaryTextColor(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -386,7 +390,7 @@ fun DesktopDetailHero(
             )
         }
 
-        if (heroTrailerSourceUrl != null) {
+        if (cornerTrailerStyle == null && heroTrailerSourceUrl != null) {
             Surface(
                 onClick = onHeroTrailerMuteToggle,
                 enabled = heroTrailerReady,
@@ -436,6 +440,109 @@ fun DesktopDetailHero(
 }
 
 @Composable
+private fun CornerTrailerPanel(
+    meta: MetaDetails,
+    style: CornerTrailerStyle,
+    trailer: (@Composable (Modifier, Boolean) -> Unit)?,
+    ready: Boolean,
+    accent: Color,
+    muted: Boolean,
+    onMuteToggle: () -> Unit,
+    onArtworkLoaded: (Painter) -> Unit,
+    onReplay: (() -> Unit)?,
+    modifier: Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val framed = style == CornerTrailerStyle.Framed
+    val shape = RoundedCornerShape(if (framed) 10.dp else 4.dp)
+    val trailerAlpha by animateFloatAsState(
+        targetValue = if (ready) 1f else 0f,
+        animationSpec = tween(durationMillis = NuvioTokens.Motion.sheetEnterMillis),
+        label = "corner_trailer_alpha",
+    )
+    Box(modifier = modifier) {
+        if (framed && !ready) {
+            // Give the player its bounds during startup without drawing an empty frame.
+            if (onReplay == null) {
+                trailer?.invoke(Modifier.fillMaxSize().graphicsLayer { alpha = 0f }, true)
+            }
+            return@Box
+        }
+
+        val pictureModifier = when (style) {
+            CornerTrailerStyle.TvStyle -> Modifier
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithCache {
+                    val bottomFade = Brush.verticalGradient(
+                        0f to Color.Black,
+                        0.55f to Color.Black.copy(alpha = 0.65f),
+                        1f to Color.Transparent,
+                        startY = size.height * 0.44f,
+                        endY = size.height,
+                    )
+                    onDrawWithContent {
+                        drawContent()
+                        drawRect(bottomFade, blendMode = BlendMode.DstIn)
+                    }
+                }
+            CornerTrailerStyle.Framed -> Modifier.clip(shape).border(1.dp, colors.onSurface.copy(alpha = 0.24f), shape)
+            CornerTrailerStyle.CleanSplit -> Modifier.clip(shape)
+        }
+        val panelBackground = when (style) {
+            CornerTrailerStyle.TvStyle -> Color.Transparent
+            CornerTrailerStyle.Framed -> colors.background
+            CornerTrailerStyle.CleanSplit -> accent
+        }
+        Box(Modifier.fillMaxSize().then(pictureModifier).background(panelBackground)) {
+            if (!framed) {
+                CornerTrailerArtwork(meta, onArtworkLoaded)
+            }
+            trailer?.invoke(Modifier.fillMaxSize().graphicsLayer { alpha = trailerAlpha }, true)
+        }
+        if (ready) {
+            Surface(
+                onClick = onMuteToggle,
+                modifier = Modifier.align(Alignment.TopStart).padding(12.dp).size(44.dp),
+                shape = CircleShape,
+                color = colors.surfaceVariant.copy(alpha = 0.92f),
+                contentColor = colors.onSurface,
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (muted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                        contentDescription = stringResource(if (muted) Res.string.detail_unmute_trailer else Res.string.detail_mute_trailer),
+                    )
+                }
+            }
+        } else if (!framed && onReplay != null) {
+            FilledTonalButton(
+                onClick = onReplay,
+                modifier = Modifier.align(Alignment.Center),
+            ) {
+                Text(stringResource(Res.string.detail_replay_trailer))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CornerTrailerArtwork(meta: MetaDetails, onArtworkLoaded: (Painter) -> Unit) {
+    val backdrop = meta.background?.takeIf { it.isNotBlank() }
+    val poster = meta.poster?.takeIf { it.isNotBlank() }
+    var backdropFailed by remember(meta.id, backdrop) { mutableStateOf(false) }
+    val artwork = (backdrop.takeUnless { backdropFailed } ?: poster) ?: return
+    AsyncImage(
+        model = originalTmdbImageUrl(artwork),
+        contentDescription = null,
+        modifier = Modifier.fillMaxSize(),
+        contentScale = ContentScale.Crop,
+        desktopImageScaling = NuvioDesktopImageScaling.Disabled,
+        onSuccess = { onArtworkLoaded(it.painter) },
+        onError = { if (artwork == backdrop) backdropFailed = true },
+    )
+}
+
+@Composable
 private fun DesktopHeroMetaRow(meta: MetaDetails, showOverallRatings: Boolean) {
     val colorScheme = MaterialTheme.colorScheme
     val space = NuvioTokens.Space
@@ -480,7 +587,7 @@ private fun DesktopHeroMetaRow(meta: MetaDetails, showOverallRatings: Boolean) {
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = NuvioTokens.LetterSpacing.none,
                     ),
-                    color = colorScheme.onSurfaceVariant,
+                    color = detailsSecondaryTextColor(),
                 )
             }
         }

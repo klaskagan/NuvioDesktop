@@ -215,6 +215,7 @@ internal fun RatingsRow(
     ratings: List<MetaExternalRating>,
     modifier: Modifier = Modifier,
     maxItems: Int = Int.MAX_VALUE,
+    wrap: Boolean = false,
 ) {
     val orderedRatings = remember(ratings, maxItems) {
         val bySource = ratings.associateBy { it.source }
@@ -230,11 +231,7 @@ internal fun RatingsRow(
             rating.rottenTomatoesStatus == RottenTomatoesStatus.VERIFIED_HOT
     }) 24.dp else 20.dp
 
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
+    val ratingItems: @Composable () -> Unit = {
         orderedRatings.forEach { (visuals, rating) ->
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -244,6 +241,19 @@ internal fun RatingsRow(
                 RatingVotes(rating.votes)
             }
         }
+    }
+    if (wrap) {
+        FlowRow(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) { ratingItems() }
+    } else {
+        Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) { ratingItems() }
     }
 }
 
@@ -289,7 +299,7 @@ private fun RatingVotes(votes: Long?) {
             style = MaterialTheme.typography.labelSmall.copy(
                 fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.SemiBold,
             ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = detailsSecondaryTextColor(),
             maxLines = 1,
         )
     }
@@ -325,7 +335,7 @@ internal fun MetaLabelValueRow(
         Text(
             text = "$label:  ",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = detailsSecondaryTextColor(),
             fontWeight = FontWeight.SemiBold,
         )
         Text(

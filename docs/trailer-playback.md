@@ -138,21 +138,40 @@ ordering, the single-variant master and audio group, and fallback.
 ## Desktop Details hero layout
 
 **Settings → Detail Page → Hero trailer layout** persists Backdrop or Corner per
-profile. Backdrop is the default and the layout below 1000 dp. The Corner
-preview sits over the upper-right artwork and its backdrop scrim. Use
-NuvioTV's `ModernHomeHero` crop and 1.35× overscan for encoded letterbox
-bars. Apply its fade curves only to the left 8% and bottom 10% of the video.
-Keeping the backdrop scrim beneath the preview preserves the picture across
-the rest of the corner. Check a letterboxed trailer such as *The Return of the
-King* with the artwork still visible outside the video.
+profile. Backdrop is the default. With hero trailer playback enabled, **Corner
+trailer style** controls desktop Details at 1000 dp of content width or wider.
+Narrower windows use the existing compact layout.
 
-Keep the session returned by `rememberDesktopHeroTrailer` above both layout
-branches in `MetaDetailsScreen`. Moving a player subtree between the backdrop
-and the lazy hero can recreate the player at the breakpoint. Each host draws
-the retained session and owns its fade and mute controls.
-`TrailerPlayerSettingsUiTest` checks selection and persistence. In MainKt,
-resize across the breakpoint and check for a size-change diagnostic with no
-second player open.
+- **TV-style hero** (default) places the preview flush at the top right and fades
+  only its bottom edge into the artwork-derived page accent.
+- **Framed trailer** shows a crisp player over the full backdrop. Completion
+  removes the player and its controls, revealing the underlying artwork.
+- **Clean split header** lines up a crisp media panel with the metadata on the
+  accent surface. Both accent styles show landscape artwork before playback and
+  after completion. Replay appears after a natural end only.
+
+The TV-style and Clean split layouts render the title artwork behind the whole
+Details viewport, including sections below the hero. The image stays fixed as
+content scrolls. A heavily blurred cover crop provides the base and a second
+blurred layer adds a soft glow at the top. Prefer the landscape backdrop and
+fall back to the poster or the theme background. Keep this layer separate from
+the sharp cover and the trailer so the TV-style bottom fade can reveal it.
+Use the scoped lighter secondary text color throughout the artwork-backed
+Details content, including cast roles, trailer dates, and episode metadata.
+
+Keep the session returned by `rememberDesktopHeroTrailer` above the responsive
+layout branches in `MetaDetailsScreen`. The current host draws the retained
+session without reopening it when the window resizes. Replay opens a new attempt
+for the completed trailer through the existing resolver and preserves mute.
+A failed rendition before readiness falls through to the next candidate. Only
+completion from the current ready attempt can enable replay.
+
+`TrailerPlayerSettingsUiTest` checks style selection and persistence, and
+`DesktopHeroTrailerTest` checks terminal events. In MainKt, resize across the
+breakpoint during playback and check for a size-change diagnostic without a
+second player open. Check the sharp left edge of TV-style, the disappearing
+Framed overlay, and a letterboxed trailer such as *The Return of the King*.
+All three retain the existing 1.35× overscan for encoded letterbox bars.
 
 ## Native toolbar pointer re-entry
 
