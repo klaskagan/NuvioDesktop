@@ -87,6 +87,8 @@ const chaptersButton = document.getElementById("chaptersButton");
 const chaptersLabel = document.getElementById("chaptersLabel");
 const chapterTitle = document.getElementById("chapterTitle");
 const chapterMarks = document.getElementById("chapterMarks");
+const seekPreview = document.getElementById("seekPreview");
+const seekPreviewTime = document.getElementById("seekPreviewTime");
 const chaptersModal = document.getElementById("chaptersModal");
 const streamInfoButton = document.getElementById("streamInfoButton");
 const streamInfoLabel = document.getElementById("streamInfoLabel");
@@ -2516,6 +2518,83 @@ const renderChapterMarks = () => {
   setText(chapterTitle, index >= 0 && state.chapterTitleEnabled !== false ? chapters[index].title : "");
 };
 
+// Seek preview: the target time above the bar while hovering or dragging it.
+// Matches the range input's own value mapping (invisible 10px thumb, step of
+// 1/1000) so the shown time is exactly where a click or release will seek.
+// Pointer moves only write text and a transform: geometry is cached and
+// re-measured when the layout can have changed, so the bubble keeps up 1:1.
+const seekThumbWidthPx = 10;
+let seekHoverFraction = null;
+let seekPointerActive = false;
+let seekPreviewVisible = false;
+let seekGeometry = null;
+let seekPreviewText = "";
+let seekPreviewWidth = 0;
+
+const invalidateSeekGeometry = () => {
+  seekGeometry = null;
+};
+
+const currentSeekGeometry = () => {
+  if (!seekGeometry) {
+    const rect = seek.getBoundingClientRect();
+    seekGeometry = {
+      clientLeft: rect.left,
+      width: rect.width,
+      offsetLeft: seek.offsetLeft,
+      offsetTop: seek.offsetTop,
+    };
+  }
+  return seekGeometry;
+};
+
+const seekFractionFromClientX = clientX => {
+  const geometry = currentSeekGeometry();
+  const track = geometry.width - seekThumbWidthPx;
+  if (track <= 0) return 0;
+  const raw = (clientX - geometry.clientLeft - seekThumbWidthPx / 2) / track;
+  return Math.round(Math.max(0, Math.min(1, raw)) * 1000) / 1000;
+};
+
+const hideSeekPreview = () => {
+  if (!seekPreviewVisible) return;
+  seekPreviewVisible = false;
+  seekPreview.classList.remove("visible");
+};
+
+const renderSeekPreview = () => {
+  const durationMs = Math.max(0, Number(state.durationMs) || 0);
+  const scrubbingWithPointer = isScrubbing && seekPointerActive;
+  const fraction = scrubbingWithPointer ? Number(seek.value) / 1000 : seekHoverFraction;
+  if (
+    fraction === null || !Number.isFinite(fraction) || durationMs <= 0 ||
+    !state.controlsVisible || activeModal || playbackErrorText()
+  ) {
+    hideSeekPreview();
+    return;
+  }
+  const positionMs = scrubbingWithPointer ? scrubPositionMs : Math.round(durationMs * fraction);
+  const text = formatTime(positionMs);
+  if (text !== seekPreviewText) {
+    // Tabular digits: the width only changes with the character count.
+    const remeasure = text.length !== seekPreviewText.length || !seekPreviewWidth;
+    seekPreviewText = text;
+    seekPreviewTime.textContent = text;
+    if (remeasure) seekPreviewWidth = seekPreview.offsetWidth;
+  }
+  const geometry = currentSeekGeometry();
+  const center = seekThumbWidthPx / 2 + fraction * Math.max(0, geometry.width - seekThumbWidthPx);
+  const left = Math.max(0, Math.min(Math.max(0, geometry.width - seekPreviewWidth), center - seekPreviewWidth / 2));
+  seekPreview.style.transform =
+    `translate3d(${(geometry.offsetLeft + left).toFixed(1)}px, ${geometry.offsetTop}px, 0)`;
+  if (!seekPreviewVisible) {
+    seekPreviewVisible = true;
+    seekPreview.classList.add("visible");
+  }
+};
+
+window.addEventListener("resize", invalidateSeekGeometry);
+
 const renderActiveModal = (modalOpened = false) => {
   if (activeModal === "tvHandoff") renderTvHandoffList();
   if (activeModal === "audio") renderAudioTrackList();
@@ -3099,6 +3178,9 @@ const renderChrome = () => {
   setAttr(submitIntroButton, "aria-label", state.submitIntroLabel || "Submit Intro");
   setAttr(videoSettingsButton, "aria-label", state.videoSettingsLabel || "Video settings");
   setProgress(positionMs, durationMs, bufferedPositionMs);
+  // Chrome updates can move the bar (chapter title, metadata rows).
+  invalidateSeekGeometry();
+  renderSeekPreview();
   if (showError) {
     skipPrompt.classList.remove("visible", "show-progress");
     setAttr(skipPrompt, "aria-hidden", "true");
@@ -3807,6 +3889,7 @@ seek.addEventListener("input", () => {
   isScrubbing = true;
   scrubPositionMs = rangePositionMs();
   setProgress(scrubPositionMs, state.durationMs, state.bufferedPositionMs);
+  renderSeekPreview();
   send("scrubChange", scrubPositionMs);
 });
 
@@ -3814,10 +3897,37 @@ seek.addEventListener("change", () => {
   noteChromeActivity();
   scrubPositionMs = rangePositionMs();
   isScrubbing = false;
+  seekPointerActive = false;
+  if (!seek.matches(":hover")) seekHoverFraction = null;
   send("scrubFinish", scrubPositionMs);
   state.positionMs = scrubPositionMs;
   render();
 });
+
+const updateSeekHover = event => {
+  seekHoverFraction = seekFractionFromClientX(event.clientX);
+  renderSeekPreview();
+};
+seek.addEventListener("pointerenter", event => {
+  invalidateSeekGeometry();
+  updateSeekHover(event);
+});
+seek.addEventListener("pointermove", updateSeekHover);
+seek.addEventListener("pointerdown", event => {
+  seekPointerActive = true;
+  updateSeekHover(event);
+});
+seek.addEventListener("pointerleave", () => {
+  seekHoverFraction = null;
+  renderSeekPreview();
+});
+const endSeekPointer = () => {
+  if (!seekPointerActive) return;
+  seekPointerActive = false;
+  renderSeekPreview();
+};
+document.addEventListener("pointerup", endSeekPointer, true);
+document.addEventListener("pointercancel", endSeekPointer, true);
 
 volumeSlider.addEventListener("input", event => {
   if (event && !event.isTrusted) return;

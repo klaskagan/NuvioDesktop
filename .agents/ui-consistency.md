@@ -236,6 +236,18 @@ a competing shared Compose hide timer on desktop: it hides stationary hovered
 controls after 3.5 seconds. Verify toolbar hover beyond the idle delay, then pointer
 leave and keyboard menu navigation. Mobile retains its shared timer.
 
+The desktop seek preview (target time, later thumbnails) is part of that WebView
+(`#seekPreview` in `player-ui/controls.*`), not Compose. It shows on bar hover and
+pointer drag, not keyboard/wheel fine-seek, and maps the pointer exactly like the
+range input (10px thumb inset, 1/1000 steps) so the shown time is where a click
+lands. Position it absolutely over `.progress`; it must not move layout.
+Pointer moves must only write its text and a `transform`: reading
+`offsetWidth`/`offsetLeft` per move forced page layout and made the bubble
+visibly trail the cursor in WKWebView. Cache bar geometry (re-measure on enter,
+resize, chrome render) and keep fade/scale on an inner element, never a
+transition on the moving one. Regression check: `scripts/test-seek-preview.cjs`
+(same-frame tracking), then hover-sweep in the real player.
+
 For formation/pitch layouts, scope flex-row rules to actual rows, not every
 direct child. Go3's absolute player markers inherited a 350px minimum height from
 a broad child selector, separating names from shirt numbers. Render a full

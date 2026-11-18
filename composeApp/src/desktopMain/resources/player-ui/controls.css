@@ -1681,6 +1681,68 @@ button:disabled {
   background: rgba(0, 0, 0, .6);
 }
 
+/* Hover/scrub target time above the seek bar. controls.js moves the outer
+   element with a transform only (no layout, no transition) so it tracks the
+   pointer exactly; the inner bubble owns the fade/scale animation. */
+.seek-preview {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.seek-preview-bubble {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  opacity: 0;
+  transform: translateY(calc(-100% - 8px)) scale(.9);
+  transform-origin: 50% 100%;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.seek-preview.visible .seek-preview-bubble {
+  opacity: 1;
+  transform: translateY(calc(-100% - 8px)) scale(1);
+  transition-duration: 120ms;
+}
+
+.seek-preview-time {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .6);
+  color: #fff;
+  font-size: calc(var(--meta) + 1px);
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.seek-preview-frame {
+  width: 160px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1.5px solid rgba(255, 255, 255, .9);
+  border-radius: 10px;
+  background: #000;
+}
+
+.seek-preview-frame[hidden] {
+  display: none;
+}
+
+.seek-preview-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 #chapterList {
   gap: 8px;
 }

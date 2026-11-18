@@ -60,6 +60,8 @@ iosApp/Configuration/DeviceSigning.local.json
 # Movie recommendation behavior and native overlay regression fixture.
 !docs/movie-recommendations.md
 !scripts/test-movie-recommendation-controls.cjs
+# Seek-bar preview regression fixture.
+!scripts/test-seek-preview.cjs
 ![Dd]ocs/go3-live-probe.md
 !scripts/go3-live-probe/
 !scripts/go3-live-probe/**
