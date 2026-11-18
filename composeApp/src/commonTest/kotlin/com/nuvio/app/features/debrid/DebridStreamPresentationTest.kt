@@ -17,6 +17,100 @@ import kotlin.test.assertFalse
 
 class DebridStreamPresentationTest {
     @Test
+    fun expandedLanguagesMatchPlaybackAndRoundTrip() {
+        val languages = DebridStreamLanguage.entries
+        com.nuvio.app.features.player.AvailableLanguageOptions.forEach { option ->
+            kotlin.test.assertTrue(languages.any { it.code == option.code }, option.code)
+        }
+        val preferences = DebridStreamPreferences(
+            preferredLanguages = listOf(DebridStreamLanguage.LT, DebridStreamLanguage.RU),
+            requiredLanguages = listOf(DebridStreamLanguage.RU),
+            excludedLanguages = listOf(DebridStreamLanguage.FR),
+        )
+        val json = kotlinx.serialization.json.Json
+        assertEquals(preferences, json.decodeFromString(
+            DebridStreamPreferences.serializer(),
+            json.encodeToString(DebridStreamPreferences.serializer(), preferences),
+        ))
+        assertEquals(listOf(DebridStreamLanguage.EN), json.decodeFromString(
+            DebridStreamPreferences.serializer(), """{"preferredLanguages":["EN"]}""",
+        ).preferredLanguages)
+    }
+
+    @Test
+    fun expandedStructuredLanguagesAreRecognized() {
+        val source = premiumizeDirectStream(
+            name = "PM Instant", filename = "Movie.2023.1080p.mkv", size = 1_000_000_000,
+        )
+        val resolve = source.clientResolve!!
+        val raw = resolve.stream!!.raw!!
+        val cases = DebridStreamLanguage.entries.filter {
+            it != DebridStreamLanguage.LA
+        }.map { it.code to it } + listOf(
+            "rus" to DebridStreamLanguage.RU, "lit" to DebridStreamLanguage.LT,
+            "русский" to DebridStreamLanguage.RU, "lietuvių" to DebridStreamLanguage.LT,
+        )
+        for ((value, expected) in cases) {
+            val stream = source.copy(clientResolve = resolve.copy(
+                stream = StreamClientResolveStream(raw = raw.copy(
+                    parsed = raw.parsed!!.copy(languages = listOf(value)),
+                )),
+            ))
+            assertContains(DebridStreamMetadata.facts(stream, DebridStreamPreferences()).languages, expected)
+        }
+    }
+
+    @Test
+    fun expandedLanguageReleaseRecognitionAndFiltering() {
+        fun stream(tag: String) = localTorboxStream(
+            filename = "Movie.2023.$tag.1080p.WEB-DL.mkv", size = 1_000_000_000,
+        )
+        for ((tag, language) in listOf(
+            "RUS" to DebridStreamLanguage.RU, "Russian" to DebridStreamLanguage.RU,
+            "русский" to DebridStreamLanguage.RU, "LIT" to DebridStreamLanguage.LT,
+            "Lithuanian" to DebridStreamLanguage.LT, "lietuvių" to DebridStreamLanguage.LT,
+            "Vietnamese" to DebridStreamLanguage.VI,
+        )) {
+            assertContains(DebridStreamMetadata.facts(stream(tag), DebridStreamPreferences()).languages, language)
+        }
+        assertFalse(DebridStreamLanguage.RU in DebridStreamMetadata.facts(
+            stream("нерусский"), DebridStreamPreferences(),
+        ).languages)
+        assertFalse(DebridStreamLanguage.RU in DebridStreamMetadata.facts(
+            stream("MULTI"), DebridStreamPreferences(),
+        ).languages)
+        val titledSource = premiumizeDirectStream(
+            name = "PM Instant", filename = "русский.2023.1080p.mkv", size = 1_000_000_000,
+        )
+        val titleOnly = titledSource.copy(clientResolve = titledSource.clientResolve!!.copy(
+            title = "русский",
+        ))
+        assertFalse(DebridStreamLanguage.RU in DebridStreamMetadata.facts(
+            titleOnly, DebridStreamPreferences(),
+        ).languages)
+        val russian = stream("RUS")
+        val lithuanian = stream("LIT")
+        val unknown = stream("unmarked")
+        val required = DebridSettings(streamPreferences = DebridStreamPreferences(
+            requiredLanguages = listOf(DebridStreamLanguage.RU, DebridStreamLanguage.LT),
+        ))
+        assertEquals(listOf(russian, lithuanian), DebridStreamPresentation.applyPreferences(
+            listOf(russian, lithuanian, unknown), required,
+        ))
+        assertEquals(listOf(lithuanian, unknown), DebridStreamPresentation.applyPreferences(
+            listOf(russian, lithuanian, unknown), required.copy(streamPreferences = DebridStreamPreferences(
+                excludedLanguages = listOf(DebridStreamLanguage.RU),
+            )),
+        ))
+        assertEquals(listOf(lithuanian, russian, unknown), DebridStreamPresentation.applyPreferences(
+            listOf(russian, unknown, lithuanian), required.copy(streamPreferences = DebridStreamPreferences(
+                preferredLanguages = listOf(DebridStreamLanguage.LT, DebridStreamLanguage.RU),
+                sortCriteria = listOf(DebridStreamSortCriterion(DebridStreamSortKey.LANGUAGE)),
+            )),
+        ))
+    }
+
+    @Test
     fun `formats cached addon torrent streams with custom templates`() {
         val stream = localTorboxStream(
             filename = "Lost.S01E01.2160p.WEB-DL.H265.AAC-NAKSU.mkv",
