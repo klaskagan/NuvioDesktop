@@ -38,11 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -244,7 +239,6 @@ fun SearchScreen(
         }
     }
 
-    val focusManager = LocalFocusManager.current
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
     ) {
@@ -335,20 +329,6 @@ fun SearchScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .focusRequester(focusRequester)
-                                .onPreviewKeyEvent { event ->
-                                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                                    when (event.key) {
-                                        // Esc clears the query, then a second Esc leaves the field.
-                                        Key.Escape -> {
-                                            if (query.isNotEmpty()) query = "" else {
-                                                focusRequester.freeFocus()
-                                                focusManager.clearFocus()
-                                            }
-                                            true
-                                        }
-                                        else -> false
-                                    }
-                                }
                                 .onFocusChanged {
                                     isSearchFocused = it.isFocused
                                     if (query.isNotBlank()) focusRequester.captureFocus()
