@@ -6,6 +6,22 @@ import kotlin.test.assertEquals
 class HomeCatalogParserTest {
 
     @Test
+    fun `addon placeholder poster counts as no poster`() {
+        val result = HomeCatalogParser.parseCatalogResponse(
+            """
+            {
+              "metas": [
+                { "id": "tt1636630", "type": "series", "name": "Quiz", "poster": "https://mylistsaddon.com/images/unavailable-poster.svg" },
+                { "id": "tt2", "type": "movie", "name": "Real", "poster": "https://image.tmdb.org/t/p/w500/abc.jpg" }
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals(listOf(null, "https://image.tmdb.org/t/p/w500/abc.jpg"), result.items.map { it.poster })
+    }
+
+    @Test
     fun `parse catalog response de-duplicates repeated metas but preserves raw count`() {
         val result = HomeCatalogParser.parseCatalogResponse(
             """
@@ -70,6 +86,26 @@ class HomeCatalogParserTest {
 
         assertEquals("2027", result.items.single().releaseInfo)
         assertEquals("2027-05-12T00:00:00.000Z", result.items.single().rawReleaseDate)
+    }
+
+    @Test
+    fun `parse catalog response keeps imdb id popularity and vote count`() {
+        val result = HomeCatalogParser.parseCatalogResponse(
+            payload = """
+                {
+                  "metas": [
+                    { "id": "mal:55813", "type": "series", "name": "Mashle", "imdb_id": "tt21209804", "popularity": 8.6414, "vote_count": 8832 },
+                    { "id": "tmdb:1", "type": "movie", "name": "Bad Id", "imdb_id": "N/A" }
+                  ]
+                }
+            """.trimIndent(),
+        )
+
+        val (anime, badId) = result.items
+        assertEquals(setOf("tt21209804"), anime.alternateIds)
+        assertEquals(8.6414, anime.popularity)
+        assertEquals(8832, anime.voteCount)
+        assertEquals(emptySet(), badId.alternateIds)
     }
 
     @Test

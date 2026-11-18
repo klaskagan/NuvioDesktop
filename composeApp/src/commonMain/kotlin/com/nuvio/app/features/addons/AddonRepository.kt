@@ -82,13 +82,7 @@ object AddonRepository {
             },
         )
 
-        storedUrls.forEach { manifestUrl ->
-            val existing = existingByUrl[manifestUrl]
-            val addon = _uiState.value.addons.firstOrNull { it.manifestUrl == manifestUrl }
-            if (addon?.enabled == true && (existing == null || (addon.manifest == null && !addon.isRefreshing))) {
-                refreshAddon(manifestUrl)
-            }
-        }
+        _uiState.value.addons.manifestUrlsNeedingRefresh().forEach(::refreshAddon)
     }
 
     fun onProfileChanged(profileId: Int) {
@@ -145,13 +139,7 @@ object AddonRepository {
                 },
             )
             persist()
-            urls.forEach { url ->
-                val existing = existingByUrl[url]
-                val addon = _uiState.value.addons.firstOrNull { it.manifestUrl == url }
-                if (addon?.enabled == true && (existing == null || (addon.manifest == null && !addon.isRefreshing))) {
-                    refreshAddon(url)
-                }
-            }
+            _uiState.value.addons.manifestUrlsNeedingRefresh().forEach(::refreshAddon)
             initialized = true
             log.i { "pullFromServer() — applied ${urls.size} addons to state" }
         }.onFailure { e ->
@@ -426,7 +414,7 @@ object AddonRepository {
     }
 }
 
-private fun ManagedAddon?.toPendingAddon(
+internal fun ManagedAddon?.toPendingAddon(
     manifestUrl: String,
     userSetName: String? = null,
     enabled: Boolean? = null,

@@ -260,6 +260,14 @@ internal fun settingsSearchEntries(
         pageLabel = contentDiscoveryPage,
         section = stringResource(Res.string.settings_content_discovery_section_search),
     )
+    addRow(
+        page = SettingsPage.ContentDiscovery,
+        key = "hide-unplayable-search-results",
+        title = stringResource(Res.string.settings_content_discovery_hide_unplayable),
+        description = stringResource(Res.string.settings_content_discovery_hide_unplayable_description),
+        pageLabel = contentDiscoveryPage,
+        section = stringResource(Res.string.settings_content_discovery_section_search),
+    )
     addPage(
         page = SettingsPage.Playback,
         key = "playback",

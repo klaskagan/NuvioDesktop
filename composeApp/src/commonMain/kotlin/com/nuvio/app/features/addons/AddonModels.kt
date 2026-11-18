@@ -92,6 +92,14 @@ internal fun List<ManagedAddon>.toOverview(): AddonOverview =
 internal fun List<ManagedAddon>.enabledAddons(): List<ManagedAddon> =
     filter { it.enabled }
 
+/**
+ * Enabled addons still without a manifest. Rebuilding the addon list marks a previously failed addon
+ * as refreshing again, so the retry must not depend on isRefreshing: an addon left "refreshing"
+ * with no fetch running kept Search on skeleton cards forever. refreshAddon skips running fetches.
+ */
+internal fun List<ManagedAddon>.manifestUrlsNeedingRefresh(): List<String> =
+    filter { it.enabled && it.manifest == null }.map { it.manifestUrl }.distinct()
+
 internal fun List<ManagedAddon>.hasPendingEnabledManifests(): Boolean =
     any { addon -> addon.enabled && addon.isRefreshing }
 

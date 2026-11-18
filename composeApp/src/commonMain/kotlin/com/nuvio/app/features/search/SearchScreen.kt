@@ -38,6 +38,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -52,7 +58,7 @@ import com.nuvio.app.core.ui.NuvioNetworkOfflineCard
 import com.nuvio.app.core.ui.NuvioScreenHeader
 import com.nuvio.app.core.ui.nuvioConsumePointerEvents
 import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
-import com.nuvio.app.core.ui.withDuplicateSafeLazyKeys
+import com.nuvio.app.core.ui.LocalPosterCardStyleOverride
 import com.nuvio.app.core.ui.ScreenActivityEffect
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.firstEnabledManifestError
@@ -60,10 +66,9 @@ import com.nuvio.app.features.addons.hasPendingEnabledManifests
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.buildAddonCatalogRefreshSignature
-import com.nuvio.app.features.home.components.HomeCatalogRowSection
+import com.nuvio.app.features.home.components.PosterGridSkeletonRow
 import com.nuvio.app.features.home.components.HomeEmptyStateCard
 import com.nuvio.app.features.home.components.homeSectionHorizontalPaddingForWidth
-import com.nuvio.app.features.home.components.HomeSkeletonRow
 import com.nuvio.app.core.ui.posterGridColumnCountForCatalogWidth
 import com.nuvio.app.features.home.components.posterGridColumnCountForWidth
 import com.nuvio.app.isDesktop
@@ -99,6 +104,7 @@ fun SearchScreen(
     listState: LazyListState = rememberLazyListState(),
     onPosterClick: ((MetaPreview) -> Unit)? = null,
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
+    onPersonClick: ((SearchPerson) -> Unit)? = null,
     searchFocusRequestCount: Int = 0,
     scrollToTopRequests: Flow<Unit> = emptyFlow(),
 ) {
@@ -138,6 +144,7 @@ fun SearchScreen(
     val networkStatusUiState by NetworkStatusRepository.uiState.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     var lastRequestedQuery by rememberSaveable { mutableStateOf<String?>(null) }
+    var searchLandscape by remember { mutableStateOf(SearchPreferencesStorage.loadLandscapeEnabled()) }
     var observedOfflineState by remember { mutableStateOf(false) }
     val discoverInFocus by remember(query, listState) {
         derivedStateOf {
@@ -171,7 +178,12 @@ fun SearchScreen(
         SearchRepository.refreshDiscover(addonsUiState.addons)
     }
 
-    ScreenActivityEffect(query, addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent) { screenActive ->
+    val hideUnplayable by remember {
+        SearchRepository.ensurePreferencesLoaded()
+        SearchRepository.hideUnplayable
+    }.collectAsStateWithLifecycle()
+
+    ScreenActivityEffect(query, addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent, hideUnplayable) { screenActive ->
         if (!screenActive) return@ScreenActivityEffect
         val normalizedQuery = query.trim()
         if (normalizedQuery.isBlank()) {
@@ -188,12 +200,12 @@ fun SearchScreen(
     }
 
 
-    ScreenActivityEffect(query, lastRequestedQuery, uiState.isLoading, uiState.sections) { screenActive ->
+    ScreenActivityEffect(query, lastRequestedQuery, uiState.isLoading, uiState.hasContent) { screenActive ->
         if (!screenActive) return@ScreenActivityEffect
         val normalizedQuery = query.trim()
         if (normalizedQuery.isBlank()) return@ScreenActivityEffect
         if (lastRequestedQuery != normalizedQuery) return@ScreenActivityEffect
-        if (uiState.isLoading || uiState.sections.isEmpty()) return@ScreenActivityEffect
+        if (uiState.isLoading || !uiState.hasContent) return@ScreenActivityEffect
         SearchHistoryRepository.recordSearch(normalizedQuery)
     }
 
@@ -231,10 +243,20 @@ fun SearchScreen(
         }
     }
 
+    val focusManager = LocalFocusManager.current
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
     ) {
         val posterCardStyle = rememberPosterCardStyleUiState()
+        val searchStyle = remember(posterCardStyle, searchLandscape) {
+            posterCardStyle.copy(
+                catalogLandscapeModeEnabled = searchLandscape,
+                cornerRadiusDp = if (searchLandscape) posterCardStyle.cornerRadiusDp.coerceAtMost(8) else posterCardStyle.cornerRadiusDp,
+            )
+        }
+        val searchColumns = remember(maxWidth, posterCardStyle.widthDp, searchLandscape, isDesktop) {
+            searchGridColumns(maxWidth, posterCardStyle.widthDp, searchLandscape)
+        }
         val discoverColumns = remember(maxWidth, maxHeight, posterCardStyle.widthDp, isDesktop) {
             if (isDesktop) {
                 posterGridColumnCountForCatalogWidth(
@@ -254,17 +276,15 @@ fun SearchScreen(
             else -> stringResource(Res.string.compose_nav_search)
         }
 
-        val artworkRows = remember(query, discoverUiState.items, discoverColumns, uiState.sections, maxWidth, posterCardStyle.widthDp, posterCardStyle.catalogLandscapeModeEnabled) {
+        CompositionLocalProvider(LocalPosterCardStyleOverride provides searchStyle.takeIf { query.isNotBlank() }) {
+        val artworkRows = remember(query, discoverUiState.items, discoverColumns, uiState.results, searchColumns) {
             if (query.isBlank()) discoverUiState.items.chunked(discoverColumns).mapIndexed { index, items ->
                 com.nuvio.app.features.home.components.ArtworkPrefetchRow("discover-row:$index", items)
-            } else uiState.sections.withDuplicateSafeLazyKeys { it.key }.map { keyed ->
-                val section = keyed.value
-                com.nuvio.app.features.home.components.ArtworkPrefetchRow(keyed.lazyKey,
-                    if (com.nuvio.app.features.home.components.preservesOriginalLandscapeArtwork(section.title, section.target)) emptyList()
-                    else section.items.take(com.nuvio.app.features.home.components.artworkVisibleCardCount(maxWidth.value, homeSectionPadding.value, posterCardStyle.widthDp, posterCardStyle.catalogLandscapeModeEnabled) + 1))
+            } else uiState.results.chunked(searchColumns).mapIndexed { index, items ->
+                com.nuvio.app.features.home.components.ArtworkPrefetchRow("search-row:$index", items)
             }
         }
-        val artworkIdentity = listOf(query, discoverUiState.selectedCatalogKey, discoverUiState.selectedType, discoverUiState.selectedGenre)
+        val artworkIdentity = listOf(query, discoverUiState.selectedCatalogKey, discoverUiState.selectedType, discoverUiState.selectedGenre, searchLandscape, searchColumns)
         val pageWindow = com.nuvio.app.features.home.components.rememberMediaPrefetchWindow(artworkIdentity)
         val prepared = com.nuvio.app.features.home.components.rememberListArtworkPrefetch(listState, artworkRows,
             artworkIdentity, window = pageWindow)
@@ -298,7 +318,10 @@ fun SearchScreen(
                         topPadding = topChromePadding,
                     )
                     androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(6.dp))
-                    androidx.compose.foundation.layout.Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         NuvioInputField(
                             value = query,
                             onValueChange = {
@@ -308,7 +331,22 @@ fun SearchScreen(
                             placeholder = stringResource(Res.string.compose_search_placeholder),
                             shape = RoundedCornerShape(NuvioTokens.Radius.xl),
                             modifier = Modifier
+                                .weight(1f)
                                 .focusRequester(focusRequester)
+                                .onPreviewKeyEvent { event ->
+                                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                    when (event.key) {
+                                        // Esc clears the query, then a second Esc leaves the field.
+                                        Key.Escape -> {
+                                            if (query.isNotEmpty()) query = "" else {
+                                                focusRequester.freeFocus()
+                                                focusManager.clearFocus()
+                                            }
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }
                                 .onFocusChanged {
                                     isSearchFocused = it.isFocused
                                     if (query.isNotBlank()) focusRequester.captureFocus()
@@ -327,6 +365,15 @@ fun SearchScreen(
                                 null
                             },
                         )
+                        if (query.isNotBlank()) {
+                            SearchPosterOrientationButton(
+                                landscape = searchLandscape,
+                                onToggle = {
+                                    searchLandscape = !searchLandscape
+                                    SearchPreferencesStorage.saveLandscapeEnabled(searchLandscape)
+                                },
+                            )
+                        }
                     }
                     androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(14.dp))
                 }
@@ -372,23 +419,18 @@ fun SearchScreen(
                 val normalizedQuery = query.trim()
                 val isWaitingForSearch = normalizedQuery.isNotBlank() && lastRequestedQuery != normalizedQuery
                 when {
-                    isWaitingForSearch -> {
+                    isWaitingForSearch ||
+                        ((uiState.isLoading || addonManifestsLoading) && !uiState.hasContent) -> {
                         items(2) {
-                            HomeSkeletonRow(
-                                horizontalPadding = homeSectionPadding,
+                            PosterGridSkeletonRow(
+                                columns = searchColumns,
+                                aspectRatio = if (searchLandscape) 16f / 9f else 0.68f,
+                                modifier = Modifier.padding(horizontal = 16.dp),
                             )
                         }
                     }
 
-                    (uiState.isLoading || addonManifestsLoading) && uiState.sections.isEmpty() -> {
-                        items(2) {
-                            HomeSkeletonRow(
-                                horizontalPadding = homeSectionPadding,
-                            )
-                        }
-                    }
-
-                    uiState.sections.isEmpty() -> {
+                    !uiState.hasContent -> {
                         item {
                             SearchEmptyStateCard(
                                 reason = uiState.emptyStateReason,
@@ -414,31 +456,21 @@ fun SearchScreen(
                     }
 
                     else -> {
-                        items(
-                            items = uiState.sections.withDuplicateSafeLazyKeys { section -> section.key },
-                            key = { section -> section.lazyKey },
-                        ) { keyedSection ->
-                            val section = keyedSection.value
-                            HomeCatalogRowSection(
-                                section = section,
-                                modifier = Modifier.padding(bottom = 12.dp),
-                                watchedKeys = watchedUiState.watchedKeys,
-                                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                                onPosterClick = onPosterClick,
-                                onPosterLongClick = onPosterLongClick,
-                            )
-                        }
-                        if (uiState.isLoading) {
-                            item(key = "search_loading_more") {
-                                HomeSkeletonRow(
-                                    horizontalPadding = homeSectionPadding,
-                                )
-                            }
-                        }
+                        searchResultsContent(
+                            state = uiState,
+                            columns = searchColumns,
+                            landscape = searchLandscape,
+                            watchedKeys = watchedUiState.watchedKeys,
+                            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                            onPosterClick = onPosterClick,
+                            onPosterLongClick = onPosterLongClick,
+                            onPersonClick = onPersonClick,
+                        )
                     }
                 }
             }
         }
+    }
     }
     }
 }

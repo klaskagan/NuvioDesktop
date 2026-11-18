@@ -13,6 +13,10 @@ import com.nuvio.app.features.servers.ServerMediaKind
 import com.nuvio.app.features.servers.serverMessage
 import com.nuvio.app.features.servers.ServerRepository
 import com.nuvio.app.features.catalog.CATALOG_PAGE_SIZE
+import com.nuvio.app.features.collection.CollectionSource
+import com.nuvio.app.features.collection.TmdbCollectionMediaType
+import com.nuvio.app.features.collection.TmdbCollectionSourceResolver
+import com.nuvio.app.features.collection.TmdbCollectionSourceType
 import com.nuvio.app.features.catalog.CatalogPage
 import com.nuvio.app.features.catalog.CatalogTarget
 import com.nuvio.app.features.catalog.buildCatalogUrl
@@ -25,18 +29,26 @@ import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.filterReleasedItems
 import com.nuvio.app.core.poster.withCustomPosterUrls
+import com.nuvio.app.features.streams.PlaybackAvailability
+import com.nuvio.app.features.tmdb.TmdbMetadataService
+import com.nuvio.app.features.tmdb.TmdbService
 import com.nuvio.app.features.watchprogress.CurrentDateProvider
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 
@@ -69,7 +81,31 @@ object SearchRepository {
     private val _discoverUiState = MutableStateFlow(DiscoverUiState())
     val discoverUiState: StateFlow<DiscoverUiState> = _discoverUiState.asStateFlow()
 
+    private val _hideUnplayable = MutableStateFlow(true)
+    /** Settings → Content Discovery → "Hide unplayable results". On by default. */
+    val hideUnplayable: StateFlow<Boolean> = _hideUnplayable.asStateFlow()
+    private var hideUnplayableLoaded = false
+
+    fun ensurePreferencesLoaded() {
+        if (hideUnplayableLoaded) return
+        hideUnplayableLoaded = true
+        _hideUnplayable.value = !SearchPreferencesStorage.loadShowUnplayable()
+    }
+
+    fun onProfileChanged() {
+        hideUnplayableLoaded = false
+        ensurePreferencesLoaded()
+    }
+
+    fun setHideUnplayable(hide: Boolean) {
+        ensurePreferencesLoaded()
+        if (_hideUnplayable.value == hide) return
+        _hideUnplayable.value = hide
+        SearchPreferencesStorage.saveShowUnplayable(!hide)
+    }
+
     private var activeJob: Job? = null
+    private val searchGeneration = SearchGeneration()
     private var activeDiscoverJob: Job? = null
     private var lastRequestKey: String? = null
     private var discoverSources: List<DiscoverCatalogOption> = emptyList()
@@ -86,6 +122,8 @@ object SearchRepository {
             return
         }
 
+        ensurePreferencesLoaded()
+        val hideUnplayable = _hideUnplayable.value
         val enabledAddons = addons.enabledAddons()
         val hasPendingAddonManifests = enabledAddons.hasPendingEnabledManifests()
         val addonManifestErrorMessage = enabledAddons.firstEnabledManifestError()
@@ -93,6 +131,7 @@ object SearchRepository {
         val serverSearches = ServerCatalog.searchTargets()
         if (activeAddons.isEmpty() && serverSearches.isEmpty()) {
             activeJob?.cancel()
+            searchGeneration.next()
             lastRequestKey = null
             _uiState.value = SearchUiState(
                 isLoading = hasPendingAddonManifests,
@@ -112,6 +151,7 @@ object SearchRepository {
         )
         if (requests.isEmpty() && serverSearches.isEmpty()) {
             activeJob?.cancel()
+            searchGeneration.next()
             lastRequestKey = null
             _uiState.value = SearchUiState(
                 isLoading = hasPendingAddonManifests,
@@ -126,6 +166,8 @@ object SearchRepository {
             append(HomeCatalogSettingsRepository.snapshot().hideUnreleasedContent)
             append('|')
             append(hasPendingAddonManifests)
+            append('|')
+            append(hideUnplayable)
             append('|')
             append(
                 requests.joinToString(separator = "|") { request ->
@@ -152,9 +194,27 @@ object SearchRepository {
         lastRequestKey = requestKey
 
         activeJob?.cancel()
+        val generation = searchGeneration.next()
         _uiState.value = SearchUiState(isLoading = true)
 
+        fun publish(state: SearchUiState) {
+            if (searchGeneration.isCurrent(generation)) _uiState.value = state
+        }
+
         activeJob = scope.launch {
+            val timings = SearchTimings(normalizedQuery)
+            val availability = PlaybackAvailability.current()
+            val canPlay = { type: String, id: String -> availability.canPlay(type = type, videoId = id, parentMetaId = id) }
+            // Start the TMDB→IMDb lookups the playability check will need as soon as items arrive,
+            // so the final check mostly reads TmdbService's cache instead of waiting on the network.
+            val warmLookups = mutableListOf<Job>()
+            fun warmPlayability(items: List<MetaPreview>) {
+                if (!hideUnplayable) return
+                items.forEach { item ->
+                    val tmdbId = searchResultTmdbLookupId(item, canPlay) ?: return@forEach
+                    warmLookups += launch { lookupImdbForPlayability(tmdbId, item.type) }
+                }
+            }
             val resultChannel = Channel<IndexedSearchResult>(Channel.UNLIMITED)
             val jobs = loaders.mapIndexed { index, load ->
                 launch {
@@ -180,55 +240,174 @@ object SearchRepository {
                         )
                 }
             }
+            val peopleJob = launch {
+                val people = try {
+                    filterSearchPeople(TmdbMetadataService.searchPeople(normalizedQuery), normalizedQuery)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    log.w(error) { "People search failed" }
+                    emptyList()
+                }
+                timings.mark("people")
+                resultChannel.trySend(IndexedSearchResult(index = PEOPLE_RESULT_INDEX, people = people))
+                // The top matching person's titles join the Movies & TV grid. Shares the person page's cache.
+                val featured = people.firstOrNull() ?: return@launch
+                val filmography = try {
+                    TmdbMetadataService.fetchPersonDetail(featured.tmdbId, preferCrewCredits = featured.isDirector)
+                        ?.let { filterSearchFilmography(it, isDirector = featured.isDirector) }
+                        .orEmpty()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    log.w(error) { "Filmography for search person failed" }
+                    emptyList()
+                }
+                timings.mark("filmography")
+                if (filmography.isNotEmpty()) {
+                    resultChannel.trySend(IndexedSearchResult(index = FILMOGRAPHY_RESULT_INDEX, filmography = filmography))
+                }
+            }
+            val franchiseJob = launch {
+                val franchise = try {
+                    searchFranchiseFilms(normalizedQuery)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    log.w(error) { "Franchise search failed" }
+                    emptyList()
+                }
+                timings.mark("franchise")
+                if (franchise.isNotEmpty()) {
+                    resultChannel.trySend(IndexedSearchResult(index = FRANCHISE_RESULT_INDEX, filmography = franchise))
+                }
+            }
             val closeChannelJob = launch {
-                jobs.joinAll()
+                (jobs + peopleJob + franchiseJob).joinAll()
                 resultChannel.close()
             }
+            // A slow addon must not hold every result back: after this, show what is ready and
+            // append late providers' new titles at the end.
+            val firstPublishJob = launch {
+                delay(SEARCH_FIRST_PUBLISH_MS)
+                resultChannel.trySend(IndexedSearchResult(index = FIRST_PUBLISH_RESULT_INDEX))
+            }
+            var shownResults: List<MetaPreview>? = null
             val results = arrayOfNulls<IndexedSearchResult>(loaders.size)
+            var people = emptyList<SearchPerson>()
+            var filmography = emptyList<MetaPreview>()
+            var franchise = emptyList<MetaPreview>()
+
+            suspend fun resolve(isFinished: Boolean): SearchUiState {
+                val completedResults = results.filterNotNull()
+                return resolveSearchUiState(
+                    query = normalizedQuery,
+                    sections = results.orderedSections(),
+                    people = people,
+                    filmography = filmography,
+                    franchise = franchise,
+                    completedProviders = completedResults.size,
+                    failedProviders = completedResults.count { it.error != null },
+                    firstFailure = completedResults.firstNotNullOfOrNull { result ->
+                        result.error?.let { it.serverMessage() ?: it.message }
+                    },
+                    isFinished = isFinished,
+                    hasPendingAddonManifests = hasPendingAddonManifests,
+                )
+            }
 
             try {
                 for (result in resultChannel) {
-                    results[result.index] = result
-                    val sections = results.orderedSections()
-                    if (sections.isNotEmpty()) {
-                        _uiState.value = SearchUiState(
-                            isLoading = true,
-                            sections = sections,
-                        )
+                    if (result.index == PEOPLE_RESULT_INDEX) {
+                        people = result.people.orEmpty()
+                    } else if (result.index == FILMOGRAPHY_RESULT_INDEX) {
+                        filmography = result.filmography.orEmpty()
+                        warmPlayability(filmography)
+                    } else if (result.index == FRANCHISE_RESULT_INDEX) {
+                        franchise = result.filmography.orEmpty()
+                        warmPlayability(franchise)
+                    } else if (result.index == FIRST_PUBLISH_RESULT_INDEX) {
+                        val partial = resolve(isFinished = false)
+                            .let { if (hideUnplayable) it.withPlayableResultsOnly(canPlay) else it }
+                        if (partial.hasContent) {
+                            publish(partial)
+                            shownResults = partial.results
+                            timings.mark("firstShown")
+                        }
+                    } else {
+                        results[result.index] = result
+                        result.section?.let { warmPlayability(it.items) }
+                        if (results.all { it != null }) timings.mark("addons")
                     }
                 }
             } finally {
                 closeChannelJob.cancel()
+                firstPublishJob.cancel()
                 resultChannel.close()
             }
 
-            val completedResults = results.filterNotNull()
-            val sections = results.orderedSections()
-            val firstFailure = completedResults.firstNotNullOfOrNull { result -> result.error?.let { it.serverMessage() ?: it.message } }
-            val allFailed = completedResults.isNotEmpty() && completedResults.all { it.error != null }
-
-            _uiState.value = SearchUiState(
-                isLoading = sections.isEmpty() && hasPendingAddonManifests,
-                sections = sections,
-                emptyStateReason = when {
-                    sections.isNotEmpty() -> null
-                    hasPendingAddonManifests -> null
-                    allFailed -> SearchEmptyStateReason.RequestFailed
-                    else -> SearchEmptyStateReason.NoResults
-                },
-                errorMessage = if (allFailed) firstFailure else null,
-            )
+            // Published once everything finished; if an early grid is already on screen, its cards
+            // keep their order and only new titles are appended, so nothing moves under the user.
+            val finished = resolve(isFinished = true)
+            timings.mark("merged")
+            val filtered = if (hideUnplayable) finished.withPlayableResultsOnly(canPlay) else finished
+            val published = shownResults?.let { shown ->
+                filtered.copy(results = appendNewSearchResults(shown, filtered.results), emptyStateReason = null)
+            } ?: filtered
+            timings.mark("playability")
+            publish(published)
+            log.i { timings.summary(lookups = warmLookups.size, shown = published.results.size, hidden = finished.results.size - published.results.size) }
         }
     }
 
+    /** Films of the TMDB collection the query names exactly ("james bond" → James Bond Collection). */
+    private suspend fun searchFranchiseFilms(query: String): List<MetaPreview> {
+        val collection = TmdbCollectionSourceResolver.searchCollections(query)
+            .firstOrNull { result -> result.name?.let { isSearchFranchiseMatch(it, query) } == true }
+            ?: return emptyList()
+        val page = TmdbCollectionSourceResolver.resolve(
+            CollectionSource(
+                provider = "tmdb",
+                tmdbSourceType = TmdbCollectionSourceType.COLLECTION.name,
+                title = collection.name,
+                tmdbId = collection.id,
+                mediaType = TmdbCollectionMediaType.MOVIE.name,
+            ),
+        )
+        return page.withUnreleasedFilter().items.filter { !it.poster.isNullOrBlank() }
+    }
+
+    private suspend fun SearchUiState.withPlayableResultsOnly(canPlay: (String, String) -> Boolean): SearchUiState {
+        if (results.isEmpty()) return this
+        val playable = filterPlayableSearchResults(
+            results = results,
+            canPlay = canPlay,
+            resolveTmdbImdbId = ::lookupImdbForPlayability,
+        )
+        return withFilteredResults(playable)
+    }
+
+    /** Cached by TmdbService (misses for 60 s), and concurrent calls for one id share a request. */
+    private suspend fun lookupImdbForPlayability(tmdbId: Int, type: String): String? =
+        try {
+            withTimeoutOrNull(PLAYABILITY_LOOKUP_TIMEOUT_MS) { TmdbService.tmdbToImdb(tmdbId = tmdbId, mediaType = type) }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            log.w(error) { "IMDb lookup for search result tmdb:$tmdbId failed" }
+            null
+        }
+
     fun clear() {
         activeJob?.cancel()
+        searchGeneration.next()
         lastRequestKey = null
         _uiState.value = SearchUiState()
     }
 
     fun reset() {
         activeJob?.cancel()
+        searchGeneration.next()
         activeDiscoverJob?.cancel()
         lastRequestKey = null
         discoverSources = emptyList()
@@ -660,10 +839,46 @@ object SearchRepository {
     }
 }
 
+/** Monotonic search id; a response may only publish while its id is still the current one. */
+internal class SearchGeneration {
+    @Volatile
+    private var current: Long = 0L
+
+    fun next(): Long = (current + 1).also { current = it }
+
+    fun isCurrent(generation: Long): Boolean = generation == current
+}
+
+private const val PLAYABILITY_LOOKUP_TIMEOUT_MS = 2_000L
+
+/** Milliseconds from search start to each phase, logged once per search to tune response time. */
+private class SearchTimings(private val query: String) {
+    private val start = kotlin.time.TimeSource.Monotonic.markNow()
+    private val lock = SynchronizedObject()
+    private val marks = linkedMapOf<String, Long>()
+
+    // Marked from the people job and the result collector, which run on different threads.
+    fun mark(phase: String) = synchronized(lock) {
+        if (phase !in marks) marks[phase] = start.elapsedNow().inWholeMilliseconds
+    }
+
+    fun summary(lookups: Int, shown: Int, hidden: Int): String = synchronized(lock) {
+        "Search timings \"$query\": " + marks.entries.joinToString { "${it.key}=${it.value}ms" } +
+            ", tmdbLookups=$lookups, shown=$shown, hiddenUnplayable=$hidden"
+    }
+}
+private const val PEOPLE_RESULT_INDEX = -1
+private const val FILMOGRAPHY_RESULT_INDEX = -2
+private const val FRANCHISE_RESULT_INDEX = -3
+private const val FIRST_PUBLISH_RESULT_INDEX = -4
+private const val SEARCH_FIRST_PUBLISH_MS = 2_000L
+
 private data class IndexedSearchResult(
     val index: Int,
     val section: HomeCatalogSection? = null,
     val error: Throwable? = null,
+    val people: List<SearchPerson>? = null,
+    val filmography: List<MetaPreview>? = null,
 )
 
 private fun Array<IndexedSearchResult?>.orderedSections(): List<HomeCatalogSection> =

@@ -8,7 +8,8 @@ actual object DiscoverSelectionStorage {
     private const val preferencesName = "nuvio_discover_selection"
     private const val catalogKey = "discover_catalog_key"
 
-    private var preferences: SharedPreferences? = null
+    internal var preferences: SharedPreferences? = null
+        private set
 
     fun initialize(context: Context) {
         preferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)

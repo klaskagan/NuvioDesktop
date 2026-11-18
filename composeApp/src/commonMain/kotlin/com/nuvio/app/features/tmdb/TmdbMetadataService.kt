@@ -233,6 +233,7 @@ object TmdbMetadataService {
                 allCredits = filmography.allCredits,
                 movieCredits = filmography.movies,
                 tvCredits = filmography.series,
+                directedKeys = filmography.directedKeys,
             )
             synchronized(personCacheLock) { personCache[cacheKey] = detail }
             detail
@@ -308,6 +309,31 @@ object TmdbMetadataService {
             }
             synchronized(knownForCacheLock) { knownForCache[key] = emptyList() }
             emptyList()
+        }
+
+    /** TMDB person search for the Search screen; empty when TMDB is disabled or the request fails. */
+    suspend fun searchPeople(query: String): List<com.nuvio.app.features.search.SearchPerson> =
+        withContext(Dispatchers.Default) {
+            val settings = TmdbSettingsRepository.snapshot()
+            val trimmed = query.trim()
+            if (!settings.enabled || trimmed.isEmpty()) return@withContext emptyList()
+            val language = normalizeTmdbLanguage(settings.language)
+            val response = fetch<TmdbPersonSearchResponse>(
+                endpoint = "search/person",
+                query = mapOf("query" to trimmed, "language" to language, "include_adult" to "false"),
+            ) ?: return@withContext emptyList()
+            response.results.mapNotNull { result ->
+                val name = result.name?.trim()?.takeIf(String::isNotEmpty) ?: return@mapNotNull null
+                com.nuvio.app.features.search.SearchPerson(
+                    tmdbId = result.id,
+                    name = name,
+                    profilePhoto = buildImageUrl(result.profilePath, "w185"),
+                    department = result.knownForDepartment?.takeIf(String::isNotBlank),
+                    popularity = result.popularity,
+                    originalName = result.originalName,
+                    knownForVotes = result.knownFor.sumOf { it.voteCount ?: 0 },
+                )
+            }
         }
 
     private fun shouldPreferCrewCredits(knownForDepartment: String?): Boolean {

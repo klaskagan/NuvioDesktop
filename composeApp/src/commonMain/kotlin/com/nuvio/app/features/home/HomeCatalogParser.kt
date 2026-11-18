@@ -48,7 +48,7 @@ internal object HomeCatalogParser {
                     id = id,
                     type = type,
                     name = name,
-                    poster = meta.string("poster"),
+                    poster = meta.string("poster")?.takeUnless(::isPlaceholderArtworkUrl),
                     banner = meta.string("banner") ?: meta.string("background") ?: landscapePoster,
                     logo = meta.string("logo"),
                     posterShape = meta.string("posterShape").toPosterShape(),
@@ -63,6 +63,12 @@ internal object HomeCatalogParser {
                     landscapePoster = landscapePoster,
                     runtime = meta.string("runtime")?.trim()?.takeIf { it.isNotBlank() },
                     status = meta.string("status")?.trim()?.takeIf { it.isNotBlank() },
+                    popularity = meta.string("popularity")?.toDoubleOrNull(),
+                    voteCount = (meta.string("vote_count") ?: meta.string("voteCount"))?.toDoubleOrNull()?.toInt(),
+                    // Lets Search match non-IMDb ids (mal:, tmdb:, tvdb:) to IMDb-only stream addons.
+                    alternateIds = setOfNotNull(
+                        (meta.string("imdb_id") ?: meta.string("_imdbId"))?.trim()?.takeIf { imdbIdPattern.matches(it) && it != id },
+                    ),
                 )
                 if (seenKeys.add(item.stableKey())) {
                     add(item)
@@ -74,6 +80,8 @@ internal object HomeCatalogParser {
             rawItemCount = metas.size,
         )
     }
+
+    private val imdbIdPattern = Regex("^tt\\d+$")
 
     private fun JsonObject.string(name: String): String? =
         (this[name] as? JsonPrimitive)?.contentOrNull
@@ -93,3 +101,9 @@ data class ParsedCatalogResponse(
     val items: List<MetaPreview>,
     val rawItemCount: Int,
 )
+
+private val placeholderArtworkPattern = Regex("(?i)(unavailable|no|missing|placeholder)[-_]?(poster|image)")
+
+/** Addon "no artwork" images (e.g. My Lists' unavailable-poster.svg) count as no poster, so other sources can fill in. */
+internal fun isPlaceholderArtworkUrl(url: String): Boolean =
+    url.isBlank() || placeholderArtworkPattern.containsMatchIn(url.substringAfterLast('/'))

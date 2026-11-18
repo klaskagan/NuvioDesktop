@@ -21,6 +21,24 @@ class AddonModelsTest {
     }
 
     @Test
+    fun `failed manifest marked pending again by a list rebuild is retried`() {
+        val url = "https://failed.example/manifest.json"
+        val failed = ManagedAddon(manifestUrl = url, isRefreshing = false, errorMessage = "bad json", enabled = true)
+        val loaded = ManagedAddon(manifestUrl = "https://ok.example/manifest.json", manifest = manifest(), enabled = true)
+        val disabled = ManagedAddon(manifestUrl = "https://off.example/manifest.json", enabled = false)
+
+        val rebuilt = listOf(
+            failed.toPendingAddon(manifestUrl = url, enabled = true),
+            loaded.toPendingAddon(manifestUrl = loaded.manifestUrl, enabled = true),
+            disabled.toPendingAddon(manifestUrl = disabled.manifestUrl, enabled = false),
+        )
+
+        // The rebuild shows the failed addon as loading, so it must actually be fetched again.
+        assertTrue(rebuilt.hasPendingEnabledManifests())
+        assertEquals(listOf(url), rebuilt.manifestUrlsNeedingRefresh())
+    }
+
+    @Test
     fun `enabled addons helper filters disabled addons`() {
         val enabled = ManagedAddon(
             manifestUrl = "https://enabled.example/manifest.json",

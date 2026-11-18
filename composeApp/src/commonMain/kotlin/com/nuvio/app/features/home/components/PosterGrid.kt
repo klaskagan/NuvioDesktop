@@ -31,6 +31,10 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.padding
+import com.nuvio.app.core.ui.NuvioTokens
+import com.nuvio.app.core.ui.nuvio
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.format.formatReleaseDateForDisplay
@@ -160,6 +164,8 @@ private fun PosterGridTile(
     val cached = remember(imageModel) { com.nuvio.app.core.ui.cachedMediaImagePreview(imageModel, item.stableKey()) }
     val warmReturn = remember(item.id, item.type) { cached?.wasDisplayed == true }
     var imageResolved by remember(item.id, item.type, item.poster, item.rawPosterUrl) { mutableStateOf(item.poster == null || cached != null) }
+    // No poster, or one that failed (e.g. a custom poster service 404): show the title in the tile.
+    var imageFailed by remember(item.id, item.type, item.poster, item.rawPosterUrl) { mutableStateOf(false) }
     val individuallyReady = !isTitleArtworkMedia(item.type) || (!pending && imageResolved)
     val ordered = LocalPreparedLandscapeArtwork.current.mayReveal(item.stableKey())
     val showImage = individuallyReady && (((rowGate?.revealed ?: true) && ordered) || warmReturn)
@@ -201,7 +207,17 @@ private fun PosterGridTile(
                     ),
             ) {
                 Box(Modifier.matchParentSize().graphicsLayer { alpha = if (showImage) 1f else 0f }.then(hiddenContent)) {
-                if (item.poster != null && !pending) {
+                if ((item.poster == null || imageFailed) && !pending) {
+                    Text(
+                        text = item.name,
+                        modifier = Modifier.align(Alignment.Center).padding(horizontal = NuvioTokens.Space.s14),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.nuvio.colors.textMuted,
+                        textAlign = TextAlign.Center,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else if (item.poster != null && !pending) {
                     if (isDesktop) {
                         NuvioAsyncImage(
                             model = imageModel,
@@ -211,7 +227,10 @@ private fun PosterGridTile(
                             modifier = Modifier.fillMaxSize(),
                             onLoading = { imageResolved = cached != null },
                             onSuccess = { imageResolved = true },
-                            onError = { imageResolved = true },
+                            onError = {
+                                imageResolved = true
+                                if (cached == null) imageFailed = true
+                            },
                             contentScale = ContentScale.Crop,
                             desktopAnimation = rememberAnimatedArtworkAnimation(),
                         )
@@ -222,7 +241,10 @@ private fun PosterGridTile(
                             modifier = Modifier.fillMaxSize(),
                             onLoading = { imageResolved = false },
                             onSuccess = { imageResolved = true },
-                            onError = { imageResolved = true },
+                            onError = {
+                                imageResolved = true
+                                imageFailed = true
+                            },
                             contentScale = ContentScale.Crop,
                         )
                     }

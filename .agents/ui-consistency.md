@@ -44,6 +44,16 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   leaves it there when the request effect is keyed only by an unchanged ID.
   Use the retry counter in `PersonDetailScreen` as the reference.
   `PersonCreditsNavigationTest` exercises failure, Retry, and the loaded destination.
+- A pending/refreshing flag must always have a running request that will clear it.
+  Rebuilding the addon list re-marked a failed manifest as refreshing without
+  fetching it, so every empty Search showed skeleton cards forever. Decide retries
+  from the missing data (`manifestUrlsNeedingRefresh`), not from the flag.
+  `AddonModelsTest` covers a failed manifest that a rebuild marks pending again.
+- A poster tile with no poster or a failed one (e.g. a custom poster service 404) shows
+  the item's title inside the tile, never an empty background. Labels may be hidden
+  and custom posters may carry the only visible text. `PosterGridTile` (PosterGrid.kt)
+  and `NuvioPosterCard`'s placeholder are the references. Check: Search "simpsons"
+  with btttr custom posters on (The Simpsons Quiz Show).
 - Preserve the visible item's stable key and pixel offset when prepending data.
   Do not reveal earlier items by rebuilding the list at index zero. If an index is
   necessary, derive it from the actual rendered list, including synthetic headers.

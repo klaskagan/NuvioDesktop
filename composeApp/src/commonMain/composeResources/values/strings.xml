@@ -512,6 +512,8 @@
     <string name="compose_search_empty_no_results_title">No results found</string>
     <string name="compose_search_empty_no_search_catalogs_message">Your enabled addons do not support catalog search.</string>
     <string name="compose_search_empty_no_search_catalogs_title">No searchable catalogs</string>
+    <string name="compose_search_movies_and_tv">Movies &amp; TV</string>
+    <string name="compose_search_people">People</string>
     <string name="compose_search_placeholder">Search movies, shows...</string>
     <string name="compose_search_recent_searches">Recent Searches</string>
     <string name="compose_search_remove_recent_search">Remove recent search</string>
@@ -903,6 +905,8 @@
     <string name="settings_content_discovery_section_search">SEARCH</string>
     <string name="settings_content_discovery_recent_searches">Recent Searches</string>
     <string name="settings_content_discovery_recent_searches_description">Save recent searches and show them when the search bar is focused.</string>
+    <string name="settings_content_discovery_hide_unplayable">Hide Unplayable Results</string>
+    <string name="settings_content_discovery_hide_unplayable_description">Only show search results that your addons, plugins, media servers or downloads can play.</string>
     <string name="settings_content_discovery_addons_description">Install, remove, refresh, and sort your content sources.</string>
     <string name="settings_content_discovery_addons_description_appstore">Add and manage the addons you use with Nuvio.</string>
     <string name="settings_content_discovery_plugins_description">Install JavaScript scraper repositories and test providers internally.</string>

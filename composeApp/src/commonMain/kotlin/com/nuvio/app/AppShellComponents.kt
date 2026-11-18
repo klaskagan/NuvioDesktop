@@ -171,6 +171,7 @@ internal data class AppTabActions(
     val onCatalogClick: ((HomeCatalogSection) -> Unit)? = null,
     val onPosterClick: ((MetaPreview) -> Unit)? = null,
     val onPosterLongClick: ((MetaPreview) -> Unit)? = null,
+    val onSearchPersonClick: ((com.nuvio.app.features.search.SearchPerson) -> Unit)? = null,
     val onHomePosterLongClick: ((String, MetaPreview) -> Unit)? = null,
     val onLibraryPosterClick: ((LibraryItem) -> Unit)? = null,
     val onLibraryPosterLongClick: ((LibraryItem, LibrarySection) -> Unit)? = null,
@@ -270,6 +271,7 @@ internal fun AppTabHost(
                     listState = state.searchListState,
                     onPosterClick = actions.onPosterClick,
                     onPosterLongClick = actions.onPosterLongClick,
+                    onPersonClick = actions.onSearchPersonClick,
                     searchFocusRequestCount = state.searchFocusRequestCount,
                     scrollToTopRequests = requests.searchScrollToTopRequests,
                 )

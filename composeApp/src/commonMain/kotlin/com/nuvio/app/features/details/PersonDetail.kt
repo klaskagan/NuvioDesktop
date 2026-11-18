@@ -16,6 +16,8 @@ data class PersonDetail(
     val creditGenreIds: Map<String, Set<Int>> = emptyMap(),
     val actingCredits: List<ActingCredit> = emptyList(),
     val allCredits: List<MetaPreview> = emptyList(),
+    /** Stable keys of titles this person directed. */
+    val directedKeys: Set<String> = emptySet(),
 )
 
 enum class ActingCreditKind { Movie, TvMovie, Video, TvSeries }

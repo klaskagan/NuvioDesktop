@@ -5,6 +5,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.awt.SwingWindow
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.configureSwingGlobalsForCompose
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -138,6 +144,13 @@ fun main(args: Array<String>) {
             title = if (smokePlayerUrl == null) "Nuvio" else "Nuvio Player Smoke",
             state = windowState,
             icon = painterResource(appIconState.selected.transparentPreviewResource),
+            onPreviewKeyEvent = { event ->
+                val find = event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+                    event.key == androidx.compose.ui.input.key.Key.F &&
+                    (event.isMetaPressed || event.isCtrlPressed) && !event.isShiftPressed && !event.isAltPressed
+                if (find) AppKeyboardShortcuts.requestSearchFocus()
+                find
+            },
             init = ::configureMacosWindowBeforePeer,
         ) {
             MacosAppMenuBar(

@@ -545,6 +545,13 @@ internal fun MainAppContent(
         }
     }
 
+    LaunchedEffect(Unit) {
+        AppKeyboardShortcuts.focusSearchRequests.collect {
+            if (selectedTab != AppScreenTab.Search) activateTab(AppScreenTab.Search)
+            searchFocusRequestCount++
+        }
+    }
+
     LaunchedEffect(selectedTab, navBackStack.lastOrNull()) {
         val topRoute = navBackStack.lastOrNull()
         if (topRoute is PlayerRoute) return@LaunchedEffect
@@ -1549,6 +1556,16 @@ internal fun MainAppContent(
                                 onPosterClick = navController::openPreview,
                                 onPosterLongClick = { meta ->
                                     openPosterActions(PosterActionTarget(preview = meta))
+                                },
+                                onSearchPersonClick = { person ->
+                                    navController.navigate(
+                                        PersonDetailRoute(
+                                            personId = person.tmdbId,
+                                            personName = person.name,
+                                            personPhoto = person.profilePhoto,
+                                            preferCrew = person.isDirector,
+                                        ),
+                                    )
                                 },
                                 onHomePosterLongClick = { shelfKey, meta ->
                                     openPosterActions(PosterActionTarget(preview = meta, homeShelfKey = shelfKey))

@@ -15,6 +15,7 @@ internal data class TmdbPersonFilmography(
     val actingCredits: List<ActingCredit>,
     val genreIds: Map<String, Set<Int>>,
     val allCredits: List<MetaPreview>,
+    val directedKeys: Set<String>,
 )
 
 internal fun mapPersonFilmography(
@@ -53,7 +54,12 @@ internal fun mapPersonFilmography(
         .groupBy { "${it.appType}:tmdb:${it.id}" }
         .mapValues { (_, matching) -> matching.flatMap { it.genreIds }.toSet() }
 
-    return TmdbPersonFilmography(preferred("movie"), preferred("series"), actingCredits, genreIds, (cast + crew).distinctBy { it.stableKey() })
+    val directedKeys = credits.crew.filter { it.appType != null && it.job.equals("Director", ignoreCase = true) }
+        .mapTo(mutableSetOf()) { "${it.appType}:tmdb:${it.id}" }
+
+    return TmdbPersonFilmography(
+        preferred("movie"), preferred("series"), actingCredits, genreIds, (cast + crew).distinctBy { it.stableKey() }, directedKeys,
+    )
 }
 
 internal fun mapPersonKnownFor(
@@ -116,6 +122,11 @@ internal data class TmdbPersonSearchResponse(
 internal data class TmdbPersonSearchResult(
     val id: Int,
     @SerialName("known_for") val knownFor: List<TmdbPersonCredit> = emptyList(),
+    val name: String? = null,
+    @SerialName("original_name") val originalName: String? = null,
+    @SerialName("profile_path") val profilePath: String? = null,
+    @SerialName("known_for_department") val knownForDepartment: String? = null,
+    val popularity: Double? = null,
 )
 
 @Serializable
@@ -127,6 +138,7 @@ internal data class TmdbPersonCredit(
     @SerialName("original_title") val originalTitle: String? = null,
     @SerialName("original_name") val originalName: String? = null,
     val character: String? = null,
+    val job: String? = null,
     val video: Boolean? = null,
     @SerialName("credit_id") val creditId: String? = null,
     @SerialName("episode_count") val episodeCount: Int? = null,

@@ -198,6 +198,7 @@ object ProfileRepository {
         TmdbSettingsRepository.onProfileChanged()
         MdbListSettingsRepository.onProfileChanged()
         SearchHistoryRepository.onProfileChanged()
+        com.nuvio.app.features.search.SearchRepository.onProfileChanged()
         SearchRepository.reset()
         CollectionRepository.onProfileChanged()
         CollectionMobileSettingsRepository.onProfileChanged()

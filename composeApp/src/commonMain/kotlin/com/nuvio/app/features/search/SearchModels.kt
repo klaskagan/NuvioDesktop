@@ -11,12 +11,31 @@ enum class SearchEmptyStateReason {
     RequestFailed,
 }
 
+data class SearchPerson(
+    val tmdbId: Int,
+    val name: String,
+    val profilePhoto: String? = null,
+    val department: String? = null,
+    val popularity: Double? = null,
+    val originalName: String? = null,
+    /** Total TMDB vote count of the person's known-for titles; zero marks an empty same-name stub. */
+    val knownForVotes: Int = 0,
+) {
+    val isDirector: Boolean
+        get() = department.equals("Directing", ignoreCase = true)
+}
+
 data class SearchUiState(
     val isLoading: Boolean = false,
-    val sections: List<HomeCatalogSection> = emptyList(),
+    /** Merged, deduplicated and relevance-ranked movie/series results from every provider. */
+    val results: List<MetaPreview> = emptyList(),
+    val people: List<SearchPerson> = emptyList(),
     val emptyStateReason: SearchEmptyStateReason? = null,
     val errorMessage: String? = null,
-)
+) {
+    val hasContent: Boolean
+        get() = results.isNotEmpty() || people.isNotEmpty()
+}
 
 enum class DiscoverEmptyStateReason {
     NoActiveAddons,

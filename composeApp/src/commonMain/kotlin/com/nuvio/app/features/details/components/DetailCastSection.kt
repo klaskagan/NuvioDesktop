@@ -52,6 +52,8 @@ fun DetailCastSection(
     modifier: Modifier = Modifier,
     showHeader: Boolean = true,
     horizontalScrollPadding: Dp = 0.dp,
+    /** Widens each item (not the avatar) so longer names fit on their single line. */
+    minItemWidth: Dp? = null,
     onCastClick: ((MetaPerson, String?) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
@@ -64,7 +66,8 @@ fun DetailCastSection(
         showHeader = showHeader,
     ) {
         BoxWithConstraints {
-            val sizing = castSectionSizing(maxWidth.value)
+            val baseSizing = castSectionSizing(maxWidth.value)
+            val sizing = minItemWidth?.let { baseSizing.copy(itemWidth = maxOf(baseSizing.itemWidth, it)) } ?: baseSizing
             val rowState = rememberLazyListState()
 
             LazyRow(
