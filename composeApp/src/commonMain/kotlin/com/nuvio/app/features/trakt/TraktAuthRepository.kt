@@ -7,6 +7,7 @@ import com.nuvio.app.features.addons.httpRequestRaw
 import com.nuvio.app.isDesktop
 import com.nuvio.app.features.profiles.ProfileRepository
 import com.nuvio.app.features.tracking.TrackingAuthProvider
+import com.nuvio.app.features.tracking.TrackingHistoryAccount
 import com.nuvio.app.features.tracking.TrackingCapability
 import com.nuvio.app.features.tracking.TrackingProviderDescriptor
 import com.nuvio.app.features.tracking.TrackingProviderId
@@ -58,6 +59,10 @@ object TraktAuthRepository : TrackingAuthProvider {
     private val _isAuthenticated = MutableStateFlow(false)
     override val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
 
+    private val _historyAccount = MutableStateFlow<TrackingHistoryAccount?>(null)
+    internal val historyAccount = _historyAccount.asStateFlow()
+    private var historyAccountGeneration = 0L
+
     override val descriptor = TrackingProviderDescriptor(
         id = TrackingProviderId.TRAKT,
         displayName = "Trakt",
@@ -77,6 +82,7 @@ object TraktAuthRepository : TrackingAuthProvider {
 
     init {
         TrackingProviderRegistry.register(this)
+        TrackingProviderRegistry.registerHistoryReader(TraktHistoryProvider)
     }
 
     private var hasLoaded = false
@@ -778,6 +784,10 @@ object TraktAuthRepository : TrackingAuthProvider {
         val calendarKey = if (mode == TraktConnectionMode.CONNECTED)
             "$currentProfileId:$profileGeneration:${authState.userSlug ?: authState.username.orEmpty()}" else null
         val calendarAccountChanged = _uiState.value.calendarAccountKey != calendarKey
+        if (calendarAccountChanged) {
+            historyAccountGeneration++
+            _historyAccount.value = calendarKey?.let { TrackingHistoryAccount(currentProfileId, historyAccountGeneration) }
+        }
         _uiState.value = TraktAuthUiState(
             calendarAccountKey = calendarKey,
             mode = mode,

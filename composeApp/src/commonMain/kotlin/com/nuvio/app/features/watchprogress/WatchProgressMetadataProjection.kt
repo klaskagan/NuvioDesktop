@@ -15,17 +15,15 @@ internal fun WatchProgressEntry.metadataKey(): WatchProgressMetadataKey = WatchP
     metaType = parentMetaType.ifBlank { contentType },
 )
 
+internal fun MetaDetails.findWatchProgressEpisode(season: Int?, episode: Int?) =
+    if (season == null || episode == null) null
+    else videos.firstOrNull { it.season == season && it.episode == episode }
+
 internal fun enrichWatchProgressEntry(
     current: WatchProgressEntry,
     meta: MetaDetails,
 ): WatchProgressEntry {
-    val episodeVideo = if (current.seasonNumber != null && current.episodeNumber != null) {
-        meta.videos.firstOrNull { video ->
-            video.season == current.seasonNumber && video.episode == current.episodeNumber
-        }
-    } else {
-        null
-    }
+    val episodeVideo = meta.findWatchProgressEpisode(current.seasonNumber, current.episodeNumber)
     return current.copy(
         videoId = if (current.source != WatchProgressSourceLocal && episodeVideo != null) {
             episodeVideo.id.takeIf(String::isNotBlank) ?: current.videoId

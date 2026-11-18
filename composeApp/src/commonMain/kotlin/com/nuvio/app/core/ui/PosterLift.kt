@@ -20,18 +20,44 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.platform.LocalGraphicsContext
 import androidx.compose.ui.unit.Dp
+import com.nuvio.app.controller.controllerFocusable
 import com.nuvio.app.isDesktop
 
 internal val LocalPosterClickAnchor = staticCompositionLocalOf<((PosterZoomAnchor) -> Unit)?> { null }
 
+private var nextPosterCardFocusId = 1L
+
 internal class PosterLiftSource(private val graphicsContext: GraphicsContext) : RememberObserver {
     val layer = graphicsContext.createGraphicsLayer()
-    var bounds: Rect? = null
+    private var coordinates: LayoutCoordinates? = null
+    private var lastBounds: Rect? = null
+
+    /** On-screen bounds in root, including the card's hover scale. */
+    val bounds: Rect?
+        get() = coordinates?.takeIf { it.isAttached }?.let { c ->
+            Rect(
+                c.localToRoot(Offset.Zero),
+                c.localToRoot(Offset(c.size.width.toFloat(), c.size.height.toFloat())),
+            )
+        } ?: lastBounds
+
     var isLifted by mutableStateOf(false)
         private set
+
+    /**
+     * The overlay covers a lifted card, so the card receives a hover exit even when the pointer stays
+     * on it. While non-null this replaces the card's hover state: the overlay sets it from the pointer
+     * position, and the next hover enter after landing returns control to real hover events.
+     */
+    var hoverHold by mutableStateOf<Boolean?>(null)
+
+    fun updatePosition(coordinates: LayoutCoordinates) {
+        this.coordinates = coordinates
+        lastBounds = bounds
+    }
     private var rememberCount = 0
 
     val canLift: Boolean
@@ -39,6 +65,7 @@ internal class PosterLiftSource(private val graphicsContext: GraphicsContext) : 
 
     fun lift(): Boolean {
         if (!canLift) return false
+        hoverHold = true
         isLifted = true
         return true
     }
@@ -62,8 +89,16 @@ internal class PosterLiftSource(private val graphicsContext: GraphicsContext) : 
     }
 
     private fun release() {
+        coordinates = null
         if (!layer.isReleased) graphicsContext.releaseGraphicsLayer(layer)
     }
+}
+
+/** A lift source owned by the card when its hover scale sits outside [posterCardClickable]. */
+@Composable
+internal fun rememberPosterLiftSource(key: Any?): PosterLiftSource {
+    val graphicsContext = LocalGraphicsContext.current
+    return remember(graphicsContext, key) { PosterLiftSource(graphicsContext) }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -74,27 +109,34 @@ internal fun Modifier.posterCardClickable(
     zoomImageUrl: String? = null,
     zoomCornerRadius: Dp = NuvioTokens.Radius.poster,
     hoverScaleEnabled: Boolean = true,
+    liftSource: PosterLiftSource? = null,
+    focusId: String? = null,
 ): Modifier {
-    val graphicsContext = LocalGraphicsContext.current
-    val source = remember(graphicsContext, zoomImageUrl) { PosterLiftSource(graphicsContext) }
+    val source = liftSource ?: rememberPosterLiftSource(zoomImageUrl)
     val onPosterClickAnchor = LocalPosterClickAnchor.current
+    val controllerFocusId = remember(focusId, zoomImageUrl) {
+        focusId ?: zoomImageUrl?.takeIf { it.isNotBlank() }?.let { "poster_${it.hashCode()}" }
+            ?: "poster_card_${nextPosterCardFocusId++}"
+    }
     val posterModifier = Modifier
         .drawWithContent {
             source.layer.record { this@drawWithContent.drawContent() }
             if (!source.isLifted) drawLayer(source.layer)
         }
-        .onGloballyPositioned { coordinates ->
-            val position = coordinates.positionInRoot()
-            source.bounds = Rect(
-                left = position.x,
-                top = position.y,
-                right = position.x + coordinates.size.width,
-                bottom = position.y + coordinates.size.height,
-            )
-        }
+        .onGloballyPositioned { coordinates -> source.updatePosition(coordinates) }
         .then(this)
     if (onClick == null && onLongClick == null) return posterModifier
     val interactionSource = remember { MutableInteractionSource() }
+    val handleClick: () -> Unit = {
+        if (onClick != null) {
+            source.bounds?.let { bounds ->
+                onPosterClickAnchor?.invoke(
+                    PosterZoomAnchor(bounds, zoomImageUrl, zoomCornerRadius).also { it.source = source },
+                )
+            }
+            onClick()
+        }
+    }
     val handleLongClick = onLongClick?.let { longClick ->
         {
             source.bounds?.let { cardBounds ->
@@ -111,21 +153,29 @@ internal fun Modifier.posterCardClickable(
         .desktopPosterHoverScale(
             enabled = hoverScaleEnabled,
             interactionSource = interactionSource,
+            liftSource = source,
         )
         .then(posterModifier)
+        .then(
+            if (isDesktop) {
+                Modifier.controllerFocusable(
+                    id = controllerFocusId,
+                    enabled = onClick != null,
+                    cornerRadius = zoomCornerRadius,
+                    focusScale = 1.07f,
+                    selectLabel = "Open",
+                    secondaryActionLabel = if (handleLongClick != null) "Options" else null,
+                    onSecondaryAction = handleLongClick,
+                    onSelect = handleClick,
+                )
+            } else {
+                Modifier
+            },
+        )
         .combinedClickable(
             interactionSource = interactionSource,
             indication = if (!isDesktop && onPosterClickAnchor == null) LocalIndication.current else null,
-            onClick = {
-                if (onClick != null) {
-                    source.bounds?.let { bounds ->
-                        onPosterClickAnchor?.invoke(
-                            PosterZoomAnchor(bounds, zoomImageUrl, zoomCornerRadius).also { it.source = source },
-                        )
-                    }
-                    onClick()
-                }
-            },
+            onClick = handleClick,
             onLongClick = handleLongClick,
         )
         .secondaryClick(handleLongClick)

@@ -62,6 +62,7 @@ import com.nuvio.app.features.debrid.DebridStreamFormatterDefaults
 import com.nuvio.app.features.debrid.DebridStreamAudioChannel
 import com.nuvio.app.features.debrid.DebridStreamAudioTag
 import com.nuvio.app.features.debrid.DebridStreamEncode
+import com.nuvio.app.features.player.AvailableLanguageOptions
 import com.nuvio.app.features.debrid.DebridStreamLanguage
 import com.nuvio.app.features.debrid.DebridStreamPreferences
 import com.nuvio.app.features.debrid.DebridStreamQuality
@@ -942,7 +943,10 @@ private fun DebridStreamPreferenceDialog(
             title = stringResource(Res.string.settings_debrid_rule_preferred_languages),
             selectedValues = preferences.preferredLanguages,
             values = DebridStreamLanguage.entries,
-            label = { it.label },
+            label = { language ->
+                AvailableLanguageOptions.firstOrNull { it.code == language.code }
+                    ?.let { stringResource(it.labelRes) } ?: language.label
+            },
             onSelected = { value -> onPreferencesChanged(preferences.copy(preferredLanguages = value)) },
             onDismiss = onDismiss,
         )
@@ -950,7 +954,10 @@ private fun DebridStreamPreferenceDialog(
             title = stringResource(Res.string.settings_debrid_rule_required_languages),
             selectedValues = preferences.requiredLanguages,
             values = DebridStreamLanguage.entries,
-            label = { it.label },
+            label = { language ->
+                AvailableLanguageOptions.firstOrNull { it.code == language.code }
+                    ?.let { stringResource(it.labelRes) } ?: language.label
+            },
             onSelected = { value -> onPreferencesChanged(preferences.copy(requiredLanguages = value)) },
             onDismiss = onDismiss,
         )
@@ -958,7 +965,10 @@ private fun DebridStreamPreferenceDialog(
             title = stringResource(Res.string.settings_debrid_rule_excluded_languages),
             selectedValues = preferences.excludedLanguages,
             values = DebridStreamLanguage.entries,
-            label = { it.label },
+            label = { language ->
+                AvailableLanguageOptions.firstOrNull { it.code == language.code }
+                    ?.let { stringResource(it.labelRes) } ?: language.label
+            },
             onSelected = { value -> onPreferencesChanged(preferences.copy(excludedLanguages = value)) },
             onDismiss = onDismiss,
         )

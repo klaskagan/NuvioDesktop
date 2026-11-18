@@ -128,3 +128,20 @@ Update guidance when actual project conventions change; keep it short and concre
 - Run `jbcontext search` on its own and read its whole output: don't pipe it into `head`, `grep` or other commands. Open the files it returns with `open`, not with terminal commands.
 
 <!-- jbcontext-instructions-end -->
+
+
+## Progress reporting to the user
+
+- Before the first edit, state in 2–3 plain sentences what you will change and
+  which existing screen/component is the reference.
+- Post a short progress note only at turning points (cause found, chunk finished,
+  direction changed): what was found or changed, then what comes next and why.
+  Name concrete files; do not narrate routine searches.
+- Run long Gradle builds/tests so output streams (no `| tail`); say when a
+  command may take minutes.
+- Ask before destructive or ambiguous actions (git stash/reset, commits, pushes,
+  account mutations) using a short question with concrete options.
+- Finish with a structured handoff: a 1–2 sentence result, then `Changes`
+  (what + why), `Verification` (exact commands and results), and `Notes`
+  (unverified behavior, leftovers, follow-ups). Never claim visual checks you
+  did not perform.

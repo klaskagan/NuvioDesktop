@@ -50,6 +50,7 @@ namespace {
 
 JavaVM *gVm = nullptr;
 constexpr double kMaxVolumePercent = 200.0;
+constexpr int kDirtyReportedSnapSkipTicks = 90;
 
 struct Player {
     mpv_handle *mpv = nullptr;
@@ -92,6 +93,10 @@ struct Player {
     GCancellable *snapCancel = nullptr;  // cancels the in-flight snapshot, owned
     int snapCooldownTicks = 0;  // watchdog backoff before the next request
     int snapResets = 0;         // consecutive watchdog resets without a snapshot
+    int snapStill = 0;          // consecutive snapshots identical to the last pushed one
+    int snapSkip = 0;           // composite ticks left before the next request while still
+    bool overlayDirtyReported = false;
+    std::string lastUpdateJs;
     // Controls-state payload buffering (macOS/Windows parity): the first
     // updateControls arrives before the page defines window.playerControls, so a
     // fire-and-forget eval loses it and the loading screen shows a bare spinner
@@ -361,7 +366,14 @@ void onControlsEval(GObject *src, GAsyncResult *res, gpointer data) {
 // Deliver the pending controls payload, probing for window.playerControls so a
 // too-early push is detected and retried instead of silently short-circuited.
 // GTK thread only.
+void wakeSnapshots(Player *player) {
+    player->snapStill = 0;
+    player->snapSkip = 0;
+}
+
 void flushControlsJson(Player *player) {
+    wakeSnapshots(player);
+    player->lastUpdateJs.clear();
     if (!player->webview || player->pendingControlsJson.empty()) return;
     std::string script =
         "(function(){if(!window.playerControls)return 'missing';"
@@ -450,6 +462,8 @@ void onPlayerMessage(WebKitUserContentManager *, WebKitJavascriptResult *js, gpo
     // chrome faded out; every other event (cursor/keep-visible/toggle/...) means
     // it is up. cursorActivity also arrives while hidden (mouse woke the UI) and
     // must re-activate compositing so the fade-in is actually shown.
+    if (type) wakeSnapshots(player);
+    if (type) player->lastUpdateJs.clear();
     if (type) {
         if (strcmp(type, "setPlaybackState") == 0 ||
             strcmp(type, "setPlaybackStateQuiet") == 0) {
@@ -494,6 +508,13 @@ void onPlayerMessage(WebKitUserContentManager *, WebKitJavascriptResult *js, gpo
     if (valV) g_object_unref(valV);
 }
 
+void onOverlayDirty(WebKitUserContentManager *, WebKitJavascriptResult *, gpointer data) {
+    auto *player = static_cast<Player *>(data);
+    if (!playerAlive(player)) return;
+    player->overlayDirtyReported = true;
+    wakeSnapshots(player);
+}
+
 // The overlay toplevel is a child of the AWT canvas at the X level, and player
 // close races Compose's canvas teardown against dispose(): when AWT destroys
 // the canvas first, X cascade-destroys the overlay's window, GDK reports it
@@ -525,6 +546,8 @@ struct SnapCtx {
     int gen;
 };
 
+void presentOverlaySurface(Player *player, cairo_surface_t *surf);
+
 // Completion of the async controls snapshot: hand the premultiplied BGRA pixels
 // to mpv as an OSD overlay. Runs on the GTK thread like the tick that issued it.
 void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
@@ -552,6 +575,10 @@ void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
     player->snapInFlight = false;
     player->snapResets = 0;
     if (!surf) return;
+    presentOverlaySurface(player, surf);
+}
+
+void presentOverlaySurface(Player *player, cairo_surface_t *surf) {
     if (cairo_image_surface_get_format(surf) != CAIRO_FORMAT_ARGB32 ||
         cairo_image_surface_get_width(surf) <= 0 ||
         cairo_image_surface_get_height(surf) <= 0 || !player->mpv) {
@@ -574,6 +601,25 @@ void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
         }
     }
     cairo_surface_flush(surf);
+    cairo_surface_t *cur = player->snapSurf;
+    if (cur && player->overlayPushed &&
+        cairo_image_surface_get_width(cur) == cairo_image_surface_get_width(surf) &&
+        cairo_image_surface_get_height(cur) == cairo_image_surface_get_height(surf) &&
+        cairo_image_surface_get_stride(cur) == cairo_image_surface_get_stride(surf) &&
+        memcmp(cairo_image_surface_get_data(cur), cairo_image_surface_get_data(surf),
+               (size_t)cairo_image_surface_get_stride(surf) *
+                   cairo_image_surface_get_height(surf)) == 0) {
+        cairo_surface_destroy(surf);
+        if (player->snapStill < 1000) player->snapStill++;
+        if (player->snapStill >= 3) {
+            player->snapSkip = player->overlayDirtyReported
+                                   ? std::min(player->snapStill * 8, kDirtyReportedSnapSkipTicks)
+                                   : std::min(player->snapStill * 2, 15);
+        }
+        return;
+    }
+    player->snapStill = 0;
+    player->snapSkip = 0;
     char addr[32], sw[16], sh[16], sstride[16];
     snprintf(addr, sizeof addr, "&%zu",
              (size_t)(uintptr_t)cairo_image_surface_get_data(surf));
@@ -663,6 +709,7 @@ void compositeOverlay(Player *player) {
                 player->overlayPushed = false;
                 releaseSnapshots(player);
             }
+            wakeSnapshots(player);
         }
     }
     if (!active) {
@@ -679,6 +726,8 @@ void compositeOverlay(Player *player) {
             // Backing off after a watchdog reset: a stalled web process gets no
             // relief from being asked again immediately.
             player->snapCooldownTicks--;
+        } else if (player->snapSkip > 0) {
+            player->snapSkip--;
         } else {
             player->snapInFlight = true;
             player->snapWaitTicks = 0;
@@ -883,6 +932,8 @@ gboolean pushPlayerUpdate(gpointer data) {
              duration, position, bufferedPosition, volumeLevel, paused ? "true" : "false", loading ? "true" : "false");
     std::string js = std::string(head) + audioTracks +
                      ",subtitleTracks:" + subtitleTracks + "})";
+    if (js == player->lastUpdateJs) return G_SOURCE_CONTINUE;
+    player->lastUpdateJs = js;
     evalJs(player->webview, js);
     return G_SOURCE_CONTINUE;
 }
@@ -1001,6 +1052,8 @@ gboolean createWebviewOnGtk(gpointer data) {
         wv = gWarmupView;
         g_signal_connect(gWarmupUcm, "script-message-received::player",
                          G_CALLBACK(onPlayerMessage), player);
+        g_signal_connect(gWarmupUcm, "script-message-received::overlayDirty",
+                         G_CALLBACK(onOverlayDirty), player);
         gWarmupWindow = nullptr;
         gWarmupView = nullptr;
         gWarmupUcm = nullptr;
@@ -1016,8 +1069,11 @@ gboolean createWebviewOnGtk(gpointer data) {
 
         WebKitUserContentManager *ucm = webkit_user_content_manager_new();
         webkit_user_content_manager_register_script_message_handler(ucm, "player");
+        webkit_user_content_manager_register_script_message_handler(ucm, "overlayDirty");
         g_signal_connect(ucm, "script-message-received::player",
                          G_CALLBACK(onPlayerMessage), player);
+        g_signal_connect(ucm, "script-message-received::overlayDirty",
+                         G_CALLBACK(onOverlayDirty), player);
 
         // WebKit's DMABUF renderer yields controls snapshots with degraded alpha —
         // the semi-transparent chrome scrim reads back near-opaque (NVIDIA: stale or
@@ -1420,6 +1476,7 @@ gboolean warmupOnGtk(gpointer data) {
 
     WebKitUserContentManager *ucm = webkit_user_content_manager_new();
     webkit_user_content_manager_register_script_message_handler(ucm, "player");
+    webkit_user_content_manager_register_script_message_handler(ucm, "overlayDirty");
     // controlsReady = page scripts executed end to end (same readiness signal
     // the Windows warm-up waits for). One-shot latched; harmless after
     // adoption when the player's own handler is connected alongside.
@@ -1546,7 +1603,7 @@ JNIEXPORT jlong JNICALL NP(create)(
     JNIEnv *env, jobject /*thiz*/, jlong hostViewPtr, jstring sourceUrl,
     jobjectArray headerLines, jboolean playWhenReady, jlong initialPositionMs,
     jstring controlsPageUrl, jint decoderPriority,
-    jboolean /*nvidiaRtxSuperResolutionEnabled*/, jobject eventSink) {
+    jboolean /*nvidiaRtxSuperResolutionEnabled*/, jboolean /*nvidiaRtxHdrEnabled*/, jobject eventSink) {
 
     // libmpv requires LC_NUMERIC=C (e.g. non-"C" locales with comma
     // decimals make mpv_create fail); the JVM uses java.util.Locale, so
@@ -1776,11 +1833,13 @@ JNIEXPORT void JNICALL NP(seekTo)(JNIEnv *, jobject, jlong handle, jlong positio
     p->ended.store(false);
 }
 
+// Exact: mpv keeps relative seeks on keyframes by default, which can overshoot by
+// up to one GOP (often ~10 s).
 JNIEXPORT void JNICALL NP(seekBy)(JNIEnv *, jobject, jlong handle, jlong offsetMs) {
     Player *p = asPlayer(handle);
     if (!p) return;
     std::string delta = std::to_string(offsetMs / 1000.0);
-    const char *cmd[] = {"seek", delta.c_str(), "relative", nullptr};
+    const char *cmd[] = {"seek", delta.c_str(), "relative+exact", nullptr};
     mpv_command(p->mpv, cmd);
     p->ended.store(false);
 }
@@ -1967,7 +2026,7 @@ JNIEXPORT void JNICALL NP(applySubtitleStyle)(
     jboolean useLibass, jboolean stripSdh) {
     Player *p = asPlayer(handle);
     if (!p) return;
-    mpv_set_property_string(p->mpv, "sub-ass-override", "scale");
+    mpv_set_property_string(p->mpv, "sub-ass-override", "no");
     mpv_set_property_string(p->mpv, "sub-color", jstringToUtf8(env, textColor).c_str());
     mpv_set_property_string(p->mpv, "sub-border-color", jstringToUtf8(env, outlineColor).c_str());
     std::string background = jstringToUtf8(env, backgroundColor);

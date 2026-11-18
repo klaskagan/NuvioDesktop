@@ -1,6 +1,7 @@
 package com.nuvio.app.features.catalog
 
 import com.nuvio.app.core.ui.rememberAnimatedArtworkAnimation
+import com.nuvio.app.controller.RegisterControllerVerticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
@@ -127,6 +128,8 @@ fun CatalogScreen(
             initialFirstVisibleItemScrollOffset = initialScrollPosition.firstVisibleItemScrollOffset,
         )
     }
+    // Lets the controller spatial engine scroll this grid when focus reaches the bottom edge.
+    var headerHeightPx by remember { mutableIntStateOf(0) }
     var observedOfflineState by remember { mutableStateOf(false) }
 
     LaunchedEffect(target, homeCatalogSettingsUiState.hideUnreleasedContent) {
@@ -217,6 +220,7 @@ internal fun CatalogContent(
     pinnedControls: (@Composable () -> Unit)? = null,
     pinnedControlsTopInset: Dp = 0.dp,
 ) {
+    val scrollViewportModifier = RegisterControllerVerticalScroll(lazyGridState = gridState)
     val posterCardStyle = rememberPosterCardStyleUiState()
     BoxWithConstraints(
         modifier = modifier
@@ -306,7 +310,7 @@ internal fun CatalogContent(
             LazyVerticalGrid(
                 columns = gridCells,
                 state = gridState,
-                modifier = Modifier.fillMaxSize().testTag("catalog_grid"),
+                modifier = Modifier.fillMaxSize().testTag("catalog_grid").then(scrollViewportModifier),
                 contentPadding = PaddingValues(
                     start = pageHorizontalPadding,
                     top = if (hasHero || scrollingIntro != null) 0.dp else {

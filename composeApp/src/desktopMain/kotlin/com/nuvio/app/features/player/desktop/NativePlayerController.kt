@@ -54,16 +54,17 @@ internal typealias NativePlayerCreate = (
     String,
     Int,
     Boolean,
+    Boolean,
     NativePlayerEventSink,
 ) -> Long
 
 internal class NativePlayerController(
     private val host: NativePlayerHost,
-    private val nativeCreate: NativePlayerCreate = { hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, sink ->
+    private val nativeCreate: NativePlayerCreate = { hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, rtxHdr, sink ->
         NativePlayerBridge.ensureLoaded()
         if (host.embedded && DesktopHostOs.current == DesktopHostOs.MACOS) {
             NativePlayerBridge.createEmbedded(hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, sink, host.embeddedBounds)
-        } else NativePlayerBridge.create(hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, sink)
+        } else NativePlayerBridge.create(hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, rtxHdr, sink)
     },
     private val nativeDispose: (Long) -> Unit = NativePlayerBridge::dispose,
     private val nativeSeekTo: (Long, Long) -> Unit = NativePlayerBridge::seekTo,
@@ -149,6 +150,7 @@ internal class NativePlayerController(
         initialPositionMs: Long,
         decoderPriority: Int,
         nvidiaRtxSuperResolutionEnabled: Boolean,
+        nvidiaRtxHdrEnabled: Boolean = false,
         onError: (String?) -> Unit,
         sourceAudioUrl: String? = null,
     ) {
@@ -160,6 +162,7 @@ internal class NativePlayerController(
             initialPositionMs = initialPositionMs.coerceAtLeast(0L),
             decoderPriority = decoderPriority,
             nvidiaRtxSuperResolutionEnabled = nvidiaRtxSuperResolutionEnabled,
+            nvidiaRtxHdrEnabled = nvidiaRtxHdrEnabled,
             onError = onError,
         )
         var terminalFailure: String? = null
@@ -335,6 +338,7 @@ internal class NativePlayerController(
                         NativePlayerBridge.controlsPageUrl,
                         pending.decoderPriority,
                         pending.nvidiaRtxSuperResolutionEnabled,
+                        pending.nvidiaRtxHdrEnabled,
                         NativePlayerEventSink { type, value ->
                             SwingUtilities.invokeLater {
                                 if (pendingSource === pending && !releaseRequested) {
@@ -714,6 +718,11 @@ internal class NativePlayerController(
         DesktopPlayerPictureInPicture.toggle()
     }
 
+    override fun adjustVolumeBy(deltaFraction: Float): Boolean {
+        adjustFallbackVolume(deltaFraction * 100f)
+        return true
+    }
+
     @Synchronized
     private fun adjustFallbackVolume(delta: Float) {
         val current = handle
@@ -1081,6 +1090,7 @@ internal class NativePlayerController(
             initialPositionMs = pending.initialPositionMs,
             decoderPriority = pending.decoderPriority,
             nvidiaRtxSuperResolutionEnabled = pending.nvidiaRtxSuperResolutionEnabled,
+            nvidiaRtxHdrEnabled = pending.nvidiaRtxHdrEnabled,
             onError = pending.onError,
         )
     }
@@ -1171,7 +1181,7 @@ internal class NativePlayerController(
                 }
                 stage = NativePlayerController(
                     host = stagingHost,
-                    nativeCreate = { view, source, headers, play, position, controls, decoder, rtx, sink ->
+                    nativeCreate = { view, source, headers, play, position, controls, decoder, rtx, _, sink ->
                         NativePlayerBridge.createStaging(view, source, headers, play, position, controls, decoder, rtx, sink)
                     },
                     nativeEventForwarder = { type, value ->
@@ -1187,6 +1197,7 @@ internal class NativePlayerController(
                 stage.updateControls(bufferedQualityPreparationControls(controlsState, choice.height))
                 stage.attach(choice.url, choice.headers, false, 0L,
                     originalPending.decoderPriority, originalPending.nvidiaRtxSuperResolutionEnabled,
+                    originalPending.nvidiaRtxHdrEnabled,
                     { message -> if (message != null) failure.set(message) })
             } } catch (error: Throwable) { container.dispose(); throw error }
         }
@@ -1617,6 +1628,7 @@ private data class PendingSource(
     val initialPositionMs: Long,
     val decoderPriority: Int,
     val nvidiaRtxSuperResolutionEnabled: Boolean,
+    val nvidiaRtxHdrEnabled: Boolean,
     val onError: (String?) -> Unit,
 )
 
@@ -2162,6 +2174,8 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
             append(",\"title\":").append(it.title.toJsonString())
             append('}')
         }
+        append(',')
+        appendJsonField("chapterTitleEnabled", chapterTitleEnabled)
         append(',')
         appendJsonField("chaptersLabel", chaptersLabel)
         append(',')

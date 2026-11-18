@@ -1,5 +1,6 @@
 package com.nuvio.app.features.debrid
 
+import com.nuvio.app.features.player.normalizeLanguageCode
 import com.nuvio.app.features.streams.AddonStreamGroup
 import com.nuvio.app.features.streams.StreamDebridCacheState
 import com.nuvio.app.features.streams.StreamItem
@@ -191,11 +192,18 @@ internal object DebridStreamMetadata {
         DebridStreamLanguage.JA to listOf("jpn", "japanese"),
         DebridStreamLanguage.KO to listOf("kor", "korean"),
         DebridStreamLanguage.ZH to listOf("chinese"),
+        DebridStreamLanguage.RU to listOf("rus", "russian", "русский"),
+        DebridStreamLanguage.LT to listOf("lit", "lithuanian", "lietuvių"),
     )
     private val languageRegexes = DebridStreamLanguage.entries.map { language ->
-        language to languageRegex(listOf(language.code) + languageAliases[language].orEmpty())
+        // New languages use full names rather than ambiguous short codes in release text.
+        val tokens = languageAliases[language] ?: listOf(language.label.lowercase())
+        language to languageRegex(
+            (if (language in languageAliases || language == DebridStreamLanguage.MULTI ||
+                language == DebridStreamLanguage.UNKNOWN) listOf(language.code) else emptyList()) + tokens,
+        )
     }
-    private val nonAlphanumericRunRegex = Regex("[^a-z0-9]+")
+    private val nonAlphanumericRunRegex = Regex("[^\\p{L}\\p{N}]+")
 
     fun effectivePreferences(settings: DebridSettings): DebridStreamPreferences {
         val default = DebridStreamPreferences()
@@ -405,7 +413,8 @@ internal object DebridStreamMetadata {
     private fun languageFor(value: String): DebridStreamLanguage? {
         val normalized = value.trim().lowercase()
         return DebridStreamLanguage.entries.firstOrNull {
-            normalized == it.code ||
+            normalized == it.code.lowercase() ||
+                normalizeLanguageCode(normalized) == it.code.lowercase() ||
                 normalized == it.label.lowercase() ||
                 normalized in languageAliases[it].orEmpty()
         }
@@ -430,7 +439,7 @@ internal object DebridStreamMetadata {
         Regex("(^|[^a-z0-9])(${tokens.joinToString("|")})([^a-z0-9]|\$)")
 
     private fun languageRegex(tokens: List<String>): Regex =
-        Regex("(^|[^a-z0-9])(${tokens.joinToString("|") { Regex.escape(it) }})([^a-z0-9]|\$)")
+        Regex("(?<![\\p{L}\\p{N}])(${tokens.joinToString("|") { Regex.escape(it) }})(?![\\p{L}\\p{N}])")
 
     /** The receiver must already be lowercase: every caller builds its text with lowercase(). */
     private fun String.hasToken(token: String): Boolean {
@@ -506,7 +515,7 @@ internal object DebridStreamMetadata {
     private fun titleRegex(title: String): Regex? {
         val words = title.lowercase().split(nonAlphanumericRunRegex).filter { it.isNotEmpty() }
         if (words.isEmpty()) return null
-        return Regex("(^|[^a-z0-9])${words.joinToString("[^a-z0-9]+")}(?=[^a-z0-9]|\$)")
+        return Regex("(?<![\\p{L}\\p{N}])${words.joinToString("[^\\p{L}\\p{N}]+") { Regex.escape(it) }}(?![\\p{L}\\p{N}])")
     }
 }
 

@@ -175,6 +175,8 @@ class DebridStreamFormatter(
             "es", "spa", "spanish" -> "ES"
             "de", "ger", "deu", "german" -> "DE"
             "it", "ita", "italian" -> "IT"
+            "ru", "rus", "russian", "русский" -> "RU"
+            "lt", "lit", "lithuanian", "lietuvių" -> "LT"
             "multi" -> "Multi"
             else -> language
         }

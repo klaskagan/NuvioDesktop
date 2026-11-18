@@ -66,9 +66,9 @@ class BufferedQualitySurfaceLiveTest {
             val createField = native.javaClass.getDeclaredField("nativeCreate").apply { isAccessible = true }
             @Suppress("UNCHECKED_CAST") val originalCreate = createField.get(native) as NativePlayerCreate
             val unexpectedCreates = AtomicInteger()
-            val recordingCreate: NativePlayerCreate = { view, url, headers, play, position, controls, decoder, rtx, sink ->
+            val recordingCreate: NativePlayerCreate = { view, url, headers, play, position, controls, decoder, rtx, rtxHdr, sink ->
                 unexpectedCreates.incrementAndGet()
-                originalCreate(view, url, headers, play, position, controls, decoder, rtx, sink)
+                originalCreate(view, url, headers, play, position, controls, decoder, rtx, rtxHdr, sink)
             }
             createField.set(native, recordingCreate)
             val sink = native.javaClass.getDeclaredField("eventSink").apply { isAccessible = true }.get(native) as NativePlayerEventSink

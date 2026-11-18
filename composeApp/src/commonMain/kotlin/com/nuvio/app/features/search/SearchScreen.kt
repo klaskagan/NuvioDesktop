@@ -46,6 +46,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -329,6 +330,7 @@ fun SearchScreen(
                                 query = it
                             },
                             placeholder = stringResource(Res.string.compose_search_placeholder),
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
                             shape = RoundedCornerShape(NuvioTokens.Radius.xl),
                             modifier = Modifier
                                 .weight(1f)
@@ -564,7 +566,7 @@ private fun SearchRecentSection(
 }
 
 @Composable
-private fun SearchRecentRow(
+internal fun SearchRecentRow(
     query: String,
     onSearchPress: () -> Unit,
     onRemovePress: () -> Unit,
@@ -586,7 +588,7 @@ private fun SearchRecentRow(
         Text(
             text = query,
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

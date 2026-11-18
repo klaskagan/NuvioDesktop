@@ -121,6 +121,14 @@ Do not build a standalone app or DMG unless explicitly requested. Development co
 shown behavior differing from packaged builds; report that validation limitation. Do not silently replace the user's installed
 app or trigger TV/network activity as part of an unrelated UI check.
 
+When merging native player API changes, reconcile the Kotlin bridge, JNI exports,
+`NativePlayerCreate` callbacks, and embedded/staging adapters together. The RTX HDR
+argument added upstream shifted the macOS `create` event-sink parameter while the
+fork retained its embedded helper. Preserve the exact JNI argument order and
+pending-source event guards; compile desktop tests and the native bridge, then
+launch MainKt after the final build. `NativePlayerControllerTeardownTest` is the
+lifecycle regression reference.
+
 Native mpv initialization must set `LC_NUMERIC` to `C` immediately before
 `mpv_create`, following the Linux and macOS bridges. A regional numeric locale
 in a Gradle debug run can make creation fail before the stream opens. When

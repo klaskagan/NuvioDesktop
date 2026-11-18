@@ -55,7 +55,11 @@ fun DialogSurface(
 ) {
     com.nuvio.app.navigation.BlockDesktopHistoryGestures()
     val tokens = MaterialTheme.nuvio
-    BasicAlertDialog(onDismissRequest = onDismissRequest, properties = properties) {
+    BasicAlertDialog(
+        onDismissRequest = onDismissRequest,
+        modifier = Modifier.platformTouchScroll(),
+        properties = properties,
+    ) {
         Surface(
             modifier = modifier
                 .fillMaxWidth()

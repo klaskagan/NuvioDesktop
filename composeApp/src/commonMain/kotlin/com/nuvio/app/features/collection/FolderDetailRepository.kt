@@ -33,6 +33,7 @@ import nuvio.composeapp.generated.resources.collections_folder_addon_not_found
 import nuvio.composeapp.generated.resources.collections_folder_trakt_movie_list
 import nuvio.composeapp.generated.resources.collections_folder_trakt_series_list
 import nuvio.composeapp.generated.resources.collections_tab_all
+import nuvio.composeapp.generated.resources.home_catalog_default_title
 import org.jetbrains.compose.resources.getString
 
 data class FolderTab(
@@ -109,12 +110,15 @@ object FolderDetailRepository {
     private var gridGeneration = 0
     private var gridJob: Job? = null
     private var gridPager: SeasonalGridPager? = null
+    private var activeShowCatalogType: Boolean? = null
 
     fun initialize(collectionId: String, folderId: String) {
         val current = _uiState.value
+        val showCatalogType = HomeCatalogSettingsRepository.snapshot().showCatalogType
         if (
             activeCollectionId == collectionId &&
             activeFolderId == folderId &&
+            activeShowCatalogType == showCatalogType &&
             current.folder?.id == folderId &&
             current.folder == CollectionRepository.getCollection(collectionId)?.folders?.firstOrNull { it.id == folderId } &&
             current.tabs.isNotEmpty()
@@ -128,6 +132,7 @@ object FolderDetailRepository {
         clear()
         activeCollectionId = collectionId
         activeFolderId = folderId
+        activeShowCatalogType = showCatalogType
 
         val collection = CollectionRepository.getCollection(collectionId)
         if (collection == null) {
@@ -206,10 +211,17 @@ object FolderDetailRepository {
                     val catalog = resolvedCatalog?.catalog
                     val label = source.title?.takeIf { it.isNotBlank() } ?: catalog?.name ?: catalogSource.catalogId
                     val typeLabel = localizedMediaTypeLabel(catalogSource.type)
-                    val genreSuffix = if (catalogSource.genre != null) " · ${catalogSource.genre}" else ""
                     add(
                         FolderTab(
-                            label = "$label ($typeLabel)$genreSuffix",
+                            label = folderCatalogTabLabel(
+                                catalogName = label,
+                                typeLabel = typeLabel,
+                                genre = catalogSource.genre,
+                                showCatalogType = showCatalogType,
+                                withType = { name, type ->
+                                    runBlocking { getString(Res.string.home_catalog_default_title, name, type) }
+                                },
+                            ),
                             typeLabel = typeLabel,
                             source = source,
                             sourceKey = source.catalogRouteKey(),
@@ -335,6 +347,7 @@ object FolderDetailRepository {
         loadJobs.clear()
         activeCollectionId = null
         activeFolderId = null
+        activeShowCatalogType = null
         _uiState.value = FolderDetailUiState()
     }
 
@@ -587,3 +600,18 @@ internal fun collectionShelfKey(collectionId: String, folderId: String, sourceKe
     listOf(collectionId, folderId, sourceKey).joinToString(separator = "", prefix = "collection-shelf:") {
         "${it.length}:$it"
     }
+/**
+ * A folder tab's label: the catalog name and its genre, followed by the type when "Show catalog
+ * type" is on. [withType] formats it like a home row title ("Popular · Drama - Movies"), as NuvioTV
+ * does in folders.
+ */
+internal fun folderCatalogTabLabel(
+    catalogName: String,
+    typeLabel: String,
+    genre: String?,
+    showCatalogType: Boolean,
+    withType: (name: String, type: String) -> String,
+): String {
+    val name = if (genre != null) "$catalogName · $genre" else catalogName
+    return if (showCatalogType && typeLabel.isNotBlank()) withType(name, typeLabel) else name
+}

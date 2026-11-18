@@ -21,6 +21,7 @@ internal data class DesktopNavigationLocation(
 /** One desktop history for routes, tabs and inline Settings. Screen models stay in their owners. */
 internal class DesktopNavigationHistory(
     initial: DesktopNavigationLocation,
+    private val tabAvailable: (AppScreenTab) -> Boolean = { true },
     private val routeAvailable: (AppRoute) -> Boolean = { true },
 ) {
     var current by mutableStateOf(initial)
@@ -34,7 +35,7 @@ internal class DesktopNavigationHistory(
     private var profileIdentity: Any? = null
 
     private fun restorable(location: DesktopNavigationLocation): Boolean =
-        location.routes.isNotEmpty() && location.routes.none {
+        tabAvailable(location.tab) && location.routes.isNotEmpty() && location.routes.none {
             it is PlayerRoute || it in disposed || !routeAvailable(it)
         }
 
@@ -54,6 +55,14 @@ internal class DesktopNavigationHistory(
     val canGoBack: Boolean get() = parentLocation() != null || previousIndex() >= 0 ||
         current.routes.size > 1 && restorable(current.copy(routes = current.routes.dropLast(1)))
     val canGoForward: Boolean get() = future.any { it != current && restorable(it) }
+
+    fun removeUnavailableTabs(): DesktopNavigationLocation? {
+        past.removeAll { !tabAvailable(it.tab) }
+        future.removeAll { !tabAvailable(it.tab) }
+        if (tabAvailable(current.tab)) return null
+        current = DesktopNavigationLocation()
+        return current
+    }
 
     fun clearForward() = future.clear()
 

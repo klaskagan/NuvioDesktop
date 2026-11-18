@@ -130,3 +130,55 @@ cancel/commit frames. Captures and the assembled fixture recording live under
 Day scroll/prepend anchors, filter reselection when today is empty, empty-range
 date progression, view switching, and actual detail destinations. Synthetic events
 do not establish physical trackpad feel; report hardware checks separately.
+
+## History uses the Day agenda
+
+History calls the shared Calendar toolbar, date picker, date heading and card.
+The available width determines how many cards fit in each row. Rows wrap within
+the day and share one vertical scroll with the date headings. It saves its own profile-scoped portrait/landscape preference and shows watch
+counts and local watch times. Keep the episode title and season/episode code in
+one caption below the artwork, with the series title above it. Resolve artwork
+from the watched episode's screenshot or the same season/episode metadata
+match used by Continue Watching. History does not use series artwork for
+episode cards. `HistoryNavigationTest` exercises the real navigation and checks
+the caption, independent orientation persistence, scroll-edge pagination and a busy day wrapping within the viewport
+alongside the Calendar UI tests.
+
+History and Calendar reuse `agendaScrollLoading` for wheel and nested-scroll edge
+requests. It reads current callbacks and loading state, throttles edge requests,
+and lets History stop at the last page or an error. Retry remains explicit after
+an error. History initializes its separate orientation to portrait for older
+profiles whose payload predates `historyLandscapeModeEnabled`.
+
+## Narrow agenda controls
+
+The shared agenda toolbar measures its localized labels and switches to two
+rows when the wide controls no longer fit the content pane. The first row keeps
+month selection, Today and the orientation toggle visible. The second row groups
+All/Shows/Movies and uses the existing Nuvio dropdown chip for Calendar's
+Day/Week/Month choice. The compact History toolbar omits its single-choice Day control. Month traversal
+on narrow screens uses the shared date picker. The loading strip keeps its
+reserved height in either layout.
+
+`AgendaToolbarUiTest` checks both compact toolbars at 320 px and 440 px window
+widths, including full filter labels, picker and Today actions, orientation,
+Calendar dropdown selection, and stable geometry while loading. The wide-screen
+Calendar and History tests cover the existing desktop entry points.
+
+### History filtering and event removal
+
+History has one day-grouped timeline and no Day selector. Calendar and History
+share bounded-width segmented media filters on desktop and the two-row compact
+toolbar. Calendar filter changes reveal a matching date in the loaded range;
+they must not trigger unbounded searches for distant releases.
+
+History filters query the reader by media kind, with separate timeline/request
+ownership per filter. Readers without server filtering can advance empty filtered
+pages until a match or the end, without requiring a scroll gesture. Never show
+empty-history copy merely because the first mixed page contains no matching type.
+
+History card actions reuse NuvioPosterZoomActionOverlay. Removal is an optional
+tracker capability and deletes a single watch-event ID, preserving rewatches.
+Keep the card until the request succeeds, retain it on failure, and discard
+responses from an obsolete account. HistoryTimelineTest covers filtered paging
+and removal failure/rewatch preservation with a second provider.

@@ -24,7 +24,10 @@ internal fun mapPersonFilmography(
     englishTitles: Map<Pair<String?, Int>, String>,
     preferCrew: Boolean,
 ): TmdbPersonFilmography {
-    val cast = credits.cast.mapNotNull { it.toPreview(language, englishTitles) }.distinctBy { it.stableKey() }
+    val filmographyCast = credits.cast.filterNot {
+        it.mediaType == "tv" && isTalkShowGuestAppearance(it.genreIds, it.character)
+    }
+    val cast = filmographyCast.mapNotNull { it.toPreview(language, englishTitles) }.distinctBy { it.stableKey() }
     val crew = credits.crew.mapNotNull { it.toPreview(language, englishTitles) }.distinctBy { it.stableKey() }
     fun preferred(type: String): List<MetaPreview> {
         val primary = if (preferCrew) crew else cast
@@ -32,7 +35,7 @@ internal fun mapPersonFilmography(
         return primary.filter { it.type == type }.ifEmpty { fallback.filter { it.type == type } }
     }
 
-    val roles = credits.cast.groupBy { "${it.appType}:tmdb:${it.id}" }
+    val roles = filmographyCast.groupBy { "${it.appType}:tmdb:${it.id}" }
     val actingCredits = cast.map { media ->
         val titleCredits = roles[media.stableKey()].orEmpty()
         val characters = titleCredits.mapNotNull { it.character?.trim()?.takeIf(String::isNotEmpty) }.distinct()

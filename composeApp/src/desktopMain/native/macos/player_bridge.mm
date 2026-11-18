@@ -1,4 +1,5 @@
 #import <Cocoa/Cocoa.h>
+#import <IOKit/IOKitLib.h>
 #import <IOKit/hidsystem/ev_keymap.h>
 #import <MediaPlayer/MediaPlayer.h>
 #define GL_SILENCE_DEPRECATION
@@ -16,6 +17,7 @@
 #include <array>
 #include <clocale>
 #include <cmath>
+#include <dlfcn.h>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -52,11 +54,11 @@ static constexpr double kMaxVolumePercent = 200.0;
 
 @interface PlayerMetalView : NSView
 - (double)edrMax;
-- (double)edrHeadroom;
+- (double)hdrTargetPeakNits;
 - (CGSize)drawableSize;
 - (void)updateMetalLayerLayout;
 - (void)refreshMetalLayerEdrState;
-- (void)configureExtendedDynamicRange:(BOOL)enabled;
+- (void)configureExtendedDynamicRange:(BOOL)enabled primaries:(NSString *)primaries targetPeakNits:(double)targetPeakNits;
 - (BOOL)createMpvRenderContext:(mpv_handle *)mpv error:(NSString **)error;
 - (void)destroyMpvRenderContext;
 - (void)scheduleRenderUpdate;
@@ -222,6 +224,8 @@ static constexpr double kMaxVolumePercent = 200.0;
 - (NSEvent *)handleMediaKeyEvent:(NSEvent *)event;
 @end
 
+typedef CFDictionaryRef (*CoreDisplayCreateInfoDictionaryFn)(CGDirectDisplayID displayId);
+
 static void setBoolWithSelector(id target, NSString *selectorName, BOOL value) {
     SEL selector = NSSelectorFromString(selectorName);
     if (!target || !selector || ![target respondsToSelector:selector]) {
@@ -253,6 +257,34 @@ static BOOL setLayerColorSpace(CALayer *layer, CGColorSpaceRef colorSpace) {
     return YES;
 }
 
+static BOOL setLayerEdrMetadata(CALayer *layer, double minNits, double maxNits, double opticalOutputScale) {
+    if (!layer || maxNits <= 0.0) {
+        return NO;
+    }
+
+    Class edrMetadataClass = NSClassFromString(@"CAEDRMetadata");
+    SEL selector = NSSelectorFromString(@"HDR10MetadataWithMinLuminance:maxLuminance:opticalOutputScale:");
+    if (!edrMetadataClass || ![edrMetadataClass respondsToSelector:selector]) {
+        return NO;
+    }
+
+    typedef id (*Factory)(id, SEL, float, float, float);
+    Factory factory = (Factory)[edrMetadataClass methodForSelector:selector];
+    id metadata = factory(edrMetadataClass, selector, (float)minNits, (float)maxNits, (float)opticalOutputScale);
+    if (!metadata) {
+        return NO;
+    }
+
+    SEL setterSelector = NSSelectorFromString(@"setEDRMetadata:");
+    if (![layer respondsToSelector:setterSelector]) {
+        return NO;
+    }
+    typedef void (*Setter)(id, SEL, id);
+    Setter setter = (Setter)[layer methodForSelector:setterSelector];
+    setter(layer, setterSelector, metadata);
+    return YES;
+}
+
 static void clearLayerEdrMetadata(CALayer *layer) {
     SEL selector = NSSelectorFromString(@"setEDRMetadata:");
     if (!layer || ![layer respondsToSelector:selector]) {
@@ -263,21 +295,12 @@ static void clearLayerEdrMetadata(CALayer *layer) {
     setter(layer, selector, nil);
 }
 
-// HDR is rendered by mpv as extended-linear Display P3 (1.0 = SDR white), already
-// tone-mapped to the screen's current EDR headroom. Handing PQ to CoreAnimation
-// instead lets the OS tone-map it, which crushes the image when the headroom is
-// ~1.0x (SDR panels such as MacBook Air near max brightness).
-static void applyExtendedRangeLayerState(CALayer *layer, BOOL enabled, double potentialHeadroom) {
-    clearLayerEdrMetadata(layer);
-    if (@available(macOS 15.0, *)) {
-        layer.toneMapMode = enabled ? CAToneMapModeNever : CAToneMapModeAutomatic;
-    }
-#if defined(__MAC_26_0) && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_26_0
-    if (@available(macOS 26.0, *)) {
-        layer.preferredDynamicRange = enabled ? CADynamicRangeHigh : CADynamicRangeStandard;
-        layer.contentsHeadroom = enabled ? fmax(potentialHeadroom, 1.0) : 0.0;
-    }
-#endif
+static CGColorSpaceRef copyPqColorSpaceForPrimaries(NSString *primaries) {
+    NSString *normalized = [[primaries ?: @"" lowercaseString] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    CFStringRef name = [normalized isEqualToString:@"display-p3"]
+        ? kCGColorSpaceDisplayP3_PQ
+        : kCGColorSpaceITUR_2100_PQ;
+    return CGColorSpaceCreateWithName(name);
 }
 
 static NSString *diagnosticSize(CGSize size) {
@@ -294,6 +317,11 @@ static NSString *diagnosticRect(NSRect rect) {
     ];
 }
 
+static CGDirectDisplayID displayIdForScreen(NSScreen *screen) {
+    NSNumber *screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+    return screenNumber ? (CGDirectDisplayID)screenNumber.unsignedIntValue : CGMainDisplayID();
+}
+
 static double edrMaxForScreen(NSScreen *screen) {
     NSScreen *targetScreen = screen ?: NSScreen.mainScreen;
     double maxValue = doubleWithSelector(
@@ -307,23 +335,161 @@ static double edrMaxForScreen(NSScreen *screen) {
     return maxValue;
 }
 
-static double edrHeadroomForScreen(NSScreen *screen) {
-    double headroom = doubleWithSelector(
-        screen ?: NSScreen.mainScreen,
-        @"maximumExtendedDynamicRangeColorComponentValue",
-        1.0
-    );
-    if (!std::isfinite(headroom) || headroom < 1.0) {
-        return 1.0;
+static CoreDisplayCreateInfoDictionaryFn coreDisplayInfoDictionaryFn(void) {
+    static BOOL didLookup = NO;
+    static CoreDisplayCreateInfoDictionaryFn fn = nullptr;
+    if (!didLookup) {
+        didLookup = YES;
+        void *handle = dlopen(
+            "/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay",
+            RTLD_LAZY | RTLD_LOCAL
+        );
+        fn = (CoreDisplayCreateInfoDictionaryFn)dlsym(
+            handle ?: RTLD_DEFAULT,
+            "CoreDisplay_DisplayCreateInfoDictionary"
+        );
     }
-    return headroom;
+    return fn;
 }
 
-// mpv's linear output maps 1.0 to SDR reference white.
-static constexpr double kSdrReferenceWhiteNits = 203.0;
+static double doubleFromCoreDisplayValue(CFTypeRef value) {
+    if (!value) {
+        return 0.0;
+    }
+    CFTypeID typeId = CFGetTypeID(value);
+    if (typeId == CFNumberGetTypeID()) {
+        double result = 0.0;
+        if (CFNumberGetValue((CFNumberRef)value, kCFNumberDoubleType, &result)) {
+            return result;
+        }
+        return 0.0;
+    }
+    if (typeId == CFDictionaryGetTypeID()) {
+        CFDictionaryRef dictionary = (CFDictionaryRef)value;
+        double directPeak = doubleFromCoreDisplayValue(
+            CFDictionaryGetValue(dictionary, CFSTR("NonReferencePeakHDRLuminance"))
+        );
+        if (directPeak > 0.0) {
+            return directPeak;
+        }
+        return doubleFromCoreDisplayValue(
+            CFDictionaryGetValue(dictionary, CFSTR("DisplayBacklight"))
+        );
+    }
+    return 0.0;
+}
 
-static double hdrTargetPeakNitsForHeadroom(double headroom) {
-    return fmax(headroom, 1.0) * kSdrReferenceWhiteNits;
+static double coreDisplayPeakNitsForScreen(NSScreen *screen) {
+    CoreDisplayCreateInfoDictionaryFn fn = coreDisplayInfoDictionaryFn();
+    if (!fn) {
+        return 0.0;
+    }
+    CFDictionaryRef info = fn(displayIdForScreen(screen ?: NSScreen.mainScreen));
+    if (!info) {
+        return 0.0;
+    }
+    double peak = doubleFromCoreDisplayValue(info);
+    CFRelease(info);
+    if (!std::isfinite(peak) || peak < 100.0 || peak > 10000.0) {
+        return 0.0;
+    }
+    return peak;
+}
+
+static double fixedPointNitsFromRegistryValue(CFTypeRef value) {
+    if (!value || CFGetTypeID(value) != CFNumberGetTypeID()) {
+        return 0.0;
+    }
+    double raw = 0.0;
+    if (!CFNumberGetValue((CFNumberRef)value, kCFNumberDoubleType, &raw) || raw <= 0.0) {
+        return 0.0;
+    }
+    double nits = raw / 65536.0;
+    if (!std::isfinite(nits) || nits < 100.0 || nits > 10000.0) {
+        return 0.0;
+    }
+    return nits;
+}
+
+static double ioRegistryPeakNits(void) {
+    CFMutableDictionaryRef matching = IOServiceMatching("IOMobileFramebufferShim");
+    if (!matching) {
+        return 0.0;
+    }
+
+    io_iterator_t iterator = IO_OBJECT_NULL;
+    kern_return_t result = IOServiceGetMatchingServices(MACH_PORT_NULL, matching, &iterator);
+    if (result != KERN_SUCCESS || iterator == IO_OBJECT_NULL) {
+        return 0.0;
+    }
+
+    double peak = 0.0;
+    io_object_t service = IO_OBJECT_NULL;
+    while ((service = IOIteratorNext(iterator)) != IO_OBJECT_NULL) {
+        CFTypeRef indicatorCap = IORegistryEntryCreateCFProperty(
+            service,
+            CFSTR("IOMFBIndicatorNitsCap"),
+            kCFAllocatorDefault,
+            0
+        );
+        peak = fmax(peak, fixedPointNitsFromRegistryValue(indicatorCap));
+        if (indicatorCap) {
+            CFRelease(indicatorCap);
+        }
+
+        CFTypeRef rtplcCap = IORegistryEntryCreateCFProperty(
+            service,
+            CFSTR("RTPLCBLNitsCap"),
+            kCFAllocatorDefault,
+            0
+        );
+        peak = fmax(peak, fixedPointNitsFromRegistryValue(rtplcCap));
+        if (rtplcCap) {
+            CFRelease(rtplcCap);
+        }
+
+        CFTypeRef backlightCap = IORegistryEntryCreateCFProperty(
+            service,
+            CFSTR("BLNitsCap"),
+            kCFAllocatorDefault,
+            0
+        );
+        peak = fmax(peak, fixedPointNitsFromRegistryValue(backlightCap));
+        if (backlightCap) {
+            CFRelease(backlightCap);
+        }
+
+        IOObjectRelease(service);
+    }
+    IOObjectRelease(iterator);
+    return peak;
+}
+
+static double hdrTargetPeakNitsForScreen(NSScreen *screen) {
+    double coreDisplayPeak = coreDisplayPeakNitsForScreen(screen);
+    if (coreDisplayPeak > 0.0) {
+        return coreDisplayPeak;
+    }
+    double registryPeak = ioRegistryPeakNits();
+    if (registryPeak > 0.0) {
+        return registryPeak;
+    }
+    double edrMax = edrMaxForScreen(screen);
+    if (edrMax > 1.0) {
+        return fmin(fmax(edrMax * 100.0, 100.0), 10000.0);
+    }
+    return 100.0;
+}
+
+static double hdrMetadataMaxNits(void) {
+    return 1000.0;
+}
+
+static double normalizedHdrMetadataMaxNits(double targetPeakNits) {
+    if (std::isfinite(targetPeakNits) && targetPeakNits >= 100.0 && targetPeakNits <= 10000.0) {
+        return targetPeakNits;
+    }
+    return hdrMetadataMaxNits();
 }
 
 static CGLPixelFormatObj createPlayerOpenGLPixelFormat(GLint *bufferDepth) {
@@ -559,7 +725,7 @@ static void *mpvOpenGLGetProcAddress(void *ctx, const char *name) {
         (int)framebuffer,
         (int)drawableSize.width,
         (int)drawableSize.height,
-        _bufferDepth > 8 ? GL_RGBA16F : 0
+        0
     };
     int flipY = 1;
     int depth = (int)_bufferDepth;
@@ -654,7 +820,9 @@ static void mpvRenderUpdateCallback(void *callbackContext) {
     BOOL _hasConfiguredEdr;
     BOOL _edrEnabled;
     BOOL _fullscreenTransitionActive;
+    NSString *_edrPrimaries;
     NSString *_lastAppliedEdrLayerKey;
+    double _edrMetadataMaxNits;
 }
 
 - (instancetype)initWithFrame:(NSRect)frameRect {
@@ -756,7 +924,12 @@ static void mpvRenderUpdateCallback(void *callbackContext) {
     if (!_hasConfiguredEdr || !_openGLLayer) {
         return;
     }
-    NSString *stateKey = _edrEnabled ? @"hdr" : @"sdr";
+    NSString *stateKey = [NSString stringWithFormat:
+        @"%@:%@:%0.0f",
+        _edrEnabled ? @"hdr" : @"sdr",
+        _edrPrimaries ?: @"auto",
+        normalizedHdrMetadataMaxNits(_edrMetadataMaxNits)
+    ];
     if (_lastAppliedEdrLayerKey && [_lastAppliedEdrLayerKey isEqualToString:stateKey]) {
         return;
     }
@@ -766,22 +939,28 @@ static void mpvRenderUpdateCallback(void *callbackContext) {
     setBoolWithSelector(self.window.contentView, @"setWantsExtendedDynamicRangeContent:", YES);
     setBoolWithSelector(_openGLLayer, @"setWantsExtendedDynamicRangeContent:", YES);
 
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(
-        _edrEnabled ? kCGColorSpaceExtendedLinearDisplayP3 : kCGColorSpaceSRGB
-    );
+    CGColorSpaceRef colorSpace = _edrEnabled
+        ? copyPqColorSpaceForPrimaries(_edrPrimaries)
+        : CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
     if (colorSpace) {
         setLayerColorSpace(_openGLLayer, colorSpace);
         CGColorSpaceRelease(colorSpace);
     }
 
-    applyExtendedRangeLayerState(_openGLLayer, _edrEnabled, [self edrMax]);
+    if (_edrEnabled) {
+        setLayerEdrMetadata(_openGLLayer, 0.0, normalizedHdrMetadataMaxNits(_edrMetadataMaxNits), 1.0);
+    } else {
+        clearLayerEdrMetadata(_openGLLayer);
+    }
     _lastAppliedEdrLayerKey = [stateKey copy];
     [_openGLLayer requestRender];
 }
 
-- (void)configureExtendedDynamicRange:(BOOL)enabled {
+- (void)configureExtendedDynamicRange:(BOOL)enabled primaries:(NSString *)primaries targetPeakNits:(double)targetPeakNits {
     _hasConfiguredEdr = YES;
     _edrEnabled = enabled;
+    _edrPrimaries = [primaries copy];
+    _edrMetadataMaxNits = enabled ? normalizedHdrMetadataMaxNits(targetPeakNits) : hdrMetadataMaxNits();
     _lastAppliedEdrLayerKey = nil;
 
     setBoolWithSelector(self, @"setWantsExtendedDynamicRangeContent:", YES);
@@ -789,16 +968,27 @@ static void mpvRenderUpdateCallback(void *callbackContext) {
     setBoolWithSelector(self.window.contentView, @"setWantsExtendedDynamicRangeContent:", YES);
     setBoolWithSelector(_openGLLayer, @"setWantsExtendedDynamicRangeContent:", YES);
 
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(
-        enabled ? kCGColorSpaceExtendedLinearDisplayP3 : kCGColorSpaceSRGB
-    );
+    CGColorSpaceRef colorSpace = enabled
+        ? copyPqColorSpaceForPrimaries(primaries)
+        : CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
     if (colorSpace) {
         setLayerColorSpace(_openGLLayer, colorSpace);
+    }
+    if (colorSpace) {
         CGColorSpaceRelease(colorSpace);
     }
 
-    applyExtendedRangeLayerState(_openGLLayer, enabled, [self edrMax]);
-    _lastAppliedEdrLayerKey = enabled ? @"hdr" : @"sdr";
+    if (enabled) {
+        setLayerEdrMetadata(_openGLLayer, 0.0, _edrMetadataMaxNits, 1.0);
+    } else {
+        clearLayerEdrMetadata(_openGLLayer);
+    }
+    _lastAppliedEdrLayerKey = [[NSString stringWithFormat:
+        @"%@:%@:%0.0f",
+        enabled ? @"hdr" : @"sdr",
+        primaries ?: @"auto",
+        _edrMetadataMaxNits
+    ] copy];
     [_openGLLayer requestRender];
 }
 
@@ -863,8 +1053,8 @@ static void mpvRenderUpdateCallback(void *callbackContext) {
     return edrMaxForScreen(self.window.screen ?: NSScreen.mainScreen);
 }
 
-- (double)edrHeadroom {
-    return edrHeadroomForScreen(self.window.screen ?: NSScreen.mainScreen);
+- (double)hdrTargetPeakNits {
+    return hdrTargetPeakNitsForScreen(self.window.screen ?: NSScreen.mainScreen);
 }
 
 - (CGSize)drawableSize {
@@ -943,10 +1133,6 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     jobject _eventSink;
     jmethodID _eventMethod;
     NSString *_lastConfiguredHdrKey;
-    // HDR output tracks the screen's EDR headroom, which follows the backlight.
-    NSTimer *_edrHeadroomTimer;
-    BOOL _hdrOutputActive;
-    double _appliedEdrHeadroom;
     NSString *_lastResizeRefreshKey;
     dispatch_queue_t _mpvEventQueue;
     // Drains mpv's event queue (property observations, async replies, log lines).
@@ -1107,11 +1293,6 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
                                            selector:@selector(syncControls)
                                            userInfo:nil
                                             repeats:YES];
-    _edrHeadroomTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
-                                                         target:self
-                                                       selector:@selector(trackEdrHeadroom)
-                                                       userInfo:nil
-                                                        repeats:YES];
     return self;
 }
 
@@ -1688,7 +1869,6 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
         "stream-lavf-o",
         "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=%23%408,429,500,502,503,504,reconnect_delay_max=15"
     );
-    setMpvOptionString(_mpv, "hr-seek", [_hostView.identifier isEqualToString:@"nuvio-embedded-player"] ? "yes" : "no");
 
     if (headerLines.count > 0) {
         NSMutableArray *escaped = [NSMutableArray arrayWithCapacity:headerLines.count];
@@ -1808,28 +1988,6 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     });
 }
 
-- (void)trackEdrHeadroom {
-    if (!_hdrOutputActive || !_mpv || !_videoView) {
-        return;
-    }
-    double headroom = [_videoView edrHeadroom];
-    if (fabs(headroom - _appliedEdrHeadroom) < 0.02) {
-        return;
-    }
-    _appliedEdrHeadroom = headroom;
-    NSString *targetPeak = [NSString stringWithFormat:@"%.0f", hdrTargetPeakNitsForHeadroom(headroom)];
-    mpv_handle *mpv = _mpv;
-    dispatch_queue_t queue = _mpvEventQueue;
-    if (queue) {
-        dispatch_async(queue, ^{
-            if (self->_mpv != mpv) {
-                return;
-            }
-            mpv_set_property_string(mpv, "target-peak", targetPeak.UTF8String);
-        });
-    }
-}
-
 - (void)configureHdrForCurrentScreenIfNeeded {
     [self configureHdrForCurrentScreenWithReason:@"legacy" force:NO];
 }
@@ -1849,30 +2007,31 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
         || [gamma containsString:@"st2084"];
     BOOL isHlg = [gamma containsString:@"hlg"];
     double edrMax = [_videoView edrMax];
+    double screenPeak = [_videoView hdrTargetPeakNits];
     BOOL hdrDetected = (isPq || isHlg) && edrMax > 1.0;
-    NSString *targetPrimaries = hdrDetected ? @"display-p3" : @"auto";
+    NSString *targetPrimaries = hdrDetected && primaries.length > 0 ? primaries : @"auto";
     NSString *stateKey = [NSString stringWithFormat:
-        @"%@:%@:%0.2f",
-        hdrDetected ? @"extended-linear-edr" : @"sdr",
+        @"%@:%@:%@:%0.2f:%0.0f",
+        hdrDetected ? @"native-opengl-edr" : @"sdr",
         gamma ?: @"",
-        edrMax
+        targetPrimaries,
+        edrMax,
+        screenPeak
     ];
     if (!force && _lastConfiguredHdrKey && [_lastConfiguredHdrKey isEqualToString:stateKey]) {
         return;
     }
     _lastConfiguredHdrKey = stateKey;
 
-    [_videoView configureExtendedDynamicRange:hdrDetected];
-    _hdrOutputActive = hdrDetected;
-    _appliedEdrHeadroom = [_videoView edrHeadroom];
-    NSString *targetTransfer = hdrDetected ? @"linear" : @"auto";
-    NSString *targetPeak = hdrDetected
-        ? [NSString stringWithFormat:@"%.0f", hdrTargetPeakNitsForHeadroom(_appliedEdrHeadroom)]
-        : @"auto";
-    [self setStringProperty:"target-colorspace-hint" value:hdrDetected ? @"no" : @"yes"];
+    double targetPeakNits = normalizedHdrMetadataMaxNits(screenPeak);
+    [_videoView configureExtendedDynamicRange:hdrDetected primaries:targetPrimaries targetPeakNits:targetPeakNits];
+    NSString *targetTransfer = hdrDetected ? @"pq" : @"auto";
+    NSString *toneMapping = hdrDetected ? @"" : @"auto";
+    NSString *targetPeak = hdrDetected ? [NSString stringWithFormat:@"%.0f", targetPeakNits] : @"auto";
+    [self setStringProperty:"target-colorspace-hint" value:@"yes"];
     [self setStringProperty:"target-colorspace-hint-mode" value:hdrDetected ? @"source" : @"target"];
     [self setStringProperty:"target-colorspace-hint-strict" value:@"no"];
-    [self setStringProperty:"tone-mapping" value:@"auto"];
+    [self setStringProperty:"tone-mapping" value:toneMapping];
     [self setStringProperty:"hdr-compute-peak" value:@"no"];
     [self setStringProperty:"target-prim" value:targetPrimaries];
     [self setStringProperty:"target-trc" value:targetTransfer];
@@ -1894,27 +2053,28 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
         || [normalizedGamma containsString:@"st2084"];
     BOOL isHlg = [normalizedGamma containsString:@"hlg"];
     double edrMax = [_videoView edrMax];
+    double screenPeak = [_videoView hdrTargetPeakNits];
     BOOL hdrDetected = (isPq || isHlg) && edrMax > 1.0;
-    NSString *targetPrimaries = hdrDetected ? @"display-p3" : @"auto";
+    NSString *targetPrimaries = hdrDetected && normalizedPrimaries.length > 0 ? normalizedPrimaries : @"auto";
     NSString *stateKey = [NSString stringWithFormat:
-        @"%@:%@:%0.2f",
-        hdrDetected ? @"extended-linear-edr" : @"sdr",
+        @"%@:%@:%@:%0.2f:%0.0f",
+        hdrDetected ? @"native-opengl-edr" : @"sdr",
         normalizedGamma ?: @"",
-        edrMax
+        targetPrimaries,
+        edrMax,
+        screenPeak
     ];
     if (!force && _lastConfiguredHdrKey && [_lastConfiguredHdrKey isEqualToString:stateKey]) {
         return;
     }
     _lastConfiguredHdrKey = stateKey;
 
-    [_videoView configureExtendedDynamicRange:hdrDetected];
-    _hdrOutputActive = hdrDetected;
-    _appliedEdrHeadroom = [_videoView edrHeadroom];
+    double targetPeakNits = normalizedHdrMetadataMaxNits(screenPeak);
+    [_videoView configureExtendedDynamicRange:hdrDetected primaries:targetPrimaries targetPeakNits:targetPeakNits];
 
-    NSString *targetTransfer = hdrDetected ? @"linear" : @"auto";
-    NSString *targetPeak = hdrDetected
-        ? [NSString stringWithFormat:@"%.0f", hdrTargetPeakNitsForHeadroom(_appliedEdrHeadroom)]
-        : @"auto";
+    NSString *targetTransfer = hdrDetected ? @"pq" : @"auto";
+    NSString *toneMapping = hdrDetected ? @"" : @"auto";
+    NSString *targetPeak = hdrDetected ? [NSString stringWithFormat:@"%.0f", targetPeakNits] : @"auto";
     mpv_handle *mpv = _mpv;
     dispatch_queue_t queue = _mpvEventQueue;
     if (queue) {
@@ -1922,10 +2082,10 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
             if (self->_mpv != mpv) {
                 return;
             }
-            mpv_set_property_string(mpv, "target-colorspace-hint", hdrDetected ? "no" : "yes");
+            mpv_set_property_string(mpv, "target-colorspace-hint", "yes");
             mpv_set_property_string(mpv, "target-colorspace-hint-mode", hdrDetected ? "source" : "target");
             mpv_set_property_string(mpv, "target-colorspace-hint-strict", "no");
-            mpv_set_property_string(mpv, "tone-mapping", "auto");
+            mpv_set_property_string(mpv, "tone-mapping", toneMapping.UTF8String);
             mpv_set_property_string(mpv, "hdr-compute-peak", "no");
             mpv_set_property_string(mpv, "target-prim", targetPrimaries.UTF8String);
             mpv_set_property_string(mpv, "target-trc", targetTransfer.UTF8String);
@@ -2041,8 +2201,6 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [_timer invalidate];
     _timer = nil;
-    [_edrHeadroomTimer invalidate];
-    _edrHeadroomTimer = nil;
     [_resizeSettleTimer invalidate];
     _resizeSettleTimer = nil;
     [_fullscreenTransitionTimer invalidate];
@@ -2111,7 +2269,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 - (void)seekToMilliseconds:(long long)positionMs {
     if (!_mpv) return;
     std::string seconds = std::to_string((double)positionMs / 1000.0);
-    const char *command[] = {"seek", seconds.c_str(), _embeddedContainer ? "absolute+exact" : "absolute+keyframes", NULL};
+    const char *command[] = {"seek", seconds.c_str(), "absolute+exact", NULL};
     mpv_command(_mpv, command);
     [self storeCachedPosition:(double)positionMs / 1000.0 at:CACurrentMediaTime()];
 }
@@ -2119,7 +2277,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 - (void)seekByMilliseconds:(long long)offsetMs {
     if (!_mpv) return;
     std::string seconds = std::to_string((double)offsetMs / 1000.0);
-    const char *command[] = {"seek", seconds.c_str(), _embeddedContainer ? "relative+exact" : "relative+keyframes", NULL};
+    const char *command[] = {"seek", seconds.c_str(), "relative+exact", NULL};
     mpv_command(_mpv, command);
     [self storeCachedPosition:[self estimatedPositionSeconds] + ((double)offsetMs / 1000.0) at:CACurrentMediaTime()];
 }
@@ -2525,7 +2683,7 @@ static void nuvioMpvWakeup(void *ctx) {
     BOOL stripSdhChanged = !_hasAppliedSubtitleStyle || _appliedSubtitleStripSdh != stripSdh;
 
     if (modeChanged) {
-        [self setStringProperty:"sub-ass-override" value:@"scale"];
+        [self setStringProperty:"sub-ass-override" value:@"no"];
     }
     if (modeChanged) {
         const char *styleOverridesCommand[] = {"change-list", "sub-ass-style-overrides", "clr", "", NULL};
@@ -3307,7 +3465,7 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
     JNIEnv *env, jobject bridge, jlong hostViewPtr, jstring sourceUrl, jobjectArray headerLines,
     jboolean playWhenReady, jlong initialPositionMs, jstring controlsPageUrl, jint decoderPriority,
-    jboolean rtx, jobject eventSink
+    jboolean rtx, jboolean /*nvidiaRtxHdrEnabled*/, jobject eventSink
 ) {
     return createNativePlayer(env, bridge, hostViewPtr, sourceUrl, headerLines, playWhenReady,
         initialPositionMs, controlsPageUrl, decoderPriority, rtx, eventSink, nullptr);

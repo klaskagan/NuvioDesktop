@@ -41,6 +41,7 @@ private data class StoredPosterCardStylePreferences(
     val cornerRadiusDp: Int = DefaultPosterCardCornerRadiusDp,
     val catalogLandscapeModeEnabled: Boolean = false,
     val calendarLandscapeModeEnabled: Boolean = false,
+    val historyLandscapeModeEnabled: Boolean = false,
     val hideLabelsEnabled: Boolean = false,
     val hoverPreviewEnabled: Boolean = true,
     val hoverPreviewOpenDelayMillis: Int = DefaultHoverPreviewOpenDelayMillis,
@@ -57,6 +58,7 @@ data class PosterCardStyleUiState(
     val cornerRadiusDp: Int = DefaultPosterCardCornerRadiusDp,
     val catalogLandscapeModeEnabled: Boolean = false,
     val calendarLandscapeModeEnabled: Boolean = false,
+    val historyLandscapeModeEnabled: Boolean = false,
     val hideLabelsEnabled: Boolean = false,
     val hoverPreviewEnabled: Boolean = true,
     val hoverPreviewOpenDelayMillis: Int = DefaultHoverPreviewOpenDelayMillis,
@@ -115,6 +117,13 @@ object PosterCardStyleRepository {
         ensureLoaded()
         if (_uiState.value.calendarLandscapeModeEnabled == enabled) return
         _uiState.value = _uiState.value.copy(calendarLandscapeModeEnabled = enabled)
+        persist()
+    }
+
+    fun setHistoryLandscapeModeEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (_uiState.value.historyLandscapeModeEnabled == enabled) return
+        _uiState.value = _uiState.value.copy(historyLandscapeModeEnabled = enabled)
         persist()
     }
 
@@ -223,6 +232,7 @@ object PosterCardStyleRepository {
                 cornerRadiusDp = cornerRadiusDp,
                 catalogLandscapeModeEnabled = stored.catalogLandscapeModeEnabled,
                 calendarLandscapeModeEnabled = stored.calendarLandscapeModeEnabled,
+                historyLandscapeModeEnabled = stored.historyLandscapeModeEnabled,
                 hideLabelsEnabled = stored.hideLabelsEnabled,
                 hoverPreviewEnabled = stored.hoverPreviewEnabled,
                 hoverPreviewOpenDelayMillis = normalizeHoverPreviewOpenDelayMillis(
@@ -252,6 +262,7 @@ object PosterCardStyleRepository {
                     cornerRadiusDp = _uiState.value.cornerRadiusDp,
                     catalogLandscapeModeEnabled = _uiState.value.catalogLandscapeModeEnabled,
                     calendarLandscapeModeEnabled = _uiState.value.calendarLandscapeModeEnabled,
+                    historyLandscapeModeEnabled = _uiState.value.historyLandscapeModeEnabled,
                     hideLabelsEnabled = _uiState.value.hideLabelsEnabled,
                     hoverPreviewEnabled = _uiState.value.hoverPreviewEnabled,
                     hoverPreviewOpenDelayMillis = _uiState.value.hoverPreviewOpenDelayMillis,

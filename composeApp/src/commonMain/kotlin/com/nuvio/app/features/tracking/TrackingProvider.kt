@@ -77,6 +77,8 @@ object TrackingProviderRegistry {
     private val authObservationJobs = mutableMapOf<TrackingProviderId, Job>()
     private val profileStores = mutableSetOf<TrackingProfileStore>()
     private val listWriters = mutableMapOf<TrackingProviderId, TrackingListWriter>()
+    private val _historyReaders = MutableStateFlow<Map<TrackingProviderId, TrackingHistoryProvider>>(emptyMap())
+    internal val historyReaders = _historyReaders.asStateFlow()
     private val historyWriters = mutableMapOf<TrackingProviderId, TrackingHistoryWriter>()
     private val scrobblers = mutableMapOf<TrackingProviderId, TrackingScrobbler>()
     private val libraryProviders = mutableMapOf<TrackingProviderId, TrackingLibraryProvider>()
@@ -116,6 +118,16 @@ object TrackingProviderRegistry {
 
     fun registerHistoryWriter(writer: TrackingHistoryWriter) = synchronized(lock) {
         historyWriters[writer.providerId] = writer
+    }
+
+    internal fun registerHistoryReader(reader: TrackingHistoryProvider) {
+        _historyReaders.update { it + (reader.providerId to reader) }
+    }
+
+    internal fun unregisterHistoryReader(reader: TrackingHistoryProvider) {
+        _historyReaders.update { readers ->
+            if (readers[reader.providerId] === reader) readers - reader.providerId else readers
+        }
     }
 
     fun registerScrobbler(scrobbler: TrackingScrobbler) = synchronized(lock) {
