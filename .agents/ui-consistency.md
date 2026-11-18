@@ -245,8 +245,12 @@ Pointer moves must only write its text and a `transform`: reading
 `offsetWidth`/`offsetLeft` per move forced page layout and made the bubble
 visibly trail the cursor in WKWebView. Cache bar geometry (re-measure on enter,
 resize, chrome render) and keep fade/scale on an inner element, never a
-transition on the moving one. Regression check: `scripts/test-seek-preview.cjs`
-(same-frame tracking), then hover-sweep in the real player.
+transition on the moving one. WKWebView does not capture the pointer to the
+range input, so a seek drag released over the video sent `click` to
+`#playerRoot` and toggled playback; ending a seek-bar press now suppresses that
+one root click (Chromium tests need the WebKit event order simulated).
+Regression check: `scripts/test-seek-preview.cjs` (same-frame tracking,
+drag-release), then hover-sweep and drag off the bar in the real player.
 
 For formation/pitch layouts, scope flex-row rules to actual rows, not every
 direct child. Go3's absolute player markers inherited a 350px minimum height from

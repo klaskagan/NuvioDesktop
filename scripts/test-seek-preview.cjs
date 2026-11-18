@@ -79,10 +79,31 @@ const { pathToFileURL } = require('node:url');
     assert.equal(await visible(), true, 'dragging keeps the preview off the bar');
     assert.equal(await text(), '1:00:00');
     assert.equal((await lastEvent('scrubChange')).value, 3600000);
+    const toggleCount = () => page.evaluate(() => window.playerEvents.filter(e => e.type === 'setPlaybackStateQuiet').length);
+    const togglesBeforeRelease = await toggleCount();
     await page.mouse.up();
+    await page.clock.fastForward(400);
     await settle();
     assert.equal((await lastEvent('scrubFinish')).value, 3600000);
     assert.equal(await visible(), false, 'release away from the bar hides the preview');
+    assert.equal(await toggleCount(), togglesBeforeRelease, 'releasing a drag over the video does not toggle playback');
+    // WKWebView does not capture the pointer to the range input: a drag released
+    // over the video sends `click` to the common ancestor (#playerRoot).
+    await page.evaluate(() => {
+      const seekEl = document.getElementById('seek');
+      const rootEl = document.getElementById('playerRoot');
+      const r = seekEl.getBoundingClientRect();
+      const at = (x, y) => ({ bubbles: true, cancelable: true, composed: true, button: 0, clientX: x, clientY: y, pointerId: 1, isPrimary: true });
+      seekEl.dispatchEvent(new PointerEvent('pointerdown', at(r.x + 80, r.y + 5)));
+      seekEl.dispatchEvent(new PointerEvent('pointerleave', { ...at(r.x + 80, r.y - 200), bubbles: false }));
+      rootEl.dispatchEvent(new PointerEvent('pointerup', at(r.x + 80, r.y - 200)));
+      rootEl.dispatchEvent(new MouseEvent('click', at(r.x + 80, r.y - 200)));
+    });
+    await page.clock.fastForward(400);
+    assert.equal(await toggleCount(), togglesBeforeRelease, 'WebKit-style drag release over the video does not toggle playback');
+    await page.mouse.click(xAt(bar, 0.5), bar.y - 300);
+    await page.clock.fastForward(400);
+    assert.equal(await toggleCount(), togglesBeforeRelease + 1, 'a later tap on the video still toggles playback');
 
     await page.locator('#seek').focus();
     await page.keyboard.press('ArrowRight');

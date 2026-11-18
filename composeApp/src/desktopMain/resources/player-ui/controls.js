@@ -3924,6 +3924,10 @@ seek.addEventListener("pointerleave", () => {
 const endSeekPointer = () => {
   if (!seekPointerActive) return;
   seekPointerActive = false;
+  // WKWebView does not capture the pointer to the range input, so a drag
+  // released over the video sends `click` to #playerRoot, which would toggle
+  // playback. The press belonged to the seek bar: swallow that one click.
+  setSuppressNextRootClick();
   renderSeekPreview();
 };
 document.addEventListener("pointerup", endSeekPointer, true);

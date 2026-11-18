@@ -121,6 +121,25 @@ Do not build a standalone app or DMG unless explicitly requested. Development co
 shown behavior differing from packaged builds; report that validation limitation. Do not silently replace the user's installed
 app or trigger TV/network activity as part of an unrelated UI check.
 
+### QA the desktop player with computer use
+
+1. Run one instance: `pkill -f "bin/java.*MainKt"`, then `./gradlew :composeApp:run`
+   in the background; wait for a `bin/java.*MainKt` process. Stale windows from
+   earlier launches catch clicks and keys.
+2. Grant computer use for `net.java.openjdk.java` ("MainKt") and request full-screen
+   control: background `app_*` clicks/typing do not reach this Compose window.
+   Screenshot to confirm MainKt is in front.
+3. Open a title via Cmd+F, type "night of the living dead" (public-domain 1968
+   film), wait ~7 s, click the black-and-white 1968 poster. Avoid Continue Watching
+   (changes the user's progress) and Home hero cards (they start trailers).
+4. On Details click Play/Resume; wait 10–15 s for frames (source is auto-picked).
+5. Move the mouse over the video before each screenshot; controls auto-hide.
+6. Seek checks: hover the bar and zoom to read the preview time; click, move the
+   mouse, and confirm the time label matches the preview.
+7. Close with the top-right ✕ (Esc is app-wide Back), release full-screen control,
+   and tell the user which title played and where it was left: playback saves
+   watch progress and may sync to Trakt.
+
 When merging native player API changes, reconcile the Kotlin bridge, JNI exports,
 `NativePlayerCreate` callbacks, and embedded/staging adapters together. The RTX HDR
 argument added upstream shifted the macOS `create` event-sink parameter while the
