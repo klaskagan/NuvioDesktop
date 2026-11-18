@@ -77,6 +77,7 @@ import com.nuvio.app.core.ui.DesktopBackdropVerticalBias
 import com.nuvio.app.core.ui.NuvioDesktopImageScaling
 import com.nuvio.app.core.ui.NuvioAsyncImage as AsyncImage
 import com.nuvio.app.core.ui.NuvioTokens
+import com.nuvio.app.core.ui.nuvioFocusBorder
 import com.nuvio.app.core.ui.isFullscreenActionSupported
 import com.nuvio.app.core.ui.heroStretchHeight
 import com.nuvio.app.core.ui.ScreenActivityEffect
@@ -555,6 +556,7 @@ private fun DefaultHomeHeroFrame(
                 Spacer(modifier = Modifier.height(14.dp))
                 Surface(
                     modifier = Modifier
+                        .nuvioFocusBorder(RoundedCornerShape(40.dp))
                         .clickable(enabled = onItemClick != null) {
                             onItemClick?.invoke(currentHeroItem(items, pagerState))
                         },
@@ -758,6 +760,7 @@ private fun HeroPageIndicatorRow(
             val isTimed = index == timedPage % itemCount
             Box(
                 modifier = Modifier
+                    .nuvioFocusBorder(CircleShape, borderWidth = 2.dp)
                     .clickable {
                         coroutineScope.launch {
                             pagerState.animateScrollToPage(heroPageForItem(pagerState.currentPage, index, itemCount))
@@ -916,6 +919,7 @@ private fun HeroContentBlock(
                 modifier = Modifier
                     .fillMaxWidth(layout.logoWidthFraction)
                     .aspectRatio(2.6f)
+                    .nuvioFocusBorder(RoundedCornerShape(NuvioTokens.Radius.md))
                     .clickable(enabled = onItemClick != null) {
                         onItemClick?.invoke(item)
                     },
@@ -928,6 +932,7 @@ private fun HeroContentBlock(
                 text = item.name,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .nuvioFocusBorder(RoundedCornerShape(NuvioTokens.Radius.md))
                     .clickable(enabled = onItemClick != null) {
                         onItemClick?.invoke(item)
                     },
@@ -971,6 +976,7 @@ private fun DesktopHeroContentBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .nuvioFocusBorder(RoundedCornerShape(NuvioTokens.Radius.md))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -1048,6 +1054,7 @@ private fun DesktopHeroContentBlock(
                 Surface(
                     modifier = Modifier
                         .height(48.dp)
+                        .nuvioFocusBorder(RoundedCornerShape(40.dp))
                         .clickable { onItemClick(item) },
                     color = colorScheme.onBackground,
                     contentColor = colorScheme.background,

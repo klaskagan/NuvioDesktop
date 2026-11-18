@@ -25,7 +25,7 @@ class DesktopPlaybackSourceTest {
         val failed = java.util.concurrent.LinkedBlockingQueue<String>()
         val controller = NativePlayerController(
             host = NativePlayerHost(),
-            nativeCreate = { _, source, _, _, _, _, _, _, _ ->
+            nativeCreate = { _, source, _, _, _, _, _, _, _, _ ->
                 created.add(source)
                 error("fixture create stopped before native initialization")
             },

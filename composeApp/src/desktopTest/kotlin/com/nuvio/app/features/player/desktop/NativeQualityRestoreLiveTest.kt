@@ -34,7 +34,7 @@ class NativeQualityRestoreLiveTest {
         fun set(name: String, value: String) { check(NativePlayerBridge.qualitySet(handle(), false, name, value)) }
         suspend fun load(file: File, position: Long) {
             SwingUtilities.invokeAndWait {
-                player.attach(file.toURI().toString(), emptyMap(), false, position, 0, false, { message -> check(message == null) { "Fixture native load failed" } })
+                player.attach(file.toURI().toString(), emptyMap(), false, position, 0, false, onError = { message -> check(message == null) { "Fixture native load failed" } })
             }
             withTimeout(20_000) { while (player.snapshot().isLoading || player.snapshot().videoHeight <= 0) delay(100) }
         }

@@ -46,6 +46,20 @@ class PersonCreditsTest {
         assertEquals(emptyList(), com.nuvio.app.features.tmdb.websiteKnownForKeys("<a href='/movie/1-outside'></a>"))
     }
 
+    @Test fun filmographyExcludesTalkShowGuestsAndRetainsHostsAndCrew() {
+        val response = json.decodeFromString<TmdbPersonCombinedCreditsResponse>(
+            """{"cast":[
+                {"id":1,"media_type":"tv","name":"Guest appearance","genre_ids":[10767],"character":"Self"},
+                {"id":2,"media_type":"tv","name":"Host credit","genre_ids":[10767],"character":"Self - Host"},
+                {"id":3,"media_type":"tv","name":"Drama","genre_ids":[18],"character":"Self"}
+            ],"crew":[{"id":1,"media_type":"tv","name":"Guest appearance","genre_ids":[10767]}]}""",
+        )
+        val filmography = mapPersonFilmography(response, "en", emptyMap(), preferCrew = false)
+        assertEquals(listOf("Host credit", "Drama"), filmography.series.map { it.name })
+        assertEquals(listOf("Host credit", "Drama"), filmography.actingCredits.map { it.media.name })
+        assertEquals(setOf("Host credit", "Drama", "Guest appearance"), filmography.allCredits.map { it.name }.toSet())
+    }
+
     @Test fun timelineUsesExplicitTypeSignalsAndDoesNotSumOverlappingRoleCounts() {
         val response = json.decodeFromString<TmdbPersonCombinedCreditsResponse>(
             """{"cast":[

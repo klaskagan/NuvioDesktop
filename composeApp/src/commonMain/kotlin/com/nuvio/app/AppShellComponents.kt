@@ -49,6 +49,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -60,6 +61,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -74,6 +77,10 @@ import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import com.nuvio.app.core.ui.NuvioNavBarScrollState
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.nuvio
+import com.nuvio.app.core.ui.nuvioFocusBorder
+import com.nuvio.app.core.ui.nuvioTrackTopBarFocus
+import com.nuvio.app.controller.ControllerFocusZone
+import com.nuvio.app.controller.controllerFocusable
 import com.nuvio.app.features.cloud.CloudLibraryContentType
 import com.nuvio.app.features.cloud.CloudLibraryFile
 import com.nuvio.app.features.cloud.CloudLibraryItem
@@ -246,11 +253,15 @@ internal fun AppTabHost(
         active = state.tabsRouteActiveState.value,
         profileId = state.profileId,
     ) { tab ->
+        // The content entry must live on the selected screen, not on the tab host: RootTabHost keeps
+        // previously visited tabs composed but unplaced, and focusing a container whose first child
+        // is an unplaced pane leaves focus on the container itself (no ring, no way out with arrows).
+        val contentModifier = Modifier.fillMaxSize()
         when (tab) {
             AppScreenTab.Home -> {
                 key(state.homeContentGeneration) {
                     HomeScreen(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = contentModifier,
                         topChromePadding = state.topChromePadding,
                         animateCollectionGifs = state.tabsRouteActiveState.value && selectedTab == AppScreenTab.Home,
                         scrollToTopRequests = requests.homeScrollToTopRequests,
@@ -269,7 +280,7 @@ internal fun AppTabHost(
 
             AppScreenTab.Search -> {
                 SearchScreen(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = contentModifier,
                     topChromePadding = state.topChromePadding,
                     listState = state.searchListState,
                     onPosterClick = actions.onPosterClick,
@@ -281,7 +292,7 @@ internal fun AppTabHost(
 
             AppScreenTab.Library -> {
                 LibraryScreen(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = contentModifier,
                     topChromePadding = state.topChromePadding,
                     scrollToTopRequests = requests.libraryScrollToTopRequests,
                     onPosterClick = actions.onLibraryPosterClick,
@@ -307,7 +318,7 @@ internal fun AppTabHost(
 
             AppScreenTab.Settings -> {
                 SettingsScreen(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = contentModifier,
                     topChromePadding = state.topChromePadding,
                     rootActionRequests = requests.settingsRootActionRequests,
                     requestedPageName = state.requestedSettingsPageName,
@@ -486,6 +497,7 @@ internal fun TabletFloatingTopBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .nuvioTrackTopBarFocus()
             .padding(top = statusBarPadding + baseTopPadding, bottom = tokens.spacing.controlGap),
         contentAlignment = Alignment.TopCenter,
     ) {
@@ -851,6 +863,7 @@ internal fun DesktopHoverSidebar(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 DesktopSidebarItem(
+                    id = "sidebar_home",
                     label = stringResource(Res.string.compose_nav_home),
                     selected = selectedTab == AppScreenTab.Home,
                     expanded = sidebarExpanded,
@@ -864,6 +877,7 @@ internal fun DesktopHoverSidebar(
                     )
                 }
                 DesktopSidebarItem(
+                    id = "sidebar_search",
                     label = stringResource(Res.string.compose_nav_search),
                     selected = selectedTab == AppScreenTab.Search,
                     expanded = sidebarExpanded,
@@ -877,6 +891,7 @@ internal fun DesktopHoverSidebar(
                     )
                 }
                 DesktopSidebarItem(
+                    id = "sidebar_library",
                     label = stringResource(Res.string.compose_nav_library),
                     selected = selectedTab == AppScreenTab.Library,
                     expanded = sidebarExpanded,
@@ -890,6 +905,7 @@ internal fun DesktopHoverSidebar(
                     )
                 }
                 DesktopSidebarItem(
+                    id = "sidebar_calendar",
                     label = stringResource(Res.string.calendar_screen_title),
                     selected = selectedTab == AppScreenTab.Calendar,
                     expanded = sidebarExpanded,
@@ -900,6 +916,7 @@ internal fun DesktopHoverSidebar(
                 }
                 if (showHistory) {
                     DesktopSidebarItem(
+                        id = "sidebar_history",
                         label = stringResource(Res.string.history_title),
                         selected = selectedTab == AppScreenTab.History,
                         expanded = sidebarExpanded,
@@ -910,6 +927,7 @@ internal fun DesktopHoverSidebar(
                     }
                 }
                 DesktopSidebarItem(
+                    id = "sidebar_settings",
                     label = stringResource(Res.string.compose_settings_page_root),
                     selected = selectedTab == AppScreenTab.Settings,
                     expanded = sidebarExpanded,
@@ -989,6 +1007,7 @@ private fun DesktopSidebarProfileTrigger(
 
 @Composable
 private fun DesktopSidebarItem(
+    id: String,
     label: String,
     selected: Boolean,
     expanded: Boolean,
@@ -1004,6 +1023,16 @@ private fun DesktopSidebarItem(
         modifier = Modifier
             .fillMaxWidth()
             .height(DesktopSidebarItemHeight)
+            .controllerFocusable(
+                id = id,
+                zone = ControllerFocusZone.Navigation,
+                isDefaultFocus = selected,
+                shape = RoundedCornerShape(16.dp),
+                cornerRadius = 16.dp,
+                scaleOnFocus = 1.03f,
+                selectLabel = label,
+                onSelect = onClick,
+            )
             .padding(horizontal = 6.dp, vertical = 4.dp),
         color = Color.Transparent,
         shape = RoundedCornerShape(16.dp),

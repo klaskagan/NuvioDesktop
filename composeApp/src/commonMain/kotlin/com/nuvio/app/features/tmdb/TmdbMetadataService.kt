@@ -1470,6 +1470,14 @@ private fun englishCreditTitlesById(credits: TmdbPersonCombinedCreditsResponse?)
     return titles
 }
 
+private const val TMDB_TALK_GENRE_ID = 10767
+private val TALK_SHOW_HOST_CHARACTER_REGEX = Regex("\\b(co-?)?host(s|ess)?\\b", RegexOption.IGNORE_CASE)
+
+internal fun isTalkShowGuestAppearance(genreIds: List<Int>, character: String?): Boolean {
+    if (genreIds.none { it == TMDB_TALK_GENRE_ID }) return false
+    return character?.let { TALK_SHOW_HOST_CHARACTER_REGEX.containsMatchIn(it) } != true
+}
+
 internal fun containsCjkOrHangul(text: String): Boolean {
     return text.any { ch ->
         ch in '\u3040'..'\u30FF' ||  // Hiragana + Katakana

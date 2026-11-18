@@ -52,7 +52,7 @@ class NativeBufferedQualityLiveTest {
             val host = NativePlayerHost()
             frame = JFrame("Background quality fixture").apply { add(host); setSize(960, 640); isVisible = true }
             player = NativePlayerController(host)
-            player.attach(high.toURI().toString(), emptyMap(), false, 4000, 0, false, { check(it == null) })
+            player.attach(high.toURI().toString(), emptyMap(), false, 4000, 0, false, onError = { check(it == null) })
         }
         fun handle() = player.javaClass.getDeclaredField("handle").apply { isAccessible = true }.getLong(player)
         var prepared: BufferedPlayerQuality? = null
