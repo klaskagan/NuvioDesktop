@@ -34,7 +34,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.History
+import com.nuvio.app.features.history.LocalHistorySource
+import nuvio.composeapp.generated.resources.history_title
 import com.nuvio.app.features.calendar.CalendarScreen
+import com.nuvio.app.features.history.HistoryScreen
 import nuvio.composeapp.generated.resources.calendar_screen_title
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -295,6 +299,10 @@ internal fun AppTabHost(
 
             AppScreenTab.Calendar -> {
                 CalendarScreen(topChromePadding = state.topChromePadding, onPosterClick = actions.onPosterClick)
+            }
+
+            AppScreenTab.History -> {
+                HistoryScreen(topChromePadding = state.topChromePadding, onPosterClick = actions.onPosterClick)
             }
 
             AppScreenTab.Settings -> {
@@ -787,7 +795,9 @@ internal fun DesktopHoverSidebar(
             } else {
                 0.dp
             }
-            val navColumnHeight = DesktopSidebarItemHeight * AppScreenTab.entries.size
+            val showHistory = LocalHistorySource.current != null
+            val itemCount = AppScreenTab.entries.size - if (showHistory) 0 else 1
+            val navColumnHeight = DesktopSidebarItemHeight * itemCount
             val centeredNavTop = ((maxHeight - navColumnHeight) / 2).coerceAtLeast(0.dp)
             val availableNavOffset = (maxHeight - navColumnHeight - centeredNavTop).coerceAtLeast(0.dp)
             val navColumnOffset = (minNavTop - centeredNavTop)
@@ -887,6 +897,17 @@ internal fun DesktopHoverSidebar(
                 ) { color ->
                     Icon(Icons.Outlined.CalendarMonth, stringResource(Res.string.calendar_screen_title),
                         modifier = Modifier.size(DesktopSidebarIconSize), tint = color)
+                }
+                if (showHistory) {
+                    DesktopSidebarItem(
+                        label = stringResource(Res.string.history_title),
+                        selected = selectedTab == AppScreenTab.History,
+                        expanded = sidebarExpanded,
+                        onClick = { selectTab(AppScreenTab.History) },
+                    ) { color ->
+                        Icon(Icons.Outlined.History, stringResource(Res.string.history_title),
+                            modifier = Modifier.size(DesktopSidebarIconSize), tint = color)
+                    }
                 }
                 DesktopSidebarItem(
                     label = stringResource(Res.string.compose_settings_page_root),

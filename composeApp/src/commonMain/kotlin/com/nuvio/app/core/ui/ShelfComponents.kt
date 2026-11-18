@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.HoverInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -307,24 +309,34 @@ fun NuvioPosterCard(
     val cachedImage = remember(imageModel, mediaIdentity) { cachedMediaImagePreview(imageModel as? coil3.request.ImageRequest, mediaIdentity) }
     val cachedLogo = remember(logoModel, mediaIdentity) { cachedMediaImagePreview(logoModel as? coil3.request.ImageRequest, mediaIdentity) }
     val warmReturn = remember(mediaIdentity) { cachedImage?.wasDisplayed == true && (bottomLeftLogoUrl.isNullOrBlank() || cachedLogo?.wasDisplayed == true) }
+    var retainedImagePainter by remember(mediaIdentity, imageModel) {
+        mutableStateOf<androidx.compose.ui.graphics.painter.Painter?>(cachedImage?.painter)
+    }
+    var retainedLogoPainter by remember(mediaIdentity, logoModel) {
+        mutableStateOf<androidx.compose.ui.graphics.painter.Painter?>(cachedLogo?.painter)
+    }
+    var hasRevealedArtwork by remember(mediaIdentity, imageModel, logoModel) { mutableStateOf(false) }
     var imageResolved by remember(title, imageUrl, fallbackImageUrl) { mutableStateOf(imageUrl == null || cachedImage != null) }
     var logoLoaded by remember(title, imageUrl, bottomLeftLogoUrl) { mutableStateOf(cachedLogo != null) }
     var logoFailed by remember(title, imageUrl, bottomLeftLogoUrl) { mutableStateOf(false) }
     val individuallyReady = !revealArtworkTogether || (!artworkPending && imageResolved &&
         (bottomLeftLogoUrl.isNullOrBlank() || logoLoaded || logoFailed))
     // A previously displayed poster/logo pair stays visible while its full-resolution image is restored.
-    val artworkReady = individuallyReady && (showArtwork || warmReturn)
+    val artworkReady = hasRevealedArtwork || (individuallyReady && (showArtwork || warmReturn))
     SideEffect {
-        onArtworkReadyChanged?.invoke(individuallyReady)
+        if (artworkReady) hasRevealedArtwork = true
+        onArtworkReadyChanged?.invoke(individuallyReady || hasRevealedArtwork)
         if (artworkReady) {
             markMediaImageDisplayed(imageModel as? coil3.request.ImageRequest, mediaIdentity)
             markMediaImageDisplayed(logoModel as? coil3.request.ImageRequest, mediaIdentity)
         }
     }
 
+    // The column scales on hover; share the lift source so a lifted card keeps its hover state.
+    val liftSource = rememberPosterLiftSource(imageUrl)
     Column(
         modifier = Modifier
-            .desktopPosterHoverScale(enabled = artworkFocusRing == null)
+            .desktopPosterHoverScale(enabled = artworkFocusRing == null, liftSource = liftSource)
             .then(modifier)
             .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(cardWidth)),
         verticalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s6),
@@ -361,6 +373,7 @@ fun NuvioPosterCard(
                     zoomImageUrl = imageUrl,
                     zoomCornerRadius = if (circularArtwork) cardWidth / 2 else cornerRadius,
                     hoverScaleEnabled = false,
+                    liftSource = liftSource,
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -374,13 +387,13 @@ fun NuvioPosterCard(
                 if (imageUrl != null) {
                     NuvioAsyncImage(
                         model = imageModel,
-                        placeholder = cachedImage?.painter,
-                        error = cachedImage?.painter,
+                        placeholder = retainedImagePainter,
+                        error = retainedImagePainter,
                         contentDescription = title,
                         modifier = Modifier.matchParentSize(),
-                        onLoading = { imageResolved = cachedImage != null },
-                        onSuccess = { imageResolved = true },
-                        onError = { imageResolved = true; if (cachedImage == null) onImageError?.invoke() },
+                        onLoading = { imageResolved = retainedImagePainter != null },
+                        onSuccess = { if (retainedImagePainter == null) retainedImagePainter = it.painter; imageResolved = true },
+                        onError = { imageResolved = true; if (retainedImagePainter == null) onImageError?.invoke() },
                         contentScale = ContentScale.Crop,
                         desktopAnimation = posterCardStyle.animatedArtworkMode.toDesktopAnimation(),
                     )
@@ -420,17 +433,17 @@ fun NuvioPosterCard(
                         if (!bottomLeftLogoUrl.isNullOrBlank()) {
                             NuvioAsyncImage(
                                 model = logoModel,
-                                placeholder = cachedLogo?.painter,
-                                error = cachedLogo?.painter,
+                                placeholder = retainedLogoPainter,
+                                error = retainedLogoPainter,
                                 contentDescription = stringResource(Res.string.poster_logo_content_description, title),
                                 modifier = Modifier
                                     .width(catalogLogoOverlaySize.width)
                                     .height(catalogLogoOverlaySize.height),
                                 contentScale = ContentScale.Fit,
                                 alignment = Alignment.CenterStart,
-                                onLoading = { logoLoaded = cachedLogo != null; logoFailed = false },
-                                onSuccess = { logoLoaded = true; logoFailed = false },
-                                onError = { logoLoaded = cachedLogo != null; logoFailed = cachedLogo == null },
+                                onLoading = { logoLoaded = retainedLogoPainter != null; logoFailed = false },
+                                onSuccess = { if (retainedLogoPainter == null) retainedLogoPainter = it.painter; logoLoaded = true; logoFailed = false },
+                                onError = { logoLoaded = retainedLogoPainter != null; logoFailed = retainedLogoPainter == null },
                             )
                         }
                         if (bottomLeftLogoUrl.isNullOrBlank() || (logoTextFallback && if (revealArtworkTogether) logoFailed else !logoLoaded)) {
@@ -676,12 +689,20 @@ private fun NuvioPosterShape.cardWidth(basePosterWidthDp: Int): Dp =
 internal fun Modifier.desktopPosterHoverScale(
     enabled: Boolean = true,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    liftSource: PosterLiftSource? = null,
 ): Modifier {
     if (!enabled || !isDesktop) return this
 
     val hovered by interactionSource.collectIsHoveredAsState()
+    if (liftSource != null) {
+        LaunchedEffect(interactionSource, liftSource) {
+            interactionSource.interactions.collect { interaction ->
+                if (interaction is HoverInteraction.Enter && !liftSource.isLifted) liftSource.hoverHold = null
+            }
+        }
+    }
     val scale by animateFloatAsState(
-        targetValue = if (hovered) DesktopPosterHoverScale else 1f,
+        targetValue = if (liftSource?.hoverHold ?: hovered) DesktopPosterHoverScale else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMediumLow,
@@ -689,7 +710,7 @@ internal fun Modifier.desktopPosterHoverScale(
         label = "desktop_poster_hover_scale",
     )
 
-    val isScaling = hovered || scale != 1f
+    val isScaling = (liftSource?.hoverHold ?: hovered) || scale != 1f
 
     return this
         .then(

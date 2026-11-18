@@ -2641,6 +2641,7 @@
     <string name="calendar_screen_title">Calendar</string>
     <string name="calendar_this_week">This week</string>
     <string name="calendar_next_week">Next week</string>
+    <string name="calendar_view_label">Calendar view</string>
     <string name="calendar_view_day">Day</string>
     <string name="calendar_view_week">Week</string>
     <string name="calendar_view_month">Month</string>
@@ -2888,4 +2889,18 @@
     <string name="window_menu_window">Window</string>
     <string name="window_menu_close">Close Window</string>
     <string name="window_menu_minimize">Minimize</string>
+    <string name="history_title">History</string>
+    <string name="history_empty">No watched items yet.</string>
+    <string name="history_load_failed">Could not load watch history.</string>
+    <string name="history_retry">Retry</string>
+    <string name="history_load_more">Load more</string>
+    <string name="history_unknown_title">Unknown title</string>
+    <string name="history_season_episode">S%1$d • E%2$d</string>
+    <string name="history_episode">Episode %1$d</string>
+    <plurals name="history_watch_count">
+        <item quantity="one">%1$d watch</item>
+        <item quantity="other">%1$d watches</item>
+    </plurals>
+    <string name="history_remove">Remove from history</string>
+    <string name="history_remove_failed">Could not remove this watch. Try again from the card menu.</string>
 </resources>

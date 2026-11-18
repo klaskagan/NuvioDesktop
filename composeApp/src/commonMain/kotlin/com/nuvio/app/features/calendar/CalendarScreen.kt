@@ -21,7 +21,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.input.nestedscroll.*
@@ -69,15 +68,6 @@ internal fun CalendarScreen(
     val view = CalendarView.valueOf(viewName)
     val filter = CalendarFilter.valueOf(filterName)
     val firstWeekday = remember(region) { CalendarPlatform.firstWeekday() }
-    val headingMeasurer = rememberTextMeasurer()
-    val headingStyle = MaterialTheme.typography.labelLarge
-    val headingDensity = LocalDensity.current
-    val monthControlWidth = remember(region, selected.take(4), headingStyle, headingDensity) {
-        val widest = (1..12).maxOf { month ->
-            headingMeasurer.measure(CalendarPlatform.monthLabel("${selected.take(4)}-${month.toString().padStart(2, '0')}-01") + " ▾", headingStyle).size.width
-        }
-        with(headingDensity) { widest.toDp() } + 32.dp
-    }
 
     var rangeStart by rememberSaveable { mutableStateOf(calendarWeekStart(initialDate ?: today, firstWeekday)) }
     var rangeDays by rememberSaveable { mutableIntStateOf(28) }
@@ -165,74 +155,46 @@ internal fun CalendarScreen(
     LaunchedEffect(firstWeekday) {
         rangeStart = calendarWeekStart(rangeStart, firstWeekday)
     }
-    val latestExtend by rememberUpdatedState<(Boolean) -> Unit> { extend(it) }
     val latestLoading by rememberUpdatedState(state.loading)
     val latestView by rememberUpdatedState(view)
     val latestList by rememberUpdatedState(viewState)
     val latestSelection by rememberUpdatedState<(String) -> Unit> { selected = it }
-    var lastEdgeRequest by remember { mutableLongStateOf(0L) }
-    fun requestEdge(earlier: Boolean) {
-        val now = EpisodeReleaseDatePlatform.nowEpochMs()
-        if (!latestLoading && now - lastEdgeRequest > 800) { lastEdgeRequest = now; latestExtend(earlier) }
-    }
-    val latestRequestEdge by rememberUpdatedState<(Boolean) -> Unit> { requestEdge(it) }
     val scrollLoader = remember {
         object : NestedScrollConnection {
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.UserInput || latestView == CalendarView.Month || latestLoading) return Offset.Zero
                 val list = latestList
-                val direction = consumed.y + available.y
                 if (consumed.y != 0f) {
                     val visible = list.layoutInfo.visibleItemsInfo.firstOrNull { item ->
                         (item.key as? String)?.let { it.length == 10 && it[4] == '-' } == true
                     }?.key as? String
                     if (visible != null) latestSelection(visible)
                 }
-                val earlier = direction > 0 && !list.canScrollBackward
-                val later = direction < 0 && !list.canScrollForward
-                if (earlier || later) latestRequestEdge(earlier)
                 return Offset.Zero
             }
         }
     }
-    val style = globalStyle.copy(catalogLandscapeModeEnabled = globalStyle.calendarLandscapeModeEnabled, hideLabelsEnabled = false,
-        cornerRadiusDp = if (globalStyle.calendarLandscapeModeEnabled) globalStyle.cornerRadiusDp.coerceAtMost(8) else globalStyle.cornerRadiusDp)
+    val style = calendarAgendaPosterStyle(globalStyle)
     CompositionLocalProvider(LocalPosterCardStyleOverride provides style, LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .padding(top = ((topChromePadding ?: 16.dp) - 20.dp).coerceAtLeast(8.dp))
             .padding(horizontal = 24.dp).testTag("calendar-screen")) {
-            Row(Modifier.fillMaxWidth().height(52.dp).testTag("calendar-toolbar"), verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TextButton(onClick = { pickerDate = selected; picker = true }, modifier = Modifier.width(monthControlWidth).testTag("calendar-date-picker-button")) { Text(CalendarPlatform.monthLabel(selected) + " ▾") }
-                    Box(Modifier.size(48.dp)) { if (view == CalendarView.Month) IconButton(onClick = { move(-1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(Res.string.calendar_previous)) } }
-                    TextButton(onClick = { reveal(today) }) { Text(stringResource(Res.string.calendar_today)) }
-                    Box(Modifier.size(48.dp)) { if (view == CalendarView.Month) IconButton(onClick = { move(1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(Res.string.calendar_next)) } }
-                    Spacer(Modifier.width(8.dp))
-                    CalendarView.entries.forEach { option ->
-                        FilterChip(view == option, {
-                            if (view != option) {
-                                if (option != CalendarView.Month) reveal(selected)
-                                viewName = option.name
-                                pendingReveal = true
-                            }
-                        }, label = { Text(viewLabel(option)) }, modifier = Modifier.testTag("calendar-view-${option.name}"))
+            CalendarAgendaToolbar(selected, filter, globalStyle.calendarLandscapeModeEnabled, rangeLoading,
+                openPicker = { pickerDate = selected; picker = true },
+                goToday = { reveal(today) },
+                selectFilter = { filterName = it.name; pendingReveal = true; revealRequest++ },
+                toggleOrientation = { PosterCardStyleRepository.setCalendarLandscapeModeEnabled(!globalStyle.calendarLandscapeModeEnabled) },
+                previousMonth = if (view == CalendarView.Month) ({ move(-1) }) else null,
+                nextMonth = if (view == CalendarView.Month) ({ move(1) }) else null,
+                view = view,
+                selectView = { option ->
+                    if (view != option) {
+                        if (option != CalendarView.Month) reveal(selected)
+                        viewName = option.name
+                        pendingReveal = true
                     }
-                    Spacer(Modifier.width(8.dp))
-                    CalendarFilter.entries.forEach { option ->
-                        FilterChip(filter == option, { filterName = option.name; pendingReveal = true; revealRequest++ }, label = { Text(filterLabel(option)) }, modifier = Modifier.testTag("calendar-filter-${option.name}"))
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                IconButton(onClick = { PosterCardStyleRepository.setCalendarLandscapeModeEnabled(!globalStyle.calendarLandscapeModeEnabled) },
-                    modifier = Modifier.testTag("calendar-landscape").semantics { stateDescription = if (globalStyle.calendarLandscapeModeEnabled) "Landscape" else "Portrait" }) {
-                    Icon(painterResource(if (globalStyle.calendarLandscapeModeEnabled) Res.drawable.calendar_posters_landscape else Res.drawable.calendar_posters_portrait),
-                        stringResource(if (globalStyle.calendarLandscapeModeEnabled) Res.string.calendar_orientation_landscape else Res.string.calendar_orientation_portrait),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            Box(Modifier.fillMaxWidth().height(4.dp).testTag("calendar-loading-strip")) {
-                if (rangeLoading) LinearProgressIndicator(Modifier.fillMaxSize().testTag("calendar-loading"))
-            }
+                },
+            )
             if (state.problem == CalendarProblem.NETWORK || state.problem == CalendarProblem.AUTHENTICATION) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(if (state.problem == CalendarProblem.AUTHENTICATION) Res.string.calendar_auth_expired else if (state.partial) Res.string.calendar_partial else Res.string.calendar_error), modifier = Modifier.weight(1f))
@@ -252,18 +214,10 @@ internal fun CalendarScreen(
                 val prepared = rememberListArtworkPrefetch(viewState, rows, view)
                 val gates = rememberGridArtworkGates(rows, view)
                 CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared) {
-                    BoxWithConstraints(Modifier.weight(1f).nestedScroll(scrollLoader).pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                if (event.type == PointerEventType.Scroll && latestView != CalendarView.Month) {
-                                    val dy = event.changes.sumOf { it.scrollDelta.y.toDouble() }.toFloat()
-                                    if (dy > 0 && !latestList.canScrollForward) latestRequestEdge(false)
-                                    if (dy < 0 && !latestList.canScrollBackward) latestRequestEdge(true)
-                                }
-                            }
-                        }
-                    }) {
+                    BoxWithConstraints(Modifier.weight(1f)
+                        .agendaScrollLoading(viewState, enabled = view != CalendarView.Month, loading = state.loading,
+                            onEarlier = { extend(true) }, onLater = { extend(false) })
+                        .nestedScroll(scrollLoader)) {
                         val columnWidth = (maxWidth / 7).coerceAtLeast(if (shape == PosterShape.Landscape) 190.dp else 142.dp)
                         val totalWidth = columnWidth * 7
                         val anchoredHeading = Modifier.width(maxWidth).offset { IntOffset(weekHorizontalState.value, 0) }
@@ -323,35 +277,54 @@ internal fun CalendarScreen(
                 }
             }
         }
-        if (picker) AlertDialog(onDismissRequest = { picker = false }, text = {
-            Column(Modifier.testTag("calendar-date-picker")) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { pickerDate = calendarMoveMonth(pickerDate, -1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(Res.string.calendar_previous)) }
-                    Text(CalendarPlatform.monthLabel(pickerDate), Modifier.weight(1f))
-                    IconButton(onClick = { pickerDate = calendarMoveMonth(pickerDate, 1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(Res.string.calendar_next)) }
-                }
-                val pickerDates = calendarMonthRange(pickerDate, firstWeekday).dates
-                WeekdayHeader(pickerDates.take(7))
-                pickerDates.chunked(7).forEach { week -> Row { week.forEach { date ->
-                    Box(Modifier.weight(1f).height(40.dp).testTag("calendar-picker-$date").clickable { reveal(date); picker = false }, contentAlignment = Alignment.Center) {
-                        Text(date.takeLast(2).toInt().toString(), textAlign = TextAlign.Center,
-                            color = if (date == today) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(32.dp).background(if (date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0f), CircleShape).wrapContentSize())
-                    }
-                } } }
-            }
-        }, confirmButton = {})
+        if (picker) CalendarAgendaDatePicker(pickerDate, today, firstWeekday, dismiss = { picker = false }) {
+            reveal(it)
+            picker = false
+        }
     }
 }
 
-private fun calendarToday() = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(EpisodeReleaseDatePlatform.nowEpochMs())!!
-@Composable private fun viewLabel(view: CalendarView) = stringResource(when(view) { CalendarView.Day -> Res.string.calendar_view_day; CalendarView.Week -> Res.string.calendar_view_week; CalendarView.Month -> Res.string.calendar_view_month })
-@Composable private fun filterLabel(filter: CalendarFilter) = stringResource(when(filter) { CalendarFilter.All -> Res.string.calendar_filter_all; CalendarFilter.Shows -> Res.string.calendar_filter_shows; CalendarFilter.Movies -> Res.string.calendar_filter_movies })
+internal fun calendarAgendaPosterStyle(style: PosterCardStyleUiState, landscape: Boolean = style.calendarLandscapeModeEnabled) = style.copy(
+    catalogLandscapeModeEnabled = landscape,
+    hideLabelsEnabled = false,
+    cornerRadiusDp = if (landscape) style.cornerRadiusDp.coerceAtMost(8) else style.cornerRadiusDp,
+)
 
+@Composable
+internal fun CalendarAgendaDatePicker(
+    initialDate: String,
+    today: String,
+    firstWeekday: Int,
+    dismiss: () -> Unit,
+    tagPrefix: String = "calendar",
+    select: (String) -> Unit,
+) {
+    var pickerDate by remember(initialDate) { mutableStateOf(initialDate) }
+    AlertDialog(onDismissRequest = dismiss, text = {
+        Column(Modifier.testTag("$tagPrefix-date-picker")) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { pickerDate = calendarMoveMonth(pickerDate, -1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(Res.string.calendar_previous)) }
+                Text(CalendarPlatform.monthLabel(pickerDate), Modifier.weight(1f))
+                IconButton(onClick = { pickerDate = calendarMoveMonth(pickerDate, 1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(Res.string.calendar_next)) }
+            }
+            val pickerDates = calendarMonthRange(pickerDate, firstWeekday).dates
+            WeekdayHeader(pickerDates.take(7))
+            pickerDates.chunked(7).forEach { week -> Row { week.forEach { date ->
+                Box(Modifier.weight(1f).height(40.dp).testTag("$tagPrefix-picker-$date").clickable { select(date) }, contentAlignment = Alignment.Center) {
+                    Text(date.takeLast(2).toInt().toString(), textAlign = TextAlign.Center,
+                        color = if (date == today) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(32.dp).background(if (date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0f), CircleShape).wrapContentSize())
+                }
+            } } }
+        }
+    }, confirmButton = {})
+}
+
+internal fun calendarToday() = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(EpisodeReleaseDatePlatform.nowEpochMs())!!
 @Composable private fun ReleaseCount(count: Int) {
     Text(pluralStringResource(Res.plurals.calendar_release_count, count, count), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.nuvio.colors.textMuted)
 }
-@Composable private fun DaySectionHeading(date: String, count: Int, today: Boolean) {
+@Composable internal fun DaySectionHeading(date: String, count: Int, today: Boolean, watchHistory: Boolean = false) {
     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp).testTag("calendar-day-heading-$date"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.background(if (today) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0f), RoundedCornerShape(16.dp))
             .padding(end = if (today) 12.dp else 0.dp).then(if (today) Modifier.testTag("calendar-today") else Modifier),
@@ -367,7 +340,11 @@ private fun calendarToday() = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(E
             }
         }
         Spacer(Modifier.weight(1f))
-        ReleaseCount(count)
+        if (watchHistory) Text(
+            pluralStringResource(Res.plurals.history_watch_count, count, count),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.nuvio.colors.textMuted,
+        ) else ReleaseCount(count)
     }
 }
 @Composable private fun DateHeading(date: String, count: Int?) {
@@ -384,17 +361,31 @@ private fun calendarToday() = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(E
             .background(if (today) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0f), RoundedCornerShape(8.dp)).padding(8.dp))
 }
 
-@Composable private fun CalendarShelf(cards: List<CalendarCard>, onPosterClick: ((MetaPreview) -> Unit)?, cardWidth: Dp? = null) {
+@Composable
+private fun CalendarShelf(cards: List<CalendarCard>, onPosterClick: ((MetaPreview) -> Unit)?, cardWidth: Dp? = null) {
+    CalendarAgendaShelf(cards, cards.map { it.toPreview() }, { it.key }) { card ->
+        CalendarMediaCard(card, cardWidth = cardWidth, onPosterClick = onPosterClick)
+    }
+}
+
+@Composable
+internal fun <T> CalendarAgendaShelf(
+    entries: List<T>,
+    previews: List<MetaPreview>,
+    entryKey: (T) -> String,
+    content: @Composable (T) -> Unit,
+) {
     val state = rememberLazyListState()
     val style = rememberPosterCardStyleUiState()
-    val items = cards.map { it.toPreview() }
-    val prepared = rememberShelfArtworkPrefetch(state, items, cards.map { it.key }, enhanceTitles = false, forceShape = if (style.catalogLandscapeModeEnabled) PosterShape.Landscape else PosterShape.Poster)
+    val keys = entries.map(entryKey)
+    val shape = if (style.catalogLandscapeModeEnabled) PosterShape.Landscape else PosterShape.Poster
+    val prepared = rememberShelfArtworkPrefetch(state, previews, keys, enhanceTitles = false, forceShape = shape)
     CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared) {
-        val gate = rememberMediaShelfGate(state, items, cards.map { it.key })
+        val gate = rememberMediaShelfGate(state, previews, keys)
         CompositionLocalProvider(LocalLandscapeRowReveal provides gate) {
-            NuvioShelfSection(title = "", entries = cards, state = state,
-                key = { it.key }, itemSpacing = 12.dp, rowContentPadding = PaddingValues(vertical = 8.dp)) { card ->
-                CalendarMediaCard(card, cardWidth = cardWidth, onPosterClick = onPosterClick)
+            NuvioShelfSection(title = "", entries = entries, state = state, key = entryKey,
+                itemSpacing = 12.dp, rowContentPadding = PaddingValues(vertical = 8.dp)) { entry ->
+                content(entry)
             }
         }
     }
@@ -403,31 +394,59 @@ private fun calendarToday() = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(E
 @Composable private fun CalendarMediaCard(card: CalendarCard, modifier: Modifier = Modifier, compact: Boolean = false, cardWidth: Dp? = null, onPosterClick: ((MetaPreview) -> Unit)?) {
     val style = rememberPosterCardStyleUiState()
     val item = card.toPreview()
-    val key = item.stableKey()
-    val prepared = LocalPreparedLandscapeArtwork.current
-    val gate = LocalLandscapeRowReveal.current
     val watched by WatchedRepository.uiState.collectAsState()
     val full by WatchedRepository.fullyWatchedSeriesKeys.collectAsState()
     val badge = listOfNotNull(card.releaseEpochMs?.let { start ->
         formatLocalTime(start) + (card.lastReleaseEpochMs?.takeIf { it != start }?.let { "–${formatLocalTime(it)}" } ?: "")
     }, if (card.premiere) stringResource(Res.string.calendar_premiere) else null,
         if (card.finale) stringResource(Res.string.calendar_finale) else null).joinToString(" · ").ifBlank { null }
-    NuvioPosterCard(title = card.media.title,
+    CalendarAgendaMediaCard(
+        item = item,
         imageUrl = if (style.catalogLandscapeModeEnabled) card.media.landscape ?: card.episodes.firstOrNull()?.screenshot ?: card.media.poster else card.media.poster,
         fallbackImageUrl = card.media.poster,
-        modifier = (if (compact) modifier else modifier.width(cardWidth ?: if (style.catalogLandscapeModeEnabled) 224.dp else 142.dp)).testTag("calendar-card-${card.key}"),
+        modifier = modifier.testTag("calendar-card-${card.key}"),
+        compact = compact,
+        cardWidth = cardWidth,
+        detail = card.episodeLabel ?: calendarMovieLabel(card.media.year),
+        badge = badge,
+        isWatched = !compact && WatchingState.isPosterWatched(watched.watchedKeys, item, full),
+        onClick = onPosterClick?.let { { it(item) } },
+    )
+}
+
+@Composable
+internal fun CalendarAgendaMediaCard(
+    item: MetaPreview,
+    imageUrl: String?,
+    fallbackImageUrl: String?,
+    detail: String?,
+    badge: String?,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    cardWidth: Dp? = null,
+    isWatched: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val style = rememberPosterCardStyleUiState()
+    val artworkKey = item.stableKey()
+    val prepared = LocalPreparedLandscapeArtwork.current
+    val gate = LocalLandscapeRowReveal.current
+    NuvioPosterCard(title = item.name,
+        imageUrl = imageUrl,
+        fallbackImageUrl = fallbackImageUrl,
+        modifier = if (compact) modifier else modifier.width(cardWidth ?: if (style.catalogLandscapeModeEnabled) 224.dp else 142.dp),
         fillWidth = true,
         shape = if (style.catalogLandscapeModeEnabled) NuvioPosterShape.Landscape else NuvioPosterShape.Poster,
-        detailLine = if (compact) null else card.episodeLabel ?: calendarMovieLabel(card.media.year),
-        secondaryDetailLine = null,
+        detailLine = if (compact) null else detail,
         artworkBadge = if (compact) null else badge,
         requiredLabels = true, showTitleBelow = !compact,
-        isWatched = !compact && WatchingState.isPosterWatched(watched.watchedKeys, item, full),
-        mediaIdentity = key, revealArtworkTogether = true,
-        artworkPending = prepared[key]?.isLoading == true,
-        showArtwork = (gate?.revealed ?: true) && prepared.mayReveal(key),
-        onArtworkReadyChanged = gate?.let { { ready -> it.report(key, ready) } },
-        onClick = onPosterClick?.let { { it(item) } })
+        isWatched = isWatched,
+        mediaIdentity = artworkKey, revealArtworkTogether = true,
+        artworkPending = prepared[artworkKey]?.isLoading == true,
+        showArtwork = (gate?.revealed ?: true) && prepared.mayReveal(artworkKey),
+        onArtworkReadyChanged = gate?.let { { ready -> it.report(artworkKey, ready) } },
+        onClick = onClick, onLongClick = onLongClick)
 }
 
 /** The grid and selected shelf share the viewport instead of sharing a vertical scroller. */

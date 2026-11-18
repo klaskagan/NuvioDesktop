@@ -6,7 +6,7 @@ import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
-import coil3.network.cachecontrol.CacheControlCacheStrategy
+import com.nuvio.app.core.ui.TraktImageCacheStrategy
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.CachePolicy
 import coil3.request.crossfade
@@ -41,7 +41,7 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
                                 }
                             }
                         },
-                        cacheStrategy = { CacheControlCacheStrategy() },
+                        cacheStrategy = { TraktImageCacheStrategy() },
                     ),
                 )
                 if (Build.VERSION.SDK_INT >= 28) {

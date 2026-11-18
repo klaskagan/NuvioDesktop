@@ -24,6 +24,11 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import com.nuvio.app.core.ui.LocalPosterZoomOverlayHost
+import com.nuvio.app.core.ui.PosterZoomOverlayHostState
+import com.nuvio.app.features.history.LocalHistorySource
+import com.nuvio.app.features.tracking.TrackingHistorySource
+import com.nuvio.app.features.tracking.TrackingProviderRegistry
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -229,10 +234,15 @@ internal fun MainAppContent(
     onRootContentReady: ((Boolean) -> Unit)? = null,
     onSwitchProfile: () -> Unit = {},
 ) {
+        val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
+        val profileId = profileState.activeProfile?.profileIndex ?: ProfileRepository.activeProfileId
+        val historySource = if (isDesktop) rememberHistorySource(profileId) else null
+        val historyAvailable = rememberUpdatedState(historySource != null)
         val navBackStack = rememberNavBackStack(navigationSavedStateConfiguration, initialRoute)
         val desktopHistory = remember(navBackStack) {
             if (isDesktop && !useNativeNavigation) DesktopNavigationHistory(
                 DesktopNavigationLocation(tab = initialTab, routes = navBackStack.filterIsInstance<AppRoute>()),
+                tabAvailable = { it != AppScreenTab.History || historyAvailable.value },
                 routeAvailable = { route ->
                     when (route) {
                         is PlayerRoute -> false
@@ -277,6 +287,9 @@ internal fun MainAppContent(
                 },
                 onLocalPop = { if (usePosterNavigation.value) posterNavigation.clear() },
             )
+        }
+        LaunchedEffect(historyAvailable.value) {
+            if (!historyAvailable.value) navController.removeUnavailableDesktopTabs()
         }
         val appUpdaterController = rememberAppUpdaterController()
         val hapticFeedback = LocalHapticFeedback.current
@@ -327,6 +340,7 @@ internal fun MainAppContent(
         var selectedPosterActionTarget by remember { mutableStateOf<PosterActionTarget?>(null) }
         var selectedPosterAnchor by remember { mutableStateOf<PosterZoomAnchor?>(null) }
         val posterOverlayHazeState = rememberHazeState()
+        val featurePosterOverlay = remember { PosterZoomOverlayHostState() }
         var selectedContinueWatchingForActions by remember { mutableStateOf<ContinueWatchingItem?>(null) }
         var selectedContinueWatchingZoomAnchor by remember { mutableStateOf<PosterZoomAnchor?>(null) }
         val libraryDisintegrationRequests = remember { DisintegrationRequestController<String>() }
@@ -359,7 +373,6 @@ internal fun MainAppContent(
                 selectedPosterActionTarget = target
             }
         }
-        val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
         var rowStyleShelfKey by remember(profileState.activeProfile?.id) { mutableStateOf<String?>(null) }
         val launchOverlayProfile = profileState.activeProfile ?: profileState.profiles.firstOrNull()
         val desktopProfileIdentity = (authState as? AuthState.Authenticated)?.userId to profileState.activeProfile?.profileIndex
@@ -479,7 +492,7 @@ internal fun MainAppContent(
                 searchFocusRequestCount++
                 searchScrollToTopRequests.tryEmit(Unit)
             }
-            AppScreenTab.Calendar -> Unit
+            AppScreenTab.Calendar, AppScreenTab.History -> Unit
             AppScreenTab.Library -> libraryScrollToTopRequests.tryEmit(Unit)
             AppScreenTab.Settings -> settingsRootActionRequests.tryEmit(Unit)
         }
@@ -1438,7 +1451,7 @@ internal fun MainAppContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             DesktopHistoryNavigationHost(
-                enabled = currentRoute !is PlayerRoute && selectedPosterActionTarget == null,
+                enabled = currentRoute !is PlayerRoute && selectedPosterActionTarget == null && featurePosterOverlay.content == null,
                 canGoBack = navController.canPopBackStack(),
                 canGoForward = navController.canGoForward,
                 gestureResetKey = desktopHistory?.generation to desktopProfileIdentity,
@@ -1476,7 +1489,7 @@ internal fun MainAppContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
-                        if (selectedPosterActionTarget != null || selectedContinueWatchingZoomAnchor != null) {
+                        if (selectedPosterActionTarget != null || selectedContinueWatchingZoomAnchor != null || featurePosterOverlay.content != null) {
                             Modifier.hazeSource(state = posterOverlayHazeState)
                         } else {
                             Modifier
@@ -1490,6 +1503,8 @@ internal fun MainAppContent(
                 CompositionLocalProvider(
                     LocalPosterClickAnchor provides if (posterNavigationEnabled) posterNavigation::prepare else null,
                     LocalUseNativeNavigation provides useNativeNavigation,
+                    LocalHistorySource provides historySource,
+                    LocalPosterZoomOverlayHost provides featurePosterOverlay,
                     LocalNativeNavigationBarHidden provides (currentRoute?.hidesNavigationBar == true),
                     LocalVerticalBarPadding provides if (drawsUnderVerticalBar) verticalBarPadding else PaddingValues(),
                 ) {
@@ -1968,6 +1983,8 @@ internal fun MainAppContent(
                 HomeRowStylePicker(shelfKey, onDismiss = { rowStyleShelfKey = null })
             }
 
+            featurePosterOverlay.content?.invoke(posterOverlayHazeState)
+
             selectedPosterActionTarget?.let { posterActionTarget ->
                 key(posterActionTarget) {
                     val preview = posterActionTarget.preview
@@ -2372,6 +2389,17 @@ internal fun MainAppContent(
             }
             }
         }
+}
+
+@Composable
+private fun rememberHistorySource(profileId: Int): TrackingHistorySource? {
+    val readers by TrackingProviderRegistry.historyReaders.collectAsStateWithLifecycle()
+    return readers.values.sortedBy { it.providerId.ordinal }.mapNotNull { reader ->
+        key(reader) {
+            val account by reader.account.collectAsStateWithLifecycle()
+            account?.takeIf { it.profileId == profileId }?.let { TrackingHistorySource(reader, it) }
+        }
+    }.firstOrNull()
 }
 
 private fun AppRoute?.drawsUnderVerticalBar(selectedTab: AppScreenTab): Boolean =

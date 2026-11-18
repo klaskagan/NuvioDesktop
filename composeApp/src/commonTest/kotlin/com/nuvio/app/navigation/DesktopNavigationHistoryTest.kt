@@ -11,6 +11,32 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DesktopNavigationHistoryTest {
+    @Test
+    fun unavailableHistoryIsSkippedAndFallsBackToHome() {
+        var connected = true
+        val navigation = DesktopNavigationHistory(
+            DesktopNavigationLocation(),
+            tabAvailable = { it != AppScreenTab.History || connected },
+        )
+        val historyTab = DesktopNavigationLocation(tab = AppScreenTab.History)
+        val searchTab = DesktopNavigationLocation(tab = AppScreenTab.Search)
+        navigation.visit(historyTab)
+        navigation.visit(searchTab)
+        connected = false
+        assertEquals(AppScreenTab.Home, navigation.back()?.tab)
+        assertEquals(searchTab, navigation.forward())
+        connected = true
+        navigation.visit(historyTab)
+        navigation.back()
+        connected = false
+        assertFalse(navigation.canGoForward)
+        connected = true
+        navigation.forward()
+        connected = false
+        assertEquals(AppScreenTab.Home, navigation.removeUnavailableTabs()?.tab)
+        assertFalse(navigation.canGoForward)
+    }
+
     private val history = DesktopNavigationHistory(DesktopNavigationLocation())
     private val navigator = NuvioNavigator(NavBackStack<NavKey>(TabsRoute), desktopHistory = history)
     private val movie = DetailRoute("movie", "one")

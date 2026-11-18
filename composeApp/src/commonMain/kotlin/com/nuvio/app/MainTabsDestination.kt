@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.History
+import com.nuvio.app.features.history.LocalHistorySource
+import nuvio.composeapp.generated.resources.history_title
 import nuvio.composeapp.generated.resources.calendar_screen_title
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -168,6 +171,12 @@ internal fun MainTabsDestination(
                 onClick = { onTabSelected(AppScreenTab.Calendar) },
                 icon = Icons.Outlined.CalendarMonth,
                 label = stringResource(Res.string.calendar_screen_title),
+            )) else emptyArray(),
+            *if (LocalHistorySource.current != null) arrayOf(FloatingNavigationItem(
+                selected = selectedTab == AppScreenTab.History,
+                onClick = { onTabSelected(AppScreenTab.History) },
+                icon = Icons.Outlined.History,
+                label = stringResource(Res.string.history_title),
             )) else emptyArray(),
             FloatingNavigationItem(
                 selected = selectedTab == AppScreenTab.Settings,

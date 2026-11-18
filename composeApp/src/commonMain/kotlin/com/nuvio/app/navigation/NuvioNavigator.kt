@@ -101,6 +101,10 @@ internal class NuvioNavigator(
         return onExternalBack != null
     }
 
+    fun removeUnavailableDesktopTabs() {
+        restoreDesktop(desktopHistory?.removeUnavailableTabs())
+    }
+
     fun selectDesktopTab(tab: AppScreenTab, resetToRoot: Boolean = false) {
         val history = desktopHistory ?: return
         val location = history.current.copy(

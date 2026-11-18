@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
@@ -176,7 +177,13 @@ fun NuvioPosterZoomActionOverlay(
     val previewShape = RoundedCornerShape(PosterZoomFinalCornerRadius)
     val hapticFeedback = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val source = remember(anchor) { anchor?.source }
+    // Callers clear their anchor while dismissing, and a portal-hosted overlay can stay composed
+    // for one more frame. Keep the opened card until disposal so that frame cannot switch to the
+    // fallback preview over the returned card (the History blank-card flicker).
+    val anchorLatch = remember { arrayOfNulls<PosterZoomAnchor>(1) }
+    if (anchor != null) anchorLatch[0] = anchor
+    val heldAnchor = anchorLatch[0]
+    val source = remember(heldAnchor) { heldAnchor?.source }
     val currentOnDismissed by rememberUpdatedState(onDismissed)
 
     // A context menu shows a snapshot of the moment it was invoked; don't let
@@ -260,11 +267,23 @@ fun NuvioPosterZoomActionOverlay(
         modifier = modifier
             .fillMaxSize()
             .onGloballyPositioned { coordinates -> rootOrigin = coordinates.positionInRoot() }
+            .pointerInput(source) {
+                // The overlay hides the card from hover events; mirror whether the pointer is
+                // actually over it so the card is at its final hover scale when it returns.
+                val liftSource = source ?: return@pointerInput
+                awaitPointerEventScope {
+                    while (true) {
+                        val position = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull()?.position ?: continue
+                        val cardBounds = liftSource.bounds ?: continue
+                        if (liftSource.isLifted) liftSource.hoverHold = cardBounds.contains(position + rootOrigin)
+                    }
+                }
+            }
             .pointerInput(Unit) {
                 detectTapGestures { close() }
             },
     ) {
-        val anchorAspect = anchor
+        val anchorAspect = heldAnchor
             ?.boundsInRoot
             ?.takeIf { it.height > 0f }
             ?.let { it.width / it.height }
@@ -404,7 +423,8 @@ fun NuvioPosterZoomActionOverlay(
                     }
                     val progress = zoom.value
                     val clamped = progress.coerceIn(0f, 1f)
-                    val start = returnBounds ?: posterStartBounds(anchor = anchor, slot = slot)
+                    // Follow the card's live bounds while returning; its hover scale may still settle.
+                    val start = returnBounds?.let { source?.bounds ?: it } ?: posterStartBounds(anchor = heldAnchor, slot = slot)
                     val scale = lerp(start.width / slot.width, 1f, progress)
                     scaleX = scale
                     scaleY = lerp(start.height / slot.height, 1f, progress)
@@ -414,14 +434,14 @@ fun NuvioPosterZoomActionOverlay(
                     alpha = when {
                         lifted -> 1f
                         !showFallback -> 0f
-                        anchor == null -> clamped
+                        heldAnchor == null -> clamped
                         else -> (clamped / 0.08f).coerceIn(0f, 1f)
                     }
                     shape = RoundedCornerShape(
-                        if (lifted && anchor != null) {
-                            anchor.cornerRadius.toPx() * slot.width / anchor.boundsInRoot.width
+                        if (lifted && heldAnchor != null) {
+                            heldAnchor.cornerRadius.toPx() * slot.width / heldAnchor.boundsInRoot.width
                         } else {
-                            posterCornerRadiusPx(anchor, clamped, scale)
+                            posterCornerRadiusPx(heldAnchor, clamped, scale)
                         },
                     )
                     clip = false
@@ -456,11 +476,11 @@ fun NuvioPosterZoomActionOverlay(
                                 val clamped = zoom.value.coerceIn(0f, 1f)
                                 val slot = slotBounds
                                 val scale = if (slot != null && slot.width > 0f) {
-                                    posterScale(anchor = anchor, slot = slot, progress = zoom.value)
+                                    posterScale(anchor = heldAnchor, slot = slot, progress = zoom.value)
                                 } else {
                                     1f
                                 }
-                                shape = RoundedCornerShape(posterCornerRadiusPx(anchor, clamped, scale))
+                                shape = RoundedCornerShape(posterCornerRadiusPx(heldAnchor, clamped, scale))
                                 clip = true
                             }
                             .background(tokens.colors.surfaceCard)
@@ -496,7 +516,7 @@ fun NuvioPosterZoomActionOverlay(
                                 val slot = slotBounds
                                 if (slot != null && slot.width > 0f) {
                                     val scale = posterScale(
-                                        anchor = anchor,
+                                        anchor = heldAnchor,
                                         slot = slot,
                                         progress = zoom.value,
                                     ).coerceAtLeast(0.001f)

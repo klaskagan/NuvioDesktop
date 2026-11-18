@@ -98,7 +98,11 @@ branch integration. `settingsCategoryForName` preserves saved names;
 - Reuse shared card components, viewport prefetch, readiness gates, and theme
   tokens. Scope a feature's style override so it does not leak into Home or alter
   collection cover shapes. Persist separate feature preferences independently
-  when the product calls for independent controls.
+  when the product calls for independent controls. History initially reused
+  Calendar's persisted orientation and coupled their toggles. Reuse the agenda
+  controls with an explicit orientation value and feature-owned setter.
+  `HistoryNavigationTest` verifies independence after changing both screens and
+  reloading profile preferences.
 - Use the shared shelf heading style for every card layout. A ranked shelf may
   use its own numeral typography and card geometry, but its heading should
   align with neighboring shelves and use the same font, size, and color.
@@ -227,3 +231,39 @@ direct child. Go3's absolute player markers inherited a 350px minimum height fro
 a broad child selector, separating names from shirt numbers. Render a full
 22-player fixture and verify marker/name bounds and resizing; one-player and
 semantic-only tests missed the overlap. See docs/football-lineups.md.
+
+## Card action overlay ownership
+
+Render feature card actions through the app shell's full-window poster overlay
+host, using the same haze source and stacking layer as Home. A History-local
+overlay left the sidebar exposed and only dimmed readable background content.
+Reuse `PosterZoomOverlayPortal`; do not create a feature-local blur source.
+`HistoryNavigationTest` opens the real menu in both desktop layouts and clicks
+the covered Home control to verify the scrim dismisses without navigating.
+
+A portal-hosted overlay outlives its caller's dismissal by one frame. History's
+portal lambda read its mutable anchor; dismissal cleared it, so the still-hosted
+overlay recomposed with a null anchor, landed the card, and drew its fallback
+preview (plain surface, no badge) over the returned card for that frame: the
+recorded blank-card flicker. Home and Continue Watching compose their overlay
+beside the anchor and leave in the same pass. `NuvioPosterZoomActionOverlay`
+keeps the opened anchor until disposal, like its frozen actions; do not
+work around this with animation delays or source snapshots (both failed).
+`PosterZoomReturnTest.portalOverlayReadingClearedAnchorDoesNotCoverReturnedCard`
+steps frames after dismissal and failed at the first one on the previous code.
+Settled screenshots and the polled native fixture missed the one-frame gap.
+
+The overlay also hides the card from hover events: a stationary pointer got a
+hover exit while the menu was open, so the card landed unscaled and then grew
+on re-entry. `PosterLiftSource.hoverHold` mirrors whether the pointer is over
+the card while lifted, holds that until the next hover enter, and its live
+transformed bounds give the return target. Cards that scale outside
+`posterCardClickable` (`NuvioPosterCard`'s column) must share the source via
+`rememberPosterLiftSource`. `hoverScaledCardReturnsWithoutShift` and
+`cardLeftDuringMenuReturnsUnscaled` cover both pointer paths.
+
+Separately, a displayed poster stays visible when the same artwork request
+returns to Loading or its gate becomes pending: the shared card retains its
+successful painter and latches reveal per media/image/logo identity
+(`displayedPosterDoesNotBlankDuringSameArtworkPreparation`). That fix was not
+the cause of the return flicker.
