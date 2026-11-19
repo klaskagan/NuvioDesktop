@@ -1,6 +1,6 @@
-package com.nuvio.app.features.player.desktop
+package com.nuvio.app.features.player
 
-import com.nuvio.app.features.player.*
+// Shared by the desktop native player and the iOS mpv player.
 import kotlin.math.abs
 import kotlinx.serialization.json.*
 

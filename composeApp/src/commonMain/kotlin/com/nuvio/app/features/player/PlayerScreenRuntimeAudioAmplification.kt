@@ -27,7 +27,10 @@ internal fun PlayerScreenRuntime.BindAudioAmplificationEffects() {
 
     // The decoder decides whether it downmixes once the audio has started, so ask when the panel opens.
     LaunchedEffect(showAudioModal, playerController) {
-        if (showAudioModal) centerMixAvailable = playerController?.isCenterMixActive() == true
+        if (showAudioModal) {
+            centerMixAvailable = playerController?.isCenterMixActive() == true
+            nightModeActive = playerController?.isNightModeActive() == true
+        }
     }
 }
 

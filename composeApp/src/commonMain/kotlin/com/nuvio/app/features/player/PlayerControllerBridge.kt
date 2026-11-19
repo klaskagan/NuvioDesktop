@@ -1,5 +1,7 @@
 package com.nuvio.app.features.player
 
+import kotlin.concurrent.Volatile
+
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 

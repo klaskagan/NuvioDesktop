@@ -1,12 +1,14 @@
 package com.nuvio.app.features.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -752,12 +754,25 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         }
 
         if (!isDesktop) {
-            RenderPlayerControls(
-                displayedPositionMs = displayedPositionMs,
-                isEpisode = isEpisode,
-                folded = fold != null,
-                modifier = panelModifier,
-            )
+            val recommendationsVisible = fold == null && composeMovieRecommendationsVisible(isInPip)
+            BoxWithConstraints(modifier = panelModifier) {
+                // Like the desktop shelf, lift the controls so the timeline stays above the posters.
+                val shelfLift by animateDpAsState(
+                    targetValue = if (recommendationsVisible) movieRecommendationShelfHeight(maxWidth, maxHeight) else 0.dp,
+                    animationSpec = tween(durationMillis = 300),
+                    label = "movie_recommendation_lift",
+                )
+                RenderPlayerControls(
+                    displayedPositionMs = displayedPositionMs,
+                    isEpisode = isEpisode,
+                    folded = fold != null,
+                    modifier = Modifier.fillMaxSize().padding(bottom = shelfLift),
+                )
+                RenderMovieRecommendationShelf(
+                    visible = recommendationsVisible,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
         Box(modifier = videoModifier) {
             RenderPlaybackOverlays(
@@ -941,6 +956,12 @@ private fun PlayerScreenRuntime.RenderPlayerControls(
             } else {
                 null
             },
+            // Watch parties keep everyone on one source, matching the desktop Quality control.
+            onQualityClick = if (PlayerPlatformFeatures.quickQuality && activeVideoId != null && !partyActive) {
+                { openQualityModal() }
+            } else {
+                null
+            },
             onStreamInfoClick = { openStreamInfo() },
             parentalWarnings = parentalWarnings,
             showParentalGuide = showParentalGuide,
@@ -1112,18 +1133,14 @@ internal fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: 
     }
     if (type.startsWith("openMovieRecommendation:")) {
         val key = type.removePrefix("openMovieRecommendation:")
-        val preview = movieRecommendationCandidates.firstOrNull { movieRecommendationActionKey(it.id, it.type) == key }
-        if (preview != null && movieRecommendationStage > 0) {
-            val open = args.onOpenMetaDetails
-            val session = movieRecommendationSessionKey
-            requestBack { if (session == movieRecommendationSessionKey) open?.invoke(preview) }
-        }
+        movieRecommendationCandidates
+            .firstOrNull { movieRecommendationActionKey(it.id, it.type) == key }
+            ?.let(::openMovieRecommendation)
         return true
     }
     if (type.startsWith("dismissMovieRecommendations:")) {
         if (type.removePrefix("dismissMovieRecommendations:") == movieRecommendationSessionKey) {
-            movieRecommendationDismissedSession = movieRecommendationSessionKey
-            movieRecommendationsDismissed = movieRecommendationStage > 0
+            dismissMovieRecommendations()
         }
         return true
     }
@@ -2088,6 +2105,7 @@ private fun BoxScope.RenderPlaybackOverlays(
 
 @Composable
 private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
+    val nightModeErrorMessage = stringResource(Res.string.compose_player_night_mode_error)
     PlayerChaptersPanel(
         visible = showChaptersPanel && chapters.isNotEmpty(),
         chapters = chapters,
@@ -2137,6 +2155,9 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
         showCenterMix = centerMixAvailable,
         centerMixLevelDb = centerMixLevelDb,
         onCenterMixLevelChanged = { db -> setCenterMixLevel(db) },
+        showNightMode = playerController?.supportsNightMode == true,
+        nightModeActive = nightModeActive,
+        onNightModeChanged = { enabled -> toggleNightMode(enabled, nightModeErrorMessage) },
         showSubtitleModal = showSubtitleModal,
         subtitleTracks = serverSubtitleTracks.ifEmpty { subtitleTracks },
         selectedSubtitleIndex = if (serverSubtitleTracks.isEmpty()) {
@@ -2315,6 +2336,23 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
         addonSubtitle = selectedAddonSubtitle.takeIf { useCustomSubtitles },
         onDismiss = { showStreamInfo = false },
     )
+    if (!isDesktop) {
+        PlayerQualityModal(
+            visible = showQualityModal,
+            choices = qualityChoices,
+            // Same "playing" tier as the desktop Quality rail: decoded, then reported, then requested.
+            playingHeight = standardQualityHeight(playbackSnapshot.videoWidth, playbackSnapshot.videoHeight)
+                ?: activeStream?.let(::reportedStreamQuality) ?: qualityRequestedHeight,
+            loadingHeight = qualityLoadingHeight.takeIf { qualityBusy },
+            status = qualityStatus,
+            onSelect = { height ->
+                // Like desktop, close the panel; the switch runs in the background with a toast on failure.
+                showQualityModal = false
+                selectPlayerQuality(height)
+            },
+            onDismiss = { showQualityModal = false },
+        )
+    }
     val switchEngineTarget = playerController?.playbackEngine?.switchTarget
     if (switchEngineTarget != null) {
         NuvioStatusModal(

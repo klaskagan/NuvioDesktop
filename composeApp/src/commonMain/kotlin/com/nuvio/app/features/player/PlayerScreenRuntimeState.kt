@@ -313,6 +313,7 @@ internal class PlayerScreenRuntime(
     var sourceFallbackJob: Job? = null
 
     var showAudioModal by mutableStateOf(false)
+    var showQualityModal by mutableStateOf(false)
     var showSubtitleModal by mutableStateOf(false)
     var showVideoSettingsModal by mutableStateOf(false)
     var showStreamInfo by mutableStateOf(false)
@@ -325,7 +326,7 @@ internal class PlayerScreenRuntime(
     var partyChatVisible by mutableStateOf(false)
     val isPanelOpen: Boolean
         get() = showAudioModal || showSubtitleModal || showVideoSettingsModal || showStreamInfo ||
-            showPartyPanel || showSourcesPanel || showEpisodesPanel || showSubmitIntroModal
+            showPartyPanel || showSourcesPanel || showEpisodesPanel || showSubmitIntroModal || showQualityModal
     var partyBehind by mutableStateOf(false)
     var partyBehindMs by mutableStateOf<Long?>(null)
     var partyRateNudge: Float? = null
@@ -369,6 +370,7 @@ internal class PlayerScreenRuntime(
     var audioAmplificationDb by mutableStateOf(0)
     var centerMixLevelDb by mutableStateOf(0)
     var centerMixAvailable by mutableStateOf(false)
+    var nightModeActive by mutableStateOf(false)
     var subtitleAutoSyncState by mutableStateOf(SubtitleAutoSyncUiState())
 
     var lastSyncedSettingsResizeMode: PlayerResizeMode? = null

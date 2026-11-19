@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.nuvio
 import com.nuvio.app.features.p2p.P2pSettingsRepository
+import com.nuvio.app.features.player.PlayerPlatformFeatures
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.isDesktop
 import com.nuvio.app.isIos
@@ -618,12 +619,12 @@ internal fun settingsSearchEntries(
                 stringResource(Res.string.settings_playback_pause_overlay),
                 stringResource(Res.string.settings_playback_pause_overlay_description),
             ),
-            if (isDesktop) PlaybackSearchRow(
+            if (PlayerPlatformFeatures.movieRecommendations) PlaybackSearchRow(
                 "movie-recommendations",
                 stringResource(Res.string.settings_playback_movie_recommendations),
                 stringResource(Res.string.settings_playback_movie_recommendations_description),
             ) else null,
-            if (isDesktop) PlaybackSearchRow(
+            if (PlayerPlatformFeatures.movieRecommendations) PlaybackSearchRow(
                 "movie-recommendation-timing",
                 stringResource(Res.string.settings_playback_movie_recommendation_timing),
                 stringResource(Res.string.settings_playback_movie_recommendation_timing_description),

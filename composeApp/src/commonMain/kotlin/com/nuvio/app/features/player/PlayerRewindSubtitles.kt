@@ -1,6 +1,5 @@
 package com.nuvio.app.features.player
 
-import com.nuvio.app.isDesktop
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
@@ -48,7 +47,7 @@ internal class PlayerRewindSubtitles {
 }
 
 internal fun PlayerScreenRuntime.onUserSeekForRewindSubtitles(fromMs: Long, targetMs: Long) {
-    if (!isDesktop) return
+    if (!PlayerPlatformFeatures.rewindSubtitles) return
     if (targetMs >= fromMs) {
         if (targetMs > fromMs && rewindSubtitles.clearAtForwardTarget(targetMs)) restoreSubtitlesAfterRewind()
         return

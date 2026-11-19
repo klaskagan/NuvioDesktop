@@ -95,6 +95,8 @@ interface NuvioPlayerBridge {
     fun getPlaybackSpeed(): Float
     fun getErrorMessage(): String
     fun getProperty(name: String): String
+    /** Runs an mpv command such as `af add <filter>`; true when mpv accepted it. */
+    fun runCommand(args: List<String>): Boolean
     fun destroy()
 }
 

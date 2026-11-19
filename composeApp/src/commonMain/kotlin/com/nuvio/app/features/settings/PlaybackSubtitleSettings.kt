@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.features.player.AndroidPlaybackEngine
 import com.nuvio.app.features.player.AvailableLanguageOptions
+import com.nuvio.app.features.player.PlayerPlatformFeatures
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.player.SubtitleLanguageOption
 import com.nuvio.app.features.player.languageLabelForCode
@@ -68,7 +69,7 @@ internal fun PlaybackSubtitleSettings(
                     isTablet = isTablet,
                     onClick = { showSecondarySubtitleDialog = true },
                 )
-                if (isDesktop) {
+                if (PlayerPlatformFeatures.rewindSubtitles) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsSwitchRow(
                         title = stringResource(Res.string.settings_playback_auto_show_subtitles_on_rewind),

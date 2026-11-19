@@ -100,7 +100,8 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
     val poolKey = movieRecommendationSessionKey to
         (traktConnection.mode == TraktConnectionMode.CONNECTED)
     val recommendationMeta = playerMeta?.takeIf { it.id == parentMetaId && it.type == parentMetaType }
-    val shouldPrefetchRecommendations = playerSettingsUiState.movieRecommendationsEnabled &&
+    val shouldPrefetchRecommendations = PlayerPlatformFeatures.movieRecommendations &&
+        playerSettingsUiState.movieRecommendationsEnabled &&
         parentMetaType.equals("movie", true) && (contentType ?: parentMetaType).equals("movie", true) &&
         args.onOpenMetaDetails != null
     LaunchedEffect(poolKey, recommendationMeta, shouldPrefetchRecommendations, watchedUiState.hasLoadedRemoteItems) {

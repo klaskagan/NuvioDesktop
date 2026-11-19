@@ -93,8 +93,21 @@ actual fun PlatformPlayerSurface(
         return
     }
 
+    val nightMode = remember(bridge) { IosNightMode(bridge) }
+
     val controller = remember(bridge) {
         object : PlayerEngineController, PlayerSystemControlSource {
+            override val supportsNightMode: Boolean get() = true
+
+            override fun isNightModeActive(): Boolean = nightMode.isActive()
+
+            override fun setNightModeEnabled(enabled: Boolean): Boolean = nightMode.setEnabled(enabled)
+
+            override fun qualityCheckpoint(): PlayerQualityCheckpoint? = bridge.mpvQualityCheckpoint()
+
+            override suspend fun restoreQuickQuality(checkpoint: PlayerQualityCheckpoint): Boolean =
+                bridge.restoreMpvQuickQuality(checkpoint)
+
             override val keepsPlaybackInBackground: Boolean
                 get() = bridge.getKeepsPlaybackInBackground()
 
@@ -290,7 +303,8 @@ actual fun PlatformPlayerSurface(
                 bridge.setSubtitleDelayMs(delayMs.coerceIn(SUBTITLE_DELAY_MIN_MS, SUBTITLE_DELAY_MAX_MS))
             }
 
-            override fun applySubtitleStyle(style: SubtitleStyleState) {
+            // iOS renders styled subtitles itself; libass is not used here.
+            override fun applySubtitleStyle(style: SubtitleStyleState, useLibass: Boolean) {
                 subtitleStyle = style
                 bridge.applySubtitleStyle(
                     textColor = style.textColor.toMpvColorString(),
@@ -348,6 +362,7 @@ actual fun PlatformPlayerSurface(
             headersJson = encodePlaybackHeadersForBridge(sourceHeaders),
             subtitlesJson = encodeExternalSubtitlesForBridge(externalSubtitles),
         )
+        nightMode.onSourceLoaded()
         if (playWhenReady) {
             bridge.play()
         } else {
@@ -389,8 +404,11 @@ actual fun PlatformPlayerSurface(
                 positionMs = bridge.getPositionMs(),
                 bufferedPositionMs = bridge.getBufferedMs(),
                 playbackSpeed = bridge.getPlaybackSpeed(),
+                videoWidth = bridge.getProperty("video-params/w").toIntOrNull() ?: 0,
+                videoHeight = bridge.getProperty("video-params/h").toIntOrNull() ?: 0,
             )
             latestOnSnapshot.value(snapshot)
+            nightMode.poll()
             val errorMessage = bridge.getErrorMessage().ifBlank { null }
             if (errorMessage != lastReportedError) {
                 lastReportedError = errorMessage

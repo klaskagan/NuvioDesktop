@@ -54,6 +54,14 @@ interface PlayerEngineController {
     fun isCenterMixActive(): Boolean = false
     /** Center channel level in the downmix, from [CENTER_MIX_LEVEL_MIN_DB] to [CENTER_MIX_LEVEL_MAX_DB]. */
     fun setCenterMixLevelDb(db: Int) {}
+    /**
+     * Whether [setNightModeEnabled] has an effect in the Compose audio panel. Desktop toggles Night
+     * Mode from its HTML controls instead and leaves this false.
+     */
+    val supportsNightMode: Boolean get() = false
+    fun isNightModeActive(): Boolean = false
+    /** Applies [NIGHT_MODE_AUDIO_FILTER]; true when the engine now matches [enabled]. */
+    fun setNightModeEnabled(enabled: Boolean): Boolean = false
     fun configureIosVideoOutput(settings: PlayerSettingsUiState) {}
     fun updateNowPlayingMetadata(info: PlayerNowPlayingInfo) {}
     fun clearNowPlayingInfo() {}

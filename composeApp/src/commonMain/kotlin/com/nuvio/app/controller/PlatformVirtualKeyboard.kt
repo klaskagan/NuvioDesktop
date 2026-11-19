@@ -3,6 +3,8 @@
  */
 package com.nuvio.app.controller
 
+import kotlin.concurrent.Volatile
+
 /**
  * Platform hook for an on-screen keyboard.
  *

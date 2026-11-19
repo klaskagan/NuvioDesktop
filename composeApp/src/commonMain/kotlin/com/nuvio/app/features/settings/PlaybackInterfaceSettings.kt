@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.nuvio.app.features.player.PlayerPlatformFeatures
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.player.formatPlaybackSpeedLabel
 import com.nuvio.app.isDesktop
@@ -70,7 +71,7 @@ internal fun PlaybackInterfaceSettings(
                     isTablet = isTablet,
                     onCheckedChange = PlayerSettingsRepository::setPauseOverlayEnabled,
                 )
-                if (isDesktop) {
+                if (PlayerPlatformFeatures.movieRecommendations) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsSwitchRow(
                         title = stringResource(Res.string.settings_playback_movie_recommendations),

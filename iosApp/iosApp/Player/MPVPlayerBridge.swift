@@ -215,6 +215,7 @@ final class MPVPlayerBridgeImpl: NSObject, NuvioPlayerBridge {
     func getPlaybackSpeed() -> Float { playerVC?.currentSpeed ?? 1.0 }
     func getErrorMessage() -> String { playerVC?.currentErrorMessage ?? "" }
     func getProperty(name: String) -> String { playerVC?.getString(name) ?? "" }
+    func runCommand(args: [String]) -> Bool { playerVC?.runCommand(args) ?? false }
 
     func destroy() {
         playerVC?.systemControlHandler = nil
@@ -1386,6 +1387,17 @@ final class MPVPlayerViewController: UIViewController {
         defer { for ptr in cargs where ptr != nil { free(UnsafeMutablePointer(mutating: ptr!)) } }
         let ret = mpv_command(mpv, &cargs)
         if checkForErrors { checkError(ret) }
+    }
+
+    /// Runs an mpv command for Kotlin and reports whether mpv accepted it.
+    fileprivate func runCommand(_ args: [String]) -> Bool {
+        guard mpv != nil, let name = args.first else { return false }
+        var cargs = makeCArgs(name, args.dropFirst().map { Optional($0) })
+            .map { $0.flatMap { UnsafePointer<CChar>(strdup($0)) } }
+        defer { for ptr in cargs where ptr != nil { free(UnsafeMutablePointer(mutating: ptr!)) } }
+        let ret = mpv_command(mpv, &cargs)
+        checkError(ret)
+        return ret >= 0
     }
 
     private func makeCArgs(_ command: String, _ args: [String?]) -> [String?] {

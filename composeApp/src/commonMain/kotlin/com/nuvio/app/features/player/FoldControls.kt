@@ -133,6 +133,7 @@ internal fun FoldControls(
     onStreamInfoClick: () -> Unit,
     onSubmitIntroClick: (() -> Unit)?,
     onSwitchEngineClick: (() -> Unit)?,
+    onQualityClick: (() -> Unit)?,
     gestureController: PlayerGestureController?,
     dimmed: Boolean,
     onWake: () -> Unit,
@@ -160,6 +161,7 @@ internal fun FoldControls(
         onOpenInExternalPlayer = onOpenInExternalPlayer,
         onStreamInfoClick = onStreamInfoClick,
         onSubmitIntroClick = onSubmitIntroClick,
+        onQualityClick = onQualityClick,
     ) + listOfNotNull(
         onSwitchEngineClick?.let {
             PlayerControlAction(

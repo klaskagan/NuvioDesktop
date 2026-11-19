@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.rounded.Toc
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
@@ -122,6 +123,7 @@ internal fun PlayerControlActions(
     onStreamInfoClick: () -> Unit,
     onSubmitIntroClick: (() -> Unit)?,
     onInteraction: () -> Unit,
+    onQualityClick: (() -> Unit)? = null,
 ) {
     val actions = playerControlActions(
         playbackSnapshot = playbackSnapshot,
@@ -138,6 +140,7 @@ internal fun PlayerControlActions(
         onOpenInExternalPlayer = onOpenInExternalPlayer,
         onStreamInfoClick = onStreamInfoClick,
         onSubmitIntroClick = onSubmitIntroClick,
+        onQualityClick = onQualityClick,
     )
     val hasOverflow = actions.size > 5
     var expanded by remember(hasOverflow) { mutableStateOf(false) }
@@ -239,6 +242,7 @@ internal fun playerControlActions(
     onOpenInExternalPlayer: (() -> Unit)?,
     onStreamInfoClick: () -> Unit,
     onSubmitIntroClick: (() -> Unit)?,
+    onQualityClick: (() -> Unit)? = null,
 ): List<PlayerControlAction> =
     listOfNotNull(
         onNextEpisodeClick?.let {
@@ -265,6 +269,12 @@ internal fun playerControlActions(
             PlayerControlAction(
                 stringResource(Res.string.compose_player_sources), it,
                 painter = appIconPainter(AppIconResource.PlayerSource),
+            )
+        },
+        onQualityClick?.let {
+            PlayerControlAction(
+                stringResource(Res.string.player_quality_title), it,
+                icon = Icons.Rounded.HighQuality,
             )
         },
         onEpisodesClick?.let {

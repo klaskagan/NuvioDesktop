@@ -1,5 +1,8 @@
 package com.nuvio.app.features.player.desktop
 
+import com.nuvio.app.features.player.qualityCompatibility
+import com.nuvio.app.features.player.qualityTrackMatch
+import com.nuvio.app.features.player.readQualityTracks
 import androidx.compose.ui.graphics.Color
 import co.touchlab.kermit.Logger
 import com.nuvio.app.features.player.PlayerControlAddonSubtitleItem

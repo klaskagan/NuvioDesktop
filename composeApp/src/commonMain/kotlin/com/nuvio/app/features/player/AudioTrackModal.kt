@@ -41,6 +41,9 @@ import nuvio.composeapp.generated.resources.compose_player_audio_amplification_k
 import nuvio.composeapp.generated.resources.compose_player_audio_delay
 import nuvio.composeapp.generated.resources.compose_player_audio_tracks
 import nuvio.composeapp.generated.resources.compose_player_center_mix
+import nuvio.composeapp.generated.resources.compose_player_night_mode
+import nuvio.composeapp.generated.resources.compose_action_off
+import nuvio.composeapp.generated.resources.compose_action_on
 import nuvio.composeapp.generated.resources.compose_player_no_audio_tracks_available
 import nuvio.composeapp.generated.resources.compose_player_reset
 import org.jetbrains.compose.resources.stringResource
@@ -70,6 +73,9 @@ fun AudioTrackModal(
     showCenterMix: Boolean = false,
     centerMixLevelDb: Int = 0,
     onCenterMixLevelChanged: (Int) -> Unit = {},
+    showNightMode: Boolean = false,
+    nightModeActive: Boolean = false,
+    onNightModeChanged: (Boolean) -> Unit = {},
 ) {
     PlayerOverlayScaffold(
         visible = visible,
@@ -81,8 +87,16 @@ fun AudioTrackModal(
             val railWidth = minOf(maxWidth, 444.dp)
             val railMaxHeight = (maxHeight - 64.dp).coerceAtLeast(120.dp).coerceAtMost(620.dp)
             val panelMaxHeight = maxHeight
-            val hasAdjustments = showAudioDelay || showAudioAmplification || showCenterMix
+            val hasAdjustments = showAudioDelay || showAudioAmplification || showCenterMix || showNightMode
             val adjustments: @Composable () -> Unit = {
+                if (showNightMode) {
+                    NightModeSection(
+                        active = nightModeActive,
+                        onChanged = onNightModeChanged,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
+
                 if (showAudioDelay) {
                     AudioDelaySection(
                         delayMs = audioDelayMs,
@@ -257,6 +271,30 @@ private fun CenterMixSection(
                 onClick = { onLevelChanged(0) },
             )
         }
+    }
+}
+
+/** Same filter as the desktop Night Mode control: stereo downmix, compressor and limiter. */
+@Composable
+private fun NightModeSection(
+    active: Boolean,
+    onChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = stringResource(Res.string.compose_player_night_mode),
+            color = Color.White,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        AudioToggleChip(
+            label = stringResource(if (active) Res.string.compose_action_on else Res.string.compose_action_off),
+            checked = active,
+            onCheckedChange = onChanged,
+        )
     }
 }
 

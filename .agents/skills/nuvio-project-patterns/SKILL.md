@@ -54,8 +54,29 @@ orientation setting, and navigation choices are feature-specific.
 Keep shared feature state and contracts in their existing commonMain layer;
 put OS/network/player implementations in the matching platform source set.
 Follow adjacent feature code for resource strings, persistence, and navigation.
-A desktop-only implementation may still need Android/iOS contract implementations
-so shared source sets compile.
+
+**iOS builds from this repository too.** Desktop work broke the iOS compile once
+(Nov 2026), and features shipped without iOS settings or UI. Keep it in step:
+- In commonMain use multiplatform APIs: `kotlin.concurrent.Volatile`,
+  `kotlin.time.Clock`. An unimported `@Volatile` and `System.currentTimeMillis()`
+  only resolve on JVM targets.
+  Pass named arguments when calling shared composables that gain parameters.
+- Gate a player feature on its `PlayerPlatformFeatures` flag
+  (`features/player/PlayerPlatformFeatures.kt`), not `isDesktop`. Keep
+  `isDesktop` for desktop-only surfaces (window chrome, the HTML overlay, mouse layouts).
+- The desktop player UI is `controls.js`; mobile uses Compose controls fed from the
+  same `PlayerScreenRuntime` state. A new overlay feature needs a Compose
+  equivalent or an explicit desktop-only flag. `PlayerMovieRecommendationShelf.kt`
+  is the reference.
+- Implement new `PlayerSettingsStorage` keys on iOS with the desktop key name and
+  the sync payload, so the setting syncs across devices.
+- Regression check: `NUVIO_IOS_DISTRIBUTION=full ./gradlew :composeApp:compileKotlinIosSimulatorArm64`.
+  When Swift under `iosApp/` changes, also run `IOS_CONFIGURATION=Debug scripts/build-ios-ipa.sh`
+  (unsigned device build; works on Intel). iOS tests and the simulator app need an
+  Apple Silicon Mac; on an Intel host report runtime behavior as unverified.
+- iOS mpv features go through `NuvioPlayerBridge.getProperty`/`runCommand` and
+  shared mpv helpers (`PlayerNightMode.kt`, `MpvQualityPlayback.kt`) rather than
+  new per-feature Swift methods.
 
 Keep navigation selection live inside retained callbacks and `snapshotFlow`.
 Use the `selectedTab` State delegate in `MainAppContent.kt` as the reference:

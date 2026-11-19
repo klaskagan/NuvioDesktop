@@ -124,6 +124,7 @@ internal fun PlayerControlsShell(
     onOpenInExternalPlayer: (() -> Unit)? = null,
     onSubmitIntroClick: (() -> Unit)? = null,
     onSwitchEngineClick: (() -> Unit)? = null,
+    onQualityClick: (() -> Unit)? = null,
     onStreamInfoClick: () -> Unit = {},
     parentalWarnings: List<ParentalWarning> = emptyList(),
     showParentalGuide: Boolean = false,
@@ -172,6 +173,7 @@ internal fun PlayerControlsShell(
             onStreamInfoClick = onStreamInfoClick,
             onSubmitIntroClick = onSubmitIntroClick,
             onSwitchEngineClick = onSwitchEngineClick,
+            onQualityClick = onQualityClick,
             gestureController = gestureController,
             dimmed = !showPlaybackControls,
             onWake = onWake,
@@ -378,6 +380,7 @@ internal fun PlayerControlsShell(
                         onStreamInfoClick = onStreamInfoClick,
                         onSubmitIntroClick = onSubmitIntroClick,
                         onInteraction = onInteraction,
+                        onQualityClick = onQualityClick,
                     )
                 }
             }
