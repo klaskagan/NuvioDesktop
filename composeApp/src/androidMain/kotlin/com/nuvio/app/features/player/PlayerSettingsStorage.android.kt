@@ -26,6 +26,7 @@ actual object PlayerSettingsStorage {
     private const val showPlayerLoadingStatusKey = "show_player_loading_status"
     private const val pauseOverlayEnabledKey = "pause_overlay_enabled"
     private const val movieRecommendationsEnabledKey = "movie_recommendations_enabled"
+    private const val seekPreviewEnabledKey = "seek_preview_enabled"
     private const val showParentalGuideKey = "show_parental_guide"
     private const val resizeModeKey = "resize_mode"
     private const val movieRecommendationTimingKey = "movie_recommendation_timing"
@@ -133,6 +134,7 @@ actual object PlayerSettingsStorage {
         showPlayerLoadingStatusKey,
         pauseOverlayEnabledKey,
         movieRecommendationsEnabledKey,
+        seekPreviewEnabledKey,
         showParentalGuideKey,
         resizeModeKey,
         movieRecommendationTimingKey,
@@ -305,6 +307,17 @@ actual object PlayerSettingsStorage {
         preferences
             ?.edit()
             ?.putBoolean(ProfileScopedKey.of(movieRecommendationsEnabledKey), enabled)
+            ?.apply()
+    }
+    actual fun loadSeekPreviewEnabled(): Boolean? =
+        preferences?.let { sharedPreferences ->
+            val key = ProfileScopedKey.of(seekPreviewEnabledKey)
+            if (sharedPreferences.contains(key)) sharedPreferences.getBoolean(key, true) else null
+        }
+    actual fun saveSeekPreviewEnabled(enabled: Boolean) {
+        preferences
+            ?.edit()
+            ?.putBoolean(ProfileScopedKey.of(seekPreviewEnabledKey), enabled)
             ?.apply()
     }
 
@@ -1673,6 +1686,7 @@ actual object PlayerSettingsStorage {
         loadShowPlayerLoadingStatus()?.let { put(showPlayerLoadingStatusKey, encodeSyncBoolean(it)) }
         loadPauseOverlayEnabled()?.let { put(pauseOverlayEnabledKey, encodeSyncBoolean(it)) }
         loadMovieRecommendationsEnabled()?.let { put(movieRecommendationsEnabledKey, encodeSyncBoolean(it)) }
+        loadSeekPreviewEnabled()?.let { put(seekPreviewEnabledKey, encodeSyncBoolean(it)) }
         loadShowParentalGuide()?.let { put(showParentalGuideKey, encodeSyncBoolean(it)) }
         loadResizeMode()?.let { put(resizeModeKey, encodeSyncString(it)) }
         loadMovieRecommendationTiming()?.let { put(movieRecommendationTimingKey, encodeSyncString(it)) }
@@ -1781,6 +1795,7 @@ actual object PlayerSettingsStorage {
         payload.decodeSyncBoolean(showPlayerLoadingStatusKey)?.let(::saveShowPlayerLoadingStatus)
         payload.decodeSyncBoolean(pauseOverlayEnabledKey)?.let(::savePauseOverlayEnabled)
         payload.decodeSyncBoolean(movieRecommendationsEnabledKey)?.let(::saveMovieRecommendationsEnabled)
+        payload.decodeSyncBoolean(seekPreviewEnabledKey)?.let(::saveSeekPreviewEnabled)
         payload.decodeSyncBoolean(showParentalGuideKey)?.let(::saveShowParentalGuide)
         payload.decodeSyncString(resizeModeKey)?.let(::saveResizeMode)
         payload.decodeSyncString(movieRecommendationTimingKey)?.let(::saveMovieRecommendationTiming)

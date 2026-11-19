@@ -2858,6 +2858,8 @@
     <string name="seasonal_background_help">Used on Home and inside this season. Leave the URL empty to use the original bundled image.</string>
     <string name="seasonal_restore_artwork">Restore original artwork</string>
     <string name="settings_playback_movie_recommendations">Movie Recommendations</string>
+    <string name="settings_playback_seek_preview">Seek Bar Thumbnails</string>
+    <string name="settings_playback_seek_preview_description">Show a preview frame above the seek bar while you hover or drag it. Frames are fetched from the stream only around scrubbing.</string>
     <string name="settings_playback_movie_recommendations_description">Suggest unwatched More Like This titles when a movie reaches its end credits.</string>
     <string name="settings_playback_movie_recommendation_timing">Movie Recommendation Timing</string>
     <string name="settings_playback_movie_recommendation_introdb">IntroDB API</string>

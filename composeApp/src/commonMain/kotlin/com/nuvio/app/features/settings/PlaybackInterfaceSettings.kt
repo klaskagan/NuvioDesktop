@@ -71,6 +71,16 @@ internal fun PlaybackInterfaceSettings(
                     isTablet = isTablet,
                     onCheckedChange = PlayerSettingsRepository::setPauseOverlayEnabled,
                 )
+                if (PlayerPlatformFeatures.seekPreview) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_playback_seek_preview),
+                        description = stringResource(Res.string.settings_playback_seek_preview_description),
+                        checked = settings.seekPreviewEnabled,
+                        isTablet = isTablet,
+                        onCheckedChange = PlayerSettingsRepository::setSeekPreviewEnabled,
+                    )
+                }
                 if (PlayerPlatformFeatures.movieRecommendations) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsSwitchRow(

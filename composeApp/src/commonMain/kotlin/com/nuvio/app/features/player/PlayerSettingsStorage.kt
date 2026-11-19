@@ -25,6 +25,8 @@ internal expect object PlayerSettingsStorage {
     fun loadMovieRecommendationsEnabled(): Boolean?
     fun savePauseOverlayEnabled(enabled: Boolean)
     fun saveMovieRecommendationsEnabled(enabled: Boolean)
+    fun loadSeekPreviewEnabled(): Boolean?
+    fun saveSeekPreviewEnabled(enabled: Boolean)
     fun loadShowParentalGuide(): Boolean?
     fun saveShowParentalGuide(enabled: Boolean)
     fun loadResizeMode(): String?

@@ -30,6 +30,12 @@ import java.awt.event.MouseEvent
  */
 private var seededComposeRouteGeneration = -1
 
+/** Keys the native player's controls page handles itself; see the player branch of the key dispatcher. */
+private val nativePlayerShortcutKeys = setOf(
+    KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT, KeyEvent.VK_UP, KeyEvent.VK_DOWN,
+    KeyEvent.VK_SPACE, KeyEvent.VK_ENTER,
+)
+
 /** Seeds the incoming screen exactly once per route change and moves focus as requested. */
 private fun FocusManager.seedRouteFocusIfNeeded(): Boolean {
     val generation = ControllerFocusEngine.routeGeneration.value
@@ -211,6 +217,15 @@ actual fun PlatformKeyboardNavigationHost() {
 
             val isPlayerActive = ControllerManager.screenContext.value.screenType ==
                 ControllerScreenType.Player
+
+            // The native player's controls page gets the same key press and runs its own shortcuts
+            // (arrows seek/volume, Space, Enter on its buttons). Handling it here too doubled every
+            // skip, so only swallow it to keep the hidden app shell from moving focus.
+            if (isPlayerActive && PlayerControllerBridge.keyboardShortcutsHandledByPlayer() &&
+                event.keyCode in nativePlayerShortcutKeys
+            ) {
+                return@KeyEventDispatcher true
+            }
 
             // Inside the player the arrows are playback controls, not focus movement.
             if (isPlayerActive) {

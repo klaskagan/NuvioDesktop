@@ -89,6 +89,10 @@ const chapterTitle = document.getElementById("chapterTitle");
 const chapterMarks = document.getElementById("chapterMarks");
 const seekPreview = document.getElementById("seekPreview");
 const seekPreviewTime = document.getElementById("seekPreviewTime");
+const seekPreviewFrame = document.getElementById("seekPreviewFrame");
+const seekPreviewImage = document.getElementById("seekPreviewImage");
+const seekPreviewSpinner = document.getElementById("seekPreviewSpinner");
+const seekPreviewLoadingIndicator = window.createLoadingIndicator(seekPreviewSpinner);
 const chaptersModal = document.getElementById("chaptersModal");
 const streamInfoButton = document.getElementById("streamInfoButton");
 const streamInfoLabel = document.getElementById("streamInfoLabel");
@@ -829,6 +833,7 @@ const applyTheme = () => {
     : [cssColorOrFallback(state.themeAccentColor, "#2f6fed")];
   openingLoadingIndicator.setColors(loadingColors);
   bufferingLoadingIndicator.setColors(loadingColors);
+  seekPreviewLoadingIndicator.setColors(loadingColors);
   if (gradientColors.length > 1) {
     style.setProperty("--theme-accent-gradient", `linear-gradient(to right, ${gradientColors.join(", ")})`);
     style.setProperty("--theme-accent-gradient-vertical", `linear-gradient(to bottom, ${gradientColors.join(", ")})`);
@@ -2556,10 +2561,128 @@ const seekFractionFromClientX = clientX => {
   return Math.round(Math.max(0, Math.min(1, raw)) * 1000) / 1000;
 };
 
+// Seek-bar thumbnails: Kotlin grabs keyframes from the stream (SeekPreviewThumbnailer)
+// and pushes them through window.seekPreviewFrame. Frames stay cached for the page.
+const seekPreviewRequestIntervalMs = 80;
+const seekPreviewFrames = new Map();
+let seekPreviewThumbsUnavailable = false;
+let seekPreviewPendingBucket = null;
+let seekPreviewRequestedBucket = null;
+let seekPreviewLastRequestAt = -Infinity;
+let seekPreviewRequestTimer = 0;
+let seekPreviewScrubSent = false;
+let seekPreviewImageSrc = "";
+let seekPreviewWarmSent = false;
+let seekPreviewBufferingSent = null;
+
+const seekPreviewThumbnailsEnabled = () => Boolean(state.seekPreviewThumbnails) && !seekPreviewThumbsUnavailable;
+
+// Must match seekPreviewBucket in SeekPreviewThumbnailer.kt.
+const seekPreviewBucket = (positionMs, durationMs) => {
+  const duration = Math.floor(Number(durationMs) || 0);
+  if (duration <= 0) return 0;
+  const bucketMs = Math.min(5000, Math.max(1000, Math.floor(duration / 1000)));
+  const position = Math.max(0, Math.min(duration, Math.round(Number(positionMs) || 0)));
+  return Math.min(duration, Math.floor((position + Math.floor(bucketMs / 2)) / bucketMs) * bucketMs);
+};
+
+const nearestSeekPreviewFrame = bucket => {
+  let best = null;
+  let bestDistance = Infinity;
+  seekPreviewFrames.forEach((frame, key) => {
+    const distance = Math.abs(key - bucket);
+    if (distance < bestDistance) {
+      best = frame;
+      bestDistance = distance;
+    }
+  });
+  return best;
+};
+
+const flushSeekPreviewRequest = () => {
+  seekPreviewRequestTimer = 0;
+  const bucket = seekPreviewPendingBucket;
+  seekPreviewPendingBucket = null;
+  if (bucket === null || seekPreviewFrames.has(bucket)) return;
+  seekPreviewLastRequestAt = window.performance ? window.performance.now() : Date.now();
+  seekPreviewRequestedBucket = bucket;
+  seekPreviewScrubSent = true;
+  send("seekPreviewRequest", bucket);
+};
+
+const requestSeekPreviewFrame = bucket => {
+  if (seekPreviewFrames.has(bucket) || seekPreviewRequestedBucket === bucket) return;
+  seekPreviewPendingBucket = bucket;
+  if (seekPreviewRequestTimer) return;
+  const now = window.performance ? window.performance.now() : Date.now();
+  const waitMs = seekPreviewRequestIntervalMs - (now - seekPreviewLastRequestAt);
+  if (waitMs <= 0) flushSeekPreviewRequest();
+  else seekPreviewRequestTimer = window.setTimeout(flushSeekPreviewRequest, waitMs);
+};
+
+const setSeekPreviewImage = src => {
+  if (src !== seekPreviewImageSrc) {
+    seekPreviewImageSrc = src;
+    if (src) seekPreviewImage.src = src;
+    else seekPreviewImage.removeAttribute("src");
+    seekPreviewImage.hidden = !src;
+  }
+  seekPreviewLoadingIndicator.setActive(Boolean(seekPreviewVisible && !src && !seekPreviewFrame.hidden));
+};
+
+seekPreviewImage.addEventListener("load", () => {
+  const { naturalWidth: width, naturalHeight: height } = seekPreviewImage;
+  if (!width || !height) return;
+  const ratio = Math.max(1, Math.min(2.4, width / height));
+  seekPreviewFrame.style.aspectRatio = String(ratio);
+});
+
+const endSeekPreviewScrub = () => {
+  window.clearTimeout(seekPreviewRequestTimer);
+  seekPreviewRequestTimer = 0;
+  seekPreviewPendingBucket = null;
+  seekPreviewRequestedBucket = null;
+  if (!seekPreviewScrubSent) return;
+  seekPreviewScrubSent = false;
+  send("seekPreviewEnd", 0);
+};
+
 const hideSeekPreview = () => {
+  endSeekPreviewScrub();
   if (!seekPreviewVisible) return;
   seekPreviewVisible = false;
   seekPreview.classList.remove("visible");
+  seekPreviewLoadingIndicator.setActive(false);
+};
+
+window.seekPreviewFrame = frame => {
+  const bucket = Number(frame && frame.bucketMs);
+  if (!Number.isFinite(bucket) || typeof frame.src !== "string" || !frame.src.startsWith("data:image/")) return;
+  seekPreviewFrames.set(bucket, { positionMs: Number(frame.positionMs) || 0, src: frame.src });
+  if (seekPreviewRequestedBucket === bucket) seekPreviewRequestedBucket = null;
+  if (seekPreviewVisible) renderSeekPreview();
+};
+
+window.seekPreviewUnavailable = () => {
+  seekPreviewThumbsUnavailable = true;
+  if (seekPreviewVisible) renderSeekPreview();
+};
+
+// Opens the thumbnail connection shortly after the controls appear and tells
+// Kotlin when the main player buffers, so prefetching yields to playback.
+const syncSeekPreviewThumbnails = () => {
+  const enabled = seekPreviewThumbnailsEnabled() && Number(state.durationMs) > 0;
+  if (!enabled || !state.controlsVisible) {
+    if (!state.controlsVisible) seekPreviewWarmSent = false;
+  } else if (!seekPreviewWarmSent) {
+    seekPreviewWarmSent = true;
+    send("seekPreviewWarm", Math.round(Math.max(0, Number(state.positionMs) || 0)));
+  }
+  const buffering = Boolean(state.isLoading);
+  if (enabled && buffering !== seekPreviewBufferingSent) {
+    seekPreviewBufferingSent = buffering;
+    send("seekPreviewBuffering", buffering ? 1 : 0);
+  }
 };
 
 const renderSeekPreview = () => {
@@ -2575,13 +2698,25 @@ const renderSeekPreview = () => {
   }
   const positionMs = scrubbingWithPointer ? scrubPositionMs : Math.round(durationMs * fraction);
   const text = formatTime(positionMs);
+  const showFrame = seekPreviewThumbnailsEnabled();
+  let remeasure = !seekPreviewWidth;
+  if (seekPreviewFrame.hidden === showFrame) {
+    seekPreviewFrame.hidden = !showFrame;
+    remeasure = true;
+  }
+  if (showFrame) {
+    const bucket = seekPreviewBucket(positionMs, durationMs);
+    const frame = seekPreviewFrames.get(bucket) || nearestSeekPreviewFrame(bucket);
+    if (!seekPreviewFrames.has(bucket)) requestSeekPreviewFrame(bucket);
+    setSeekPreviewImage(frame ? frame.src : "");
+  }
   if (text !== seekPreviewText) {
     // Tabular digits: the width only changes with the character count.
-    const remeasure = text.length !== seekPreviewText.length || !seekPreviewWidth;
+    if (text.length !== seekPreviewText.length) remeasure = true;
     seekPreviewText = text;
     seekPreviewTime.textContent = text;
-    if (remeasure) seekPreviewWidth = seekPreview.offsetWidth;
   }
+  if (remeasure) seekPreviewWidth = seekPreview.offsetWidth;
   const geometry = currentSeekGeometry();
   const center = seekThumbWidthPx / 2 + fraction * Math.max(0, geometry.width - seekThumbWidthPx);
   const left = Math.max(0, Math.min(Math.max(0, geometry.width - seekPreviewWidth), center - seekPreviewWidth / 2));
@@ -2590,6 +2725,7 @@ const renderSeekPreview = () => {
   if (!seekPreviewVisible) {
     seekPreviewVisible = true;
     seekPreview.classList.add("visible");
+    if (showFrame) setSeekPreviewImage(seekPreviewImageSrc);
   }
 };
 
@@ -3181,6 +3317,7 @@ const renderChrome = () => {
   // Chrome updates can move the bar (chapter title, metadata rows).
   invalidateSeekGeometry();
   renderSeekPreview();
+  syncSeekPreviewThumbnails();
   if (showError) {
     skipPrompt.classList.remove("visible", "show-progress");
     setAttr(skipPrompt, "aria-hidden", "true");

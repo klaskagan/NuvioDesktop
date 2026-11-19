@@ -2071,6 +2071,25 @@ JNIEXPORT void JNICALL NP(updateControls)(JNIEnv *env, jobject, jlong handle, js
     auto *u = new ControlsUpdate{p, jstringToUtf8(env, controlsJson)};
     g_main_context_invoke(nullptr, applyControlsOnGtk, u);
 }
+// Small page calls (e.g. seek-bar thumbnails) that must not replace the
+// coalesced controls payload. Dropped until the webview exists.
+struct ControlsScript {
+    Player *player;
+    std::string script;
+};
+JNIEXPORT void JNICALL NP(evaluateControlsScript)(JNIEnv *env, jobject, jlong handle, jstring script) {
+    Player *p = asPlayer(handle);
+    if (!p) return;
+    auto *call = new ControlsScript{p, jstringToUtf8(env, script)};
+    g_main_context_invoke(nullptr,
+                          +[](gpointer data) -> gboolean {
+                              auto *c = static_cast<ControlsScript *>(data);
+                              if (playerAlive(c->player)) evalJs(c->player->webview, c->script);
+                              delete c;
+                              return G_SOURCE_REMOVE;
+                          },
+                          call);
+}
 // Re-grant the overlay X input focus (initial grab happens at webview
 // creation; Kotlin calls this on fullscreen changes and window refocus).
 JNIEXPORT void JNICALL NP(requestFocus)(JNIEnv *, jobject, jlong handle) {
@@ -2153,4 +2172,6 @@ static mpv_handle *qualityActiveMpv(jlong handle) { auto p = asPlayer(handle); r
 #define Q_FREE mpv_free
 #define Q_COMMAND mpv_command
 #define Q_WAIT mpv_wait_event
+#define Q_WAKEUP mpv_wakeup
 #include "../shared/quality_bridge.h"
+#include "../shared/seek_thumbnailer.h"

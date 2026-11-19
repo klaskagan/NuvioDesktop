@@ -86,6 +86,13 @@ internal object NativePlayerBridge {
 
     external fun dispose(handle: Long)
     external fun updateControls(handle: Long, controlsJson: String)
+    /** Runs a small script on the controls page without replacing the coalesced controls payload. */
+    external fun evaluateControlsScript(handle: Long, script: String)
+    /** Headless keyframe thumbnailer (native/shared/seek_thumbnailer.h); 0 when it cannot be created. */
+    external fun seekThumbnailerCreate(url: String, headerLines: Array<String>): Long
+    /** Writes a JPEG; returns the frame position (ms), -1 when unavailable, -2 on timeout. */
+    external fun seekThumbnailerFrame(handle: Long, positionMs: Long, outputPath: String, timeoutMs: Long): Long
+    external fun seekThumbnailerDestroy(handle: Long)
 
     /** macOS only: title, episode line, and poster for the system now-playing widget (Control Center). */
     external fun setNowPlayingMetadata(handle: Long, title: String, subtitle: String, artworkUrl: String)

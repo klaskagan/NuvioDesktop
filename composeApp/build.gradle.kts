@@ -1340,7 +1340,14 @@ compose.desktop {
         mainClass = "com.nuvio.app.MainKt"
         val smokePlayerUrl = providers.gradleProperty("nuvio.desktop.smokePlayerUrl").orNull
             ?: System.getenv("NUVIO_DESKTOP_SMOKE_PLAYER_URL")
+        // Labels a development run (Dock, Cmd-Tab, menu bar and window title) instead of "MainKt",
+        // so concurrent agent tasks can tell their app windows apart. Unset for packaged builds.
+        val devName = (providers.gradleProperty("nuvio.desktop.devName").orNull
+            ?: System.getenv("NUVIO_DEV_NAME"))?.trim()?.takeIf { it.isNotEmpty() }
         jvmArgs += listOfNotNull(
+            devName?.let { "-Xdock:name=Nuvio · $it" },
+            devName?.let { "-Dapple.awt.application.name=Nuvio · $it" },
+            devName?.let { "-Dnuvio.desktop.devName=$it" },
             "-Dapple.awt.application.appearance=NSAppearanceNameDarkAqua",
             // Keep AWT from loading its own GTK (Swing L&F/file dialogs): the
             // bridge owns the process's GTK via initGtkEarly (skoruppa's fix).

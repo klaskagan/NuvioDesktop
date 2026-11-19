@@ -142,7 +142,11 @@ fun main(args: Array<String>) {
 
         SwingWindow(
             onCloseRequest = closeApplication,
-            title = if (smokePlayerUrl == null) "Nuvio" else "Nuvio Player Smoke",
+            title = when {
+                smokePlayerUrl != null -> "Nuvio Player Smoke"
+                else -> System.getProperty("nuvio.desktop.devName")?.takeIf { it.isNotBlank() }
+                    ?.let { "Nuvio · $it" } ?: "Nuvio"
+            },
             state = windowState,
             icon = painterResource(appIconState.selected.transparentPreviewResource),
             onPreviewKeyEvent = { event ->

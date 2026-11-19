@@ -252,6 +252,20 @@ one root click (Chromium tests need the WebKit event order simulated).
 Regression check: `scripts/test-seek-preview.cjs` (same-frame tracking,
 drag-release), then hover-sweep and drag off the bar in the real player.
 
+Seek-bar thumbnails (Settings → Playback → Player interface → Seek Bar
+Thumbnails, `seekPreviewEnabled`) follow the mobile SeekPreviewController
+policy: warm-up when the controls appear, prefetch spread over the title
+(paused while buffering), latest-wins requests, idle release. Kotlin
+`SeekPreviewThumbnailer` drives a headless keyframe decoder
+(`native/shared/seek_thumbnailer.h`, a second mpv with `vo=null`) and pushes
+frames with `NativePlayerBridge.evaluateControlsScript`. Never send per-frame
+data through `updateControls`: each bridge keeps only the latest pending
+controls payload, so a frame push can drop a real controls update. The page and
+Kotlin share the bucket formula (`seekPreviewBucket` in both); change them
+together. Checks: `SeekPreviewThumbnailerTest`, `SeekPreviewNativeLiveTest`
+(`NUVIO_PLAYER_LIVE_TEST=1`), `scripts/test-seek-preview.cjs`, then hover a real
+HTTP stream and compare a thumbnail with the frame after clicking there.
+
 For formation/pitch layouts, scope flex-row rules to actual rows, not every
 direct child. Go3's absolute player markers inherited a 350px minimum height from
 a broad child selector, separating names from shirt numbers. Render a full

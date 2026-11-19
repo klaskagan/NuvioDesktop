@@ -25,6 +25,16 @@ class NativePlayerControlsJsonTest {
     }
 
     @Test
+    fun `seek bar thumbnails flag reaches the controls page and defaults off`() {
+        for (enabled in listOf(false, true)) {
+            val payload = Json.parseToJsonElement(PlayerControlsState(seekPreviewThumbnails = enabled).toControlsJson(false) {}).jsonObject
+            assertEquals(enabled, payload.getValue("seekPreviewThumbnails").jsonPrimitive.boolean)
+        }
+        val defaults = Json.parseToJsonElement(PlayerControlsState().toControlsJson(false) {}).jsonObject
+        assertEquals(false, defaults.getValue("seekPreviewThumbnails").jsonPrimitive.boolean, "trailers and other callers stay off")
+    }
+
+    @Test
     fun `lineups availability reaches native controls only for explicit sports types`() {
         for (type in listOf(null, "", "movie", "series", "trailer", "sport", "Sports")) {
             val state = PlayerControlsState(lineupsAvailable = supportsFootballLineups(type))

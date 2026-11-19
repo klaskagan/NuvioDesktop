@@ -619,6 +619,11 @@ internal fun settingsSearchEntries(
                 stringResource(Res.string.settings_playback_pause_overlay),
                 stringResource(Res.string.settings_playback_pause_overlay_description),
             ),
+            if (PlayerPlatformFeatures.seekPreview) PlaybackSearchRow(
+                "seek-preview",
+                stringResource(Res.string.settings_playback_seek_preview),
+                stringResource(Res.string.settings_playback_seek_preview_description),
+            ) else null,
             if (PlayerPlatformFeatures.movieRecommendations) PlaybackSearchRow(
                 "movie-recommendations",
                 stringResource(Res.string.settings_playback_movie_recommendations),

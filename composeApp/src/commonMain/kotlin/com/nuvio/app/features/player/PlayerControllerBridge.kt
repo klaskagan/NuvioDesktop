@@ -33,10 +33,26 @@ internal object PlayerControllerBridge {
     @Volatile
     private var handler: ((PlayerCommand) -> Boolean)? = null
 
-    fun register(scope: CoroutineScope?, handler: ((PlayerCommand) -> Boolean)?) {
+    @Volatile
+    private var keyboardShortcutsHandled: (() -> Boolean)? = null
+
+    fun register(
+        scope: CoroutineScope?,
+        handler: ((PlayerCommand) -> Boolean)?,
+        keyboardShortcutsHandled: (() -> Boolean)? = null,
+    ) {
         this.scope = scope
         this.handler = handler
+        this.keyboardShortcutsHandled = keyboardShortcutsHandled
     }
+
+    /**
+     * True when the player's own controls (the desktop webview) already receive and handle keyboard
+     * shortcuts. The desktop key dispatcher must then leave them alone: handling the same press in
+     * both places doubled every arrow-key skip. Gamepad input still goes through [dispatch].
+     */
+    fun keyboardShortcutsHandledByPlayer(): Boolean =
+        runCatching { keyboardShortcutsHandled?.invoke() == true }.getOrDefault(false)
 
     /**
      * Dispatches a command to the player. Gamepad input arrives on the polling thread, so the

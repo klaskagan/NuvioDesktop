@@ -98,9 +98,11 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
     // While the player is on screen, keyboard arrows and the gamepad drive playback (seek, volume,
     // play/pause, modals) instead of moving focus around the hidden app shell behind it.
     DisposableEffect(runtime, controllerScope) {
-        PlayerControllerBridge.register(controllerScope) { command ->
-            runtime.handlePlayerControllerCommand(command)
-        }
+        PlayerControllerBridge.register(
+            scope = controllerScope,
+            handler = { command -> runtime.handlePlayerControllerCommand(command) },
+            keyboardShortcutsHandled = { runtime.playerController?.handlesKeyboardShortcuts == true },
+        )
         ControllerFocusEngine.setPlayerEventHandler { event ->
             when (event) {
                 is ControllerEvent.Navigate -> {

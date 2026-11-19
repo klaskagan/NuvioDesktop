@@ -120,7 +120,77 @@ const { pathToFileURL } = require('node:url');
     await page.mouse.move(xAt(bar, 0.4), y(bar));
     assert.equal(await visible(), false, 'no preview without a duration');
 
+    // Thumbnails (Settings → Playback → Seek Bar Thumbnails).
+    const events = type => page.evaluate(type => window.playerEvents.filter(e => e.type === type).map(e => e.value), type);
+    const frameState = () => page.evaluate(() => ({
+      frameHidden: document.getElementById('seekPreviewFrame').hidden,
+      imageHidden: document.getElementById('seekPreviewImage').hidden,
+      src: document.getElementById('seekPreviewImage').getAttribute('src') || '',
+    }));
+    const png = color => 'data:image/png;base64,' + {
+      red: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+      blue: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPj/HwADBwIAMCbHYQAAAABJRU5ErkJggg==',
+    }[color];
+    await page.mouse.move(bar.x + bar.width / 2, bar.y - 300);
+    await update({ seekPreviewThumbnails: false });
+    await progress(6000, 100);
+    await page.mouse.move(xAt(bar, 0.25), y(bar));
+    await page.clock.fastForward(200);
+    assert.deepEqual(await events('seekPreviewRequest'), [], 'setting off: no requests');
+    assert.equal((await frameState()).frameHidden, true, 'setting off: time only');
+    await page.mouse.move(bar.x + bar.width / 2, bar.y - 300);
+
+    await update({ seekPreviewThumbnails: true, controlsVisible: false });
+    await update({ controlsVisible: true });
+    assert.deepEqual(await events('seekPreviewWarm'), [100000], 'controls appearing warm the connection once');
+    await update({ controlsVisible: true });
+    assert.equal((await events('seekPreviewWarm')).length, 1);
+
+    await page.mouse.move(xAt(bar, 0.25), y(bar));
+    await page.clock.fastForward(200);
+    assert.deepEqual(await events('seekPreviewRequest'), [1500000], 'requests the 5 s bucket under the pointer');
+    let frame = await frameState();
+    assert.equal(frame.frameHidden, false);
+    assert.equal(frame.imageHidden, true, 'spinner until a frame arrives');
+    await page.evaluate(src => window.seekPreviewFrame({ bucketMs: 1500000, positionMs: 1498000, src }), png('red'));
+    frame = await frameState();
+    assert.equal(frame.imageHidden, false);
+    assert.equal(frame.src, png('red'));
+    await page.evaluate(() => window.seekPreviewFrame({ bucketMs: 1505000, positionMs: 0, src: 'https://example.com/x.jpg' }));
+    await page.mouse.move(xAt(bar, 0.2512), y(bar));
+    await page.clock.fastForward(200);
+    assert.deepEqual((await events('seekPreviewRequest')).slice(-1), [1505000], 'non-data frames are ignored');
+    assert.equal((await frameState()).src, png('red'), 'nearest cached frame while the exact one loads');
+    await page.evaluate(src => window.seekPreviewFrame({ bucketMs: 1505000, positionMs: 1504000, src }), png('blue'));
+    assert.equal((await frameState()).src, png('blue'));
+    await page.mouse.move(xAt(bar, 0.25), y(bar));
+    await page.clock.fastForward(200);
+    assert.equal((await frameState()).src, png('red'), 'cached frames show without a new request');
+    assert.equal((await events('seekPreviewRequest')).length, 2);
+
+    box = await previewRect();
+    await page.mouse.move(bar.x + 1, y(bar));
+    await page.clock.fastForward(200);
+    await settle();
+    box = await previewRect();
+    assert.ok(box.x >= bar.x - 0.5 && box.width >= 160, 'thumbnail bubble stays inside the bar');
+
+    await page.mouse.move(bar.x + bar.width / 2, bar.y - 300);
+    assert.deepEqual(await events('seekPreviewEnd'), [0], 'leaving ends the scrub once');
+
+    await page.evaluate(() => window.playerUpdate({ duration: 6000, position: 100, paused: true, loading: true }));
+    await page.evaluate(() => window.playerUpdate({ duration: 6000, position: 100, paused: true, loading: false }));
+    assert.deepEqual(await events('seekPreviewBuffering'), [0, 1, 0], 'buffering changes reach the thumbnailer');
+
+    await page.evaluate(() => window.seekPreviewUnavailable());
+    const requestsBefore = (await events('seekPreviewRequest')).length;
+    await page.mouse.move(xAt(bar, 0.7), y(bar));
+    await page.clock.fastForward(200);
+    assert.equal((await frameState()).frameHidden, true, 'unavailable streams fall back to the time bubble');
+    assert.equal((await events('seekPreviewRequest')).length, requestsBefore);
+    assert.equal(await text(), '1:10:00');
+
     assert.deepEqual(errors, []);
-    console.log('Seek preview: hover time, centring, edge clamping, click target, drag, keyboard, hidden chrome and zero duration passed.');
+    console.log('Seek preview: hover time, centring, edge clamping, click target, drag, keyboard, hidden chrome, zero duration and thumbnails passed.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

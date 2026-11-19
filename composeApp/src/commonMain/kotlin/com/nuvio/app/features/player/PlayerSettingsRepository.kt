@@ -39,6 +39,7 @@ data class PlayerSettingsUiState(
     val showPlayerLoadingStatus: Boolean = true,
     val pauseOverlayEnabled: Boolean = true,
     val movieRecommendationsEnabled: Boolean = true,
+    val seekPreviewEnabled: Boolean = true,
     val movieRecommendationTiming: MovieRecommendationTiming = MovieRecommendationTiming.INTRODB,
     val showParentalGuide: Boolean = true,
     val resizeMode: PlayerResizeMode = PlayerResizeMode.Fit,
@@ -159,6 +160,7 @@ object PlayerSettingsRepository {
     private var showPlayerLoadingStatus = true
     private var pauseOverlayEnabled = true
     private var movieRecommendationsEnabled = true
+    private var seekPreviewEnabled = true
     private var movieRecommendationTiming = MovieRecommendationTiming.INTRODB
     private var showParentalGuide = true
     private var resizeMode = PlayerResizeMode.Fit
@@ -266,6 +268,7 @@ object PlayerSettingsRepository {
         showPlayerLoadingStatus = true
         pauseOverlayEnabled = true
         movieRecommendationsEnabled = true
+        seekPreviewEnabled = true
         movieRecommendationTiming = MovieRecommendationTiming.INTRODB
         showParentalGuide = true
         resizeMode = PlayerResizeMode.Fit
@@ -367,6 +370,7 @@ object PlayerSettingsRepository {
         showPlayerLoadingStatus = PlayerSettingsStorage.loadShowPlayerLoadingStatus() ?: true
         pauseOverlayEnabled = PlayerSettingsStorage.loadPauseOverlayEnabled() ?: true
         movieRecommendationsEnabled = PlayerSettingsStorage.loadMovieRecommendationsEnabled() ?: true
+        seekPreviewEnabled = PlayerSettingsStorage.loadSeekPreviewEnabled() ?: true
         movieRecommendationTiming = PlayerSettingsStorage.loadMovieRecommendationTiming()
             ?.let { runCatching { MovieRecommendationTiming.valueOf(it) }.getOrNull() }
             ?: MovieRecommendationTiming.INTRODB
@@ -607,6 +611,14 @@ object PlayerSettingsRepository {
         movieRecommendationsEnabled = enabled
         publish()
         PlayerSettingsStorage.saveMovieRecommendationsEnabled(enabled)
+    }
+
+    fun setSeekPreviewEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (seekPreviewEnabled == enabled) return
+        seekPreviewEnabled = enabled
+        publish()
+        PlayerSettingsStorage.saveSeekPreviewEnabled(enabled)
     }
 
     fun setShowParentalGuide(enabled: Boolean) {
@@ -1452,6 +1464,7 @@ object PlayerSettingsRepository {
             showPlayerLoadingStatus = showPlayerLoadingStatus,
             pauseOverlayEnabled = pauseOverlayEnabled,
             movieRecommendationsEnabled = movieRecommendationsEnabled,
+            seekPreviewEnabled = seekPreviewEnabled,
             movieRecommendationTiming = movieRecommendationTiming,
             showParentalGuide = showParentalGuide,
             resizeMode = resizeMode,

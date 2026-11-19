@@ -142,6 +142,7 @@ static constexpr double kMaxVolumePercent = 200.0;
 - (void)setNativeControlsVisible:(BOOL)visible;
 - (BOOL)controlsOverlayAvailable;
 - (void)updateControlsJson:(NSString *)controlsJson;
+- (void)evaluateControlsScript:(NSString *)script;
 - (void)requestFocus;
 - (void)beginWindowDrag;
 - (void)reparentSurfaceToHostView:(NSView *)hostView;
@@ -2154,6 +2155,13 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     [self flushPendingControlsJsonIfReady];
 }
 
+// Small page calls (e.g. seek-bar thumbnails) that must not replace the
+// coalesced controls payload. Dropped until the page is ready.
+- (void)evaluateControlsScript:(NSString *)script {
+    if (!_webView || !_controlsWebReady || script.length == 0) return;
+    [_webView evaluateJavaScript:script completionHandler:nil];
+}
+
 - (void)flushPendingControlsJsonIfReady {
     if (!_webView || !_pendingControlsJson) {
         return;
@@ -3578,6 +3586,21 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_updateControls(
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_evaluateControlsScript(
+    JNIEnv *env,
+    jobject /* bridge */,
+    jlong handle,
+    jstring script
+) {
+    if (handle == 0) return;
+    std::string text = jstringToString(env, script);
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    runOnMainAsync(^{
+        [player evaluateControlsScript:[NSString stringWithUTF8String:text.c_str()]];
+    });
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setNowPlayingMetadata(
     JNIEnv *env,
     jobject /* bridge */,
@@ -4427,7 +4450,9 @@ static mpv_handle *qualityActiveMpv(jlong handle) {
 #define Q_FREE mpv_free
 #define Q_COMMAND mpv_command
 #define Q_WAIT mpv_wait_event
+#define Q_WAKEUP mpv_wakeup
 #include "../shared/quality_bridge.h"
+#include "../shared/seek_thumbnailer.h"
 extern "C" JNIEXPORT void JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleAppearance(
     JNIEnv *env,

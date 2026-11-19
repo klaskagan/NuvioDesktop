@@ -124,6 +124,13 @@ reference: corners, padding, alignment, typography, icons, focus, selected rows,
 clipping/scrolling, and loading/empty/error states. Exercise mode switching and
 dismissal if changed. Do not claim visual verification from source inspection.
 
+Label every review launch with the task:
+`./gradlew :composeApp:run -Pnuvio.desktop.devName="<short task name>"` (or
+`NUVIO_DEV_NAME`). The Dock, Cmd-Tab and menu bar then show "Nuvio · <task>"
+instead of "MainKt", and the window title matches, so concurrent agents' review
+windows are distinguishable. `pkill -f "bin/java.*MainKt"` stops every agent's
+instance: when other tasks are running, stop only your own PID.
+
 Use `./gradlew :composeApp:desktopTest --tests '<affected test class>'` for focused
 JVM tests. See the repository's build scripts and `composeApp/build.gradle.kts`
 for the current JDK and packaging requirements. After implementation, launch the
@@ -144,15 +151,18 @@ app or trigger TV/network activity as part of an unrelated UI check.
 
 ### QA the desktop player with computer use
 
-1. Run one instance: `pkill -f "bin/java.*MainKt"`, then `./gradlew :composeApp:run`
-   in the background; wait for a `bin/java.*MainKt` process. Stale windows from
-   earlier launches catch clicks and keys.
+1. Run one instance: `pkill -f "bin/java.*MainKt"`, then
+   `./gradlew :composeApp:run -Pnuvio.desktop.devName="<task>"` in the background;
+   wait for a `bin/java.*MainKt` process. Stale windows from earlier launches catch
+   clicks and keys.
 2. Grant computer use for `net.java.openjdk.java` ("MainKt") and request full-screen
    control: background `app_*` clicks/typing do not reach this Compose window.
    Screenshot to confirm MainKt is in front.
 3. Open a title via Cmd+F, type "night of the living dead" (public-domain 1968
-   film), wait ~7 s, click the black-and-white 1968 poster. Avoid Continue Watching
-   (changes the user's progress) and Home hero cards (they start trailers).
+   film), wait ~7 s, screenshot, then click the black-and-white 1968 poster. Result
+   order changes between searches, so never reuse an earlier position, and check
+   the Details title before Play. Avoid Continue Watching (changes the user's
+   progress) and Home hero cards (they start trailers).
 4. On Details click Play/Resume; wait 10–15 s for frames (source is auto-picked).
 5. Move the mouse over the video before each screenshot; controls auto-hide.
 6. Seek checks: hover the bar and zoom to read the preview time; click, move the
@@ -160,6 +170,21 @@ app or trigger TV/network activity as part of an unrelated UI check.
 7. Close with the top-right ✕ (Esc is app-wide Back), release full-screen control,
    and tell the user which title played and where it was left: playback saves
    watch progress and may sync to Trakt.
+
+Shared native helpers (`native/shared/quality_bridge.h`, `seek_thumbnailer.h`) are
+included by all three bridges after their `Q_*` mpv aliases; Windows reaches mpv
+through `mpvApi()` symbols, so use only functions it loads (or add them there).
+Only the macOS bridge compiles on a Mac: state Windows/Linux as unverified.
+
+Player keyboard ownership: on macOS a key press reaches both the AWT
+`KeyEventDispatcher` (`PlatformKeyboardNavigation.desktop.kt`) and the native
+player's controls webview, which maps arrows/Space/J/K/L itself. While
+`PlayerEngineController.handlesKeyboardShortcuts` is true the dispatcher only
+swallows those keys; gamepad input still uses `PlayerControllerBridge.dispatch`.
+Handling both doubled every arrow skip (20 s). Relative seeks likewise call the
+engine's `seekBy` only when `seekFromNativeControls` returns false. Check
+`PlayerControllerSeekTest`, then press → in a real player: the log must show one
+`seekTo` 10 s ahead per `keyboardSeekForward`.
 
 When merging native player API changes, reconcile the Kotlin bridge, JNI exports,
 `NativePlayerCreate` callbacks, and embedded/staging adapters together. The RTX HDR

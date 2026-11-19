@@ -6,6 +6,8 @@ import com.nuvio.app.features.streams.StreamBadge
 
 interface PlayerEngineController {
     val playbackEngine: AndroidPlaybackEngine? get() = null
+    /** True while the engine's own controls page receives and handles keyboard shortcuts. */
+    val handlesKeyboardShortcuts: Boolean get() = false
     suspend fun prepareBufferedQuality(choice: PlayerQualityChoice, checkpoint: PlayerQualityCheckpoint): BufferedPlayerQuality? = null
     suspend fun restoreQuickQuality(checkpoint: PlayerQualityCheckpoint): Boolean = restoreQuality(checkpoint)
     fun qualityCheckpoint(): PlayerQualityCheckpoint? = null
@@ -361,6 +363,8 @@ data class PlayerControlsState(
     val badges: List<StreamBadge> = emptyList(),
     val chapters: List<PlayerControlChapter> = emptyList(),
     val chapterTitleEnabled: Boolean = true,
+    /** Desktop controls page: grab seek-bar thumbnails from the stream. */
+    val seekPreviewThumbnails: Boolean = false,
     val chaptersLabel: String = "Chapters",
     val chaptersPanelTitle: String = "Chapters",
     val chapterRemainingTemplate: String = "{time} left",

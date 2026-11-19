@@ -1018,6 +1018,16 @@ public:
         });
     }
 
+    // Small page calls (e.g. seek-bar thumbnails) that must not replace the
+    // coalesced controls payload. Dropped until the page is ready.
+    void evaluateControlsScript(const std::string &script) {
+        if (script.empty()) return;
+        postUiTask([self = shared_from_this(), script]() {
+            if (!self->webView || !self->controlsWebReady.load()) return;
+            self->webView->ExecuteScript(toWide(script).c_str(), nullptr);
+        });
+    }
+
     void requestFocus() {
         postUiTask([self = shared_from_this()]() {
             self->focusNativeControls();
@@ -2512,6 +2522,13 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_updateControls(JNI
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_evaluateControlsScript(JNIEnv *env, jobject, jlong handle, jstring script) {
+    auto player = playerFromHandle(handle);
+    std::string text = jstringToUtf8(env, script);
+    if (player) player->evaluateControlsScript(text);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_requestFocus(JNIEnv *, jobject, jlong handle) {
     auto player = playerFromHandle(handle);
     if (player) player->requestFocus();
@@ -3062,7 +3079,9 @@ static mpv_handle *qualityActiveMpv(jlong handle) { auto p = playerFromHandle(ha
 #define Q_COMMAND mpvApi().command
 #define Q_WAIT mpvApi().waitEvent
 #define Q_PREPARE() mpvApi().ensureLoaded()
+#define Q_WAKEUP mpvApi().wakeup
 #include "../shared/quality_bridge.h"
+#include "../shared/seek_thumbnailer.h"
 extern "C" JNIEXPORT void JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleAppearance(
     JNIEnv *env,

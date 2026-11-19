@@ -38,7 +38,8 @@ skill is not in the session catalog, read that file directly.
 - For collection hero/backdrop work, read `.agents/collection-backdrops.md` and
   reuse the seasonal catalog implementation as the reference.
 - After implementing a desktop feature or visible fix, launch the actual MainKt
-  application with `./gradlew :composeApp:run` and leave its development window
+  application with `./gradlew :composeApp:run -Pnuvio.desktop.devName="<task>"`
+  (labels the Dock/window with the task) and leave its development window
   open for the user's review before handing off. Compilation, automated UI tests,
   screenshots and probe windows do not substitute for this launch. Skip only if
   the user explicitly opts out or a concrete build/runtime blocker prevents it;

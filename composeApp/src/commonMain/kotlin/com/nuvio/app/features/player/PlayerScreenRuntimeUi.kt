@@ -333,6 +333,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         lineupsAvailable = supportsFootballLineups(contentType ?: parentMetaType),
         chapters = controlChapters,
         chapterTitleEnabled = playerSettingsUiState.chapterTitleEnabled,
+        // Torrent sources are served by the local engine; a second reader would compete with playback.
+        seekPreviewThumbnails = playerSettingsUiState.seekPreviewEnabled && activeTorrentInfoHash == null,
         chaptersLabel = stringResource(Res.string.compose_player_chapters),
         chaptersPanelTitle = stringResource(Res.string.compose_player_panel_chapters, chapters.size),
         chapterRemainingTemplate = stringResource(Res.string.compose_player_chapter_remaining, "{time}"),
@@ -1451,8 +1453,8 @@ private fun PlayerScreenRuntime.seekPlayerBy(offsetMs: Long): Boolean {
         return true
     }
     val controller = playerController ?: return false
-    seekFromNativeControls(offsetMs)
-    controller.seekBy(offsetMs)
+    // On desktop seekFromNativeControls already seeks; seeking again doubled the skip.
+    if (!seekFromNativeControls(offsetMs)) controller.seekBy(offsetMs)
     return true
 }
 

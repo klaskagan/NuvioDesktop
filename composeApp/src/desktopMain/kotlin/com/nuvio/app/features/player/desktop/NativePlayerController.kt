@@ -107,6 +107,9 @@ internal class NativePlayerController(
     @Volatile
     private var handle: Long = 0L
 
+    // The controls webview gets every key press too and maps arrows/Space/J/K/L itself.
+    override val handlesKeyboardShortcuts: Boolean get() = handle != 0L
+
     /** Native teardown of the previous player, if one is still running. */
     @Volatile
     private var disposeInFlight: Thread? = null
@@ -140,6 +143,7 @@ internal class NativePlayerController(
     private var onEvent: (String, Double) -> Boolean = { _, _ -> false }
     private var onScrubChange: (Long) -> Boolean = { false }
     private var onScrubFinished: (Long) -> Boolean = { false }
+    private val seekPreviewThumbnailer = java.util.concurrent.atomic.AtomicReference<SeekPreviewThumbnailer?>(null)
     private val eventSink = NativePlayerEventSink { type, value ->
         SwingUtilities.invokeLater {
             handlePlayerEvent(type, value)
@@ -157,6 +161,7 @@ internal class NativePlayerController(
         onError: (String?) -> Unit,
         sourceAudioUrl: String? = null,
     ) {
+        disposeSeekPreviewThumbnailer()
         val pending = PendingSource(
             sourceUrl = sourceUrl,
             sourceAudioUrl = sourceAudioUrl,
@@ -315,14 +320,7 @@ internal class NativePlayerController(
                 if (!releaseRequested && pendingSource === pending) pending.onError(error.message)
                 return
             }
-        val resolvedSource = if (pending.sourceUrl.startsWith("file:", ignoreCase = true)) {
-            runCatching { java.io.File(java.net.URI(pending.sourceUrl)).absolutePath }.getOrElse {
-                val stripped = pending.sourceUrl.replaceFirst(Regex("^file:/{1,3}", RegexOption.IGNORE_CASE), "")
-                runCatching { java.net.URLDecoder.decode(stripped, "UTF-8") }.getOrDefault(stripped)
-            }
-        } else {
-            pending.sourceUrl
-        }
+        val resolvedSource = resolveNativeSourcePath(pending.sourceUrl)
 
         // Native create blocks until the player's own UI thread finishes initialising, and that
         // thread creates child windows of the AWT host, which needs the EDT to keep pumping
@@ -464,6 +462,8 @@ internal class NativePlayerController(
 
     @Synchronized
     fun updateControls(state: PlayerControlsState) {
+        // Turning the setting off releases the stream connection right away.
+        if (!state.seekPreviewThumbnails) disposeSeekPreviewThumbnailer()
         host.setControlsVisible(state.controlsVisible)
         val currentHandle = handle
         val current = currentHandle.takeIf { it != 0L } ?: run {
@@ -624,6 +624,14 @@ internal class NativePlayerController(
             }
             "resumeTvHandoff" -> com.nuvio.app.features.handoff.resumeTvHandoffPlayback()
             "cursorActivity" -> host.noteCursorActivity()
+            "seekPreviewWarm" -> seekPreviewThumbnailerForEvent()?.let { thumbnailer ->
+                currentDurationMs()?.let { duration -> thumbnailer.warmUp(value.toLong(), duration) }
+            }
+            "seekPreviewRequest" -> seekPreviewThumbnailerForEvent()?.let { thumbnailer ->
+                currentDurationMs()?.let { duration -> thumbnailer.request(value.toLong(), duration) }
+            }
+            "seekPreviewEnd" -> seekPreviewThumbnailer.get()?.endScrub()
+            "seekPreviewBuffering" -> seekPreviewThumbnailer.get()?.setBuffering(value != 0.0)
             "scrubChange" -> {
                 val handled = onScrubChange(value.toLong())
                 log.d { "scrubChange positionMs=${value.toLong()} handled=$handled handle=$handle" }
@@ -681,6 +689,50 @@ internal class NativePlayerController(
                 }
             }
         }
+    }
+
+    private fun currentDurationMs(): Long? =
+        handle.takeIf { it != 0L }?.let(NativePlayerBridge::durationMs)?.takeIf { it > 0L }
+
+    /** EDT. Created on the controls page's first warm-up/request for the current source. */
+    private fun seekPreviewThumbnailerForEvent(): SeekPreviewThumbnailer? {
+        if (!controlsState.seekPreviewThumbnails) {
+            disposeSeekPreviewThumbnailer()
+            return null
+        }
+        seekPreviewThumbnailer.get()?.let { return it }
+        val pending = pendingSource ?: return null
+        if (releaseRequested || handle == 0L) return null
+        val url = resolveNativeSourcePath(pending.sourceUrl)
+        val headerLines = pending.headerLines
+        lateinit var created: SeekPreviewThumbnailer
+        created = SeekPreviewThumbnailer(
+            openSource = { NativeSeekPreviewFrameSource.open(url, headerLines) },
+            onThumbnail = { thumbnail ->
+                val script = "window.seekPreviewFrame&&window.seekPreviewFrame(" +
+                    "{bucketMs:${thumbnail.bucketMs},positionMs:${thumbnail.positionMs},src:\"${thumbnail.dataUrl()}\"})"
+                deliverSeekPreviewScript(created, script)
+            },
+            onUnavailable = {
+                deliverSeekPreviewScript(created, "window.seekPreviewUnavailable&&window.seekPreviewUnavailable()")
+            },
+        )
+        if (!seekPreviewThumbnailer.compareAndSet(null, created)) {
+            created.dispose()
+            return seekPreviewThumbnailer.get()
+        }
+        return created
+    }
+
+    private fun deliverSeekPreviewScript(owner: SeekPreviewThumbnailer, script: String) {
+        SwingUtilities.invokeLater {
+            if (seekPreviewThumbnailer.get() !== owner || releaseRequested) return@invokeLater
+            handle.takeIf { it != 0L }?.let { NativePlayerBridge.evaluateControlsScript(it, script) }
+        }
+    }
+
+    private fun disposeSeekPreviewThumbnailer() {
+        seekPreviewThumbnailer.getAndSet(null)?.dispose()
     }
 
     @Synchronized
@@ -937,6 +989,7 @@ internal class NativePlayerController(
     }
 
     fun dispose() {
+        disposeSeekPreviewThumbnailer()
         host.resetCursorVisibility()
         val accepted = synchronized(lifecycleLock) {
             if (releaseRequested) {
@@ -959,6 +1012,7 @@ internal class NativePlayerController(
     }
 
     private fun invalidateForRelease() {
+        disposeSeekPreviewThumbnailer()
         com.nuvio.app.features.handoff.stopObservingTvHandoffPlayback(this)
         cancelPendingAttachment()
         host.onCursorActivity = null
@@ -1564,6 +1618,7 @@ private fun String.toPlaybackLogKey(): String {
 
 private fun String.shouldLogNativeControlEvent(): Boolean {
     val normalized = lowercase()
+    if (normalized.startsWith("seekpreview")) return false
     return normalized.contains("audio") ||
         normalized.contains("subtitle") ||
         normalized.contains("speed") ||
@@ -1622,6 +1677,17 @@ private fun Int.toHexByte(): String {
         append(digits[value % 16])
     }
 }
+
+/** mpv takes plain paths for local files; file: URLs are decoded to one. */
+private fun resolveNativeSourcePath(sourceUrl: String): String =
+    if (sourceUrl.startsWith("file:", ignoreCase = true)) {
+        runCatching { java.io.File(java.net.URI(sourceUrl)).absolutePath }.getOrElse {
+            val stripped = sourceUrl.replaceFirst(Regex("^file:/{1,3}", RegexOption.IGNORE_CASE), "")
+            runCatching { java.net.URLDecoder.decode(stripped, "UTF-8") }.getOrDefault(stripped)
+        }
+    } else {
+        sourceUrl
+    }
 
 private data class PendingSource(
     val sourceUrl: String,
@@ -2179,6 +2245,8 @@ internal fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRe
         }
         append(',')
         appendJsonField("chapterTitleEnabled", chapterTitleEnabled)
+        append(',')
+        appendJsonField("seekPreviewThumbnails", seekPreviewThumbnails)
         append(',')
         appendJsonField("chaptersLabel", chaptersLabel)
         append(',')
