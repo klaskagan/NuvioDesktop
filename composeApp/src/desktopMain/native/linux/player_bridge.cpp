@@ -50,6 +50,7 @@ namespace {
 
 JavaVM *gVm = nullptr;
 constexpr double kMaxVolumePercent = 200.0;
+constexpr uint64_t kOverlayReplyTag = 0x6f766c79;  // 'ovly': overlay-add reply_userdata (high 32 bits)
 constexpr int kDirtyReportedSnapSkipTicks = 90;
 
 struct Player {
@@ -83,6 +84,15 @@ struct Player {
     cairo_surface_t *snapSurf = nullptr;      // buffer mpv's overlay points at
     cairo_surface_t *snapSurfPrev = nullptr;  // kept one push longer: mpv may
                                               // still sample it mid-frame
+    // overlay-add is issued async: a synchronous mpv_command blocks the GTK thread
+    // ~3.5ms per frame waiting on the busy playback core. mpv copies the pixels
+    // when the command EXECUTES, so a surface must not be freed while an add that
+    // points at it is still queued. Adds carry a sequence number, the event loop
+    // records completions, and overlayBarrier() (a synchronous no-op; mpv runs
+    // commands in order) drains the queue before any surface is freed.
+    std::atomic<uint64_t> overlaySeqIssued{0};
+    std::atomic<uint64_t> overlaySeqDone{0};
+    int64_t overlayAsyncAt = 0;
     bool snapInFlight = false;
     int snapWaitTicks = 0;  // watchdog: ticks spent waiting on the in-flight snapshot
     // Snapshot requests are generation-stamped: a watchdog reset (or teardown)
@@ -218,6 +228,34 @@ void gtkSync(std::function<void()> fn) {
     g_main_context_invoke(nullptr, syncTrampoline, &s);
     std::unique_lock<std::mutex> lock(s.m);
     s.cv.wait(lock, [&] { return s.done; });
+}
+
+// ---- X error handler -----------------------------------------------------
+// libmpv's X11 VO resets the process-wide X error handler to NULL (Xlib's
+// default, which exits on any X error) when it shuts down. Put the app's
+// handler back after each mpv instance is destroyed. Both steps run on the
+// GTK thread so a GDK error trap can't capture or undo the change.
+
+XErrorHandler gAppXErrorHandler = nullptr;
+std::once_flag gAppXErrorHandlerOnce;
+
+int ignoreXError(Display *, XErrorEvent *) { return 0; }
+
+void rememberAppXErrorHandler() {
+    std::call_once(gAppXErrorHandlerOnce, [] {
+        ensureGtk();
+        gtkSync([] {
+            // Xlib has no getter: swap in a no-op handler to read the current one.
+            XErrorHandler current = XSetErrorHandler(ignoreXError);
+            XSetErrorHandler(current);
+            gAppXErrorHandler = current;
+        });
+    });
+}
+
+void restoreAppXErrorHandler() {
+    if (!gAppXErrorHandler) return;
+    gtkSync([] { XSetErrorHandler(gAppXErrorHandler); });
 }
 
 // ---- small helpers -------------------------------------------------------
@@ -532,7 +570,26 @@ void onOverlayDestroyed(GtkWidget *, gpointer data) {
 
 // Free the snapshot buffers (safe to call with none allocated). Only after
 // overlay-remove or teardown — mpv's overlay points into snapSurf's data.
+bool overlayBusy(Player *player) {
+    return player->overlaySeqIssued.load() > player->overlaySeqDone.load();
+}
+
+void markOverlayDone(Player *player, uint64_t seq) {
+    uint64_t cur = player->overlaySeqDone.load();
+    while (cur < seq && !player->overlaySeqDone.compare_exchange_weak(cur, seq)) {}
+}
+
+// Block until every queued overlay-add has executed (and copied its pixels).
+void overlayBarrier(Player *player) {
+    if (!player->mpv || !overlayBusy(player)) return;
+    uint64_t issued = player->overlaySeqIssued.load();
+    const char *noop[] = {"ignore", nullptr};
+    mpv_command(player->mpv, noop);
+    markOverlayDone(player, issued);
+}
+
 void releaseSnapshots(Player *player) {
+    overlayBarrier(player);
     if (player->snapSurf) cairo_surface_destroy(player->snapSurf);
     if (player->snapSurfPrev) cairo_surface_destroy(player->snapSurfPrev);
     player->snapSurf = player->snapSurfPrev = nullptr;
@@ -620,6 +677,15 @@ void presentOverlaySurface(Player *player, cairo_surface_t *surf) {
     }
     player->snapStill = 0;
     player->snapSkip = 0;
+    if (overlayBusy(player)) {
+        if (g_get_monotonic_time() - player->overlayAsyncAt < 500000) {
+            // The previous add is still queued in mpv: drop this frame. The next
+            // capture differs from snapSurf, so it is pushed a tick later.
+            cairo_surface_destroy(surf);
+            return;
+        }
+        overlayBarrier(player);  // reply overdue: drain the queue synchronously
+    }
     char addr[32], sw[16], sh[16], sstride[16];
     snprintf(addr, sizeof addr, "&%zu",
              (size_t)(uintptr_t)cairo_image_surface_get_data(surf));
@@ -628,7 +694,12 @@ void presentOverlaySurface(Player *player, cairo_surface_t *surf) {
     snprintf(sstride, sizeof sstride, "%d", cairo_image_surface_get_stride(surf));
     const char *cmd[] = {"overlay-add", "0", "0", "0", addr, "0",
                          "bgra", sw, sh, sstride, nullptr};
-    mpv_command(player->mpv, cmd);
+    // No add is queued (checked above), so every earlier add has copied its
+    // pixels and snapSurfPrev can be freed below.
+    uint64_t seq = player->overlaySeqIssued.fetch_add(1) + 1;
+    player->overlayAsyncAt = g_get_monotonic_time();
+    if (mpv_command_async(player->mpv, (kOverlayReplyTag << 32) | (seq & 0xffffffffu), cmd) < 0)
+        markOverlayDone(player, seq);
     player->overlayPushed = true;
     if (player->snapSurfPrev) cairo_surface_destroy(player->snapSurfPrev);
     player->snapSurfPrev = player->snapSurf;
@@ -1536,6 +1607,15 @@ void runEventLoop(Player *player) {
         mpv_event *event = mpv_wait_event(player->mpv, 0.05);
         if (!event || event->event_id == MPV_EVENT_NONE) continue;
         switch (event->event_id) {
+            case MPV_EVENT_COMMAND_REPLY:
+                if ((event->reply_userdata >> 32) == kOverlayReplyTag) {
+                    // Rebuild the full sequence number from its low 32 bits.
+                    uint64_t issued = player->overlaySeqIssued.load();
+                    uint64_t seq = (issued & ~0xffffffffull) | (event->reply_userdata & 0xffffffffu);
+                    if (seq > issued) seq -= 0x100000000ull;
+                    markOverlayDone(player, seq);
+                }
+                break;
             case MPV_EVENT_LOG_MESSAGE: {
                 auto *msg = static_cast<mpv_event_log_message *>(event->data);
                 if (msg) NUVIO_LOG("mpv[%s] %s: %s", msg->level, msg->prefix, msg->text);
@@ -1587,6 +1667,15 @@ extern "C" {
 // types once and canonically; the bridge thread's gtk_init then no-ops.
 // Approach from skoruppa's linux-webkitgtk branch (initGtkEarly).
 JNIEXPORT jboolean JNICALL NP(initGtkEarly)(JNIEnv *, jobject) {
+    const char *waylandDisplay = std::getenv("WAYLAND_DISPLAY");
+    const char *sessionType = std::getenv("XDG_SESSION_TYPE");
+    if ((waylandDisplay && *waylandDisplay) ||
+        (sessionType && std::strcmp(sessionType, "wayland") == 0)) {
+        // Rootless XWayland leaves X11 windows un-reparented. AWT needs to know
+        // before it creates the first window, or its canvas can keep stale bounds.
+        setenv("_JAVA_AWT_WM_NONREPARENTING", "1", 0);
+    }
+
     // Same backend pin as gtkThreadMain: the controls overlay is driven with
     // X11/XComposite, so GTK must not come up on the Wayland backend here.
     gdk_set_allowed_backends("x11");
@@ -1610,6 +1699,7 @@ JNIEXPORT jlong JNICALL NP(create)(
     // this C-level change does not affect Java number formatting.
     setlocale(LC_NUMERIC, "C");
 
+    rememberAppXErrorHandler();
     auto *player = new Player();
     player->mpv = mpv_create();
     if (!player->mpv) {
@@ -1754,6 +1844,7 @@ JNIEXPORT jlong JNICALL NP(create)(
         }
         mpv_destroy(player->mpv);
         player->mpv = nullptr;
+        restoreAppXErrorHandler();
     }
     if (!player->mpv || initResult < 0) {
         delete player;
@@ -1816,6 +1907,7 @@ JNIEXPORT void JNICALL NP(dispose)(JNIEnv *env, jobject, jlong handle) {
     if (player->eventThread.joinable()) player->eventThread.join();
     if (player->eventSink) env->DeleteGlobalRef(player->eventSink);
     if (player->mpv) mpv_terminate_destroy(player->mpv);
+    restoreAppXErrorHandler();
     delete player;
 }
 
