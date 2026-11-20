@@ -22,6 +22,10 @@ interface NuvioPlayerBridge {
     fun setSystemControlHandler(handler: PlayerSystemControlHandler?)
     fun getKeepsPlaybackInBackground(): Boolean
     fun retry()
+    fun isPictureInPictureSupported(): Boolean
+    fun startPictureInPicture()
+    fun setVideoZoom(scale: Double)
+    fun setExperimentalSinglePrimaryPictureInPictureEnabled(enabled: Boolean)
     fun updateNowPlayingMetadata(
         title: String,
         subtitle: String?,
@@ -44,8 +48,13 @@ interface NuvioPlayerBridge {
         gamma: Int,
     )
     fun configureAudioOutput(audioOutput: String)
+    fun setNightMode(enabled: Boolean, filter: String, label: String)
+    fun isNightModeSupported(): Boolean
     fun setPlaybackSpeed(speed: Float)
+    fun getVolume(): Float
+    fun setVolume(volume: Float)
     fun setMuted(muted: Boolean)
+    fun setEmbeddedPreviewMode(enabled: Boolean)
     fun setResizeMode(mode: Int) // 0=Fit, 1=Fill, 2=Zoom
     fun syncVideoSurfaceLayout(width: Double, height: Double)
     fun getAudioTrackCount(): Int
@@ -83,6 +92,7 @@ interface NuvioPlayerBridge {
         subPos: Int,
         stripSdh: Boolean,
         styledOverlay: Boolean,
+        outlineBlur: Int,
     )
     fun getIsLoading(): Boolean
     /** mpv has not loaded the current file yet. */
@@ -91,11 +101,17 @@ interface NuvioPlayerBridge {
     fun getIsEnded(): Boolean
     fun getDurationMs(): Long
     fun getPositionMs(): Long
+    fun networkSpeedBytesPerSecond(): Long
     fun getBufferedMs(): Long
     fun getPlaybackSpeed(): Float
+    fun getVideoWidth(): Int
+    fun getVideoHeight(): Int
     fun getErrorMessage(): String
+    fun getMediaInfoJson(): String
+    fun setKeyboardShortcutsEnabled(enabled: Boolean)
+    fun setKeyboardShortcutHandler(handler: ((String) -> Unit)?)
     fun getProperty(name: String): String
-    /** Runs an mpv command such as `af add <filter>`; true when mpv accepted it. */
+    /** Runs an mpv command (e.g. `af add …`); false when mpv rejects it. */
     fun runCommand(args: List<String>): Boolean
     fun destroy()
 }
@@ -118,6 +134,10 @@ object NuvioPlayerBridgeFactory {
     fun create(): NuvioPlayerBridge? = factoryRef?.createBridge()
 
     val isRegistered: Boolean get() = factoryRef != null
+
+    fun closeParkedPictureInPicture() {
+        factoryRef?.closeParkedPictureInPicture()
+    }
 }
 
 /**
@@ -126,4 +146,6 @@ object NuvioPlayerBridgeFactory {
  */
 interface NuvioPlayerBridgeCreator {
     fun createBridge(): NuvioPlayerBridge
+
+    fun closeParkedPictureInPicture()
 }

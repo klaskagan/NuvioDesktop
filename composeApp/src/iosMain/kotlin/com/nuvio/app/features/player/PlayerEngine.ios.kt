@@ -97,7 +97,8 @@ actual fun PlatformPlayerSurface(
 
     val controller = remember(bridge) {
         object : PlayerEngineController, PlayerSystemControlSource {
-            override val supportsNightMode: Boolean get() = true
+            // MPVKit builds without the compressor filters cannot run Night Mode.
+            override val supportsNightMode: Boolean get() = bridge.isNightModeSupported()
 
             override fun isNightModeActive(): Boolean = nightMode.isActive()
 
@@ -316,6 +317,8 @@ actual fun PlatformPlayerSurface(
                     subPos = style.toMpvSubtitlePosition(),
                     stripSdh = style.stripSdh,
                     styledOverlay = style.usesStyledOverlay,
+                    // This repository has no subtitle outline blur setting yet.
+                    outlineBlur = 0,
                 )
             }
         }
@@ -404,8 +407,8 @@ actual fun PlatformPlayerSurface(
                 positionMs = bridge.getPositionMs(),
                 bufferedPositionMs = bridge.getBufferedMs(),
                 playbackSpeed = bridge.getPlaybackSpeed(),
-                videoWidth = bridge.getProperty("video-params/w").toIntOrNull() ?: 0,
-                videoHeight = bridge.getProperty("video-params/h").toIntOrNull() ?: 0,
+                videoWidth = bridge.getVideoWidth().coerceAtLeast(0),
+                videoHeight = bridge.getVideoHeight().coerceAtLeast(0),
             )
             latestOnSnapshot.value(snapshot)
             nightMode.poll()

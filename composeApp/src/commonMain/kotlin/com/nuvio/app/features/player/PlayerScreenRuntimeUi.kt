@@ -248,6 +248,12 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
     } else {
         ""
     }
+    val partyControls = if (isDesktop) rememberPartyControlsState() else PlayerControlPartyState()
+    val playerBadges = if (isDesktop) rememberPlayerBadges() else emptyList()
+    // Desktop renders its controls in HTML from this state; mobile Compose controls read the runtime
+    // directly, so mobile skips building it (it re-ran every list and label each frame). The block
+    // keeps its original indentation to stay merge-friendly with upstream edits.
+    val playerControlsState = if (!isDesktop) PlayerControlsState() else run {
     val allFilterLabel = stringResource(Res.string.collections_tab_all)
     val playingLabel = stringResource(Res.string.compose_player_playing)
     val sourceFilters = buildPlayerControlFilters(
@@ -296,8 +302,6 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
             )
         else -> ""
     }
-    val partyControls = if (isDesktop) rememberPartyControlsState() else PlayerControlPartyState()
-    val playerBadges = if (isDesktop) rememberPlayerBadges() else emptyList()
     val installedSubtitleFonts = remember(showSubtitleModal, subtitleFontsRevision) { if (isDesktop) SubtitleFonts.installed() else emptyList() }
     if (isDesktop) {
         val importSubtitleFont = rememberSubtitleFontImporter { result ->
@@ -334,7 +338,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
             title = chapter.title ?: stringResource(Res.string.compose_player_chapter_number, index + 1),
         )
     }
-    val playerControlsState = PlayerControlsState(
+    PlayerControlsState(
         lineupsAvailable = supportsFootballLineups(contentType ?: parentMetaType),
         chapters = controlChapters,
         chapterTitleEnabled = playerSettingsUiState.chapterTitleEnabled,
@@ -594,6 +598,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         },
         nextEpisodePlayable = nextEpisodeInfo?.hasAired == true,
     )
+    }
     val gestureCallbacks = rememberSurfaceGestureCallbacks()
     val fold = LocalFold.current?.takeIf { !isInPip }
     val videoModifier = if (fold != null) Modifier.fillMaxWidth().height(fold.top) else Modifier.fillMaxSize()

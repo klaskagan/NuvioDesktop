@@ -377,6 +377,9 @@ private val LanguageNameAliases = mapOf(
     "zulu" to "zu",
 )
 
+/** Longest names first, so "brazilian portuguese" wins over "portuguese"; sorted once. */
+private val LanguageNameAliasesLongestFirst = LanguageNameAliases.entries.sortedByDescending { it.key.length }
+
 fun normalizeLanguageCode(language: String?): String? {
     val raw = language
         ?.trim()
@@ -415,8 +418,7 @@ fun normalizeLanguageCode(language: String?): String? {
 
     LanguageCodeAliases[raw]?.let { return it.replace('_', '-').lowercase() }
     LanguageNameAliases[tokenized]?.let { return it }
-    LanguageNameAliases.entries
-        .sortedByDescending { it.key.length }
+    LanguageNameAliasesLongestFirst
         .firstOrNull { (name, _) ->
             tokenized == name ||
                 tokenized.startsWith("$name ") ||

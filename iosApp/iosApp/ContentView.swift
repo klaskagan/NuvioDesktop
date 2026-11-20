@@ -11,6 +11,12 @@ private let nuvioBackgroundColor = UIColor(
     alpha: 1.0
 )
 
+/// Posted by the mpv player (ported from NuvioMobile-Enhanced) when its immersive state changes.
+let nuvioPlayerImmersiveSystemUIVisibilityDidChange = Notification.Name(
+    "NuvioPlayerImmersiveSystemUIVisibilityDidChange"
+)
+let nuvioPlayerImmersiveSystemUIVisibleKey = "isVisible"
+
 private enum NuvioComposeHost {
     static let registerPlayerBridge: Void = {
         NuvioPlayerRegistration.register()
@@ -51,6 +57,7 @@ final class RootComposeViewController: UIViewController {
     private var trailingConstraint: NSLayoutConstraint?
     private var isHalfOpen = false
     private var foldBoundsSize = CGSize.zero
+    private var immersiveSystemUIObserver: NSObjectProtocol?
 
     init(
         contentController: UIViewController,
@@ -94,6 +101,8 @@ final class RootComposeViewController: UIViewController {
         ])
         self.leadingConstraint = leadingConstraint
         self.trailingConstraint = trailingConstraint
+        #if compiler(>=6.4)
+        // iOS 27 SDK APIs; Xcode 26 (Swift 6.3) builds without them for local device installs.
         if #available(iOS 27.1, *) {
             registerForTraitChanges(UITraitCollection.systemTraitsAffectingVerticalBarEdge) {
                 (controller: RootComposeViewController, _: UITraitCollection) in
@@ -106,7 +115,22 @@ final class RootComposeViewController: UIViewController {
                 })
             }
         }
+        #endif
         contentController.didMove(toParent: self)
+
+        immersiveSystemUIObserver = NotificationCenter.default.addObserver(
+            forName: nuvioPlayerImmersiveSystemUIVisibilityDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshImmersiveSystemUI()
+        }
+    }
+
+    deinit {
+        if let immersiveSystemUIObserver {
+            NotificationCenter.default.removeObserver(immersiveSystemUIObserver)
+        }
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -123,6 +147,7 @@ final class RootComposeViewController: UIViewController {
 
     private func updateFold() {
         guard let hinge else { return }
+        #if compiler(>=6.4)
         guard #available(iOS 27.1, *), isHalfOpen,
               let fold = view.reservedRegions(kind: .division).first(where: { $0.frame.width > $0.frame.height })
         else {
@@ -130,6 +155,9 @@ final class RootComposeViewController: UIViewController {
             return
         }
         hinge.update(top: Double(fold.frame.minY), bottom: Double(fold.frame.maxY))
+        #else
+        hinge.clear()
+        #endif
     }
 
     private func updateVerticalBar() {
@@ -143,6 +171,7 @@ final class RootComposeViewController: UIViewController {
     }
 
     private var verticalBarInsets: NSDirectionalEdgeInsets {
+        #if compiler(>=6.4)
         guard #available(iOS 27.1, *) else { return .zero }
         let insets = view.safeAreaInsets
         let isRightToLeft = view.effectiveUserInterfaceLayoutDirection == .rightToLeft
@@ -154,6 +183,9 @@ final class RootComposeViewController: UIViewController {
         default:
             return .zero
         }
+        #else
+        return .zero
+        #endif
     }
 
     override var childForHomeIndicatorAutoHidden: UIViewController? {
@@ -1031,11 +1063,15 @@ private struct DetailDestinationView: View {
 private extension View {
     @ViewBuilder
     func verticalBarDisabled(_ disabled: Bool) -> some View {
+        #if compiler(>=6.4)
         if #available(iOS 27.1, *), disabled {
             toolbarVerticalBehavior(.disabled)
         } else {
             self
         }
+        #else
+        self
+        #endif
     }
 }
 

@@ -77,6 +77,29 @@ Follow adjacent feature code for resource strings, persistence, and navigation.
 - iOS mpv features go through `NuvioPlayerBridge.getProperty`/`runCommand` and
   shared mpv helpers (`PlayerNightMode.kt`, `MpvQualityPlayback.kt`) rather than
   new per-feature Swift methods.
+- The iOS player (`iosApp/iosApp/Player/*.swift`, `iosMain/.../player/PlayerBridge.kt`)
+  is ported from `../NuvioMobile-Enhanced`, which carries the iOS fixes (MoltenVK
+  rendering, hwdec recovery, PiP). Fix iOS player bugs by porting from there before
+  debugging locally. Not yet ported: PiP parking (stubbed in
+  `PlayerPictureInPictureParking.swift`), the FFmpeg seek-preview generator, and
+  Enhanced's in-app log viewer (`InAppLogBridge` forwards to Kermit).
+  Upstream iOS player commits come from NuvioMobile, which Enhanced also merges. On
+  upstream merge conflicts in `iosApp/iosApp/Player/*.swift` or `PlayerBridge.kt`,
+  take Enhanced's current file and re-apply only the local deltas: `runCommand`
+  (Swift bridge, VC and Kotlin interface), the parking stub, and no FFmpeg
+  seek-preview registration. Then run `scripts/run-mobile.sh ios p full`.
+- Device builds: `scripts/run-mobile.sh ios p full [--release] [--console] [--no-build]`
+  builds, installs and launches on the paired iPhone (Wi-Fi works). Personal signing
+  reads `NUVIO_IOS_TEAM_ID` from the environment or the gitignored
+  `scripts/ios-device.local.env`. Judge smoothness, battery and heat only on
+  `--release`; Debug Kotlin makes Compose UI lag. Crash reports:
+  `xcrun devicectl device copy from --domain-type systemCrashLogs`.
+- Xcode 26 cannot see iOS 27 SDK APIs, so `ContentView.swift` fences them with
+  `#if compiler(>=6.4)`. In Kotlin/Native, avoid Network.framework macro sentinels
+  (`NW_CONNECTION_*_CONTEXT`, `NW_PARAMETERS_*_CONFIGURATION/PROTOCOL`): they abort or
+  misbehave on device; build contexts and TCP options explicitly (`IosNwConnection.kt`).
+- Mobile Compose controls never read `PlayerControlsState` (desktop HTML payload);
+  keep it built only on desktop, or every frame rebuilds it on phones.
 - Networked features keep flow, state, protocol bytes and Compose UI in commonMain
   behind a small platform interface; platforms supply only sockets, TLS and storage.
   Continue on TV is the reference: `features/handoff/TvHandoffTransport.kt`, with JVM

@@ -19,11 +19,22 @@ usage() {
 Usage:
   ./scripts/run-mobile.sh android [e|p] [full|playstore]
   ./scripts/run-mobile.sh android [full|playstore]
-  ./scripts/run-mobile.sh ios [s|p] [full|appstore]
+  ./scripts/run-mobile.sh ios [s|p] [full|appstore] [--release] [--console] [--no-build]
 
 Builds the debug app for the selected platform, installs it on all available
 Android emulators or connected physical devices, a booted iOS simulator, or
 the configured iOS physical device, and launches the app.
+
+iOS physical device (ios p) options:
+  --release   Optimised build. Slow to compile, but the UI is only smooth here;
+              use it to judge performance, battery and heat.
+  --console   Launch with the app's stdout/stderr attached (Ctrl-C detaches).
+  --no-build  Reinstall and launch the last build of the same configuration.
+
+Personal signing: set NUVIO_IOS_TEAM_ID (or put it in the gitignored
+scripts/ios-device.local.env as NUVIO_IOS_TEAM_ID=XXXXXXXXXX) to sign with your
+own team. The app then installs as com.nuvio.app.Nuvio<team>, beside any store
+build. Free (Personal Team) builds expire after 7 days.
 EOF
 }
 
@@ -339,60 +350,116 @@ run_ios_simulator() {
   xcrun simctl launch "$simulator_id" "$IOS_BUNDLE_ID"
 }
 
+load_ios_device_config() {
+  local config="$ROOT_DIR/scripts/ios-device.local.env"
+  if [[ -z "${NUVIO_IOS_TEAM_ID:-}" && -f "$config" ]]; then
+    # shellcheck disable=SC1090
+    source "$config"
+  fi
+  if [[ -n "${NUVIO_IOS_TEAM_ID:-}" && ! "$NUVIO_IOS_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+    echo "NUVIO_IOS_TEAM_ID must be a 10-character Apple team ID." >&2
+    exit 1
+  fi
+}
+
+require_mpvkit_checkout() {
+  if [[ ! -f "$ROOT_DIR/MPVKit/Package.swift" ]]; then
+    echo "MPVKit is not checked out (needed by the Xcode project). Run:" >&2
+    echo "  git -C \"$ROOT_DIR\" submodule update --init MPVKit" >&2
+    exit 1
+  fi
+}
+
 run_ios_physical() {
-  local distribution="${1:-appstore}"
+  local distribution="$1"
+  local configuration="$2"
+  local attach_console="$3"
+  local skip_build="$4"
 
   validate_ios_distribution "$distribution"
   require_command xcodebuild
   require_command xcrun
+  load_ios_device_config
 
   local physical_device_info
   physical_device_info="$(IOS_PREFERRED_DEVICE_MODEL="$IOS_PREFERRED_DEVICE_MODEL" selected_ios_device)"
 
-  if [[ -n "$physical_device_info" ]]; then
-    local physical_device_id=""
-    local physical_device_name=""
-    local physical_device_model=""
-    IFS=$'\t' read -r physical_device_id physical_device_name physical_device_model <<<"$physical_device_info"
-
-    local derived_data_path
-    derived_data_path="$(ios_derived_data_path device "$distribution")"
-
-    local device_app_path
-    device_app_path="$derived_data_path/Build/Products/Debug-iphoneos/$IOS_APP_NAME"
-
-    if [[ "$physical_device_model" == "$IOS_PREFERRED_DEVICE_MODEL" ]]; then
-      echo "Using preferred iOS physical device: ${physical_device_name:-$physical_device_id} ($physical_device_model)"
-    else
-      echo "Preferred iOS device not available: $IOS_PREFERRED_DEVICE_MODEL"
-      echo "Using connected iOS physical device: ${physical_device_name:-$physical_device_id}${physical_device_model:+ ($physical_device_model)}"
-    fi
-
-    echo "Building iOS $distribution debug app for physical device $physical_device_id..."
-    env NUVIO_IOS_DISTRIBUTION="$distribution" xcodebuild \
-      -project "$IOS_PROJECT" \
-      -scheme "$IOS_SCHEME" \
-      -configuration Debug \
-      -destination "id=$physical_device_id" \
-      -derivedDataPath "$derived_data_path" \
-      build
-
-    if [[ ! -d "$device_app_path" ]]; then
-      echo "Expected iOS app not found at: $device_app_path" >&2
-      exit 1
-    fi
-
-    echo "Installing on physical device $physical_device_id..."
-    xcrun devicectl device install app --device "$physical_device_id" "$device_app_path"
-
-    echo "Launching app..."
-    xcrun devicectl device process launch --device "$physical_device_id" "$IOS_BUNDLE_ID"
-    return
+  if [[ -z "$physical_device_info" ]]; then
+    echo "No available iOS physical devices found." >&2
+    echo "Connect or pair a device (Wi-Fi works once paired in Xcode), then rerun: ./scripts/run-mobile.sh ios p" >&2
+    exit 1
   fi
 
-  echo "No available iOS physical devices found." >&2
-  echo "Connect and unlock a device, then rerun: ./scripts/run-mobile.sh ios p" >&2
-  exit 1
+  local physical_device_id=""
+  local physical_device_name=""
+  local physical_device_model=""
+  IFS=$'\t' read -r physical_device_id physical_device_name physical_device_model <<<"$physical_device_info"
+
+  if [[ "$physical_device_model" == "$IOS_PREFERRED_DEVICE_MODEL" ]]; then
+    echo "Using preferred iOS physical device: ${physical_device_name:-$physical_device_id} ($physical_device_model)"
+  else
+    echo "Preferred iOS device not available: $IOS_PREFERRED_DEVICE_MODEL"
+    echo "Using connected iOS physical device: ${physical_device_name:-$physical_device_id}${physical_device_model:+ ($physical_device_model)}"
+  fi
+
+  local configuration_slug
+  configuration_slug="$(printf '%s' "$configuration" | tr '[:upper:]' '[:lower:]')"
+  local derived_data_path
+  derived_data_path="$(ios_derived_data_path "device-$configuration_slug" "$distribution")"
+  local device_app_path="$derived_data_path/Build/Products/$configuration-iphoneos/$IOS_APP_NAME"
+
+  local bundle_id="$IOS_BUNDLE_ID"
+  local signing_args=()
+  if [[ -n "${NUVIO_IOS_TEAM_ID:-}" ]]; then
+    bundle_id="com.nuvio.app.Nuvio$NUVIO_IOS_TEAM_ID"
+    # The widget extension's ID must extend the app's; TARGET_NAME selects its suffix.
+    signing_args=(
+      -allowProvisioningUpdates
+      "DEVELOPMENT_TEAM=$NUVIO_IOS_TEAM_ID"
+      CODE_SIGN_STYLE=Automatic
+      "CODE_SIGN_IDENTITY=Apple Development"
+      "PRODUCT_BUNDLE_IDENTIFIER=$bundle_id\$(NUVIO_BUNDLE_SUFFIX_\$(TARGET_NAME))"
+      NUVIO_BUNDLE_SUFFIX_DownloadsWidgetExtension=.DownloadsWidgetExtension
+    )
+    echo "Signing with team $NUVIO_IOS_TEAM_ID as $bundle_id"
+  fi
+
+  if [[ "$skip_build" == "yes" ]]; then
+    echo "Skipping build; reusing $device_app_path"
+  else
+    require_mpvkit_checkout
+    echo "Building iOS $distribution $configuration app for physical device $physical_device_id..."
+    if [[ "$configuration" == "Release" ]]; then
+      echo "Release compiles an optimised Kotlin framework; on an Intel Mac this can take 30-60 minutes."
+    fi
+    env NUVIO_IOS_DISTRIBUTION="$distribution" \
+      CLANG_MODULE_CACHE_PATH="$derived_data_path/ModuleCache.noindex" \
+      SWIFTPM_MODULECACHE_OVERRIDE="$derived_data_path/SwiftPMModuleCache.noindex" \
+      xcodebuild \
+      -project "$IOS_PROJECT" \
+      -scheme "$IOS_SCHEME" \
+      -configuration "$configuration" \
+      -sdk iphoneos \
+      -destination "id=$physical_device_id" \
+      -derivedDataPath "$derived_data_path" \
+      ${signing_args[@]+"${signing_args[@]}"} \
+      build
+  fi
+
+  if [[ ! -d "$device_app_path" ]]; then
+    echo "Expected iOS app not found at: $device_app_path" >&2
+    exit 1
+  fi
+
+  echo "Installing on physical device $physical_device_id..."
+  xcrun devicectl device install app --device "$physical_device_id" "$device_app_path"
+
+  echo "Launching $bundle_id (unlock the device if this fails)..."
+  local launch_args=(--device "$physical_device_id" --terminate-existing)
+  if [[ "$attach_console" == "yes" ]]; then
+    launch_args+=(--console)
+  fi
+  xcrun devicectl device process launch "${launch_args[@]}" "$bundle_id"
 }
 
 main() {
@@ -441,19 +508,42 @@ main() {
       esac
       ;;
     ios)
-      if [[ $# -lt 2 || $# -gt 3 ]]; then
+      shift
+      local ios_target=""
+      local ios_distribution="appstore"
+      local ios_configuration="Debug"
+      local ios_console="no"
+      local ios_skip_build="no"
+      local argument
+      for argument in "$@"; do
+        case "$argument" in
+          s|p) ios_target="$argument" ;;
+          full|appstore) ios_distribution="$argument" ;;
+          --release) ios_configuration="Release" ;;
+          --console) ios_console="yes" ;;
+          --no-build) ios_skip_build="yes" ;;
+          *)
+            echo "Unknown iOS argument: $argument" >&2
+            usage
+            exit 1
+            ;;
+        esac
+      done
+      if [[ -z "$ios_target" ]]; then
         usage
         exit 1
       fi
+      if [[ "$ios_target" == "s" && ( "$ios_configuration" != "Debug" || "$ios_console" == "yes" || "$ios_skip_build" == "yes" ) ]]; then
+        echo "--release, --console and --no-build apply to physical devices (ios p)." >&2
+        exit 1
+      fi
 
-      local ios_distribution="${3:-appstore}"
-
-      case "$2" in
+      case "$ios_target" in
         s)
           run_ios_simulator "$ios_distribution"
           ;;
         p)
-          run_ios_physical "$ios_distribution"
+          run_ios_physical "$ios_distribution" "$ios_configuration" "$ios_console" "$ios_skip_build"
           ;;
         *)
           echo "Unknown iOS target: $2" >&2
