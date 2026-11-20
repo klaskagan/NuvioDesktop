@@ -72,7 +72,7 @@ internal fun LazyListScope.advancedSettingsContent(
     rememberLastProfileEnabled: Boolean,
     onPairedTvsClick: () -> Unit,
 ) {
-    if (com.nuvio.app.isDesktop) {
+    if (com.nuvio.app.features.handoff.tvHandoffSupported) {
         item {
             SettingsSection(title = stringResource(Res.string.player_continue_on_tv), isTablet = isTablet) {
                 SettingsGroup(isTablet = isTablet) {

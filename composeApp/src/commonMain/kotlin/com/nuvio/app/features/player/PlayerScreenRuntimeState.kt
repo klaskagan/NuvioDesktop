@@ -314,6 +314,8 @@ internal class PlayerScreenRuntime(
 
     var showAudioModal by mutableStateOf(false)
     var showQualityModal by mutableStateOf(false)
+    var showTvHandoffModal by mutableStateOf(false)
+    var tvHandoffView by mutableStateOf(com.nuvio.app.features.handoff.TvHandoffPlaybackView(emptyList()))
     var showSubtitleModal by mutableStateOf(false)
     var showVideoSettingsModal by mutableStateOf(false)
     var showStreamInfo by mutableStateOf(false)
@@ -326,7 +328,8 @@ internal class PlayerScreenRuntime(
     var partyChatVisible by mutableStateOf(false)
     val isPanelOpen: Boolean
         get() = showAudioModal || showSubtitleModal || showVideoSettingsModal || showStreamInfo ||
-            showPartyPanel || showSourcesPanel || showEpisodesPanel || showSubmitIntroModal || showQualityModal
+            showPartyPanel || showSourcesPanel || showEpisodesPanel || showSubmitIntroModal || showQualityModal ||
+            showTvHandoffModal
     var partyBehind by mutableStateOf(false)
     var partyBehindMs by mutableStateOf<Long?>(null)
     var partyRateNudge: Float? = null

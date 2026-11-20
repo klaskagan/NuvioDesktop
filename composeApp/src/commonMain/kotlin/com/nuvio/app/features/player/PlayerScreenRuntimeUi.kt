@@ -56,6 +56,10 @@ import com.nuvio.app.features.watchprogress.buildPlaybackVideoId
 import com.nuvio.app.features.watching.application.WatchingState
 import com.nuvio.app.features.autosync.AutoSyncSyncedSubtitle
 import com.nuvio.app.isDesktop
+import com.nuvio.app.features.handoff.resumeTvHandoffPlayback
+import com.nuvio.app.features.handoff.selectTvHandoffDevice
+import com.nuvio.app.features.handoff.stopObservingTvHandoffPlayback
+import com.nuvio.app.features.handoff.tvHandoffSupported
 import com.nuvio.app.features.player.skip.internalSkipAction
 import com.nuvio.app.features.servers.ServerStreams
 import com.nuvio.app.features.streams.streamAddonInstanceId
@@ -101,6 +105,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         onDispose {
             systemBackRegistration(null)
             if (!runtime.tvHandoffTransferred) runtime.cancelTvHandoff?.invoke()
+            stopObservingTvHandoffPlayback(runtime)
         }
     }
     val isInPip = rememberIsInPictureInPicture()
@@ -365,7 +370,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         episodesLabel = stringResource(Res.string.compose_player_episodes),
         externalPlayerLabel = stringResource(Res.string.streams_open_external_player),
         tvHandoffLabel = stringResource(Res.string.player_continue_on_tv),
-        showTvHandoff = isDesktop && !partyControls.active && playbackSnapshot.durationMs > 0,
+        showTvHandoff = tvHandoffSupported && !partyControls.active && playbackSnapshot.durationMs > 0,
         playLabel = stringResource(Res.string.detail_btn_play),
         pauseLabel = stringResource(Res.string.compose_action_pause),
         closeLabel = stringResource(Res.string.compose_player_close),
@@ -959,6 +964,11 @@ private fun PlayerScreenRuntime.RenderPlayerControls(
             // Watch parties keep everyone on one source, matching the desktop Quality control.
             onQualityClick = if (PlayerPlatformFeatures.quickQuality && activeVideoId != null && !partyActive) {
                 { openQualityModal() }
+            } else {
+                null
+            },
+            onContinueOnTvClick = if (tvHandoffSupported && !partyActive && playbackSnapshot.durationMs > 0) {
+                { openTvHandoffModal() }
             } else {
                 null
             },
@@ -2351,6 +2361,16 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
                 selectPlayerQuality(height)
             },
             onDismiss = { showQualityModal = false },
+        )
+        PlayerTvHandoffModal(
+            visible = showTvHandoffModal,
+            view = tvHandoffView,
+            onSelect = ::selectTvHandoffDevice,
+            onResumeHere = {
+                resumeTvHandoffPlayback()
+                closeTvHandoffModal(cancel = false)
+            },
+            onDismiss = { closeTvHandoffModal(cancel = true) },
         )
     }
     val switchEngineTarget = playerController?.playbackEngine?.switchTarget

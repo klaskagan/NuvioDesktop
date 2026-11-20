@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.Toc
 import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.HighQuality
@@ -54,6 +55,7 @@ import com.nuvio.app.core.ui.AppIconResource
 import com.nuvio.app.core.ui.NuvioBackButton
 import com.nuvio.app.core.ui.appIconPainter
 import com.nuvio.app.core.ui.nuvioTypeScale
+import nuvio.composeapp.generated.resources.player_continue_on_tv
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
@@ -124,6 +126,7 @@ internal fun PlayerControlActions(
     onSubmitIntroClick: (() -> Unit)?,
     onInteraction: () -> Unit,
     onQualityClick: (() -> Unit)? = null,
+    onContinueOnTvClick: (() -> Unit)? = null,
 ) {
     val actions = playerControlActions(
         playbackSnapshot = playbackSnapshot,
@@ -141,6 +144,7 @@ internal fun PlayerControlActions(
         onStreamInfoClick = onStreamInfoClick,
         onSubmitIntroClick = onSubmitIntroClick,
         onQualityClick = onQualityClick,
+        onContinueOnTvClick = onContinueOnTvClick,
     )
     val hasOverflow = actions.size > 5
     var expanded by remember(hasOverflow) { mutableStateOf(false) }
@@ -243,6 +247,7 @@ internal fun playerControlActions(
     onStreamInfoClick: () -> Unit,
     onSubmitIntroClick: (() -> Unit)?,
     onQualityClick: (() -> Unit)? = null,
+    onContinueOnTvClick: (() -> Unit)? = null,
 ): List<PlayerControlAction> =
     listOfNotNull(
         onNextEpisodeClick?.let {
@@ -275,6 +280,12 @@ internal fun playerControlActions(
             PlayerControlAction(
                 stringResource(Res.string.player_quality_title), it,
                 icon = Icons.Rounded.HighQuality,
+            )
+        },
+        onContinueOnTvClick?.let {
+            PlayerControlAction(
+                stringResource(Res.string.player_continue_on_tv), it,
+                icon = Icons.Rounded.Tv,
             )
         },
         onEpisodesClick?.let {

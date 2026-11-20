@@ -475,3 +475,25 @@ waking it and replacing the evidence. Retail webOS may deny or lack that API.
 LG lists timers and HDMI-linked devices as possible automatic power sources:
 https://www.lg.com/us/support/help-library/lg-tv-why-does-my-tv-turn-on-by-itself--20153353111993
 Do not disable all integrations at once; isolate one path per observation period.
+
+## iOS sender (2026-11-19)
+
+Continue on TV now builds for iOS. The picker, transfer state machine, Paired TVs
+Settings page, Android TV Remote v2 and SSAP message logic, HTTPS request routing,
+discovery parsing and certificate DER live in `commonMain/features/handoff`.
+Platforms implement `TvHandoffTransport`: desktop wraps the existing JVM sockets,
+BouncyCastle identity and `~/.nuvio/tv-handoff` files. iOS uses
+Network.framework TLS (pinned verify blocks, client identity, a TLS listener bound to
+the interface routing to the TV) and stores pairings plus a Keychain-held RSA key
+with a self-signed certificate built by the shared DER code. On iOS the player's
+TV action opens a Compose modal mirroring the desktop rail. Receivers are unchanged.
+
+iOS platform limits: SSDP and broadcast need Apple's multicast entitlement, so iOS
+discovers Android TVs through Bonjour (`_androidtvremote2._tcp`, declared in
+`Info.plist`) plus reachable saved addresses. LG TVs are added by IP address.
+Wake-on-LAN is a best-effort unicast packet; Sony still wakes over its paired remote.
+The first local-network permission prompt can fail that attempt; retry after allowing it.
+
+Verified: desktop handoff tests (including a JDK parse/verify of the shared
+certificate builder) and the iOS Kotlin compile. Not yet run on an iPhone or a TV.
+

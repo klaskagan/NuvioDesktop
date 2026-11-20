@@ -77,6 +77,11 @@ Follow adjacent feature code for resource strings, persistence, and navigation.
 - iOS mpv features go through `NuvioPlayerBridge.getProperty`/`runCommand` and
   shared mpv helpers (`PlayerNightMode.kt`, `MpvQualityPlayback.kt`) rather than
   new per-feature Swift methods.
+- Networked features keep flow, state, protocol bytes and Compose UI in commonMain
+  behind a small platform interface; platforms supply only sockets, TLS and storage.
+  Continue on TV is the reference: `features/handoff/TvHandoffTransport.kt`, with JVM
+  sockets on desktop and Network.framework/Keychain on iOS. Verify the shared protocol
+  code on JVM against JDK implementations (`TvHandoffSharedProtocolTest`).
 
 Keep navigation selection live inside retained callbacks and `snapshotFlow`.
 Use the `selectedTab` State delegate in `MainAppContent.kt` as the reference:
