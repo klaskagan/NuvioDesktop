@@ -441,19 +441,11 @@ private fun TabbedGridContent(
 
             val keyedMedia = remember(selectedTab.items) { selectedTab.items.withDuplicateSafeLazyKeys { it.stableKey() } }
             val mediaColumns = if (isDesktop) com.nuvio.app.features.home.components.artworkFixedGridColumns(constraints.maxWidth, pageHorizontalPadding, basePosterWidthDp.dp) else columns
-            val mediaRows = remember(keyedMedia, mediaColumns) { com.nuvio.app.features.home.components.artworkGridRows(keyedMedia.map { it.value }, keyedMedia.map { it.lazyKey }, mediaColumns) }
-            val artworkIdentity = listOf(uiState.collectionId, selectedTab.sourceKey)
-            val pageWindow = com.nuvio.app.features.home.components.rememberMediaPrefetchWindow(artworkIdentity)
-            val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, mediaRows, artworkIdentity, forceShape = com.nuvio.app.features.home.PosterShape.Poster, window = pageWindow)
-            com.nuvio.app.features.home.components.MediaPagePrefetchEffect(
-                rows = mediaRows, window = pageWindow, viewport = gridState, identity = artworkIdentity,
-                canLoadMore = uiState.selectedTabCanLoadMore,
+            com.nuvio.app.features.home.components.LoadMoreOnScrollEffect(
+                state = gridState, canLoadMore = uiState.selectedTabCanLoadMore,
                 isLoading = uiState.isLoading || selectedTab.isLoading || uiState.selectedTabIsLoadingMore,
-                onLoadMore = FolderDetailRepository::loadMoreSelectedTab,
-                visibleKeys = { gridState.layoutInfo.visibleItemsInfo.map { it.key } },
+                threshold = mediaColumns * 4, onLoadMore = FolderDetailRepository::loadMoreSelectedTab,
             )
-            val gates = com.nuvio.app.features.home.components.rememberGridArtworkGates(mediaRows, listOf(uiState.collectionId, selectedTab.sourceKey, mediaColumns), prepared)
-            CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
             when {
                 selectedTab.isLoading && selectedTab.items.isEmpty() -> LoadingIndicator()
                 selectedTab.error != null && selectedTab.items.isEmpty() -> ErrorMessage(selectedTab.error)
@@ -490,12 +482,8 @@ private fun TabbedGridContent(
                                 ) { cardModifier ->
                                     NuvioPosterCard(
                                         title = item.name,
-                                        imageUrl = item.poster.takeUnless { prepared[item.stableKey()]?.isLoading == true },
+                                        imageUrl = item.poster,
                                         modifier = cardModifier,
-                                        revealArtworkTogether = true,
-                                        artworkPending = prepared[item.stableKey()]?.isLoading == true,
-                                        showArtwork = gates[keyedItem.lazyKey]?.revealed ?: true,
-                                        onArtworkReadyChanged = { ready -> gates[keyedItem.lazyKey]?.report(item.stableKey(), ready) },
                                         basePosterWidthDp = if (isDesktop) basePosterWidthDp else null,
                                         fallbackImageUrl = item.rawPosterUrl,
                                         shape = NuvioPosterShape.Poster,
@@ -522,7 +510,6 @@ private fun TabbedGridContent(
                     }
                 }
             }
-        }
     }
     }
 }

@@ -77,7 +77,7 @@ class PosterZoomNativeReturnTest {
                                     Box(Modifier.padding(24.dp)) {
                                         NuvioPosterCard("Fixture", file.toURI().toString(),
                                             shape = NuvioPosterShape.Landscape,
-                                            revealArtworkTogether = true, artworkBadge = "03:13",
+                                            artworkBadge = "03:13",
                                             onLongClick = { anchor = PosterZoomAnchorHolder.consume() },
                                         )
                                     }

@@ -24,13 +24,8 @@ import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.PosterShape
-import com.nuvio.app.features.home.components.ArtworkPrefetchRow
-import com.nuvio.app.features.home.components.LocalLandscapeRowReveal
-import com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork
 import com.nuvio.app.features.home.components.artworkFixedGridColumns
 import com.nuvio.app.features.home.components.calendarMovieLabel
-import com.nuvio.app.features.home.components.rememberGridArtworkGates
-import com.nuvio.app.features.home.components.rememberListArtworkPrefetch
 import com.nuvio.app.features.tracking.TrackingHistoryEvent
 import com.nuvio.app.features.tracking.TrackingHistorySource
 import com.nuvio.app.features.tracking.TrackingMediaKind
@@ -121,22 +116,6 @@ private fun HistoryAgenda(
                     rows.map { row -> row.map { event -> event.toHistoryCard(unknownTitle, metadata) } }
                 }
             }
-            val artworkRows = remember(cardRows, landscape) {
-                cardRows.flatMap { (date, rows) ->
-                    rows.map { row ->
-                        val rowKey = historyRowKey(date, row.first().event.id)
-                        ArtworkPrefetchRow(
-                            key = rowKey,
-                            items = row.map { it.preview },
-                            itemKeys = listOf(rowKey),
-                            enhanceTitles = false,
-                            forceShape = if (landscape) PosterShape.Landscape else PosterShape.Poster,
-                        )
-                    }
-                }
-            }
-            val prepared = rememberListArtworkPrefetch(list, artworkRows, "history", enabled = active)
-            val gates = rememberGridArtworkGates(artworkRows, "history", prepared)
             val metadataTargets = remember(rowsByDate) {
                 rowsByDate.flatMap { (date, rows) ->
                     rows.map { row ->
@@ -232,7 +211,6 @@ private fun HistoryAgenda(
                         Text(stringResource(Res.string.history_retry))
                     }
                 }
-                CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared) {
                     LazyColumn(
                         state = list,
                         modifier = Modifier.fillMaxWidth().weight(1f).testTag("history-agenda")
@@ -254,8 +232,6 @@ private fun HistoryAgenda(
                                 DaySectionHeading(date, groups.getValue(date).size, date == today, watchHistory = true)
                             }
                             itemsIndexed(rows, key = { _, row -> historyRowKey(date, row.first().event.id) }) { index, row ->
-                                val rowKey = historyRowKey(date, row.first().event.id)
-                                CompositionLocalProvider(LocalLandscapeRowReveal provides gates[rowKey]) {
                                     HistoryMediaRow(
                                         cards = row,
                                         cardWidth = cardWidth,
@@ -266,12 +242,10 @@ private fun HistoryAgenda(
                                             actionCard = card
                                         },
                                     )
-                                }
                             }
                         }
 
                     }
-                }
             }
         }
         actionCard?.takeIf { active }?.let { card ->

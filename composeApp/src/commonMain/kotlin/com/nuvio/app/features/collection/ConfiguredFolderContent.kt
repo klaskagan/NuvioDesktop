@@ -127,27 +127,11 @@ internal fun ConfiguredFolderContent(
                 (with(density) { mediaRowHeight.toDp() } + 18.dp) * mediaRowCount
         }
         val minimumFooterHeight = (maxHeight - chromeHeight - resultContentHeight).coerceAtLeast(0.dp)
-        val artworkRows = remember(rows, sections, keyedMovies, columns, maxWidth, style.widthDp, rowStyles) {
-            if (rows) sections.withDuplicateSafeLazyKeys { it.key }.map { keyed ->
-                val section = keyed.value.let { it.copy(items = it.items.map { movie -> movie.copy(posterShape = PosterShape.Landscape) }) }
-                val hasArtworkOverride = rowStyles[section.key]?.posterShape != null
-                com.nuvio.app.features.home.components.ArtworkPrefetchRow(keyed.lazyKey,
-                    if (hasArtworkOverride || com.nuvio.app.features.home.components.preservesOriginalLandscapeArtwork(section.title, section.target)) emptyList()
-                    else section.items.take(com.nuvio.app.features.home.components.artworkVisibleCardCount(maxWidth.value, padding.value, style.widthDp) + 1))
-            } else com.nuvio.app.features.home.components.artworkGridRows(keyedMovies.map { it.value }, keyedMovies.map { it.lazyKey }, columns)
-        }
-        val identity = listOf(uiState.collectionId, folder.id, rows, selected?.sourceKey, seasonalGrid?.query, columns)
-        val pageWindow = com.nuvio.app.features.home.components.rememberMediaPrefetchWindow(identity)
-        val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, artworkRows, identity, allowPortraitFallback = false, forceShape = PosterShape.Landscape, window = pageWindow)
-        com.nuvio.app.features.home.components.MediaPagePrefetchEffect(
-            rows = artworkRows, window = pageWindow, viewport = gridState, identity = identity,
-            canLoadMore = uiState.selectedTabCanLoadMore,
+        com.nuvio.app.features.home.components.LoadMoreOnScrollEffect(
+            state = gridState, canLoadMore = uiState.selectedTabCanLoadMore,
             isLoading = loading || uiState.selectedTabIsLoadingMore,
-            enabled = !rows, onLoadMore = onLoadMore,
-            visibleKeys = { gridState.layoutInfo.visibleItemsInfo.map { it.key } },
+            enabled = !rows, threshold = columns * 4, onLoadMore = onLoadMore,
         )
-        val artworkGates = com.nuvio.app.features.home.components.rememberGridArtworkGates(if (rows) emptyList() else artworkRows, identity, prepared)
-        CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
         CollectionBackdrop(folder, minHeroHeight, heroHeight + with(LocalDensity.current) { chromeHeight.roundToPx() }) { height ->
             if (gridState.firstVisibleItemIndex == 0) -gridState.firstVisibleItemScrollOffset.toFloat() else -height
         }
@@ -203,12 +187,10 @@ internal fun ConfiguredFolderContent(
             } else {
                 items(keyedMovies, key = { it.lazyKey }) { keyed ->
                     val movie = keyed.value
-                    CompositionLocalProvider(com.nuvio.app.features.home.components.LocalLandscapeRowReveal provides artworkGates[keyed.lazyKey]) {
                         HomePosterCard(item = movie, modifier = Modifier.onSizeChanged {
                             if (mediaRowHeight == 0 || it.height < mediaRowHeight) mediaRowHeight = it.height
                         }, allowPortraitFallback = false, useLandscapeBackdropMode = true,
                             isWatched = WatchingState.isPosterWatched(watchedKeys, movie), onClick = { onPosterClick(movie) })
-                    }
                 }
             }
             val empty = if (rows) sections.isEmpty() else selected?.items.isNullOrEmpty()
@@ -242,7 +224,6 @@ internal fun ConfiguredFolderContent(
                     contentDescription = stringResource(if (rows) Res.string.seasonal_show_grid else Res.string.seasonal_show_rows),
                     tint = MaterialTheme.colorScheme.onBackground)
             }
-        }
         }
     }
 }

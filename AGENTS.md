@@ -22,10 +22,11 @@ skill is not in the session catalog, read that file directly.
 - For layout, loading, scrolling, gestures, and date presentation, read
   `.agents/ui-consistency.md`. Apply its shared invariants; keep feature-specific
   choices in the feature's documentation.
-- Use the shared media viewport/shelf prefetch and row-readiness components for
-  every movie/series shelf or grid, including portrait and square styles. Do not
-  opt individual catalog identities into loading behavior. Keep collection cover
-  shapes independent of the global media poster style; preserve explicit exclusions.
+- Let each poster appear as soon as its own image loads. Do not gate shelves or
+  grids on a whole visible row (cohort) being ready or add a shared viewport
+  prefetch scheduler: that per-row reveal was removed because it made scrolling
+  slow. Keep collection cover shapes independent of the global media poster
+  style; preserve explicit exclusions.
 - Keep loading, empty, error, and editor states coherent; competing forms should
   not remain open together. Prevent stale asynchronous work from changing a newer
   selection or reopening a dismissed view.

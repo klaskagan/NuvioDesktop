@@ -272,24 +272,10 @@ fun SearchScreen(
         }
 
         CompositionLocalProvider(LocalPosterCardStyleOverride provides searchStyle.takeIf { query.isNotBlank() }) {
-        val artworkRows = remember(query, discoverUiState.items, discoverColumns, uiState.results, searchColumns) {
-            if (query.isBlank()) discoverUiState.items.chunked(discoverColumns).mapIndexed { index, items ->
-                com.nuvio.app.features.home.components.ArtworkPrefetchRow("discover-row:$index", items)
-            } else uiState.results.chunked(searchColumns).mapIndexed { index, items ->
-                com.nuvio.app.features.home.components.ArtworkPrefetchRow("search-row:$index", items)
-            }
-        }
-        val artworkIdentity = listOf(query, discoverUiState.selectedCatalogKey, discoverUiState.selectedType, discoverUiState.selectedGenre, searchLandscape, searchColumns)
-        val pageWindow = com.nuvio.app.features.home.components.rememberMediaPrefetchWindow(artworkIdentity)
-        val prepared = com.nuvio.app.features.home.components.rememberListArtworkPrefetch(listState, artworkRows,
-            artworkIdentity, window = pageWindow)
-        com.nuvio.app.features.home.components.MediaPagePrefetchEffect(
-            rows = artworkRows, window = pageWindow, viewport = listState, identity = artworkIdentity,
-            canLoadMore = discoverUiState.canLoadMore, isLoading = discoverUiState.isLoading,
+        com.nuvio.app.features.home.components.LoadMoreOnScrollEffect(
+            state = listState, canLoadMore = discoverUiState.canLoadMore, isLoading = discoverUiState.isLoading,
             enabled = query.isBlank(), onLoadMore = SearchRepository::loadMoreDiscover,
-            visibleKeys = { listState.layoutInfo.visibleItemsInfo.map { it.key } },
         )
-        CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
         NuvioScreen(
             horizontalPadding = 0.dp,
             topPadding = if (topChromePadding != null) 0.dp else null,
@@ -452,7 +438,6 @@ fun SearchScreen(
                 }
             }
         }
-    }
     }
     }
 }

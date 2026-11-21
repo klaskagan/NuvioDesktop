@@ -113,9 +113,6 @@ internal fun SeasonalSpotlightSection(
                         modifier = Modifier.padding(horizontal = sectionPadding))
                 }
             } else Box(rowModifier) {
-                val prepared = rememberShelfArtworkPrefetch(listState, section.items, listOf("seasonal", section.key), enhanceTitles = false, forceShape = com.nuvio.app.features.home.PosterShape.Landscape, allowPortraitFallback = false, alwaysShowLandscapeTitle = true)
-                val gate = rememberMediaShelfGate(listState, section.items, listOf(section.key, prepared))
-                androidx.compose.runtime.CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared, LocalLandscapeRowReveal provides gate) {
                 NuvioShelfSection(
                     title = "",
                     entries = section.items,
@@ -136,7 +133,6 @@ internal fun SeasonalSpotlightSection(
                         alwaysShowLandscapeTitle = true,
                         showTitleBelow = false,
                     )
-                }
                 }
                 if (listState.canScrollForward) {
                     FilledIconButton(

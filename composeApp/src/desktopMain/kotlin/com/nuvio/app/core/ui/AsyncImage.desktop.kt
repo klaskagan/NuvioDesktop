@@ -1,7 +1,5 @@
 package com.nuvio.app.core.ui
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -147,31 +145,20 @@ internal actual fun NuvioAsyncImage(
         }
     }
 
-    val preview = remember(requestModel) { cachedMediaImagePreview(requestModel as? ImageRequest) }
-    val render: @Composable (Modifier) -> Unit = { renderModifier ->
-        AsyncImage(
-            model = requestModel,
-            imageLoader = imageLoader ?: SingletonImageLoader.get(context),
-            contentDescription = contentDescription,
-            modifier = renderModifier,
-            transform = transform,
-            onState = onState,
-            alignment = alignment,
-            contentScale = contentScale,
-            alpha = alpha,
-            colorFilter = colorFilter,
-            filterQuality = filterQuality ?: FilterQuality.High,
-            clipToBounds = clipToBounds,
-        )
-    }
-    if (preview != null) {
-        // Draw synchronously beneath Coil, including its initial Empty state and disk decode.
-        Box(modifier = imageModifier, contentAlignment = alignment) {
-            Image(painter = preview.painter, contentDescription = null, modifier = Modifier.matchParentSize(),
-                contentScale = contentScale, alignment = alignment, alpha = alpha, colorFilter = colorFilter)
-            render(Modifier.matchParentSize())
-        }
-    } else render(imageModifier)
+    AsyncImage(
+        model = requestModel,
+        imageLoader = imageLoader ?: SingletonImageLoader.get(context),
+        contentDescription = contentDescription,
+        modifier = imageModifier,
+        transform = transform,
+        onState = onState,
+        alignment = alignment,
+        contentScale = contentScale,
+        alpha = alpha,
+        colorFilter = colorFilter,
+        filterQuality = filterQuality ?: FilterQuality.High,
+        clipToBounds = clipToBounds,
+    )
 }
 
 /**

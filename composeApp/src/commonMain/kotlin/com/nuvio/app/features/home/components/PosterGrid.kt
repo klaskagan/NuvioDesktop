@@ -16,18 +16,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,8 +46,6 @@ import com.nuvio.app.core.ui.posterCardClickable
 import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.PosterShape
-import com.nuvio.app.features.home.stableKey
-import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 import com.nuvio.app.features.watching.application.WatchingState
 import com.nuvio.app.isDesktop
 
@@ -70,21 +63,6 @@ internal fun PosterGridRow(
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
-    val tmdbSettings by remember {
-        TmdbSettingsRepository.ensureLoaded()
-        TmdbSettingsRepository.uiState
-    }.collectAsStateWithLifecycle()
-    val prepared = rememberFixedRowArtworkPrefetch(items)
-    val artworkLoader = LocalLandscapeArtworkLoader.current
-    val identities = items.map { it.stableKey() to it.posterShape }
-    val gate = remember(identities, columns, posterCardStyle.catalogLandscapeModeEnabled,
-        tmdbSettings.language, tmdbSettings.apiKey, artworkLoader, prepared) { LandscapeRowRevealState() }
-    val cohort = items.filter { isTitleArtworkMedia(it.type) }
-    // Read readiness during composition so the final asset completing reveals the row without scrolling.
-    val ready = cohort.all { gate.ready[it.stableKey()] == true }
-    SideEffect { if (!gate.revealed && ready) gate.revealed = true }
-
-    CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared, LocalLandscapeRowReveal provides gate.takeIf { cohort.isNotEmpty() }) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -108,7 +86,6 @@ internal fun PosterGridRow(
         repeat(columns - items.size) {
             Spacer(modifier = Modifier.weight(1f))
         }
-    }
     }
 }
 
@@ -152,28 +129,14 @@ private fun PosterGridTile(
             onClick = onClick, onLongClick = onLongClick)
         return
     }
-    val rowGate = LocalLandscapeRowReveal.current.takeIf { isTitleArtworkMedia(item.type) }
-    val prepared = LocalPreparedLandscapeArtwork.current[item.stableKey()].takeIf { isTitleArtworkMedia(item.type) }
-    val pending = prepared?.isLoading == true
     val platformContext = coil3.compose.LocalPlatformContext.current
     val imageModel = remember(item.poster, item.rawPosterUrl, item.posterShape, platformContext) {
         item.poster?.let { posterImageRequest(platformContext, it,
             if (item.posterShape == PosterShape.Square) NuvioPosterShape.Square else NuvioPosterShape.Poster,
             fallback = item.rawPosterUrl) }
     }
-    val cached = remember(imageModel) { com.nuvio.app.core.ui.cachedMediaImagePreview(imageModel, item.stableKey()) }
-    val warmReturn = remember(item.id, item.type) { cached?.wasDisplayed == true }
-    var imageResolved by remember(item.id, item.type, item.poster, item.rawPosterUrl) { mutableStateOf(item.poster == null || cached != null) }
     // No poster, or one that failed (e.g. a custom poster service 404): show the title in the tile.
     var imageFailed by remember(item.id, item.type, item.poster, item.rawPosterUrl) { mutableStateOf(false) }
-    val individuallyReady = !isTitleArtworkMedia(item.type) || (!pending && imageResolved)
-    val ordered = LocalPreparedLandscapeArtwork.current.mayReveal(item.stableKey())
-    val showImage = individuallyReady && (((rowGate?.revealed ?: true) && ordered) || warmReturn)
-    SideEffect {
-        rowGate?.report(item.stableKey(), individuallyReady)
-        if (showImage) com.nuvio.app.core.ui.markMediaImageDisplayed(imageModel, item.stableKey())
-    }
-    val hiddenContent = if (showImage) Modifier else Modifier.clearAndSetSemantics { }
     HomePosterHoverPreview(
         item = item,
         isWatched = isWatched,
@@ -206,8 +169,7 @@ private fun PosterGridTile(
                         hoverScaleEnabled = false,
                     ),
             ) {
-                Box(Modifier.matchParentSize().graphicsLayer { alpha = if (showImage) 1f else 0f }.then(hiddenContent)) {
-                if ((item.poster == null || imageFailed) && !pending) {
+                if (item.poster == null || imageFailed) {
                     Text(
                         text = item.name,
                         modifier = Modifier.align(Alignment.Center).padding(horizontal = NuvioTokens.Space.s14),
@@ -217,20 +179,13 @@ private fun PosterGridTile(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
-                } else if (item.poster != null && !pending) {
+                } else {
                     if (isDesktop) {
                         NuvioAsyncImage(
                             model = imageModel,
-                            placeholder = cached?.painter,
-                            error = cached?.painter,
                             contentDescription = item.name,
                             modifier = Modifier.fillMaxSize(),
-                            onLoading = { imageResolved = cached != null },
-                            onSuccess = { imageResolved = true },
-                            onError = {
-                                imageResolved = true
-                                if (cached == null) imageFailed = true
-                            },
+                            onError = { imageFailed = true },
                             contentScale = ContentScale.Crop,
                             desktopAnimation = rememberAnimatedArtworkAnimation(),
                         )
@@ -239,22 +194,15 @@ private fun PosterGridTile(
                             model = imageModel,
                             contentDescription = item.name,
                             modifier = Modifier.fillMaxSize(),
-                            onLoading = { imageResolved = false },
-                            onSuccess = { imageResolved = true },
-                            onError = {
-                                imageResolved = true
-                                imageFailed = true
-                            },
+                            onError = { imageFailed = true },
                             contentScale = ContentScale.Crop,
                         )
                     }
                 }
                 NuvioPosterWatchedOverlay(isWatched = isWatched)
-                }
             }
             if (!hideLabels) {
-                Column(Modifier.graphicsLayer { alpha = if (showImage) 1f else 0f }.then(hiddenContent),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = item.name,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),

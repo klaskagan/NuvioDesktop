@@ -3,11 +3,7 @@ package com.nuvio.app.features.home
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.runtime.CompositionLocalProvider
-import com.nuvio.app.features.home.components.artworkVisibleCardCount
-import com.nuvio.app.features.home.components.rememberHomeArtworkPrefetch
-import com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -174,7 +170,7 @@ fun HomeScreen(
         HomeCatalogSettingsRepository.snapshot()
         HomeCatalogSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
-    val homeListState = rememberLazyListState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 1f, behindFraction = .5f) })
+    val homeListState = rememberLazyListState()
     val continueWatchingListState = rememberLazyListState()
     val upcomingListState = rememberLazyListState()
     ScreenActivityEffect(homeListState, continueWatchingListState, upcomingListState) { active ->
@@ -992,16 +988,6 @@ fun HomeScreen(
             HOME_CATALOG_PREVIEW_LIMIT
         }
         val rowStyles = if (isDesktop) homeSettingsUiState.rowStyles else emptyMap()
-        val artworkRows = remember(keyedEnabledHomeItems, sectionsMap, rowStyles) {
-            keyedEnabledHomeItems.map { keyed ->
-                val section = sectionsMap[keyed.value.key].takeUnless { rowStyles[keyed.value.key]?.posterShape != null }
-                keyed.lazyKey.toString() to section
-            }
-        }
-        val prefetchedArtwork = rememberHomeArtworkPrefetch(
-            homeListState, artworkRows, artworkVisibleCardCount(maxWidth.value, homeSectionPadding.value, posterCardStyle.widthDp, posterCardStyle.catalogLandscapeModeEnabled), posterCardStyle.catalogLandscapeModeEnabled,
-            activeProfileId.toString(), seasonalTmdbSettings.language, seasonalTmdbSettings.apiKey,
-        )
         val continueWatchingLayout = rememberContinueWatchingLayout(maxWidth.value, posterCardStyle)
         val nativeBottomNavigationOverlayHeight =
             if (LocalNuvioBottomNavigationOverlayPadding.current > 0.dp) {
@@ -1273,7 +1259,6 @@ fun HomeScreen(
                             val section = sectionsMap[settingsItem.key]
                             if (section != null && (section.items.isNotEmpty() || section.calendarState != null)) {
                                 item(key = keyedSettingsItem.lazyKey, contentType = "catalog") {
-                                    CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prefetchedArtwork) {
                                     HomeCatalogRowSection(
                                         section = section,
                                         rowStyle = if (section.calendarState == null) rowStyles[section.key] ?: HomeRowStyle.Automatic else HomeRowStyle.Automatic,
@@ -1299,7 +1284,6 @@ fun HomeScreen(
                                             ?.let { open -> { item -> open(section.key, item) } }
                                             ?: onPosterLongClick,
                                     )
-                                    }
                                 }
                             } else if (homeUiState.isLoading && !settingsItem.key.contains("airing-next", ignoreCase = true)) {
                                 item(key = keyedSettingsItem.lazyKey, contentType = "catalog") {
