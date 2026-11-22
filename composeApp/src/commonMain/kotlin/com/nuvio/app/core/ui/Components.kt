@@ -82,6 +82,7 @@ fun NuvioScreen(
     horizontalPadding: Dp = MaterialTheme.nuvio.spacing.screenHorizontal,
     topPadding: Dp? = null,
     listState: LazyListState = rememberLazyListState(),
+    drawBackground: Boolean = true,
     content: LazyListScope.() -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
@@ -94,7 +95,7 @@ fun NuvioScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(tokens.colors.background),
+            .then(if (drawBackground) Modifier.background(tokens.colors.background) else Modifier),
     ) {
         LazyColumn(
             state = listState,

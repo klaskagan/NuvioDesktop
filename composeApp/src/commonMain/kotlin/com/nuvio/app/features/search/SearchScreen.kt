@@ -47,6 +47,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.network.NetworkCondition
 import com.nuvio.app.core.network.NetworkStatusRepository
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.graphics.Color
+import com.nuvio.app.core.ui.BackdropFocusController
+import com.nuvio.app.core.ui.BackdropSurface
+import com.nuvio.app.core.ui.LocalBackdropFocusController
+import com.nuvio.app.core.ui.ShellBackdrop
 import com.nuvio.app.core.ui.NuvioInputField
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.NuvioScreen
@@ -239,9 +245,42 @@ fun SearchScreen(
         }
     }
 
+    // Desktop redesign: scope tabs and sort reset whenever the query changes.
+    var scope by rememberSaveable(query.trim()) { mutableStateOf(SearchScope.All) }
+    var sort by rememberSaveable(query.trim()) { mutableStateOf(SearchSort.Relevance) }
+
+    // Ambient backdrop (desktop): spotlight art, hovered poster's art, else the theme mesh.
+    val backdropController = remember { if (isDesktop) BackdropFocusController() else null }
+    val topResultArt = if (query.isNotBlank()) {
+        (uiState.spotlightFor(scope) ?: uiState.results.inScope(scope).firstOrNull())?.let { it.banner ?: it.poster }
+    } else null
+    LaunchedEffect(backdropController, topResultArt) { backdropController?.base = topResultArt }
+    // The sticky bar only turns solid once it is actually pinned; on desktop the idle hero sits above it.
+    val stickyHeaderIndex = if (isDesktop && query.isBlank()) 1 else 0
+    val headerScrolled by remember(listState, stickyHeaderIndex) {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > stickyHeaderIndex ||
+                (listState.firstVisibleItemIndex == stickyHeaderIndex && listState.firstVisibleItemScrollOffset > 0)
+        }
+    }
+    val stickyHeaderColor by animateColorAsState(
+        targetValue = when {
+            backdropController == null -> MaterialTheme.colorScheme.background
+            headerScrolled -> BackdropSurface.stickyHeader
+            else -> Color.Transparent
+        },
+        label = "search_sticky_header",
+    )
+
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
     ) {
+        if (backdropController != null) ShellBackdrop(backdropController)
+        CompositionLocalProvider(LocalBackdropFocusController provides backdropController) {
+        SearchDesktopTypography(enabled = isDesktop) {
+        // Desktop: one centred column, at most ~1240dp of content, never closer than 40dp to the edges.
+        val gutter = if (isDesktop) maxOf(40.dp, (maxWidth - 1240.dp) / 2) else 16.dp
+        val contentWidth = if (isDesktop) maxWidth - gutter * 2 else maxWidth
         val posterCardStyle = rememberPosterCardStyleUiState()
         val searchStyle = remember(posterCardStyle, searchLandscape) {
             posterCardStyle.copy(
@@ -249,13 +288,14 @@ fun SearchScreen(
                 cornerRadiusDp = if (searchLandscape) posterCardStyle.cornerRadiusDp.coerceAtMost(8) else posterCardStyle.cornerRadiusDp,
             )
         }
-        val searchColumns = remember(maxWidth, posterCardStyle.widthDp, searchLandscape, isDesktop) {
-            searchGridColumns(maxWidth, posterCardStyle.widthDp, searchLandscape)
+        val searchColumns = remember(contentWidth, posterCardStyle.widthDp, searchLandscape, isDesktop) {
+            searchGridColumns(contentWidth, posterCardStyle.widthDp, searchLandscape)
         }
-        val discoverColumns = remember(maxWidth, maxHeight, posterCardStyle.widthDp, isDesktop) {
+        val peopleColumns = remember(contentWidth) { (contentWidth / 170.dp).toInt().coerceIn(3, 8) }
+        val discoverColumns = remember(contentWidth, maxHeight, posterCardStyle.widthDp, isDesktop) {
             if (isDesktop) {
                 posterGridColumnCountForCatalogWidth(
-                    screenWidth = maxWidth,
+                    screenWidth = contentWidth,
                     basePosterWidthDp = posterCardStyle.widthDp,
                 )
             } else {
@@ -272,14 +312,17 @@ fun SearchScreen(
         }
 
         CompositionLocalProvider(LocalPosterCardStyleOverride provides searchStyle.takeIf { query.isNotBlank() }) {
-        val artworkRows = remember(query, discoverUiState.items, discoverColumns, uiState.results, searchColumns) {
+        val gridResults = remember(uiState, scope, sort) {
+            if (isDesktop) uiState.gridItemsFor(scope, sort) else uiState.results
+        }
+        val artworkRows = remember(query, discoverUiState.items, discoverColumns, gridResults, searchColumns) {
             if (query.isBlank()) discoverUiState.items.chunked(discoverColumns).mapIndexed { index, items ->
                 com.nuvio.app.features.home.components.ArtworkPrefetchRow("discover-row:$index", items)
-            } else uiState.results.chunked(searchColumns).mapIndexed { index, items ->
+            } else gridResults.chunked(searchColumns).mapIndexed { index, items ->
                 com.nuvio.app.features.home.components.ArtworkPrefetchRow("search-row:$index", items)
             }
         }
-        val artworkIdentity = listOf(query, discoverUiState.selectedCatalogKey, discoverUiState.selectedType, discoverUiState.selectedGenre, searchLandscape, searchColumns)
+        val artworkIdentity = listOf(query, discoverUiState.selectedCatalogKey, discoverUiState.selectedType, discoverUiState.selectedGenre, searchLandscape, searchColumns, scope, sort)
         val pageWindow = com.nuvio.app.features.home.components.rememberMediaPrefetchWindow(artworkIdentity)
         val prepared = com.nuvio.app.features.home.components.rememberListArtworkPrefetch(listState, artworkRows,
             artworkIdentity, window = pageWindow)
@@ -292,16 +335,76 @@ fun SearchScreen(
         CompositionLocalProvider(com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared) {
         NuvioScreen(
             horizontalPadding = 0.dp,
-            topPadding = if (topChromePadding != null) 0.dp else null,
+            topPadding = if (topChromePadding != null || isDesktop) 0.dp else null,
             listState = listState,
             modifier = Modifier.fillMaxSize(),
+            drawBackground = backdropController == null,
         ) {
+        if (isDesktop) {
+            searchDesktopList(
+                query = query,
+                onQueryChange = {
+                    focusRequester.captureFocus()
+                    query = it
+                },
+                lastRequestedQuery = lastRequestedQuery,
+                isSearchFocused = isSearchFocused,
+                captureFieldFocus = { focusRequester.captureFocus() },
+                fieldModifier = Modifier
+                    .focusRequester(focusRequester)
+                    .onFocusChanged {
+                        isSearchFocused = it.isFocused
+                        if (query.isNotBlank()) focusRequester.captureFocus()
+                    },
+                headerColor = stickyHeaderColor,
+                topPadding = topChromePadding,
+                gutter = gutter,
+                recentSearches = recentSearches,
+                uiState = uiState,
+                scope = scope,
+                onScopeChange = { scope = it },
+                sort = sort,
+                onSortChange = { sort = it },
+                searchColumns = searchColumns,
+                peopleColumns = peopleColumns,
+                searchLandscape = searchLandscape,
+                onToggleLandscape = {
+                    searchLandscape = !searchLandscape
+                    SearchPreferencesStorage.saveLandscapeEnabled(searchLandscape)
+                },
+                discoverUiState = discoverUiState,
+                discoverColumns = discoverColumns,
+                addonManifestsLoading = addonManifestsLoading,
+                networkCondition = networkStatusUiState.condition,
+                onRetrySearch = {
+                    NetworkStatusRepository.requestRefresh(force = true)
+                    if (addonsUiState.addons.firstEnabledManifestError() != null) {
+                        AddonRepository.refreshAll()
+                    } else {
+                        SearchRepository.search(query = query.trim(), addons = addonsUiState.addons, forceRefresh = true)
+                    }
+                },
+                onRetryDiscover = {
+                    NetworkStatusRepository.requestRefresh(force = true)
+                    if (addonsUiState.addons.firstEnabledManifestError() != null) {
+                        AddonRepository.refreshAll()
+                    } else {
+                        SearchRepository.refreshDiscover(addons = addonsUiState.addons, forceRefresh = true)
+                    }
+                },
+                watchedKeys = watchedUiState.watchedKeys,
+                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                onPosterClick = onPosterClick,
+                onPosterLongClick = onPosterLongClick,
+                onPersonClick = onPersonClick,
+            )
+        } else {
         stickyHeader {
             Box(modifier = Modifier.fillMaxWidth()) {
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .background(MaterialTheme.colorScheme.background)
+                        .background(stickyHeaderColor)
                         .nuvioConsumePointerEvents(),
                 )
                 androidx.compose.foundation.layout.Column(
@@ -310,6 +413,7 @@ fun SearchScreen(
                     NuvioScreenHeader(
                         title = headerTitle,
                         modifier = Modifier.padding(horizontal = 16.dp),
+                        backgroundColor = if (backdropController != null) Color.Transparent else MaterialTheme.colorScheme.background,
                         topPadding = topChromePadding,
                     )
                     androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(6.dp))
@@ -447,11 +551,15 @@ fun SearchScreen(
                             onPosterClick = onPosterClick,
                             onPosterLongClick = onPosterLongClick,
                             onPersonClick = onPersonClick,
+                            onBackdrop = backdropController != null,
                         )
                     }
                 }
             }
         }
+        }
+    }
+    }
     }
     }
     }
@@ -558,7 +666,7 @@ internal fun SearchRecentRow(
             .clickable(onClick = onSearchPress)
             .padding(vertical = 2.dp)
             .background(
-                color = MaterialTheme.colorScheme.background,
+                color = if (LocalBackdropFocusController.current != null) BackdropSurface.card else MaterialTheme.colorScheme.background,
                 shape = RoundedCornerShape(16.dp),
             )
             .padding(start = 2.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),

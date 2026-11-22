@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nuvio.app.core.network.NetworkCondition
@@ -42,7 +43,28 @@ internal fun LazyListScope.discoverContent(
     fullyWatchedSeriesKeys: Set<String> = emptySet(),
     onPosterClick: ((MetaPreview) -> Unit)? = null,
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
+    horizontalPadding: Dp = 16.dp,
+    desktopHeader: Boolean = false,
 ) {
+    if (desktopHeader) {
+        item(key = "discover-header") {
+            SearchSectionHeader(
+                title = stringResource(Res.string.compose_search_discover_title),
+                count = state.selectedCatalog?.let { selected ->
+                    stringResource(Res.string.discover_catalog_context, selected.addonName, selected.type.displayTypeLabel())
+                },
+                modifier = Modifier.padding(horizontal = horizontalPadding).padding(top = 18.dp),
+            ) {
+                DiscoverFilterRow(
+                    state = state,
+                    onTypeSelected = onTypeSelected,
+                    onCatalogSelected = onCatalogSelected,
+                    onGenreSelected = onGenreSelected,
+                    desktopStyle = true,
+                )
+            }
+        }
+    } else {
     item {
         DiscoverSectionHeader(modifier = Modifier.padding(horizontal = 16.dp))
     }
@@ -72,6 +94,7 @@ internal fun LazyListScope.discoverContent(
             )
         }
     }
+    }
 
     when {
         (state.isLoading || (isSourceLoading && state.selectedCatalogKey?.startsWith("go3:") != true)) && state.items.isEmpty() -> {
@@ -79,7 +102,7 @@ internal fun LazyListScope.discoverContent(
                 PosterGridSkeletonRow(
                     columns = columns,
                     aspectRatio = if(state.selectedCatalogKey?.startsWith("go3:")==true) 16f/9f else 0.68f,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = horizontalPadding),
                 )
             }
         }
@@ -91,7 +114,7 @@ internal fun LazyListScope.discoverContent(
                     errorMessage = state.errorMessage,
                     networkCondition = networkCondition,
                     onRetry = onRetry,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = horizontalPadding),
                 )
             }
         }
@@ -102,7 +125,7 @@ internal fun LazyListScope.discoverContent(
                 PosterGridRow(
                     items = state.items.subList(firstIndex, minOf(firstIndex + columns, state.items.size)),
                     columns = columns,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = horizontalPadding),
                     watchedKeys = watchedKeys,
                     fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                     onPosterClick = onPosterClick,
@@ -112,7 +135,7 @@ internal fun LazyListScope.discoverContent(
             if (state.isLoading) {
                 item {
                     CatalogLoadingFooter(
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = horizontalPadding),
                     )
                 }
             }
@@ -137,12 +160,26 @@ private fun DiscoverFilterRow(
     onCatalogSelected: (String) -> Unit,
     onGenreSelected: (String?) -> Unit,
     modifier: Modifier = Modifier,
+    desktopStyle: Boolean = false,
 ) {
+    @Composable
+    fun Chip(
+        title: String,
+        label: String,
+        selectedKey: String?,
+        options: List<NuvioDropdownOption>,
+        enabled: Boolean,
+        onSelected: (NuvioDropdownOption) -> Unit,
+    ) = if (desktopStyle) {
+        SearchDropdownChip(label = label, selectedKey = selectedKey, options = options, enabled = enabled, onSelected = onSelected)
+    } else {
+        NuvioDropdownChip(title = title, label = label, selectedKey = selectedKey, options = options, enabled = enabled, onSelected = onSelected)
+    }
     Row(
         modifier = modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        NuvioDropdownChip(
+        Chip(
             title = stringResource(Res.string.discover_select_type),
             label = state.selectedType?.displayTypeLabel() ?: stringResource(Res.string.discover_type),
             selectedKey = state.selectedType,
@@ -150,7 +187,7 @@ private fun DiscoverFilterRow(
             enabled = state.typeOptions.isNotEmpty(),
             onSelected = { onTypeSelected(it.key) },
         )
-        NuvioDropdownChip(
+        Chip(
             title = stringResource(Res.string.discover_select_catalog),
             label = state.selectedCatalog?.catalogName ?: stringResource(Res.string.discover_catalog),
             selectedKey = state.selectedCatalogKey,
@@ -166,7 +203,7 @@ private fun DiscoverFilterRow(
             }
             addAll(state.genreOptions.map { genre -> NuvioDropdownOption(key = genre, label = genre) })
         }
-        NuvioDropdownChip(
+        Chip(
             title = stringResource(Res.string.discover_select_genre),
             label = state.selectedGenre ?: if(state.selectedCatalogKey?.startsWith("go3:")==true) "All events" else stringResource(Res.string.discover_all_genres),
             selectedKey = state.selectedGenre ?: "",

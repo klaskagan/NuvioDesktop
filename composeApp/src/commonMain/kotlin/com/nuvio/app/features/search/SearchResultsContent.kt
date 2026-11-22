@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.ui.NuvioLoadingIndicator
+import com.nuvio.app.core.ui.backdropCardSegment
 import com.nuvio.app.core.ui.landscapePosterWidth
 import com.nuvio.app.core.ui.posterGridColumnCountForCatalogWidth
 import com.nuvio.app.features.details.MetaPerson
@@ -60,24 +61,45 @@ internal fun LazyListScope.searchResultsContent(
     onPosterClick: ((MetaPreview) -> Unit)?,
     onPosterLongClick: ((MetaPreview) -> Unit)?,
     onPersonClick: ((SearchPerson) -> Unit)?,
+    onBackdrop: Boolean = false,
 ) {
     val results = state.results
+    val rowCount = (results.size + columns - 1) / columns
+    val hasLabel = state.people.isNotEmpty() && results.isNotEmpty()
+    // On the ambient backdrop, sections sit on translucent cards inset 8dp from the screen edge;
+    // content keeps its 16dp edge so nothing shifts versus the flat layout.
+    fun Modifier.section(first: Boolean, last: Boolean): Modifier =
+        if (!onBackdrop) this
+        else fillMaxWidth().padding(horizontal = 8.dp)
+            .backdropCardSegment(isFirst = first, isLast = last, itemGap = SearchListGap)
+            .padding(top = if (first) 10.dp else 0.dp, bottom = if (last) 12.dp else 0.dp)
     if (state.people.isNotEmpty()) {
         item(key = "search-people") {
-            SearchPeopleRow(people = state.people, onPersonClick = onPersonClick)
+            SearchPeopleRow(
+                people = state.people,
+                onPersonClick = onPersonClick,
+                modifier = Modifier.section(first = true, last = true),
+                horizontalInset = if (onBackdrop) 8.dp else 16.dp,
+            )
         }
     }
-    if (state.people.isNotEmpty() && results.isNotEmpty()) {
+    if (hasLabel) {
         item(key = "search-movies-tv-label") {
-            SearchSectionTitle(text = stringResource(Res.string.compose_search_movies_and_tv))
+            SearchSectionTitle(
+                text = stringResource(Res.string.compose_search_movies_and_tv),
+                modifier = Modifier.section(first = true, last = rowCount == 0),
+                horizontalInset = if (onBackdrop) 8.dp else 16.dp,
+            )
         }
     }
-    items(count = (results.size + columns - 1) / columns, key = { "search-row:$it" }) { rowIndex ->
+    items(count = rowCount, key = { "search-row:$it" }) { rowIndex ->
         val firstIndex = rowIndex * columns
         PosterGridRow(
             items = results.subList(firstIndex, minOf(firstIndex + columns, results.size)),
             columns = columns,
-            modifier = Modifier.padding(horizontal = 16.dp),
+            modifier = Modifier
+                .section(first = rowIndex == 0 && !hasLabel, last = rowIndex == rowCount - 1)
+                .padding(horizontal = if (onBackdrop) 8.dp else 16.dp),
             watchedKeys = watchedKeys,
             fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
             onPosterClick = onPosterClick,
@@ -100,11 +122,16 @@ internal fun LazyListScope.searchResultsContent(
 
 private val SearchPersonItemWidth = 150.dp
 
+/** Matches NuvioScreen's item spacing (tokens.spacing.listGap) so card slices join seamlessly. */
+private val SearchListGap = 12.dp
+
 /** People matches, rendered with the Details cast row so avatars, sizing and fallbacks stay identical. */
 @Composable
 private fun SearchPeopleRow(
     people: List<SearchPerson>,
     onPersonClick: ((SearchPerson) -> Unit)?,
+    modifier: Modifier = Modifier,
+    horizontalInset: Dp = 16.dp,
 ) {
     val directorRole = stringResource(Res.string.person_role_director)
     val cast = remember(people, directorRole) {
@@ -118,13 +145,13 @@ private fun SearchPeopleRow(
         }
     }
     val peopleById = remember(people) { people.associateBy { it.tmdbId } }
-    Column(modifier = Modifier.padding(bottom = 18.dp).testTag("search-people")) {
-        SearchSectionTitle(text = stringResource(Res.string.compose_search_people))
+    Column(modifier = modifier.padding(bottom = 18.dp).testTag("search-people")) {
+        SearchSectionTitle(text = stringResource(Res.string.compose_search_people), horizontalInset = horizontalInset)
         DetailCastSection(
             cast = cast,
-            modifier = Modifier.padding(horizontal = 16.dp),
+            modifier = Modifier.padding(horizontal = horizontalInset),
             showHeader = false,
-            horizontalScrollPadding = 16.dp,
+            horizontalScrollPadding = horizontalInset,
             minItemWidth = SearchPersonItemWidth,
             onCastClick = onPersonClick?.let { click ->
                 { person, _ -> person.tmdbId?.let(peopleById::get)?.let(click) }
@@ -134,10 +161,10 @@ private fun SearchPeopleRow(
 }
 
 @Composable
-internal fun SearchSectionTitle(text: String, modifier: Modifier = Modifier) {
+internal fun SearchSectionTitle(text: String, modifier: Modifier = Modifier, horizontalInset: Dp = 16.dp) {
     Text(
         text = text,
-        modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 10.dp),
+        modifier = modifier.padding(start = horizontalInset, end = horizontalInset, top = 4.dp, bottom = 10.dp),
         style = MaterialTheme.typography.titleLarge,
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onBackground,

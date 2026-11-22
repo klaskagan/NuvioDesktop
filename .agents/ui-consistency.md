@@ -129,6 +129,16 @@ branch integration. `settingsCategoryForName` preserves saved names;
   their date. Distinguish today from selection/focus; skipping an empty date does
   not make the next visible date today. Follow locale week boundaries and labels.
 
+Ambient screen backdrops show one stable artwork per screen state. The desktop
+Search redesign first crossfaded the blurred backdrop to each hovered poster;
+the user found that dizzying. Drive `ShellBackdrop` only from the screen's
+primary title (Search: the top result; fall back to the theme mesh), never from
+hover or focus. A sticky bar over the backdrop stays transparent until it is
+actually pinned, then turns near-opaque (`BackdropSurface.stickyHeader`) so
+scrolled content never reads through it. Check by sweeping the pointer across a
+results grid (backdrop unchanged) and scrolling one step (no dark band while the
+hero is still visible).
+
 Panels that own a background must also own readable foreground colors.
 The football lineup and actor catalog screenshots exposed black inherited
 text on dark panels. Use a Material Surface with an explicit content color,
