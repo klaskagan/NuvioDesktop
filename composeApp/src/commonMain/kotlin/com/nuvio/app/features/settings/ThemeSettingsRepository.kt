@@ -1,5 +1,7 @@
 package com.nuvio.app.features.settings
 
+import com.nuvio.app.core.ui.NavTransitionStyle
+
 import com.nuvio.app.core.ui.AppTheme
 import com.nuvio.app.core.ui.CustomThemeColors
 import com.nuvio.app.core.ui.NativeTabBridge
@@ -36,6 +38,9 @@ object ThemeSettingsRepository {
 
     private val _desktopNavigationLayout = MutableStateFlow(DesktopNavigationLayout.Default)
     val desktopNavigationLayout: StateFlow<DesktopNavigationLayout> = _desktopNavigationLayout.asStateFlow()
+    /** Desktop page-to-page motion; Home hero's layered parallax by default. */
+    private val _pageTransition = MutableStateFlow(NavTransitionStyle.Default)
+    val pageTransition: StateFlow<NavTransitionStyle> = _pageTransition.asStateFlow()
 
     private val _selectedAppLanguage = MutableStateFlow(AppLanguage.DEVICE)
     val selectedAppLanguage: StateFlow<AppLanguage> = _selectedAppLanguage.asStateFlow()
@@ -99,6 +104,7 @@ object ThemeSettingsRepository {
         _amoledEnabled.value = false
         _liquidGlassNativeTabBarEnabled.value = false
         _desktopNavigationLayout.value = DesktopNavigationLayout.Default
+        _pageTransition.value = NavTransitionStyle.Default
         NativeTabBridge.publishAccentColor(ThemeColors.White.nativeAccentHex)
         NativeTabBridge.publishLiquidGlassEnabled(false)
         _selectedAppLanguage.value = AppLanguage.DEVICE
@@ -131,6 +137,7 @@ object ThemeSettingsRepository {
         _desktopNavigationLayout.value = DesktopNavigationLayout.fromName(
             ThemeSettingsStorage.loadDesktopNavigationLayout(),
         )
+        _pageTransition.value = NavTransitionStyle.fromName(ThemeSettingsStorage.loadPageTransition())
         val appLanguage = AppLanguage.fromCode(ThemeSettingsStorage.loadSelectedAppLanguage())
         ThemeSettingsStorage.applySelectedAppLanguage(appLanguage.code)
         _selectedAppLanguage.value = appLanguage
@@ -183,6 +190,13 @@ object ThemeSettingsRepository {
         if (_desktopNavigationLayout.value == layout) return
         _desktopNavigationLayout.value = layout
         ThemeSettingsStorage.saveDesktopNavigationLayout(layout.name)
+    }
+
+    fun setPageTransition(style: NavTransitionStyle) {
+        ensureLoaded()
+        if (_pageTransition.value == style) return
+        _pageTransition.value = style
+        ThemeSettingsStorage.savePageTransition(style.name)
     }
 
     fun setAppLanguage(language: AppLanguage) {

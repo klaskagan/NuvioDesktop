@@ -11,31 +11,35 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.nuvio.app.isDesktop
+import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.settings_page_transition_hero
+import nuvio.composeapp.generated.resources.settings_page_transition_slide
+import org.jetbrains.compose.resources.StringResource
 
 /**
  * Screen-to-screen motion for the desktop redesign. Navigation entries switch instantly; each
  * screen animates its own layers, so the app sidebar both entries draw never moves.
  */
-enum class NavTransitionStyle {
+enum class NavTransitionStyle(val labelRes: StringResource) {
     /** Home hero carousel: layers fade as they drift (background 5.5%, content 18%), both screens at once. */
-    HeroParallax,
+    HeroParallax(Res.string.settings_page_transition_hero),
 
     /** The current screen slides fully out to the left while the new one slides in from the right. */
-    FullSlide,
+    FullSlide(Res.string.settings_page_transition_slide),
+    ;
+
+    companion object {
+        val Default = HeroParallax
+
+        fun fromName(name: String?): NavTransitionStyle =
+            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: Default
+    }
 }
 
-/**
- * TEMPORARY: lets the user compare both styles in the running app (toggle on the person page).
- * Remove the toggle and keep the chosen style once decided.
- */
-object NavTransitionPreview {
-    var style by mutableStateOf(NavTransitionStyle.HeroParallax)
-}
+/** The user's choice (Settings → Appearance → Page transitions), provided per nav entry. */
+val LocalNavTransitionStyle = compositionLocalOf { NavTransitionStyle.Default }
 
 /** How far a layer drifts in [NavTransitionStyle.HeroParallax]; the same values as Home's hero. */
 enum class NavLayer(val heroParallax: Float) {
@@ -61,7 +65,7 @@ fun Modifier.navTransitionLayer(layer: NavLayer, side: NavSide): Modifier {
     if (!isDesktop) return this
     val scope = LocalNavLayerScope.current ?: return this
     val direction = if (side == NavSide.Above) 1 else -1
-    val (enter, exit) = when (NavTransitionPreview.style) {
+    val (enter, exit) = when (LocalNavTransitionStyle.current) {
         NavTransitionStyle.HeroParallax -> {
             val drift = layer.heroParallax
             Pair<EnterTransition, ExitTransition>(

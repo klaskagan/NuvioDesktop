@@ -1,5 +1,11 @@
 package com.nuvio.app.features.settings
 
+import nuvio.composeapp.generated.resources.settings_page_transition_sheet_title
+
+import nuvio.composeapp.generated.resources.settings_page_transition
+
+import com.nuvio.app.core.ui.NavTransitionStyle
+
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -159,6 +165,11 @@ internal fun LazyListScope.layoutSettingsContent(
         item {
             var showNavBarStyleSheet by remember { mutableStateOf(false) }
             var showDesktopNavigationSheet by remember { mutableStateOf(false) }
+            var showPageTransitionSheet by remember { mutableStateOf(false) }
+            val pageTransition by remember {
+                ThemeSettingsRepository.ensureLoaded()
+                ThemeSettingsRepository.pageTransition
+            }.collectAsStateWithLifecycle()
             val desktopNavigationLayout by remember {
                 ThemeSettingsRepository.ensureLoaded()
                 ThemeSettingsRepository.desktopNavigationLayout
@@ -188,6 +199,13 @@ internal fun LazyListScope.layoutSettingsContent(
                             description = stringResource(Res.string.settings_detail_navigation_description),
                             isTablet = isTablet,
                             onClick = onDetailNavigationClick,
+                        )
+                        SettingsGroupDivider(isTablet = isTablet)
+                        SettingsNavigationRow(
+                            title = stringResource(Res.string.settings_page_transition),
+                            description = stringResource(pageTransition.labelRes),
+                            isTablet = isTablet,
+                            onClick = { showPageTransitionSheet = true },
                         )
                         SettingsGroupDivider(isTablet = isTablet)
                         SettingsNavigationRow(
@@ -236,6 +254,16 @@ internal fun LazyListScope.layoutSettingsContent(
                         )
                     }
                 }
+            }
+            if (showPageTransitionSheet) {
+                PageTransitionBottomSheet(
+                    selected = pageTransition,
+                    onSelected = {
+                        ThemeSettingsRepository.setPageTransition(it)
+                        showPageTransitionSheet = false
+                    },
+                    onDismiss = { showPageTransitionSheet = false },
+                )
             }
             if (showDesktopNavigationSheet) {
                 DesktopNavigationLayoutBottomSheet(
@@ -319,6 +347,66 @@ private fun DesktopNavigationLayoutBottomSheet(
                     },
                     trailingContent = {
                         if (layout == selectedLayout) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = stringResource(Res.string.cd_selected),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PageTransitionBottomSheet(
+    selected: NavTransitionStyle,
+    onSelected: (NavTransitionStyle) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val coroutineScope = rememberCoroutineScope()
+
+    NuvioModalBottomSheet(
+        onDismissRequest = {
+            coroutineScope.launch {
+                dismissNuvioBottomSheet(sheetState = sheetState, onDismiss = onDismiss)
+            }
+        },
+        sheetState = sheetState,
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+        ) {
+            item {
+                Text(
+                    text = stringResource(Res.string.settings_page_transition_sheet_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                )
+            }
+
+            itemsIndexed(NavTransitionStyle.entries) { index, layout ->
+                if (index > 0) {
+                    NuvioBottomSheetDivider()
+                }
+                NuvioBottomSheetActionRow(
+                    title = stringResource(layout.labelRes),
+                    onClick = {
+                        onSelected(layout)
+                        coroutineScope.launch {
+                            dismissNuvioBottomSheet(sheetState = sheetState, onDismiss = onDismiss)
+                        }
+                    },
+                    trailingContent = {
+                        if (layout == selected) {
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = stringResource(Res.string.cd_selected),

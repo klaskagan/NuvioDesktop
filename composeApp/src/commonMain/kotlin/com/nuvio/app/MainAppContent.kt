@@ -1589,6 +1589,10 @@ internal fun MainAppContent(
                     },
                 )
 
+                val pageTransitionStyle by remember {
+                    com.nuvio.app.features.settings.ThemeSettingsRepository.ensureLoaded()
+                    com.nuvio.app.features.settings.ThemeSettingsRepository.pageTransition
+                }.collectAsStateWithLifecycle()
                 NavDisplay(
                     backStack = navBackStack,
                     modifier = Modifier
@@ -1604,7 +1608,10 @@ internal fun MainAppContent(
                 entry<TabsRoute> {
                     val tabsRouteActiveState = rememberUpdatedState(currentRoute is TabsRoute)
                     // Screens inside the tabs (Search) animate their own layers when a detail opens over them.
-                    CompositionLocalProvider(com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current) {
+                    CompositionLocalProvider(
+                        com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current,
+                        com.nuvio.app.core.ui.LocalNavTransitionStyle provides pageTransitionStyle,
+                    ) {
                     MainTabsDestination(
                         selectedTab = selectedTab,
                         initialHomeReady = initialHomeReady,
@@ -1858,7 +1865,10 @@ internal fun MainAppContent(
                         emptyMap()
                     },
                 ) { route ->
-                    CompositionLocalProvider(com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current) {
+                    CompositionLocalProvider(
+                        com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current,
+                        com.nuvio.app.core.ui.LocalNavTransitionStyle provides pageTransitionStyle,
+                    ) {
                     DetailNavigationFrame(
                         route = route,
                         selectedTab = selectedTab,

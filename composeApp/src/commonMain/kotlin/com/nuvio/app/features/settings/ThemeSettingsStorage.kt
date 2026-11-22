@@ -13,6 +13,8 @@ internal expect object ThemeSettingsStorage {
     fun saveLiquidGlassNativeTabBarEnabled(enabled: Boolean)
     fun loadDesktopNavigationLayout(): String?
     fun saveDesktopNavigationLayout(layoutName: String)
+    fun loadPageTransition(): String?
+    fun savePageTransition(styleName: String)
     fun loadSelectedAppLanguage(): String?
     fun saveSelectedAppLanguage(languageCode: String)
     fun applySelectedAppLanguage(languageCode: String)

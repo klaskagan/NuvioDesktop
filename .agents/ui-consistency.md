@@ -20,8 +20,10 @@ Person Details opening with no transition). Apply these to every redesigned scre
   never moves. `NavSide.Underneath` screens (Search) leave to the left; `NavSide.Above` screens
   (Person) arrive from the right, mirrored on Back. Screens read the scope from `LocalNavLayerScope`
   (provided per entry in `MainAppContent.kt`); without it there's no motion, e.g. in tests.
-  Two styles are under review (`NavTransitionStyle`, temporary toggle on the Person page):
-  `HeroParallax` (Home hero values) and `FullSlide`. Record the chosen one here and delete the toggle.
+  The style is a user setting (Settings → Layout → Page transitions, synced as
+  `page_transition`): `HeroParallax` (default, Home hero values) or `FullSlide`. Screens read it
+  from `LocalNavTransitionStyle`, provided with the nav scope in `MainAppContent.kt`. New screens
+  get both styles by applying `navTransitionLayer` to their background and content.
   A whole page sliding a third of the screen plus a shared-element avatar flying over it was rejected
   as too busy. Don't fly individual elements across pages; let them move with their layer.
 - **Placeholders are the real layout, not an approximation:** build skeletons and late-section

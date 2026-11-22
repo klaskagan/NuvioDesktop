@@ -28,6 +28,7 @@ internal actual object ThemeSettingsStorage {
     private const val amoledEnabledKey = "amoled_enabled"
     private const val liquidGlassNativeTabBarEnabledKey = "liquid_glass_native_tab_bar_enabled"
     private const val desktopNavigationLayoutKey = "desktop_navigation_layout"
+    private const val pageTransitionKey = "page_transition"
     private const val selectedAppLanguageKey = "selected_app_language"
     private const val navBarStyleKey = "nav_bar_style"
     private const val navBarGlowEnabledKey = "nav_bar_glow_enabled"
@@ -40,6 +41,7 @@ internal actual object ThemeSettingsStorage {
         amoledEnabledKey,
         liquidGlassNativeTabBarEnabledKey,
         desktopNavigationLayoutKey,
+        pageTransitionKey,
         navBarStyleKey,
         navBarGlowEnabledKey,
         detailNavigationEnabledKey,
@@ -82,6 +84,13 @@ internal actual object ThemeSettingsStorage {
 
     actual fun saveDesktopNavigationLayout(layoutName: String) {
         store.putString(ProfileScopedKey.of(desktopNavigationLayoutKey), layoutName)
+    }
+
+    actual fun loadPageTransition(): String? =
+        store.getString(ProfileScopedKey.of(pageTransitionKey))
+
+    actual fun savePageTransition(styleName: String) {
+        store.putString(ProfileScopedKey.of(pageTransitionKey), styleName)
     }
 
     actual fun loadSelectedAppLanguage(): String? =
@@ -137,6 +146,7 @@ internal actual object ThemeSettingsStorage {
         loadAmoledEnabled()?.let { put(amoledEnabledKey, encodeSyncBoolean(it)) }
         loadLiquidGlassNativeTabBarEnabled()?.let { put(liquidGlassNativeTabBarEnabledKey, encodeSyncBoolean(it)) }
         loadDesktopNavigationLayout()?.let { put(desktopNavigationLayoutKey, encodeSyncString(it)) }
+        loadPageTransition()?.let { put(pageTransitionKey, encodeSyncString(it)) }
         loadNavBarStyle()?.let { put(navBarStyleKey, encodeSyncString(it)) }
         loadNavBarGlowEnabled()?.let { put(navBarGlowEnabledKey, encodeSyncBoolean(it)) }
         loadDetailNavigationEnabled()?.let { put(detailNavigationEnabledKey, encodeSyncBoolean(it)) }
@@ -151,6 +161,7 @@ internal actual object ThemeSettingsStorage {
         payload.decodeSyncBoolean(amoledEnabledKey)?.let(::saveAmoledEnabled)
         payload.decodeSyncBoolean(liquidGlassNativeTabBarEnabledKey)?.let(::saveLiquidGlassNativeTabBarEnabled)
         payload.decodeSyncString(desktopNavigationLayoutKey)?.let(::saveDesktopNavigationLayout)
+        payload.decodeSyncString(pageTransitionKey)?.let(::savePageTransition)
         payload.decodeSyncString(navBarStyleKey)?.let(::saveNavBarStyle)
         payload.decodeSyncBoolean(navBarGlowEnabledKey)?.let(::saveNavBarGlowEnabled)
         payload.decodeSyncBoolean(detailNavigationEnabledKey)?.let(::saveDetailNavigationEnabled)

@@ -31,8 +31,6 @@ import com.nuvio.app.core.ui.RedesignTypography
 import com.nuvio.app.core.ui.ShellBackdrop
 import com.nuvio.app.core.ui.NavLayer
 import com.nuvio.app.core.ui.NavSide
-import com.nuvio.app.core.ui.NavTransitionPreview
-import com.nuvio.app.core.ui.NavTransitionStyle
 import com.nuvio.app.core.ui.navTransitionLayer
 import com.nuvio.app.core.ui.redesignText
 import nuvio.composeapp.generated.resources.person_favorite
@@ -270,10 +268,6 @@ fun PersonDetailScreen(
         }
 
 
-        if (isDesktop) {
-            // TEMPORARY: compare the two transition styles; remove once one is chosen.
-            NavTransitionStyleToggle(Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.statusBars).padding(top = 36.dp, end = 40.dp))
-        }
         if (!LocalUseNativeNavigation.current) {
             if (isDesktop) {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -1724,23 +1718,3 @@ private fun DesktopPersonDetailSkeleton(
     }
 }
 
-/** TEMPORARY review control: picks the style used the next time a person page opens or closes. */
-@Composable
-private fun NavTransitionStyleToggle(modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(999.dp)
-    Row(
-        modifier.clip(shape).background(Color.Black.copy(alpha = 0.45f)).border(1.dp, RedesignColors.hairline, shape).padding(3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        listOf(NavTransitionStyle.HeroParallax to "Hero carousel", NavTransitionStyle.FullSlide to "Full slide").forEach { (style, label) ->
-            val selected = NavTransitionPreview.style == style
-            Text(
-                label,
-                style = redesignText(12.sp, FontWeight.SemiBold, if (selected) Color(0xFF0E0F12) else RedesignColors.textSecondary),
-                modifier = Modifier.clip(shape).background(if (selected) RedesignColors.textPrimary else Color.Transparent)
-                    .clickable { NavTransitionPreview.style = style }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-        }
-    }
-}

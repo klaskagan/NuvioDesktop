@@ -22,6 +22,7 @@ actual object ThemeSettingsStorage {
     private const val amoledEnabledKey = "amoled_enabled"
     private const val liquidGlassNativeTabBarEnabledKey = "liquid_glass_native_tab_bar_enabled"
     private const val desktopNavigationLayoutKey = "desktop_navigation_layout"
+    private const val pageTransitionKey = "page_transition"
     private const val selectedAppLanguageKey = "selected_app_language"
     private const val NAV_BAR_STYLE_KEY = "nav_bar_style"
     private const val navBarGlowEnabledKey = "nav_bar_glow_enabled"
@@ -38,6 +39,7 @@ actual object ThemeSettingsStorage {
         detailNavigationHideDelayKey,
         liquidGlassNativeTabBarEnabledKey,
         desktopNavigationLayoutKey,
+        pageTransitionKey,
         NAV_BAR_STYLE_KEY,
     )
 
@@ -143,6 +145,16 @@ actual object ThemeSettingsStorage {
             ?.apply()
     }
 
+    actual fun loadPageTransition(): String? =
+        preferences?.getString(ProfileScopedKey.of(pageTransitionKey), null)
+
+    actual fun savePageTransition(styleName: String) {
+        preferences
+            ?.edit()
+            ?.putString(ProfileScopedKey.of(pageTransitionKey), styleName)
+            ?.apply()
+    }
+
     actual fun loadSelectedAppLanguage(): String? {
         val value = preferences?.getString(selectedAppLanguageKey, null)
         if (value != null) return value
@@ -197,6 +209,7 @@ actual object ThemeSettingsStorage {
         loadAmoledEnabled()?.let { put(amoledEnabledKey, encodeSyncBoolean(it)) }
         loadLiquidGlassNativeTabBarEnabled()?.let { put(liquidGlassNativeTabBarEnabledKey, encodeSyncBoolean(it)) }
         loadDesktopNavigationLayout()?.let { put(desktopNavigationLayoutKey, encodeSyncString(it)) }
+        loadPageTransition()?.let { put(pageTransitionKey, encodeSyncString(it)) }
         loadNavBarStyle()?.let { put(NAV_BAR_STYLE_KEY, encodeSyncString(it)) }
     }
 
@@ -214,6 +227,7 @@ actual object ThemeSettingsStorage {
         payload.decodeSyncBoolean(amoledEnabledKey)?.let(::saveAmoledEnabled)
         payload.decodeSyncBoolean(liquidGlassNativeTabBarEnabledKey)?.let(::saveLiquidGlassNativeTabBarEnabled)
         payload.decodeSyncString(desktopNavigationLayoutKey)?.let(::saveDesktopNavigationLayout)
+        payload.decodeSyncString(pageTransitionKey)?.let(::savePageTransition)
         payload.decodeSyncString(NAV_BAR_STYLE_KEY)?.let(::saveNavBarStyle)
         applySelectedAppLanguage(loadSelectedAppLanguage() ?: AppLanguage.DEVICE.code)
     }
