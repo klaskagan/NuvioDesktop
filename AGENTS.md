@@ -26,6 +26,9 @@ skill is not in the session catalog, read that file directly.
 - When forking or delegating a frontend-design task (visual design, new or
   reshaped UI) to a subagent or session, tell it to invoke the
   `frontend-design:frontend-design` skill before designing.
+- For Trakt API work (auth, sync, watch history, artwork), invoke the
+  `trakt-api-guidance` skill if available, including when forking or
+  delegating the task.
 - For layout, loading, scrolling, gestures, and date presentation, read
   `.agents/ui-consistency.md`. Apply its shared invariants; keep feature-specific
   choices in the feature's documentation.
