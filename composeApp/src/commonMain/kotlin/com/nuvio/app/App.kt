@@ -118,13 +118,8 @@ internal fun AppEnvironment(content: @Composable () -> Unit) {
             customThemeColors = customThemeColors,
             desktopUiScale = desktopUiScaleForWindow(maxWidth.value, maxHeight.value),
         ) {
-            val mediaScheduler = com.nuvio.app.features.home.components.rememberMediaPreparationScheduler()
-            androidx.compose.runtime.CompositionLocalProvider(
-                com.nuvio.app.features.home.components.LocalMediaPreparationScheduler provides mediaScheduler,
-            ) {
-                PlatformKeyboardNavigationHost()
-                content()
-            }
+            PlatformKeyboardNavigationHost()
+            content()
         }
     }
 }

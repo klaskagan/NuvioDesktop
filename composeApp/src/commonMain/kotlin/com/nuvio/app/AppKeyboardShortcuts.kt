@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asSharedFlow
  * something inside it has focus). MainAppContent turns each request into navigation.
  */
 object AppKeyboardShortcuts {
+    internal var searchEscape: (() -> Boolean)? = null
     private val focusSearch = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val focusSearchRequests: SharedFlow<Unit> = focusSearch.asSharedFlow()
 

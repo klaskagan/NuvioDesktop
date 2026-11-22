@@ -55,12 +55,7 @@ import com.nuvio.app.core.ui.NuvioViewAllPillSize
 import com.nuvio.app.core.ui.PlatformBackHandler
 import com.nuvio.app.core.ui.nuvio
 import com.nuvio.app.features.home.PosterShape
-import com.nuvio.app.features.home.components.ArtworkPrefetchRow
 import com.nuvio.app.features.home.components.HomePosterCard
-import com.nuvio.app.features.home.components.LocalLandscapeRowReveal
-import com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork
-import com.nuvio.app.features.home.components.rememberGridArtworkGates
-import com.nuvio.app.features.home.components.rememberListArtworkPrefetch
 import com.nuvio.app.features.home.stableKey
 import com.nuvio.app.features.watching.application.WatchingState
 import androidx.compose.runtime.CompositionLocalProvider
@@ -376,14 +371,6 @@ private fun PersonOverview(
     onOpenSubview: (PersonSubview) -> Unit,
     onOpenMeta: (MetaPreview) -> Unit,
 ) {
-    val artworkRows = remember(timeline) {
-        timeline.map { credit ->
-            ArtworkPrefetchRow(credit.media.stableKey(), listOf(credit.media), enhanceTitles = false, forceShape = PosterShape.Poster)
-        }
-    }
-    val artworkIdentity = "actor-timeline:${person.tmdbId}"
-    val prepared = rememberListArtworkPrefetch(list, artworkRows, artworkIdentity)
-    val gates = rememberGridArtworkGates(artworkRows, artworkIdentity, prepared)
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = list,
@@ -474,17 +461,12 @@ private fun PersonOverview(
                         color = MaterialTheme.nuvio.colors.textMuted,
                     )
                     Spacer(Modifier.width(markerWidth))
-                    CompositionLocalProvider(
-                        LocalPreparedLandscapeArtwork provides prepared,
-                        LocalLandscapeRowReveal provides gates[media.stableKey()],
-                    ) {
-                        HomePosterCard(
-                            item = media, basePosterWidthDp = 56, respectGlobalPosterStyle = false,
-                            enhanceLandscapeTitles = false, showTitleBelow = false, placeholderTitle = "",
-                            isWatched = WatchingState.isPosterWatched(watchedKeys, media, fullyWatchedSeriesKeys),
-                            onClick = open,
-                        )
-                    }
+                    HomePosterCard(
+                        item = media, basePosterWidthDp = 56, respectGlobalPosterStyle = false,
+                        enhanceLandscapeTitles = false, showTitleBelow = false, placeholderTitle = "",
+                        isWatched = WatchingState.isPosterWatched(watchedKeys, media, fullyWatchedSeriesKeys),
+                        onClick = open,
+                    )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
                             media.name,

@@ -203,17 +203,9 @@ internal fun CalendarScreen(
             }
             val shape = if (style.catalogLandscapeModeEnabled) PosterShape.Landscape else PosterShape.Poster
             val dates = range.dates
-            val rows = when (view) {
-                CalendarView.Day -> groups.map { (date, values) -> ArtworkPrefetchRow(date, values.map { it.toPreview() }, enhanceTitles = false, forceShape = shape) }
-                CalendarView.Week -> dates.chunked(7).map { week -> ArtworkPrefetchRow(week.first(), cards.filter { it.localDate in week }.map { it.toPreview() }, enhanceTitles = false, forceShape = shape) }
-                CalendarView.Month -> dates.chunked(7).map { week -> ArtworkPrefetchRow(week.first(), week.flatMap { groups[it].orEmpty().take(3) }.map { it.toPreview() }, enhanceTitles = false, forceShape = shape) }
-            }
             if (view == CalendarView.Month) {
                 CalendarMonthBody(selected, today, groups, { selected = it }, shape, onPosterClick, firstWeekday, rangeLoading) { move(it) }
             } else {
-                val prepared = rememberListArtworkPrefetch(viewState, rows, view)
-                val gates = rememberGridArtworkGates(rows, view)
-                CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared) {
                     BoxWithConstraints(Modifier.weight(1f)
                         .agendaScrollLoading(viewState, enabled = view != CalendarView.Month, loading = state.loading,
                             onEarlier = { extend(true) }, onLater = { extend(false) })
@@ -258,7 +250,6 @@ internal fun CalendarScreen(
                                             }, style = MaterialTheme.typography.titleMedium)
                                             ReleaseCount(members.size)
                                         }
-                                        CompositionLocalProvider(LocalLandscapeRowReveal provides gates[week.first()]) {
                                             Row {
                                                 week.forEach { date ->
                                                     Column(Modifier.width(columnWidth).padding(horizontal = 6.dp).testTag("calendar-day-$date"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -268,13 +259,11 @@ internal fun CalendarScreen(
                                                     }
                                                 }
                                             }
-                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
             }
         }
         if (picker) CalendarAgendaDatePicker(pickerDate, today, firstWeekday, dismiss = { picker = false }) {
@@ -363,7 +352,7 @@ internal fun calendarToday() = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(
 
 @Composable
 private fun CalendarShelf(cards: List<CalendarCard>, onPosterClick: ((MetaPreview) -> Unit)?, cardWidth: Dp? = null) {
-    CalendarAgendaShelf(cards, cards.map { it.toPreview() }, { it.key }) { card ->
+    CalendarAgendaShelf(cards, { it.key }) { card ->
         CalendarMediaCard(card, cardWidth = cardWidth, onPosterClick = onPosterClick)
     }
 }
@@ -371,23 +360,12 @@ private fun CalendarShelf(cards: List<CalendarCard>, onPosterClick: ((MetaPrevie
 @Composable
 internal fun <T> CalendarAgendaShelf(
     entries: List<T>,
-    previews: List<MetaPreview>,
     entryKey: (T) -> String,
     content: @Composable (T) -> Unit,
 ) {
-    val state = rememberLazyListState()
-    val style = rememberPosterCardStyleUiState()
-    val keys = entries.map(entryKey)
-    val shape = if (style.catalogLandscapeModeEnabled) PosterShape.Landscape else PosterShape.Poster
-    val prepared = rememberShelfArtworkPrefetch(state, previews, keys, enhanceTitles = false, forceShape = shape)
-    CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared) {
-        val gate = rememberMediaShelfGate(state, previews, keys)
-        CompositionLocalProvider(LocalLandscapeRowReveal provides gate) {
-            NuvioShelfSection(title = "", entries = entries, state = state, key = entryKey,
-                itemSpacing = 12.dp, rowContentPadding = PaddingValues(vertical = 8.dp)) { entry ->
-                content(entry)
-            }
-        }
+    NuvioShelfSection(title = "", entries = entries, state = rememberLazyListState(), key = entryKey,
+        itemSpacing = 12.dp, rowContentPadding = PaddingValues(vertical = 8.dp)) { entry ->
+        content(entry)
     }
 }
 
@@ -429,9 +407,6 @@ internal fun CalendarAgendaMediaCard(
     onLongClick: (() -> Unit)? = null,
 ) {
     val style = rememberPosterCardStyleUiState()
-    val artworkKey = item.stableKey()
-    val prepared = LocalPreparedLandscapeArtwork.current
-    val gate = LocalLandscapeRowReveal.current
     NuvioPosterCard(title = item.name,
         imageUrl = imageUrl,
         fallbackImageUrl = fallbackImageUrl,
@@ -442,10 +417,6 @@ internal fun CalendarAgendaMediaCard(
         artworkBadge = if (compact) null else badge,
         requiredLabels = true, showTitleBelow = !compact,
         isWatched = isWatched,
-        mediaIdentity = artworkKey, revealArtworkTogether = true,
-        artworkPending = prepared[artworkKey]?.isLoading == true,
-        showArtwork = (gate?.revealed ?: true) && prepared.mayReveal(artworkKey),
-        onArtworkReadyChanged = gate?.let { { ready -> it.report(artworkKey, ready) } },
         onClick = onClick, onLongClick = onLongClick)
 }
 
@@ -461,22 +432,14 @@ internal fun CalendarAgendaMediaCard(
         val cardWidth = if (shape == PosterShape.Landscape) artHeight * 1.77f else artHeight * (2f / 3f)
         Column(Modifier.fillMaxSize()) {
             CalendarMonthPager(selected, firstWeekday, Modifier.weight(1f).width(gridWidth).align(Alignment.CenterHorizontally), move) { pageDates, interactive, pageMonth ->
-                val pagePreviews = pageDates.flatMap { groups[it].orEmpty().take(3) }.map { it.toPreview() }
-                val pagePrepared = rememberFixedRowArtworkPrefetch(pagePreviews)
-                val pageRows = pageDates.chunked(7).map { week -> ArtworkPrefetchRow(week.first(), week.flatMap { groups[it].orEmpty().take(3) }.map { it.toPreview() }, enhanceTitles = false, forceShape = shape) }
-                val pageGates = rememberGridArtworkGates(pageRows, pageDates.first())
                 Column(Modifier.fillMaxSize().then(if (interactive) Modifier else Modifier.clearAndSetSemantics {})) {
                     WeekdayHeader(pageDates.take(7))
                     Spacer(Modifier.height(6.dp))
-                    CompositionLocalProvider(LocalPreparedLandscapeArtwork provides pagePrepared) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             pageDates.chunked(7).forEach { week ->
-                                CompositionLocalProvider(LocalLandscapeRowReveal provides pageGates[week.first()]) {
                                     MonthWeek(week, pageMonth, selected, today, groups, if (interactive) select else { _ -> }, shape, Modifier.weight(1f))
-                                }
                             }
                         }
-                    }
                 }
             }
             Column(Modifier.fillMaxWidth().height(shelfHeight).testTag("calendar-selected-day")) {

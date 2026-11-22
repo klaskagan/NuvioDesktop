@@ -15,7 +15,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 const val CATALOG_PAGE_SIZE = 100
-private const val DUPLICATE_CATALOG_PAGE_ADVANCE_LIMIT = 3
+internal const val DUPLICATE_CATALOG_PAGE_ADVANCE_LIMIT = 3
 
 data class CatalogPage(
     val items: List<MetaPreview>,

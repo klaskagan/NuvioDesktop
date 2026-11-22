@@ -12,7 +12,6 @@ import com.nuvio.app.core.ui.desktopCatalogShelfPosterBaseWidthDp
 import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.PosterShape
-import com.nuvio.app.features.home.stableKey
 
 @Composable
 fun HomePosterCard(
@@ -45,9 +44,6 @@ fun HomePosterCard(
     val enhance = calendar == null && enhanceLandscapeTitles && rowStyle.enhancesLandscapeArtwork && showLandscapeOverlay && isLandscapeMode && isTitleArtworkMedia(item.type)
     val artworkState = rememberLandscapeMediaArtwork(item.id, item.type, enhance && !forceLandscapeTitle)
     val artwork = artworkState.artwork
-    val rowReveal = LocalLandscapeRowReveal.current.takeIf { isTitleArtworkMedia(item.type) }
-    val prepared = LocalPreparedLandscapeArtwork.current[item.stableKey()]
-    val rowPending = rowReveal != null && prepared?.isLoading == true
     var cleanImageFailed by remember(item.id, item.type, artwork?.cleanBackdrop) { mutableStateOf(false) }
     val cleanBackdrop = artwork?.cleanBackdrop?.takeUnless { cleanImageFailed }
     val effectiveLandscapePoster = if ((!enhance && posterCardStyle.alwaysShowLandscapeClearlogo) || forceLandscapeTitle) null else item.landscapePoster
@@ -62,7 +58,7 @@ fun HomePosterCard(
     }
 
     // Unknown supplied art is never classified as textless. A failed/absent clean lookup keeps it intact.
-    val imageUrl = if ((enhance && artworkState.isLoading) || rowPending) null else cleanBackdrop ?: originalImageUrl
+    val imageUrl = if (enhance && artworkState.isLoading) null else cleanBackdrop ?: originalImageUrl
     val drawLandscapeTitle = if (calendar != null) false else if (banner || rowStyle.isLandscapeSize) true
         else if (enhance && !forceLandscapeTitle) cleanBackdrop != null
         else isLandscapeMode && showLandscapeOverlay && effectiveLandscapePoster.isNullOrBlank() && imageUrl != null
@@ -101,11 +97,7 @@ fun HomePosterCard(
                 (listOf(localizedMediaTypeLabel(item.type)) + item.genres).filter { it.isNotBlank() }.joinToString(" · ")
             } else null,
             logoTextFallback = enhance || forceLandscapeTitle || rowStyle.isLandscapeSize,
-            revealArtworkTogether = enhance || rowReveal != null,
-            artworkPending = (enhance && artworkState.isLoading) || rowPending,
-            mediaIdentity = item.stableKey(),
-            showArtwork = (rowReveal?.revealed ?: true) && LocalPreparedLandscapeArtwork.current.mayReveal(item.stableKey()),
-            onArtworkReadyChanged = rowReveal?.let { row -> { ready -> row.report(item.stableKey(), ready) } },
+            artworkPending = enhance && artworkState.isLoading,
             isWatched = isWatched,
             onClick = onClick,
             onLongClick = onLongClick,

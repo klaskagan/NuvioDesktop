@@ -267,18 +267,10 @@ internal fun CatalogContent(
 
         val keyedArtworkItems = remember(uiState.items) { uiState.items.withDuplicateSafeLazyKeys { it.stableKey() } }
         val enhanceArtwork = target == null || !preservesOriginalLandscapeArtwork(title, target)
-        val artworkRows = remember(keyedArtworkItems, artworkColumns, enhanceArtwork) {
-            com.nuvio.app.features.home.components.artworkGridRows(keyedArtworkItems.map { it.value }, keyedArtworkItems.map { it.lazyKey }, artworkColumns).map { it.copy(enhanceTitles = enhanceArtwork) }
-        }
-        val pageWindow = com.nuvio.app.features.home.components.rememberMediaPrefetchWindow(gridIdentity)
-        val prepared = com.nuvio.app.features.home.components.rememberGridArtworkPrefetch(gridState, artworkRows, gridIdentity, allowPortraitFallback = artworkFolder == null, forceShape = if (artworkFolder != null) PosterShape.Landscape else null, window = pageWindow)
-        com.nuvio.app.features.home.components.MediaPagePrefetchEffect(
-            rows = artworkRows, window = pageWindow, viewport = gridState, identity = gridIdentity,
-            canLoadMore = uiState.canLoadMore, isLoading = uiState.isLoading,
-            enabled = onLoadMore != null, onLoadMore = { onLoadMore?.invoke() },
-            visibleKeys = { gridState.layoutInfo.visibleItemsInfo.map { it.key } },
+        com.nuvio.app.features.home.components.LoadMoreOnScrollEffect(
+            state = gridState, canLoadMore = uiState.canLoadMore, isLoading = uiState.isLoading,
+            enabled = onLoadMore != null, threshold = artworkColumns * 4, onLoadMore = { onLoadMore?.invoke() },
         )
-        val artworkGates = com.nuvio.app.features.home.components.rememberGridArtworkGates(artworkRows, listOf(gridIdentity, artworkColumns), prepared)
         val normalBringIntoView = LocalBringIntoViewSpec.current
         var pinnedHeight by remember(gridIdentity) { mutableIntStateOf(0) }
         val maximumControlHeight = with(density) {
@@ -290,7 +282,6 @@ internal fun CatalogContent(
             )
         }
         CompositionLocalProvider(
-            com.nuvio.app.features.home.components.LocalPreparedLandscapeArtwork provides prepared,
             LocalBringIntoViewSpec provides if (pinnedControls != null) pinnedBringIntoView else normalBringIntoView,
         ) {
         Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
@@ -399,7 +390,6 @@ internal fun CatalogContent(
                             item = item,
                             fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                         )
-                        CompositionLocalProvider(com.nuvio.app.features.home.components.LocalLandscapeRowReveal provides artworkGates[keyedItem.lazyKey]) {
                         if (isDesktop) {
                             HomePosterCard(
                                 item = item,
@@ -426,7 +416,6 @@ internal fun CatalogContent(
                                 onClick = onPosterClick?.let { { it(item) } },
                                 onLongClick = onPosterLongClick?.let { { it(item) } },
                             )
-                        }
                         }
                     }
                     if (uiState.isLoading) {

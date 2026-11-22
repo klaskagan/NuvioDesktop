@@ -72,11 +72,10 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   choosing the next item. Sorting only fetched page unions breaks global order at
   page boundaries. Preserve source filters and identify unsupported provider sorts
   explicitly. `SeasonalGridPagerTest` covers later-page ordering and retry rollback.
-- Grid row readiness must include displayed image/logo readiness, not just finished
-  metadata requests. Preserve a revealed row when pagination appends members to a
-  partial row, and let later visible rows wait for earlier image gates. Shared
-  `PreparedArtworkStore`/`rememberGridArtworkGates` own this behavior;
-  `PreparedArtworkStorePinningTest` covers both regressions.
+- Posters in grids and shelves load individually. A per-row reveal gate with an
+  adaptive prefetch scheduler (`PreparedArtworkStore`, `rememberGridArtworkGates`)
+  was tried and removed because it hurt scroll performance. Pagination uses the
+  plain `LoadMoreOnScrollEffect` near-end trigger.
 - When two settings surfaces edit the same relative order, reconcile their persisted
   state explicitly. A drag that updates only one list can leave Home unchanged.
   Preserve unrelated catalog slots and reconcile pre-fix saved state once, without
@@ -105,10 +104,10 @@ The grouped Settings reorganization exposed stale desktop enum references during
 branch integration. `settingsCategoryForName` preserves saved names;
 `DesktopNavigationHistoryTest` checks parent traversal and category restoration.
 
-- Reuse shared card components, viewport prefetch, readiness gates, and theme
-  tokens. Scope a feature's style override so it does not leak into Home or alter
-  collection cover shapes. Persist separate feature preferences independently
-  when the product calls for independent controls. History initially reused
+- Reuse shared card components and theme tokens. Scope a feature's style
+  override so it does not leak into Home or alter collection cover shapes.
+  Persist separate feature preferences independently when the product calls
+  for independent controls. History initially reused
   Calendar's persisted orientation and coupled their toggles. Reuse the agenda
   controls with an explicit orientation value and feature-owned setter.
   `HistoryNavigationTest` verifies independence after changing both screens and
@@ -164,7 +163,7 @@ that explicitly passes `true` or only checks decoding cannot catch this regressi
   `PersonCreditsNavigationTest` checks the sidebar bounds and request count
   during catalog expansion. Clip shelf hover overdraw at the pane boundary so
   scrolled posters cannot cover the sidebar. Use the same column count for
-  the grid and artwork readiness when fitting a card into the embedded pane.
+  the grid and its layout when fitting a card into the embedded pane.
   The test compares sidebar pixels after horizontal scrolling and checks the
   first row against a width that fits four landscape cards.
   Feed the real scroll offset into the shared narrow actor profile in both
@@ -312,8 +311,18 @@ transformed bounds give the return target. Cards that scale outside
 `rememberPosterLiftSource`. `hoverScaledCardReturnsWithoutShift` and
 `cardLeftDuringMenuReturnsUnscaled` cover both pointer paths.
 
-Separately, a displayed poster stays visible when the same artwork request
-returns to Loading or its gate becomes pending: the shared card retains its
-successful painter and latches reveal per media/image/logo identity
-(`displayedPosterDoesNotBlankDuringSameArtworkPreparation`). That fix was not
-the cause of the return flicker.
+## Desktop Search keyboard shortcuts
+
+The desktop AWT Escape dispatcher runs before Compose key handlers. Route Escape
+to the focused Search field before global Back, and scope that priority to the
+active Search tab. A nonempty field clears in place, while the next Escape
+releases focus. Preserve route Back when a destination covers Search.
+`SearchDiscoveryUiTest` exercises the registered shortcut against the real
+Search tab, including both presses and the recent-search confirmation.
+
+Keep a browse session at the same lifetime as its scroll state when a Details
+destination can dispose the tab content. Search Discovery previously restored the
+query and scroll state but lost the chip and loaded pages. Reuse the shared
+near-end page loader (`LoadMoreOnScrollEffect`) with the retained cursor and a bounded run of pages that
+add no cards. `SearchDiscoveryUiTest` unmounts and remounts the browse content
+and checks its selected filter and results.

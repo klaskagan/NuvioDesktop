@@ -3,7 +3,9 @@ package com.nuvio.app.core.ui
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalPlatformWindowInsets
@@ -35,8 +37,10 @@ internal fun ProvideDesktopWindowInsets(
     }
 
     val inheritedInsets = LocalPlatformWindowInsets.current
-    val titleBarTop = with(LocalDensity.current) { if (isFullscreen) 0 else 28.dp.roundToPx() }
-    val windowInsets = remember(inheritedInsets, titleBarTop) {
+    // Read as state during layout: inset padding keeps its insets object across recomposition, so
+    // swapping in a new object when fullscreen toggles would leave the old clearance in place.
+    val titleBarTop = rememberUpdatedState(with(LocalDensity.current) { if (isFullscreen) 0 else 28.dp.roundToPx() })
+    val windowInsets = remember(inheritedInsets) {
         object : PlatformWindowInsets by inheritedInsets {
             override val captionBar = inheritedInsets.captionBar.withTopInset(titleBarTop)
             override val statusBars = inheritedInsets.statusBars.withTopInset(titleBarTop)
@@ -47,10 +51,10 @@ internal fun ProvideDesktopWindowInsets(
 }
 
 @OptIn(InternalComposeUiApi::class)
-private fun PlatformInsets.withTopInset(topInset: Int): PlatformInsets =
+private fun PlatformInsets.withTopInset(topInset: State<Int>): PlatformInsets =
     object : PlatformInsets by this {
         override val top: Int
-            get() = maxOf(this@withTopInset.top, topInset)
+            get() = maxOf(this@withTopInset.top, topInset.value)
     }
 
 @Composable

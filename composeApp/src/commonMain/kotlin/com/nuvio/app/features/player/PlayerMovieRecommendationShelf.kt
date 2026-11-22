@@ -175,7 +175,6 @@ private fun MovieRecommendationShelf(
                     basePosterWidthDp = (posterHeight.value * 2f / 3f).toInt(),
                     showTitleBelow = false,
                     artworkCornerRadius = 8.dp,
-                    mediaIdentity = "player-recommendation:${item.type}:${item.id}",
                     onClick = { onOpen(item) },
                 )
             }

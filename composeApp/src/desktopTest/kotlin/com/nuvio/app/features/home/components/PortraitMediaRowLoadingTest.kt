@@ -28,8 +28,8 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class PortraitMediaRowLoadingTest {
-    @Test fun portraitDiscoverRowKeepsItsLayoutAndRevealsTogether() = verifyPortraitRow(rail = false)
-    @Test fun portraitDetailRailPrefetchesAndRevealsTogetherWithoutMetadata() = verifyPortraitRow(rail = true)
+    @Test fun portraitDiscoverRowKeepsItsLayout() = verifyPortraitRow(rail = false)
+    @Test fun portraitDetailRailLoadsWithoutMetadata() = verifyPortraitRow(rail = true)
 
     private fun bytes(): ByteArray {
         val real = File("/tmp/nuvio-landscape-art/dune.jpg")
@@ -39,7 +39,7 @@ class PortraitMediaRowLoadingTest {
         return ByteArrayOutputStream().also { ImageIO.write(image, "png", it) }.toByteArray()
     }
 
-    @Test fun squareMediaRowAlsoUsesTheSharedLoadingPipeline() = verifyPortraitRow(rail = false, shape = PosterShape.Square)
+    @Test fun squareMediaRowKeepsItsLayout() = verifyPortraitRow(rail = false, shape = PosterShape.Square)
 
     private fun verifyPortraitRow(rail: Boolean, shape: PosterShape = PosterShape.Poster) = runDesktopComposeUiTest(width = 1000, height = 700) {
         check(System.getProperty("nuvio.test.isolatedHome") == "true")
@@ -93,7 +93,6 @@ class PortraitMediaRowLoadingTest {
             }
             waitUntil(timeoutMillis = 10_000) { slowStarted.get() && fastSent.get() }
             waitForIdle()
-            items.forEach { onAllNodesWithContentDescription(it.name).assertCountEquals(0) }
             assertEquals(0, metadataCalls.get())
             val reports = File("build/reports/media-row-loading").apply { mkdirs() }
             val capture = if (rail) "detail-portrait" else if (shape == PosterShape.Square) "square-grid" else "portrait-grid"
@@ -110,7 +109,7 @@ class PortraitMediaRowLoadingTest {
             runOnIdle {
                 assertEquals(items.first().id, clicked)
                 assertEquals(0, metadataCalls.get())
-                assertTrue(requests.values.all { it.get() == 1 }, "Prefetch and renderer must share decoded requests: ${requests.mapValues { it.value.get() }}")
+                assertTrue(requests.values.all { it.get() == 1 }, "Each poster must be requested once: ${requests.mapValues { it.value.get() }}")
             }
         } finally {
             slow.countDown()

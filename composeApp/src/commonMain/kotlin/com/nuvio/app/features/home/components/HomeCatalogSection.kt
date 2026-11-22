@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -92,22 +91,8 @@ private fun HomeCatalogRowSectionContent(
     rankingLayout: NumberedRankingLayout?,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
-    val rowState = rememberLazyListState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = .25f, behindFraction = .25f) })
+    val rowState = rememberLazyListState()
     val excluded = preservesOriginalLandscapeArtwork(section.title, section.target) || entries.any { it.calendarCard != null }
-    val artworkItems = remember(entries, rowStyle) { entries.map(rowStyle::artworkItem) }
-    val prepared = rememberShelfArtworkPrefetch(
-        rowState, artworkItems, section.key to rowStyle, enhanceTitles = !excluded && rowStyle.enhancesLandscapeArtwork,
-        allowPortraitFallback = allowPortraitFallback,
-        forceShape = rowStyle.posterShape,
-        alwaysShowLandscapeTitle = rowStyle == HomeRowStyle.BannerWithTitle,
-    )
-    val gate = remember(section.key, entries, prepared, posterCardStyle.catalogLandscapeModeEnabled) { LandscapeRowRevealState() }
-    val visibleIndices by remember(rowState) { derivedStateOf { rowState.layoutInfo.visibleItemsInfo.map { it.index } } }
-    val cohort = visibleIndices.mapNotNull { entries.getOrNull(it) }.filter {
-        isTitleArtworkMedia(it.type)
-    }
-    val cohortReady = visibleIndices.isNotEmpty() && cohort.all { gate.ready[it.stableKey()] == true }
-    SideEffect { if (!gate.revealed && cohortReady) gate.revealed = true }
 
     val rankingFont = if (rankingLayout != null) legacyRankingFont() else null
     val ranks = remember(entries, rankingLayout != null) {
@@ -115,7 +100,6 @@ private fun HomeCatalogRowSectionContent(
             item.stableKey() to (item.catalogRank?.takeIf { it > 0 } ?: index + 1)
         }.toMap()
     }
-    CompositionLocalProvider(LocalPreparedLandscapeArtwork provides prepared, LocalLandscapeRowReveal provides gate) {
     NuvioShelfSection(
         title = section.title,
         state = rowState,
@@ -149,10 +133,6 @@ private fun HomeCatalogRowSectionContent(
                     artworkCornerRadius = rankingLayout.posterCorner,
                     artworkFocusRing = rankingLayout.focusRing,
                     showTitleBelow = false,
-                    revealArtworkTogether = true,
-                    mediaIdentity = key,
-                    showArtwork = gate.revealed && prepared.mayReveal(key),
-                    onArtworkReadyChanged = { gate.report(key, it) },
                     isWatched = watched,
                     onClick = openItem,
                     onLongClick = openActions,
@@ -168,6 +148,5 @@ private fun HomeCatalogRowSectionContent(
             onClick = openItem,
             onLongClick = openActions,
         )
-    }
     }
 }

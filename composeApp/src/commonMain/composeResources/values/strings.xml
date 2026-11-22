@@ -2972,4 +2972,26 @@
     </plurals>
     <string name="history_remove">Remove from history</string>
     <string name="history_remove_failed">Could not remove this watch. Try again from the card menu.</string>
+    <string name="search_clear_history">Clear all recent searches</string>
+    <string name="search_clear_history_message">Remove the recent searches for this profile?</string>
+    <string name="search_cancel">Cancel</string>
+    <string name="search_clear_all">Clear all</string>
+    <string name="search_streaming_country">Streaming availability country</string>
+    <string name="search_country_automatic">Automatic (device region)</string>
+    <string name="search_availability_country">Availability in %1$s</string>
+    <string name="search_choose_country">Choose an availability country to see titles from this provider.</string>
+    <string name="search_discovery_date_window">%1$s to %2$s</string>
+    <string name="search_discovery_failed">Could not load these results.</string>
+    <string name="search_discovery_empty">No matching titles found.</string>
+    <string name="search_discovery_visibility_empty">No titles match your current visibility settings.</string>
+    <string name="search_discovery_empty_country">No matching titles found in %1$s.</string>
+    <string name="search_discovery_retry">Try again</string>
+    <string name="search_remove_filter">Remove filter</string>
+    <string name="search_chip_mood">Mood: %1$s</string>
+    <string name="search_chip_decade">Decade: %1$s</string>
+    <string name="search_chip_language">Original language: %1$s</string>
+    <string name="search_chip_studio">Studio: %1$s</string>
+    <string name="search_chip_new">New releases</string>
+    <string name="settings_controller_navigation">Controller and arrow-key navigation</string>
+    <string name="settings_controller_navigation_description">Use a gamepad or arrow keys to move between items.</string>
 </resources>

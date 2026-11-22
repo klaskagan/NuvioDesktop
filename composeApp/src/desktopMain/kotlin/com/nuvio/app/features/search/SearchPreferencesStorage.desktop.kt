@@ -5,6 +5,17 @@ import com.nuvio.app.core.storage.ProfileScopedKey
 
 internal actual object SearchPreferencesStorage {
     private val store = DesktopStorage.store("nuvio_discover_selection")
+    private const val countryKey = "search_streaming_country"
+
+    actual fun deviceRegion(): String? =
+        com.nuvio.app.features.settings.ThemeSettingsStorage.deviceLocale.country.takeIf(String::isNotBlank)
+
+    actual fun loadStreamingCountry(): String? = store.getString(countryKey)
+
+    actual fun saveStreamingCountry(country: String?) {
+        store.putString(countryKey, country)
+    }
+
     private const val landscapeKey = "search_landscape_posters"
     private const val showUnplayableKey = "search_show_unplayable"
 

@@ -49,6 +49,8 @@ class ConfiguredCollectionNavigationTest {
             onNodeWithTag("collection_grid").performScrollToIndex(20)
             onNodeWithTag("collection_background_decade").assertIsNotDisplayed()
             val before = onNodeWithTag("collection_grid").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
+            // Each card loads its own artwork; wait for a visible title rather than relying on prefetch.
+            waitUntil(timeoutMillis = 15_000) { onAllNodes(hasText("Dune") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
             onAllNodes(hasText("Dune") and hasClickAction()).onFirst().performClick()
             waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("Collection navigation movie details").fetchSemanticsNodes().isNotEmpty() }
             onAllNodesWithContentDescription("Back").onLast().performClick()
@@ -90,7 +92,7 @@ class ConfiguredCollectionNavigationTest {
                 com.nuvio.app.features.home.HomeRowStyle.NumberedRanking,
                 HomeCatalogSettingsRepository.uiState.value.rowStyles[shelfKey],
             )
-            onNodeWithText("Popular movies (Movies)").performClick()
+            onNodeWithText("Popular movies - Movies").performClick()
             waitUntil(timeoutMillis = 15_000) { onAllNodesWithTag("catalog_grid").fetchSemanticsNodes().isNotEmpty() }
             onNodeWithTag("collection_background_prime").assertIsDisplayed()
             onNodeWithTag("catalog_grid").performScrollToIndex(57)
@@ -139,7 +141,7 @@ class ConfiguredCollectionNavigationTest {
             val base = "http://127.0.0.1:${server.address.port}"
             val bytes = if (path.startsWith("/art/")) {
                 File(System.getenv("NUVIO_COLLECTION_TEST_ART") ?: "build/reports/collection-artwork/assets", path.substringAfterLast('/'))
-                    .takeIf(File::exists)?.readBytes() ?: ByteArray(0)
+                    .takeIf(File::exists)?.readBytes() ?: placeholderArt
             } else {
                 val json = when {
                     path == "/manifest.json" -> """{"id":"collection-fixture","name":"Collection fixture","version":"1.0.0","description":"Isolated UI test","resources":["catalog","meta"],"types":["movie"],"catalogs":[{"id":"popular","name":"Popular movies","type":"movie","extra":[{"name":"skip"}]}]}"""
@@ -160,6 +162,13 @@ class ConfiguredCollectionNavigationTest {
         }
         server.start()
         return server
+    }
+
+    /** Real review art is optional; without it every image would fail and cards would stay blank. */
+    private val placeholderArt: ByteArray by lazy {
+        val image = java.awt.image.BufferedImage(320, 180, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        image.createGraphics().apply { color = java.awt.Color(60, 90, 120); fillRect(0, 0, 320, 180); dispose() }
+        java.io.ByteArrayOutputStream().also { ImageIO.write(image, "png", it) }.toByteArray()
     }
 
     @Suppress("UNCHECKED_CAST")

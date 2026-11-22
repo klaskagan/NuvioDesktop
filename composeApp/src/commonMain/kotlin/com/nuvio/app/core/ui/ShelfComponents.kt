@@ -274,11 +274,7 @@ fun NuvioPosterCard(
     bottomLeftLogoUrl: String? = null,
     bottomLeftText: String? = null,
     logoTextFallback: Boolean = false,
-    revealArtworkTogether: Boolean = false,
     artworkPending: Boolean = false,
-    mediaIdentity: String = title,
-    showArtwork: Boolean = true,
-    onArtworkReadyChanged: ((Boolean) -> Unit)? = null,
     fillWidth: Boolean = false,
     onImageError: (() -> Unit)? = null,
     isWatched: Boolean = false,
@@ -305,43 +301,13 @@ fun NuvioPosterCard(
     )
     val shouldShowTitleBelow = showTitleBelow && (requiredLabels || !posterCardStyle.hideLabelsEnabled)
     val platformContext = coil3.compose.LocalPlatformContext.current
-    val imageModel = remember(imageUrl, fallbackImageUrl, platformContext, revealArtworkTogether, shape) {
+    val imageModel = remember(imageUrl, fallbackImageUrl, platformContext) {
         if (imageUrl == null) null
-        else if (revealArtworkTogether) posterImageRequest(platformContext, imageUrl, shape, fallback = fallbackImageUrl)
         else if (!fallbackImageUrl.isNullOrBlank() && fallbackImageUrl != imageUrl) coil3.request.ImageRequest.Builder(platformContext)
             .data(imageUrl).memoryCacheKeyExtras(mapOf(com.nuvio.app.core.poster.CustomPosterFallbackInterceptor.FALLBACK_URL_KEY to fallbackImageUrl)).build()
         else imageUrl
     }
-    val logoModel = remember(bottomLeftLogoUrl, platformContext, revealArtworkTogether) {
-        if (bottomLeftLogoUrl.isNullOrBlank()) null
-        else if (revealArtworkTogether) landscapeImageRequest(platformContext, bottomLeftLogoUrl, logo = true)
-        else bottomLeftLogoUrl
-    }
-    val cachedImage = remember(imageModel, mediaIdentity) { cachedMediaImagePreview(imageModel as? coil3.request.ImageRequest, mediaIdentity) }
-    val cachedLogo = remember(logoModel, mediaIdentity) { cachedMediaImagePreview(logoModel as? coil3.request.ImageRequest, mediaIdentity) }
-    val warmReturn = remember(mediaIdentity) { cachedImage?.wasDisplayed == true && (bottomLeftLogoUrl.isNullOrBlank() || cachedLogo?.wasDisplayed == true) }
-    var retainedImagePainter by remember(mediaIdentity, imageModel) {
-        mutableStateOf<androidx.compose.ui.graphics.painter.Painter?>(cachedImage?.painter)
-    }
-    var retainedLogoPainter by remember(mediaIdentity, logoModel) {
-        mutableStateOf<androidx.compose.ui.graphics.painter.Painter?>(cachedLogo?.painter)
-    }
-    var hasRevealedArtwork by remember(mediaIdentity, imageModel, logoModel) { mutableStateOf(false) }
-    var imageResolved by remember(title, imageUrl, fallbackImageUrl) { mutableStateOf(imageUrl == null || cachedImage != null) }
-    var logoLoaded by remember(title, imageUrl, bottomLeftLogoUrl) { mutableStateOf(cachedLogo != null) }
     var logoFailed by remember(title, imageUrl, bottomLeftLogoUrl) { mutableStateOf(false) }
-    val individuallyReady = !revealArtworkTogether || (!artworkPending && imageResolved &&
-        (bottomLeftLogoUrl.isNullOrBlank() || logoLoaded || logoFailed))
-    // A previously displayed poster/logo pair stays visible while its full-resolution image is restored.
-    val artworkReady = hasRevealedArtwork || (individuallyReady && (showArtwork || warmReturn))
-    SideEffect {
-        if (artworkReady) hasRevealedArtwork = true
-        onArtworkReadyChanged?.invoke(individuallyReady || hasRevealedArtwork)
-        if (artworkReady) {
-            markMediaImageDisplayed(imageModel as? coil3.request.ImageRequest, mediaIdentity)
-            markMediaImageDisplayed(logoModel as? coil3.request.ImageRequest, mediaIdentity)
-        }
-    }
 
     // The column scales on hover; share the lift source so a lifted card keeps its hover state.
     val liftSource = rememberPosterLiftSource(imageUrl)
@@ -388,27 +354,20 @@ fun NuvioPosterCard(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            // Keep the requests alive behind one layer; neither asset is exposed before both settle.
             Box(
-                modifier = Modifier.matchParentSize()
-                    .graphicsLayer { alpha = if (artworkReady) 1f else 0f }
-                    .then(if (artworkReady) Modifier else Modifier.clearAndSetSemantics { }),
+                modifier = Modifier.matchParentSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 if (imageUrl != null) {
                     NuvioAsyncImage(
                         model = imageModel,
-                        placeholder = retainedImagePainter,
-                        error = retainedImagePainter,
                         contentDescription = title,
                         modifier = Modifier.matchParentSize(),
-                        onLoading = { imageResolved = retainedImagePainter != null },
-                        onSuccess = { if (retainedImagePainter == null) retainedImagePainter = it.painter; imageResolved = true },
-                        onError = { imageResolved = true; if (retainedImagePainter == null) onImageError?.invoke() },
+                        onError = { onImageError?.invoke() },
                         contentScale = ContentScale.Crop,
                         desktopAnimation = posterCardStyle.animatedArtworkMode.toDesktopAnimation(),
                     )
-                } else if (!circularArtwork && bottomLeftDetail == null) {
+                } else if (!artworkPending && !circularArtwork && bottomLeftDetail == null) {
                     Text(
                         text = placeholderTitle,
                         modifier = Modifier.padding(horizontal = NuvioTokens.Space.s14),
@@ -443,21 +402,18 @@ fun NuvioPosterCard(
                     ) {
                         if (!bottomLeftLogoUrl.isNullOrBlank()) {
                             NuvioAsyncImage(
-                                model = logoModel,
-                                placeholder = retainedLogoPainter,
-                                error = retainedLogoPainter,
+                                model = bottomLeftLogoUrl,
                                 contentDescription = stringResource(Res.string.poster_logo_content_description, title),
                                 modifier = Modifier
                                     .width(catalogLogoOverlaySize.width)
                                     .height(catalogLogoOverlaySize.height),
                                 contentScale = ContentScale.Fit,
                                 alignment = Alignment.CenterStart,
-                                onLoading = { logoLoaded = retainedLogoPainter != null; logoFailed = false },
-                                onSuccess = { if (retainedLogoPainter == null) retainedLogoPainter = it.painter; logoLoaded = true; logoFailed = false },
-                                onError = { logoLoaded = retainedLogoPainter != null; logoFailed = retainedLogoPainter == null },
+                                onSuccess = { logoFailed = false },
+                                onError = { logoFailed = true },
                             )
                         }
-                        if (bottomLeftLogoUrl.isNullOrBlank() || (logoTextFallback && if (revealArtworkTogether) logoFailed else !logoLoaded)) {
+                        if (bottomLeftLogoUrl.isNullOrBlank() || (logoTextFallback && logoFailed)) {
                             Column(Modifier.align(Alignment.BottomStart)) {
                                 Text(
                                     text = bottomLeftText.orEmpty(),
@@ -481,7 +437,7 @@ fun NuvioPosterCard(
                     }
                 }
 
-                if (!artworkBadge.isNullOrBlank() && artworkReady) {
+                if (!artworkBadge.isNullOrBlank()) {
                     Text(
                         text = artworkBadge,
                         modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
@@ -496,8 +452,7 @@ fun NuvioPosterCard(
             }
         }
         if (shouldShowTitleBelow) {
-            val labelVisibility = Modifier.graphicsLayer { alpha = if (artworkReady) 1f else 0f }
-                .then(if (artworkReady) Modifier else Modifier.clearAndSetSemantics { })
+            val labelVisibility = Modifier
             Text(
                 text = title,
                 modifier = if (circularArtwork) labelVisibility.fillMaxWidth() else labelVisibility,

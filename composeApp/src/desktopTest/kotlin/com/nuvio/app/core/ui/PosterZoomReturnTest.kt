@@ -19,52 +19,6 @@ import kotlin.test.assertFalse
 
 @OptIn(ExperimentalTestApi::class)
 class PosterZoomReturnTest {
-    @Test fun displayedPosterDoesNotBlankDuringSameArtworkPreparation() = runDesktopComposeUiTest(width = 600, height = 600) {
-        val file = java.io.File("build/reports/poster-return/readiness.png").apply { parentFile.mkdirs() }
-        val bitmap = java.awt.image.BufferedImage(100, 150, java.awt.image.BufferedImage.TYPE_INT_RGB)
-        bitmap.createGraphics().apply { color = java.awt.Color.CYAN; fillRect(0, 0, 100, 150); dispose() }
-        javax.imageio.ImageIO.write(bitmap, "png", file)
-        var pending by mutableStateOf(false)
-        var imageUrl by mutableStateOf(file.toURI().toString())
-        setContent {
-            AppEnvironment {
-                Box(Modifier.padding(24.dp)) {
-                    NuvioPosterCard("Fixture", imageUrl,
-                        modifier = Modifier.testTag("ready-card"),
-                        revealArtworkTogether = true, artworkBadge = "03:13",
-                        artworkPending = pending, showArtwork = !pending,
-                    )
-                }
-            }
-        }
-        val bounds = onNodeWithTag("ready-card").fetchSemanticsNode().boundsInRoot
-        fun hasImage(): Boolean {
-            val image = onRoot().captureToImage().toAwtImage()
-            val pixel = java.awt.Color(image.getRGB(bounds.center.x.toInt(), bounds.top.toInt() + 30))
-            return pixel.green > 220 && pixel.blue > 220 && pixel.red < 30
-        }
-        waitUntil(timeoutMillis = 10_000) { hasImage() }
-        onNodeWithText("03:13").assertIsDisplayed()
-        runOnIdle { pending = true }
-        assertTrue(hasImage(), "A displayed poster must not return to its blank readiness placeholder")
-        onNodeWithText("03:13").assertIsDisplayed()
-        runOnIdle { pending = false }
-        assertTrue(hasImage())
-        val replacement = java.io.File(file.parentFile, "replacement.png")
-        bitmap.createGraphics().apply { color = java.awt.Color.MAGENTA; fillRect(0, 0, 100, 150); dispose() }
-        javax.imageio.ImageIO.write(bitmap, "png", replacement)
-        runOnIdle { pending = true; imageUrl = replacement.toURI().toString() }
-        assertFalse(hasImage(), "A different artwork identity must not reuse the old revealed image")
-        onNodeWithText("03:13").assertDoesNotExist()
-        runOnIdle { pending = false }
-        waitUntil(timeoutMillis = 10_000) {
-            val image = onRoot().captureToImage().toAwtImage()
-            val pixel = java.awt.Color(image.getRGB(bounds.center.x.toInt(), bounds.top.toInt() + 30))
-            pixel.red > 220 && pixel.blue > 220 && pixel.green < 30
-        }
-        onNodeWithText("03:13").assertIsDisplayed()
-    }
-
     @Test fun imageCardNeverBlanksAfterPortalAndBlurAreRemoved() = verifyPortalReturn(readsCallerAnchor = false)
 
     /**
@@ -101,7 +55,6 @@ class PosterZoomReturnTest {
                                     title = "Fixture", imageUrl = file.toURI().toString(),
                                     modifier = Modifier.testTag("hover-card"),
                                     shape = NuvioPosterShape.Landscape,
-                                    revealArtworkTogether = true,
                                     onLongClick = { anchor = PosterZoomAnchorHolder.consume() },
                                 )
                             }
@@ -185,7 +138,7 @@ class PosterZoomReturnTest {
                                 NuvioPosterCard(
                                     title = "Fixture", imageUrl = file.toURI().toString(),
                                     modifier = Modifier.testTag("image-card"),
-                                    revealArtworkTogether = true, artworkBadge = "03:13",
+                                    artworkBadge = "03:13",
                                     onLongClick = { anchor = PosterZoomAnchorHolder.consume() },
                                 )
                             }

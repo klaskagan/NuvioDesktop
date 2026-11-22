@@ -1,6 +1,21 @@
 package com.nuvio.app.features.search
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.lazy.LazyItemScope
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import nuvio.composeapp.generated.resources.search_availability_country
+import nuvio.composeapp.generated.resources.search_clear_all
+import nuvio.composeapp.generated.resources.search_discovery_date_window
+import nuvio.composeapp.generated.resources.search_discovery_retry
+import nuvio.composeapp.generated.resources.search_remove_filter
+import nuvio.composeapp.generated.resources.search_streaming_country
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.rounded.Check
@@ -288,11 +303,16 @@ internal fun SearchRecentChips(
     recentSearches: List<String>,
     onSearchPress: (String) -> Unit,
     onRemoveSearch: (String) -> Unit,
+    onClearAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp)) {
-        Text(stringResource(Res.string.compose_search_recent_searches), style = searchText(13.sp, FontWeight.SemiBold, SearchColors.textMuted))
-        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(Res.string.compose_search_recent_searches), style = searchText(13.sp, FontWeight.SemiBold, SearchColors.textMuted))
+            Spacer(Modifier.weight(1f))
+            SearchTextAction(stringResource(Res.string.search_clear_all), onClick = onClearAll)
+        }
+        Spacer(Modifier.height(10.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val removeLabel = stringResource(Res.string.compose_search_remove_recent_search)
             recentSearches.forEach { recent ->
@@ -323,6 +343,7 @@ internal fun SearchRecentChips(
 /** Desktop results body: spotlight + people panel, then a sortable grid; or a people grid. */
 internal fun LazyListScope.searchDesktopResults(
     state: SearchUiState,
+    itemModifier: LazyItemScope.() -> Modifier,
     scope: SearchScope,
     sort: SearchSort,
     onSortChange: (SearchSort) -> Unit,
@@ -344,11 +365,11 @@ internal fun LazyListScope.searchDesktopResults(
             SearchSectionHeader(
                 title = stringResource(Res.string.compose_search_people),
                 count = stringResource(Res.string.search_people_count, state.people.size),
-                modifier = Modifier.padding(horizontal = gutter),
+                modifier = itemModifier().padding(horizontal = gutter),
             )
         }
         items(count = rows.size, key = { "search-people-row:$it" }) { index ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = gutter), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(itemModifier().fillMaxWidth().padding(horizontal = gutter), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 rows[index].forEach { person ->
                     SearchPersonCard(person, onClick = onPersonClick?.let { { it(person) } }, modifier = Modifier.weight(1f))
                 }
@@ -368,7 +389,7 @@ internal fun LazyListScope.searchDesktopResults(
                 onMore = onPosterLongClick?.let { { it(spotlight) } },
                 onPersonClick = onPersonClick,
                 onSeeAllPeople = { onScopeChange(SearchScope.People) },
-                modifier = Modifier.padding(horizontal = gutter).padding(top = 22.dp),
+                modifier = itemModifier().padding(horizontal = gutter).padding(top = 22.dp),
             )
         }
     }
@@ -379,7 +400,7 @@ internal fun LazyListScope.searchDesktopResults(
             SearchSectionHeader(
                 title = if (scope == SearchScope.All) stringResource(Res.string.compose_search_movies_and_tv) else scope.label(),
                 count = stringResource(Res.string.search_titles_count, gridItems.size),
-                modifier = Modifier.padding(horizontal = gutter).padding(top = if (spotlight != null) 18.dp else 8.dp),
+                modifier = itemModifier().padding(horizontal = gutter).padding(top = if (spotlight != null) 18.dp else 8.dp),
             ) {
                 SearchSortChip(sort = sort, onSortChange = onSortChange)
                 SearchPosterOrientationButton(landscape = landscape, onToggle = onToggleLandscape)
@@ -392,7 +413,7 @@ internal fun LazyListScope.searchDesktopResults(
         PosterGridRow(
             items = gridItems.subList(first, minOf(first + columns, gridItems.size)),
             columns = columns,
-            modifier = Modifier.padding(horizontal = gutter),
+            modifier = itemModifier().padding(horizontal = gutter),
             watchedKeys = watchedKeys,
             fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
             onPosterClick = onPosterClick,
@@ -702,8 +723,18 @@ internal fun LazyListScope.searchDesktopList(
     onQueryChange: (String) -> Unit,
     lastRequestedQuery: String?,
     isSearchFocused: Boolean,
-    captureFieldFocus: () -> Unit,
+    showRecents: Boolean,
+    onRecentFocusChanged: (Boolean) -> Unit,
+    onRecentPress: (String) -> Unit,
+    onRecentRemove: (String) -> Unit,
+    onClearHistory: () -> Unit,
     fieldModifier: Modifier,
+    hazeState: HazeState,
+    contentAlpha: Float,
+    discovery: SearchDiscovery?,
+    discoveryUi: SearchDiscoveryUi,
+    onDiscoverySelect: (SearchDiscovery?) -> Unit,
+    onStreamingCountrySettings: () -> Unit,
     headerColor: Color,
     topPadding: Dp?,
     gutter: Dp,
@@ -731,14 +762,25 @@ internal fun LazyListScope.searchDesktopList(
 ) {
     val normalizedQuery = query.trim()
     val isWaiting = normalizedQuery.isNotBlank() && lastRequestedQuery != normalizedQuery
-    val showResults = normalizedQuery.isNotBlank() && !isWaiting && uiState.hasContent
+    val showResults = discovery == null && normalizedQuery.isNotBlank() && uiState.hasContent
+    val pinned = headerColor.alpha > 0.05f
+    // Every scrolling item is a blur source for the pinned bar, and fades/slides when the layout changes.
+    val itemModifier: LazyItemScope.() -> Modifier = {
+        Modifier.animateItem(fadeInSpec = tween(220), placementSpec = tween(260, easing = FastOutSlowInEasing), fadeOutSpec = tween(160))
+            .hazeSource(hazeState)
+    }
 
     if (query.isBlank()) {
-        item(key = "search-hero") { SearchIdleHero(Modifier.padding(horizontal = gutter)) }
+        item(key = "search-hero") { SearchIdleHero(itemModifier().padding(horizontal = gutter)) }
     }
     stickyHeader(key = "search-bar") {
         Box(Modifier.fillMaxWidth()) {
-            Box(Modifier.matchParentSize().background(headerColor).nuvioConsumePointerEvents())
+            Box(
+                Modifier.matchParentSize()
+                    .then(if (pinned) Modifier.hazeEffect(hazeState) { blurRadius = 24.dp } else Modifier)
+                    .background(headerColor)
+                    .nuvioConsumePointerEvents(),
+            )
             if (headerColor.alpha > 0.5f) {
                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(SearchColors.hairline))
             }
@@ -751,6 +793,16 @@ internal fun LazyListScope.searchDesktopList(
                     onClear = { onQueryChange("") },
                     fieldModifier = fieldModifier,
                 )
+                val suggestions = searchDiscoverySuggestions(query)
+                if (suggestions.isNotEmpty()) {
+                    SearchDesktopDiscoveryChips(
+                        suggestions = suggestions,
+                        selected = discovery,
+                        country = discoveryUi.country,
+                        onSelect = onDiscoverySelect,
+                        onStreamingCountrySettings = onStreamingCountrySettings,
+                    )
+                }
                 if (showResults) {
                     SearchScopeTabs(
                         selected = scope,
@@ -768,15 +820,16 @@ internal fun LazyListScope.searchDesktopList(
     }
 
     if (query.isBlank()) {
-        if (isSearchFocused && recentSearches.isNotEmpty()) {
-            // Keep the field focused while chips are up, or the click blurs it and removes the chip mid-press.
-            captureFieldFocus()
+        if (showRecents && recentSearches.isNotEmpty()) {
+            // Clicking a chip moves focus off the field; tracking the section's focus keeps it on screen.
             item(key = "search-recent") {
                 SearchRecentChips(
                     recentSearches = recentSearches,
-                    onSearchPress = onQueryChange,
-                    onRemoveSearch = SearchHistoryRepository::removeSearch,
-                    modifier = Modifier.padding(horizontal = gutter),
+                    onSearchPress = onRecentPress,
+                    onRemoveSearch = onRecentRemove,
+                    onClearAll = onClearHistory,
+                    modifier = itemModifier().padding(horizontal = gutter)
+                        .onFocusChanged { onRecentFocusChanged(it.hasFocus) }.focusGroup(),
                 )
             }
         }
@@ -799,11 +852,26 @@ internal fun LazyListScope.searchDesktopList(
         return
     }
 
+    if (discovery != null) {
+        searchDesktopDiscoveryResults(
+            selection = discovery,
+            state = discoveryUi,
+            columns = searchColumns,
+            gutter = gutter,
+            itemModifier = itemModifier,
+            watchedKeys = watchedKeys,
+            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+            onPosterClick = onPosterClick,
+            onPosterLongClick = onPosterLongClick,
+        )
+        return
+    }
+
     when {
-        isWaiting || ((uiState.isLoading || addonManifestsLoading) && !uiState.hasContent) -> {
+        !uiState.hasContent && (isWaiting || uiState.isLoading || addonManifestsLoading) -> {
             item(key = "search-skeleton-spotlight") {
                 Box(
-                    Modifier.padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth().height(300.dp)
+                    itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth().height(300.dp)
                         .clip(RoundedCornerShape(18.dp)).background(SearchColors.fill),
                 )
             }
@@ -817,6 +885,7 @@ internal fun LazyListScope.searchDesktopList(
         }
 
         !uiState.hasContent -> item(key = "search-empty") {
+            Box(itemModifier()) {
             val offline = uiState.emptyStateReason == SearchEmptyStateReason.RequestFailed &&
                 (networkCondition == NetworkCondition.NoInternet || networkCondition == NetworkCondition.ServersUnreachable)
             if (offline) {
@@ -835,10 +904,12 @@ internal fun LazyListScope.searchDesktopList(
                     modifier = Modifier.padding(horizontal = gutter),
                 )
             }
+            }
         }
 
         else -> searchDesktopResults(
             state = uiState,
+            itemModifier = { itemModifier().graphicsLayer { alpha = contentAlpha } },
             scope = scope,
             sort = sort,
             onSortChange = onSortChange,
@@ -955,4 +1026,136 @@ internal fun SearchDropdownChip(
             }
         }
     }
+}
+
+
+// ---------- Discovery (develop's tag chips, desktop styling) ----------
+
+@Composable
+private fun SearchDesktopDiscoveryChips(
+    suggestions: List<SearchDiscovery>,
+    selected: SearchDiscovery?,
+    country: String?,
+    onSelect: (SearchDiscovery?) -> Unit,
+    onStreamingCountrySettings: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(start = 4.dp, top = 12.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(suggestions) { suggestion ->
+                val isSelected = selected == suggestion
+                val shape = RoundedCornerShape(999.dp)
+                val fill by animateColorAsState(if (isSelected) SearchColors.textPrimary else SearchColors.fill, tween(160), label = "tag_fill")
+                val ink by animateColorAsState(if (isSelected) Color(0xFF0E0F12) else SearchColors.textPrimary, tween(160), label = "tag_ink")
+                Row(
+                    Modifier.clip(shape).background(fill)
+                        .border(1.dp, if (isSelected) Color.Transparent else SearchColors.hairline, shape)
+                        .clickable { onSelect(suggestion.takeUnless { isSelected }) }
+                        .padding(start = 14.dp, end = if (isSelected) 8.dp else 14.dp, top = 7.dp, bottom = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(discoveryChipLabel(suggestion), style = searchText(13.sp, FontWeight.SemiBold, ink), maxLines = 1)
+                    if (isSelected) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Rounded.Close, stringResource(Res.string.search_remove_filter), tint = ink, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+        if (selected?.kind == DiscoveryKind.Provider) {
+            Spacer(Modifier.height(8.dp))
+            SearchTextAction(
+                if (country == null) stringResource(Res.string.search_streaming_country)
+                else stringResource(Res.string.search_availability_country, country),
+                onClick = onStreamingCountrySettings,
+            )
+        }
+        if (selected?.kind == DiscoveryKind.Recent) {
+            val today = discoveryToday()
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(Res.string.search_discovery_date_window, recentDiscoveryStart(today).toString(), today.toString()),
+                style = searchText(12.sp, color = SearchColors.textMuted),
+            )
+        }
+    }
+}
+
+private fun LazyListScope.searchDesktopDiscoveryResults(
+    selection: SearchDiscovery,
+    state: SearchDiscoveryUi,
+    columns: Int,
+    gutter: Dp,
+    itemModifier: LazyItemScope.() -> Modifier,
+    watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String>,
+    onPosterClick: ((MetaPreview) -> Unit)?,
+    onPosterLongClick: ((MetaPreview) -> Unit)?,
+) {
+    item(key = "discovery-header") {
+        SearchSectionHeader(
+            title = discoveryChipLabel(selection),
+            count = state.items.takeIf { it.isNotEmpty() }?.let { stringResource(Res.string.search_titles_count, it.size) },
+            modifier = itemModifier().padding(horizontal = gutter).padding(top = 8.dp),
+        )
+    }
+    if (state.loading && state.items.isEmpty()) {
+        items(2, key = { "discovery-skeleton:$it" }) {
+            com.nuvio.app.features.home.components.PosterGridSkeletonRow(
+                columns = columns,
+                modifier = itemModifier().padding(horizontal = gutter),
+            )
+        }
+    }
+    val rows = (state.items.size + columns - 1) / columns
+    items(count = rows, key = { "search-row:$it" }) { rowIndex ->
+        val first = rowIndex * columns
+        PosterGridRow(
+            items = state.items.subList(first, minOf(first + columns, state.items.size)),
+            columns = columns,
+            modifier = itemModifier().padding(horizontal = gutter),
+            watchedKeys = watchedKeys,
+            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+            onPosterClick = onPosterClick,
+            onPosterLongClick = onPosterLongClick,
+        )
+    }
+    if (state.loading && state.items.isNotEmpty()) {
+        item(key = "discovery-loading-more") {
+            Box(itemModifier().fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                NuvioLoadingIndicator(modifier = Modifier.size(22.dp))
+            }
+        }
+    }
+    if (state.showsStatus()) {
+        item(key = "discovery-status") {
+            Column(
+                itemModifier().fillMaxWidth().padding(horizontal = gutter).padding(top = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    discoveryStatusMessage(state),
+                    style = searchText(15.sp, color = SearchColors.textSecondary),
+                    textAlign = TextAlign.Center,
+                )
+                if (state.failed) {
+                    Spacer(Modifier.height(14.dp))
+                    SearchPillButton(stringResource(Res.string.search_discovery_retry), primary = true, onClick = state.load)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchTextAction(label: String, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val color by animateColorAsState(if (hovered) SearchColors.textPrimary else SearchColors.textSecondary, tween(140), label = "text_action")
+    Text(
+        label,
+        style = searchText(13.sp, FontWeight.Medium, color),
+        modifier = Modifier.clip(RoundedCornerShape(6.dp)).hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+    )
 }

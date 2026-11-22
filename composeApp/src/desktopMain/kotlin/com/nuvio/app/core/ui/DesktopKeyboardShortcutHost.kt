@@ -19,9 +19,15 @@ private const val ESCAPE_DEBOUNCE_MS = 300L
  * screen keyboard-reachable without an extra press.
  */
 @Composable
-internal fun DesktopKeyboardShortcutHost() {
+internal fun DesktopKeyboardShortcutHost(navigationEnabled: Boolean) {
     val focusManager = LocalFocusManager.current
     val focusManagerState = rememberUpdatedState(focusManager)
+
+    androidx.compose.runtime.LaunchedEffect(navigationEnabled) {
+        if (navigationEnabled && !FocusPresence.hasAnyFocus) {
+            focusManagerState.value.moveFocus(FocusDirection.Next)
+        }
+    }
 
     DisposableEffect(Unit) {
         var lastEscapeAtMs = 0L
@@ -39,8 +45,6 @@ internal fun DesktopKeyboardShortcutHost() {
         }
         KeyboardFocusManager.getCurrentKeyboardFocusManager()
             .addKeyEventDispatcher(dispatcher)
-
-        focusManagerState.value.moveFocus(FocusDirection.Next)
 
         onDispose {
             KeyboardFocusManager.getCurrentKeyboardFocusManager()

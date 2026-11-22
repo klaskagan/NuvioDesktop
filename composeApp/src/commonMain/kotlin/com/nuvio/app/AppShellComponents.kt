@@ -159,6 +159,7 @@ internal fun rememberGuardedPopBackStack(
 
 internal data class AppTabState(
     val searchListState: LazyListState,
+    val searchDiscoverySession: com.nuvio.app.features.search.SearchDiscoverySession,
     val homeContentGeneration: Int = 0,
     val profileId: Int? = null,
     val searchFocusRequestCount: Int = 0,
@@ -210,6 +211,7 @@ internal data class AppTabActions(
     val onCollectionsSettingsClick: () -> Unit = {},
     val onWatchPartySettingsClick: () -> Unit = {},
     val onFolderClick: ((collectionId: String, folderId: String) -> Unit)? = null,
+    val onStreamingCountrySettings: () -> Unit = {},
     val onRequestedSettingsPageConsumed: () -> Unit = {},
     val onInitialHomeContentRendered: () -> Unit = {},
 )
@@ -279,7 +281,9 @@ internal fun AppTabHost(
                 }
             }
 
-            AppScreenTab.Search -> {
+            AppScreenTab.Search -> androidx.compose.runtime.CompositionLocalProvider(
+                com.nuvio.app.features.search.LocalSearchDiscoverySession provides state.searchDiscoverySession,
+            ) {
                 SearchScreen(
                     modifier = contentModifier,
                     topChromePadding = state.topChromePadding,
@@ -287,6 +291,7 @@ internal fun AppTabHost(
                     onPosterClick = actions.onPosterClick,
                     onPosterLongClick = actions.onPosterLongClick,
                     onPersonClick = actions.onSearchPersonClick,
+                    onStreamingCountrySettings = actions.onStreamingCountrySettings,
                     searchFocusRequestCount = state.searchFocusRequestCount,
                     scrollToTopRequests = requests.searchScrollToTopRequests,
                 )

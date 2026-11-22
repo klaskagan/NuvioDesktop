@@ -223,57 +223,6 @@ class LandscapeMediaCardTest {
         save("narrow-large-text")
     }
 
-    @Test fun slowLogoKeepsPosterAndTemporaryTextHiddenWhileBothRequestsRunInParallel() = runDesktopComposeUiTest(width = 800, height = 450) {
-        prepare()
-        val logoGate = java.util.concurrent.CountDownLatch(1)
-        val posterGate = java.util.concurrent.CountDownLatch(1)
-        val posterSent = java.util.concurrent.atomic.AtomicBoolean(false)
-        val requests = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
-        val executor = java.util.concurrent.Executors.newCachedThreadPool()
-        server.executor = executor
-        server.createContext("/") { exchange ->
-            val path = exchange.requestURI.path
-            requests.add(path)
-            val logo = path == "/logo.png"
-            val released = (if (logo) logoGate else posterGate).await(20, java.util.concurrent.TimeUnit.SECONDS)
-            if (released) {
-                val bytes = asset(if (logo) "dune-logo.png" else "dune.jpg").readBytes()
-                exchange.responseHeaders.set("Content-Type", if (logo) "image/png" else "image/jpeg")
-                exchange.sendResponseHeaders(200, bytes.size.toLong())
-                exchange.responseBody.use { it.write(bytes) }
-                if (!logo) posterSent.set(true)
-            } else exchange.close()
-        }
-        server.start()
-        try {
-            val base = "http://127.0.0.1:" + server.address.port
-            setContent { AppEnvironment { CompositionLocalProvider(LocalLandscapeArtworkLoader provides { _, _, _ ->
-                TmdbLandscapeArtwork(null, "$base/logo.png", "$base/backdrop.jpg")
-            }) { HomePosterCard(movie) } } }
-            waitUntil(timeoutMillis = 10_000) { requests.size == 2 }
-            onNodeWithText("Dune").assertDoesNotExist()
-            onNodeWithContentDescription("Dune").assertDoesNotExist()
-            posterGate.countDown()
-            waitUntil(timeoutMillis = 10_000) { posterSent.get() }
-            waitForIdle()
-            onNodeWithText("Dune").assertDoesNotExist()
-            onNodeWithContentDescription("Dune").assertDoesNotExist()
-            val pending = onRoot().captureToImage().toAwtImage()
-            val colors = mutableSetOf<Int>()
-            for (x in 20 until pending.width - 20 step 8) for (y in 20 until pending.height - 20 step 8) colors.add(pending.getRGB(x, y))
-            assertTrue(colors.size < 32, "The poster must still be hidden behind the placeholder while its logo is pending")
-            save("poster-ready-logo-pending")
-            logoGate.countDown()
-            waitUntil(timeoutMillis = 10_000) { onAllNodesWithContentDescription("Dune logo", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-            waitForArtwork("Dune")
-            onNodeWithText("Dune").assertDoesNotExist()
-            save("poster-and-logo-revealed")
-        } finally {
-            logoGate.countDown(); posterGate.countDown(); server.stop(0); executor.shutdownNow()
-        }
-    }
-
     @Test fun reportedDecadeAndLibraryTitlesUseLogosOnSharedGridCards() = runDesktopComposeUiTest(width = 1100, height = 650) {
         prepare()
         val examples = listOf(10601 to "Peter Pan", 155 to "The Dark Knight", 1934 to "Shakespeare in Love")
