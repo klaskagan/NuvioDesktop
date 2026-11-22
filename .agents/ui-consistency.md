@@ -24,9 +24,15 @@ Person Details opening with no transition). Apply these to every redesigned scre
   `HeroParallax` (Home hero values) and `FullSlide`. Record the chosen one here and delete the toggle.
   A whole page sliding a third of the screen plus a shared-element avatar flying over it was rejected
   as too busy. Don't fly individual elements across pages; let them move with their layer.
-- **Late sections reserve their space:** a section that loads after its neighbours shows a
-  same-size placeholder (Person `KnownForPlaceholder`), so nothing below it shifts. The shift read
-  as motion "starting from the top right".
+- **Placeholders are the real layout, not an approximation:** build skeletons and late-section
+  placeholders from the same components and paddings as the loaded UI, with blank data. Person
+  uses `PersonRailPlaceholder` (the real `DetailPosterRailSection` with blank, inert cards and the
+  real title) and `PersonHeaderLayout` (one header for loading and loaded, with the bio area always
+  reserving four lines plus "Show more"). A hand-made skeleton with generic poster sizes, and a
+  Known For title that popped in late, both moved the page and read as motion "starting from the
+  top right". Conditional gaps must not change when data arrives either: Movies' top gap used to
+  appear only after Known For loaded. Regression: `PersonCreditsNavigationTest` asserts the Movies
+  title keeps its exact position when Known For arrives late.
 - **State changes crossfade:** loading → content → error (`AnimatedContent` keyed on the state
   class), and a late-arriving section fades in (Person Known For).
 - **Lists move, they don't jump:** give list items `Modifier.animateItem()` (fade plus

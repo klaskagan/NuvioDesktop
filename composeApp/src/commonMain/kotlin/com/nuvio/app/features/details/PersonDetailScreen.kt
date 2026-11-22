@@ -4,6 +4,10 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalDensity
+import com.nuvio.app.core.ui.nuvioConsumePointerEvents
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -350,7 +354,7 @@ private fun PersonDetailContent(
         Modifier.fillMaxSize().then(if (isDesktop) Modifier else Modifier.background(background).background(gradient)),
     ) {
         val wide = maxWidth >= PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH
-        val padding = if (wide) 40.dp else 20.dp
+        val padding = if (wide) PERSON_WIDE_PADDING else 20.dp
         val list = if (wide) wideList else compactList
         val topPadding = if (wide) 34.dp else 48.dp
         val controlsTopInset = when {
@@ -417,7 +421,7 @@ private fun PersonDetailContent(
                                 {
                                     PersonRedesignHeader(
                                         person, initialProfilePhoto, avatarTransitionKey, sharedTransitionScope, animatedVisibilityScope,
-                                        Modifier.padding(horizontal = padding).padding(top = PERSON_REDESIGN_TOP_INSET, bottom = 28.dp)
+                                        Modifier.padding(horizontal = padding).padding(top = PERSON_REDESIGN_TOP_INSET, bottom = PERSON_HEADER_BOTTOM)
                                             .testTag("actor_preview_wide"),
                                     )
                                 }
@@ -434,6 +438,9 @@ private val PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH = 900.dp
 private val PERSON_DETAIL_WIDE_SIDEBAR_WIDTH = 392.dp
 /** Clears the 48dp desktop back button (top 32dp) before the redesigned header starts. */
 private val PERSON_REDESIGN_TOP_INSET = 96.dp
+/** Wide-layout page padding (PersonDetailContent's `padding` when wide) and header bottom gap. */
+private val PERSON_WIDE_PADDING = 40.dp
+private val PERSON_HEADER_BOTTOM = 28.dp
 private const val HERO_COLLAPSE_SCROLL_RANGE = 220
 private fun heroScrollOffset(firstItem: Int, offset: Int): Int =
     if (firstItem > 0) HERO_COLLAPSE_SCROLL_RANGE else offset
@@ -485,7 +492,12 @@ private fun PersonOverview(
                         // would leave LazyColumn anchored to Movies after the response arrives.
                         // On desktop it reserves the row's height, so arriving data doesn't push the
                         // rows below down (that shift read as motion starting from the top right).
-                        if (isDesktop) KnownForPlaceholder(padding) else Spacer(Modifier.height(1.dp))
+                        if (isDesktop) {
+                            PersonRailPlaceholder(
+                                stringResource(Res.string.person_known_for_shelf), padding,
+                                Modifier.padding(top = if (wide) 0.dp else 24.dp),
+                            )
+                        } else Spacer(Modifier.height(1.dp))
                     } else {
                         DetailPosterRailSection(
                             title = stringResource(Res.string.person_known_for_shelf),
@@ -506,8 +518,10 @@ private fun PersonOverview(
                 DetailPosterRailSection(
                     title = stringResource(section.titleResource),
                     items = credits,
+                    // Desktop shows a Known For placeholder while it loads, so the first row keeps its gap
+                    // throughout; otherwise the gap appearing on load pushed every row down 24dp.
                     modifier = Modifier.animateItem(fadeInSpec = tween(220), placementSpec = tween(260))
-                        .padding(top = if (wide && knownFor.isNullOrEmpty() && section == sections.first().first) 0.dp else 24.dp),
+                        .padding(top = if (wide && !(knownFor == null && isDesktop) && knownFor.isNullOrEmpty() && section == sections.first().first) 0.dp else 24.dp),
                     watchedKeys = watchedKeys,
                     fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                     headerHorizontalPadding = padding,
@@ -731,9 +745,8 @@ internal fun PersonIdentitySidebar(
                 }
             }
 
-            if (isDesktop) {
-                PersonRedesignIdentity(person, creditSummary)
-            } else {
+            // Desktop uses PersonRedesignHeader instead of this side pane; this is the tablet layout.
+            run {
             Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 Text(
                     text = person.name,
@@ -1062,11 +1075,6 @@ private fun PersonDetailSkeleton(
                 DesktopPersonDetailSkeleton(
                     personName = personName,
                     avatarRequest = avatarRequest ?: profilePhoto,
-                    avatarSharedElementModifier = Modifier,
-                    skeletonPosterWidth = skeletonPosterWidth,
-                    skeletonPosterHeight = skeletonPosterHeight,
-                    skeletonPosterCornerRadius = posterCardStyle.cornerRadiusDp.dp,
-                    showPosterLabels = !isLandscapeShelfMode && !posterCardStyle.hideLabelsEnabled,
                 )
             } else if (maxWidth >= PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH) {
                 WidePersonDetailSkeleton(
@@ -1485,61 +1493,6 @@ internal fun personBackdropArt(person: PersonDetail): String? =
         .maxByOrNull { it.popularity ?: -1.0 }
         ?.banner
 
-/** Desktop identity block: department eyebrow, large name, fact pills and the Favorite placeholder. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun PersonRedesignIdentity(person: PersonDetail, creditSummary: String, nameSize: androidx.compose.ui.unit.TextUnit = 34.sp) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            person.knownFor?.takeIf { it.isNotBlank() }?.let { department ->
-                Text(
-                    department.uppercase(),
-                    style = redesignText(12.sp, FontWeight.SemiBold, RedesignColors.textSecondary, letterSpacing = 0.08.em),
-                )
-            }
-            Text(
-                person.name,
-                style = redesignText(nameSize, FontWeight.ExtraBold, lineHeight = nameSize * 1.12f, letterSpacing = RedesignTightTracking),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        val pills = listOfNotNull(
-            person.birthday?.let { personBirthLine(birthday = it, deathday = person.deathday) },
-            person.placeOfBirth?.takeIf { it.isNotBlank() },
-            creditSummary.takeIf { it.isNotBlank() },
-        )
-        if (pills.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                pills.forEach { pill ->
-                    Text(
-                        pill,
-                        style = redesignText(12.sp, FontWeight.Medium, RedesignColors.textSecondary),
-                        modifier = Modifier.clip(RoundedCornerShape(999.dp)).background(RedesignColors.fill)
-                            .border(1.dp, RedesignColors.hairline, RoundedCornerShape(999.dp))
-                            .padding(horizontal = 11.dp, vertical = 6.dp),
-                    )
-                }
-            }
-        }
-        // Placeholder: favouriting people isn't built yet, so the button intentionally does nothing.
-        Row(
-            Modifier.clip(RoundedCornerShape(999.dp)).background(RedesignColors.fillStrong)
-                .border(1.dp, RedesignColors.hairline, RoundedCornerShape(999.dp))
-                .clickable(role = Role.Button) {}
-                .testTag("person_favorite")
-                .padding(horizontal = 16.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Rounded.FavoriteBorder, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(7.dp))
-            Text(stringResource(Res.string.person_favorite), style = redesignText(14.sp, FontWeight.SemiBold))
-        }
-    }
-}
-
-
-
 @Composable
 private fun PersonAvatarImage(person: PersonDetail, fallbackProfilePhoto: String?, avatarTransitionKey: String, modifier: Modifier) {
     val avatarUrl = person.profilePhoto?.takeIf { it.isNotBlank() } ?: fallbackProfilePhoto
@@ -1562,7 +1515,7 @@ private fun PersonAvatarImage(person: PersonDetail, fallbackProfilePhoto: String
     }
 }
 
-/** Desktop redesign header: avatar, eyebrow, name, fact pills, Favorite, then the bio. Scrolls with the page. */
+/** Desktop redesign header for a loaded person. Shares [PersonHeaderLayout] with the skeleton. */
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
 private fun PersonRedesignHeader(
@@ -1575,27 +1528,155 @@ private fun PersonRedesignHeader(
 ) {
     val credits = remember(person.movieCredits, person.tvCredits) { (person.movieCredits + person.tvCredits).distinctBy { it.id } }
     val creditSummary = remember(credits) { buildCreditSummary(credits) }
+    PersonHeaderLayout(
+        name = person.name,
+        eyebrow = person.knownFor?.takeIf { it.isNotBlank() },
+        pills = listOfNotNull(
+            person.birthday?.let { personBirthLine(birthday = it, deathday = person.deathday) },
+            person.placeOfBirth?.takeIf { it.isNotBlank() },
+            creditSummary.takeIf { it.isNotBlank() },
+        ),
+        biography = person.biography?.takeIf { it.isNotBlank() },
+        loading = false,
+        avatar = { avatarModifier ->
+            // No shared-element flight: the avatar moves with the content layer, like hero text.
+            PersonAvatarImage(person, fallbackProfilePhoto, avatarTransitionKey, avatarModifier)
+        },
+        modifier = modifier,
+    )
+}
+
+/** Real lengths for skeleton pills, so placeholders take the same width and height as typical data. */
+private val PersonSkeletonPills = listOf("Oct 3, 1967 · 58 years", "Gentilly, Québec, Canada", "38 titles · since 1953")
+
+/**
+ * The one layout for the desktop person header, loaded or loading. Every slot keeps the same size in
+ * both states and the bio area always reserves four lines plus "Show more", so the skeleton → content
+ * crossfade never moves the rows below (the redesign's no-shift rule).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PersonHeaderLayout(
+    name: String,
+    eyebrow: String?,
+    pills: List<String>,
+    biography: String?,
+    loading: Boolean,
+    avatar: @Composable (Modifier) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val pill = RoundedCornerShape(999.dp)
+    val density = LocalDensity.current
+    val bioStyle = redesignText(15.sp, color = RedesignColors.textSecondary, lineHeight = 23.sp)
+    val bioReserve = with(density) { (bioStyle.lineHeight * PERSON_BIO_LINES).toDp() } + PERSON_BIO_SHOW_MORE_HEIGHT
     Column(modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            PersonAvatarImage(
-                person, fallbackProfilePhoto, avatarTransitionKey,
-                // No shared-element flight here: the avatar moves with the content layer, like hero text.
-                Modifier.size(150.dp),
-            )
+            avatar(Modifier.size(150.dp))
             Spacer(Modifier.width(28.dp))
-            Box(Modifier.weight(1f)) { PersonRedesignIdentity(person, creditSummary, nameSize = 40.sp) }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Always present (blank when unknown) so the name never moves.
+                    PersonSkeletonSlot(loading, pill) {
+                        Text(
+                            (eyebrow ?: if (loading) "DIRECTING" else " ").uppercase(),
+                            style = redesignText(12.sp, FontWeight.SemiBold, RedesignColors.textSecondary, letterSpacing = 0.08.em),
+                        )
+                    }
+                    Text(
+                        name,
+                        style = redesignText(40.sp, FontWeight.ExtraBold, lineHeight = 44.8.sp, letterSpacing = RedesignTightTracking),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val shown = when {
+                        loading -> PersonSkeletonPills
+                        pills.isEmpty() -> listOf(" ")
+                        else -> pills
+                    }
+                    shown.forEach { text ->
+                        PersonSkeletonSlot(loading, pill) {
+                            Text(
+                                text,
+                                style = redesignText(12.sp, FontWeight.Medium, RedesignColors.textSecondary),
+                                modifier = Modifier.clip(pill)
+                                    .then(if (loading || pills.isEmpty()) Modifier else Modifier.background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, pill))
+                                    .padding(horizontal = 11.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
+                // Placeholder: favouriting people isn't built yet, so the button intentionally does nothing.
+                Row(
+                    Modifier.clip(pill).background(RedesignColors.fillStrong)
+                        .border(1.dp, RedesignColors.hairline, pill)
+                        .clickable(enabled = !loading, role = Role.Button) {}
+                        .then(if (loading) Modifier else Modifier.testTag("person_favorite"))
+                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.FavoriteBorder, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text(stringResource(Res.string.person_favorite), style = redesignText(14.sp, FontWeight.SemiBold))
+                }
+            }
         }
-        person.biography?.takeIf { it.isNotBlank() }?.let { biography ->
-            Spacer(Modifier.height(20.dp))
-            Box(Modifier.widthIn(max = 860.dp)) {
-                ExpandableDescription(
+        Spacer(Modifier.height(20.dp))
+        Box(Modifier.widthIn(max = 860.dp).fillMaxWidth().heightIn(min = bioReserve)) {
+            when {
+                loading -> Column(verticalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.padding(top = 4.dp)) {
+                    listOf(1f, 0.96f, 0.62f).forEach { fraction ->
+                        Box(Modifier.fillMaxWidth(fraction).height(14.dp).skeleton())
+                    }
+                }
+                biography != null -> ExpandableDescription(
                     text = biography,
-                    style = redesignText(15.sp, color = RedesignColors.textSecondary, lineHeight = 23.sp),
+                    style = bioStyle,
                     color = RedesignColors.textSecondary,
-                    collapsedMaxLines = 4,
+                    collapsedMaxLines = PERSON_BIO_LINES,
                 )
             }
         }
+    }
+}
+
+/** While loading, shows a shimmer the exact size of [content] (rendered invisibly to measure it). */
+@Composable
+private fun PersonSkeletonSlot(loading: Boolean, shape: Shape, content: @Composable () -> Unit) {
+    if (!loading) {
+        content()
+        return
+    }
+    Box(Modifier.skeleton(shape)) {
+        Box(Modifier.graphicsLayer { alpha = 0f }) { content() }
+    }
+}
+
+private const val PERSON_BIO_LINES = 4
+/** Height of ExpandableDescription's "Show more" row below the collapsed text. */
+private val PERSON_BIO_SHOW_MORE_HEIGHT = 34.dp
+
+/**
+ * A loading row that is the real rail (title, View-all pill, poster sizes, hover inset) with blank,
+ * inert cards, so the loaded row replaces it without any size or position change.
+ */
+@Composable
+private fun PersonRailPlaceholder(title: String, horizontalPadding: Dp, modifier: Modifier = Modifier) {
+    val blanks = remember {
+        List(10) { index -> MetaPreview(id = "person-rail-placeholder:$index", type = "placeholder", name = " ", releaseInfo = " ") }
+    }
+    Box(modifier.fillMaxWidth()) {
+        DetailPosterRailSection(
+            title = title,
+            items = blanks,
+            watchedKeys = emptySet(),
+            headerHorizontalPadding = horizontalPadding,
+            onViewAllClick = {},
+            viewAllPillSize = NuvioViewAllPillSize.Compact,
+        )
+        // Blank cards and the pill are not interactive (no hover previews, no View all).
+        Box(Modifier.matchParentSize().nuvioConsumePointerEvents())
     }
 }
 
@@ -1619,51 +1700,29 @@ private fun PersonCompactHeader(person: PersonDetail, fallbackProfilePhoto: Stri
 private fun DesktopPersonDetailSkeleton(
     personName: String,
     avatarRequest: Any?,
-    avatarSharedElementModifier: Modifier,
-    skeletonPosterWidth: Dp,
-    skeletonPosterHeight: Dp,
-    skeletonPosterCornerRadius: Dp,
-    showPosterLabels: Boolean,
 ) {
-    Column(
-        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)
-            .padding(top = PERSON_REDESIGN_TOP_INSET),
-    ) {
-        Row(Modifier.padding(horizontal = 40.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                avatarSharedElementModifier.size(150.dp).clip(CircleShape).skeleton(CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (avatarRequest != null) {
-                    AsyncImage(model = avatarRequest, contentDescription = personName, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+    // Same structure, paddings and components as the loaded overview (PersonOverview + header), so
+    // loading → content is a pure crossfade with nothing moving.
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
+        PersonHeaderLayout(
+            name = personName,
+            eyebrow = null,
+            pills = emptyList(),
+            biography = null,
+            loading = true,
+            avatar = { avatarModifier ->
+                Box(avatarModifier.clip(CircleShape).skeleton(CircleShape), contentAlignment = Alignment.Center) {
+                    if (avatarRequest != null) {
+                        AsyncImage(model = avatarRequest, contentDescription = personName, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+                    }
                 }
-            }
-            Spacer(Modifier.width(28.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(Modifier.width(90.dp).height(12.dp).skeleton())
-                Text(personName, style = redesignText(40.sp, FontWeight.ExtraBold, letterSpacing = RedesignTightTracking), maxLines = 2)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(130.dp, 150.dp, 120.dp).forEach { Box(Modifier.width(it).height(26.dp).skeleton(RoundedCornerShape(999.dp))) }
-                }
-                Box(Modifier.width(110.dp).height(36.dp).skeleton(RoundedCornerShape(999.dp)))
-            }
-        }
-        Column(Modifier.padding(horizontal = 40.dp).padding(top = 22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(1f, 0.94f, 0.6f).forEach { Box(Modifier.widthIn(max = 860.dp).fillMaxWidth(it).height(14.dp).skeleton()) }
-        }
-        repeat(2) {
-            Box(Modifier.padding(start = 40.dp, top = 36.dp, bottom = 12.dp).width(140.dp).height(18.dp).skeleton())
-            SkeletonPosterRow(
-                width = skeletonPosterWidth,
-                height = skeletonPosterHeight,
-                cornerRadius = skeletonPosterCornerRadius,
-                showLabels = showPosterLabels,
-                horizontalPadding = 40.dp,
-            )
-        }
+            },
+            modifier = Modifier.padding(horizontal = PERSON_WIDE_PADDING).padding(top = PERSON_REDESIGN_TOP_INSET, bottom = PERSON_HEADER_BOTTOM),
+        )
+        PersonRailPlaceholder(stringResource(Res.string.person_known_for_shelf), PERSON_WIDE_PADDING)
+        PersonRailPlaceholder(stringResource(PersonSubview.Movies.titleResource), PERSON_WIDE_PADDING, Modifier.padding(top = 24.dp))
     }
 }
-
 
 /** TEMPORARY review control: picks the style used the next time a person page opens or closes. */
 @Composable
@@ -1683,25 +1742,5 @@ private fun NavTransitionStyleToggle(modifier: Modifier = Modifier) {
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
-    }
-}
-
-
-/** Desktop stand-in for the Known For row while it loads: title bar plus a poster row of the same size. */
-@Composable
-private fun KnownForPlaceholder(horizontalPadding: Dp) {
-    val style = rememberPosterCardStyleUiState()
-    val landscape = style.catalogLandscapeModeEnabled
-    val width = if (landscape) landscapePosterWidth(style.widthDp) else style.widthDp.dp
-    val height = if (landscape) landscapePosterHeightForWidth(width) else style.heightDp.dp
-    Column {
-        Box(Modifier.padding(start = horizontalPadding, bottom = 12.dp).width(120.dp).height(20.dp).skeleton())
-        SkeletonPosterRow(
-            width = width,
-            height = height,
-            cornerRadius = style.cornerRadiusDp.dp,
-            showLabels = !landscape && !style.hideLabelsEnabled,
-            horizontalPadding = horizontalPadding,
-        )
     }
 }

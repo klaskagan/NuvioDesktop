@@ -109,12 +109,18 @@ class PersonCreditsNavigationTest {
                 ))
             }
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Movies").fetchSemanticsNodes().isNotEmpty() }
+            waitForIdle()
+            // Desktop reserves the Known For row (real rail, blank cards) while it loads, so its arrival
+            // must not move anything below it: the shift read as motion starting from the top right.
+            val movieTopBefore = onAllNodesWithText("Movies").onFirst().fetchSemanticsNode().boundsInRoot.top
             knownFor.complete(listOf(actor.movieCredits.first().copy(name = "Known For fixture")))
-            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Known For").fetchSemanticsNodes().isNotEmpty() }
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Known For fixture", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            waitForIdle()
             onNodeWithText("Known For").assertIsDisplayed()
             val knownTop = onNodeWithText("Known For").fetchSemanticsNode().boundsInRoot.top
             val movieTop = onNodeWithText("Movies").fetchSemanticsNode().boundsInRoot.top
             kotlin.test.assertTrue(knownTop < movieTop)
+            assertEquals(movieTopBefore, movieTop, 0.5f, "Rows below Known For must not move when it loads")
             saveActorCapture("known-for-delayed")
         }
 
