@@ -1,4 +1,4 @@
-package com.nuvio.app.features.search
+package com.nuvio.app.core.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
@@ -13,14 +13,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import com.nuvio.app.core.ui.LocalNuvioTypeScale
-import com.nuvio.app.core.ui.NuvioTypeScale
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.inter_variable
 import org.jetbrains.compose.resources.Font
 
-/** Colors for the desktop Search redesign, tuned for text on the ambient backdrop. */
-internal object SearchColors {
+/** Colors for the desktop redesign (Search, Person), tuned for text on the ambient backdrop. */
+internal object RedesignColors {
     val textPrimary = Color(0xFFF3F4F6)
     val textSecondary = Color(0xFFB8BEC5)
     val textMuted = Color(0xFF8F959C)
@@ -62,7 +60,7 @@ private fun NuvioTypeScale.withFontFamily(family: FontFamily) = copy(
 
 /** Renders [content] with Inter in place of the app font, so reused components (grids, chips) match. */
 @Composable
-internal fun SearchDesktopTypography(enabled: Boolean = true, content: @Composable () -> Unit) {
+internal fun RedesignTypography(enabled: Boolean = true, content: @Composable () -> Unit) {
     if (!enabled) {
         content()
         return
@@ -79,10 +77,10 @@ internal fun SearchDesktopTypography(enabled: Boolean = true, content: @Composab
 
 /** Search type ramp: hero 34, section 20, card title 14, meta 12/13, body 15. */
 @Composable
-internal fun searchText(
+internal fun redesignText(
     size: TextUnit,
     weight: FontWeight = FontWeight.Normal,
-    color: Color = SearchColors.textPrimary,
+    color: Color = RedesignColors.textPrimary,
     lineHeight: TextUnit = TextUnit.Unspecified,
     letterSpacing: TextUnit = TextUnit.Unspecified,
 ): TextStyle = MaterialTheme.typography.bodyLarge.copy(
@@ -94,4 +92,4 @@ internal fun searchText(
 )
 
 internal val SearchHeroTitleSize = 34.sp
-internal val SearchTightTracking = (-0.02).em
+internal val RedesignTightTracking = (-0.02).em

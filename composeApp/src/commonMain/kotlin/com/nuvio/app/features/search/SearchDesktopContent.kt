@@ -1,5 +1,9 @@
 package com.nuvio.app.features.search
 
+import com.nuvio.app.core.ui.RedesignColors
+import com.nuvio.app.core.ui.RedesignTightTracking
+import com.nuvio.app.core.ui.redesignText
+import com.nuvio.app.core.ui.SearchHeroTitleSize
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.ui.platform.testTag
@@ -202,12 +206,12 @@ internal fun SearchIdleHero(modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().padding(top = 36.dp, bottom = 22.dp, start = 4.dp)) {
         Text(
             text = stringResource(Res.string.search_hero_title),
-            style = searchText(SearchHeroTitleSize, FontWeight.Bold, lineHeight = 40.sp, letterSpacing = SearchTightTracking),
+            style = redesignText(SearchHeroTitleSize, FontWeight.Bold, lineHeight = 40.sp, letterSpacing = RedesignTightTracking),
         )
         Spacer(Modifier.height(6.dp))
         Text(
             text = stringResource(Res.string.search_hero_subtitle),
-            style = searchText(15.sp, color = SearchColors.textSecondary),
+            style = redesignText(15.sp, color = RedesignColors.textSecondary),
         )
     }
 }
@@ -228,29 +232,29 @@ internal fun SearchHeroField(
             .fillMaxWidth()
             .height(56.dp)
             .clip(shape)
-            .background(if (focused) SearchColors.fillStrong else SearchColors.fill)
-            .border(1.dp, if (focused) SearchColors.hairlineFocused else SearchColors.hairline, shape)
+            .background(if (focused) RedesignColors.fillStrong else RedesignColors.fill)
+            .border(1.dp, if (focused) RedesignColors.hairlineFocused else RedesignColors.hairline, shape)
             .padding(start = 20.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.Search, contentDescription = null, tint = SearchColors.textSecondary, modifier = Modifier.size(22.dp))
+        Icon(Icons.Rounded.Search, contentDescription = null, tint = RedesignColors.textSecondary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(14.dp))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (query.isEmpty()) {
-                Text(placeholder, style = searchText(17.sp, color = SearchColors.textMuted), maxLines = 1)
+                Text(placeholder, style = redesignText(17.sp, color = RedesignColors.textMuted), maxLines = 1)
             }
             BasicTextField(
                 value = query,
                 onValueChange = onQueryChange,
                 singleLine = true,
-                textStyle = searchText(17.sp, FontWeight.Medium).copy(textDirection = TextDirection.Content),
-                cursorBrush = SolidColor(SearchColors.textPrimary),
+                textStyle = redesignText(17.sp, FontWeight.Medium).copy(textDirection = TextDirection.Content),
+                cursorBrush = SolidColor(RedesignColors.textPrimary),
                 modifier = Modifier.fillMaxWidth().then(fieldModifier),
             )
         }
         if (query.isNotEmpty()) {
             IconButton(onClick = onClear) {
-                Icon(Icons.Rounded.Close, contentDescription = stringResource(Res.string.compose_search_clear), tint = SearchColors.textSecondary)
+                Icon(Icons.Rounded.Close, contentDescription = stringResource(Res.string.compose_search_clear), tint = RedesignColors.textSecondary)
             }
         } else {
             Spacer(Modifier.width(12.dp))
@@ -283,9 +287,9 @@ internal fun SearchScopeTabs(
                 val isSelected = scope == selected
                 val labelColor by animateColorAsState(
                     when {
-                        isSelected -> SearchColors.textPrimary
-                        hovered -> SearchColors.textSecondary
-                        else -> SearchColors.textMuted
+                        isSelected -> RedesignColors.textPrimary
+                        hovered -> RedesignColors.textSecondary
+                        else -> RedesignColors.textMuted
                     },
                     tween(160),
                     label = "tab_label",
@@ -302,10 +306,10 @@ internal fun SearchScopeTabs(
                         .padding(top = 4.dp, bottom = 13.dp),
                     verticalAlignment = Alignment.Bottom,
                 ) {
-                    Text(scope.label(), style = searchText(14.sp, FontWeight.SemiBold, labelColor))
+                    Text(scope.label(), style = redesignText(14.sp, FontWeight.SemiBold, labelColor))
                     Spacer(Modifier.width(5.dp))
                     if (counts != null) {
-                        Text(count.toString(), style = searchText(14.sp, FontWeight.Medium, labelColor.copy(alpha = 0.6f)))
+                        Text(count.toString(), style = redesignText(14.sp, FontWeight.Medium, labelColor.copy(alpha = 0.6f)))
                     }
                 }
             }
@@ -313,7 +317,7 @@ internal fun SearchScopeTabs(
         if (target != null) {
             Box(
                 Modifier.align(Alignment.BottomStart).offset(x = indicatorX).width(indicatorW).height(2.dp)
-                    .clip(RoundedCornerShape(2.dp)).background(SearchColors.textPrimary),
+                    .clip(RoundedCornerShape(2.dp)).background(RedesignColors.textPrimary),
             )
         }
     }
@@ -340,7 +344,7 @@ internal fun SearchRecentChips(
 ) {
     Column(modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(Res.string.compose_search_recent_searches), style = searchText(13.sp, FontWeight.SemiBold, SearchColors.textMuted))
+            Text(stringResource(Res.string.compose_search_recent_searches), style = redesignText(13.sp, FontWeight.SemiBold, RedesignColors.textMuted))
             Spacer(Modifier.weight(1f))
             SearchTextAction(
                 stringResource(Res.string.search_clear_all),
@@ -354,19 +358,19 @@ internal fun SearchRecentChips(
             recentSearches.forEach { recent ->
                 val shape = RoundedCornerShape(999.dp)
                 Row(
-                    modifier = Modifier.clip(shape).background(SearchColors.fill).border(1.dp, SearchColors.hairline, shape)
+                    modifier = Modifier.clip(shape).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, shape)
                         .clickable { onSearchPress(recent) }.padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Rounded.History, contentDescription = null, tint = SearchColors.textMuted, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Rounded.History, contentDescription = null, tint = RedesignColors.textMuted, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(recent, style = searchText(13.sp, FontWeight.Medium), maxLines = 1)
+                    Text(recent, style = redesignText(13.sp, FontWeight.Medium), maxLines = 1)
                     Spacer(Modifier.width(2.dp))
                     Box(
                         Modifier.size(22.dp).clip(CircleShape).clickable { onRemoveSearch(recent) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Rounded.Close, contentDescription = removeLabel, tint = SearchColors.textMuted, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Rounded.Close, contentDescription = removeLabel, tint = RedesignColors.textMuted, modifier = Modifier.size(14.dp))
                     }
                 }
             }
@@ -477,10 +481,10 @@ internal fun SearchSectionHeader(
         modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp, bottom = 2.dp).heightIn(min = 40.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = searchText(20.sp, FontWeight.Bold, letterSpacing = (-0.01).em))
+        Text(title, style = redesignText(20.sp, FontWeight.Bold, letterSpacing = (-0.01).em))
         if (count != null) {
             Spacer(Modifier.width(10.dp))
-            Text(count, style = searchText(13.sp, FontWeight.Medium, SearchColors.textMuted))
+            Text(count, style = redesignText(13.sp, FontWeight.Medium, RedesignColors.textMuted))
         }
         Spacer(Modifier.weight(1f))
         if (trailing != null) {
@@ -560,7 +564,7 @@ private fun SpotlightHero(item: MetaPreview, badge: String, onDetails: () -> Uni
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.55f))))
         Text(
             text = badge.uppercase(),
-            style = searchText(11.sp, FontWeight.Bold, letterSpacing = 0.08.em),
+            style = redesignText(11.sp, FontWeight.Bold, letterSpacing = 0.08.em),
             modifier = Modifier.padding(start = 26.dp, top = 22.dp)
                 .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.55f))
                 .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -579,7 +583,7 @@ private fun SpotlightHero(item: MetaPreview, badge: String, onDetails: () -> Uni
             } else {
                 Text(
                     item.name,
-                    style = searchText(32.sp, FontWeight.ExtraBold, lineHeight = 36.sp, letterSpacing = SearchTightTracking),
+                    style = redesignText(32.sp, FontWeight.ExtraBold, lineHeight = 36.sp, letterSpacing = RedesignTightTracking),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -590,7 +594,7 @@ private fun SpotlightHero(item: MetaPreview, badge: String, onDetails: () -> Uni
                 Spacer(Modifier.height(6.dp))
                 Text(
                     description,
-                    style = searchText(13.sp, color = SearchColors.textSecondary, lineHeight = 19.sp),
+                    style = redesignText(13.sp, color = RedesignColors.textSecondary, lineHeight = 19.sp),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -604,7 +608,7 @@ private fun SpotlightHero(item: MetaPreview, badge: String, onDetails: () -> Uni
                 ) {
                     Icon(Icons.Rounded.Info, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(7.dp))
-                    Text(stringResource(Res.string.home_view_details), style = searchText(14.sp, FontWeight.SemiBold, Color.Black))
+                    Text(stringResource(Res.string.home_view_details), style = redesignText(14.sp, FontWeight.SemiBold, Color.Black))
                 }
                 if (onMore != null) {
                     Box(
@@ -628,10 +632,10 @@ private fun SpotlightMeta(item: MetaPreview) {
         item.runtime?.takeIf { it.isNotBlank() }?.let { add(it) }
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(parts.joinToString("  ·  "), style = searchText(13.sp, FontWeight.Medium, Color(0xFFD4D7DB)), maxLines = 1)
+        Text(parts.joinToString("  ·  "), style = redesignText(13.sp, FontWeight.Medium, Color(0xFFD4D7DB)), maxLines = 1)
         item.imdbRating?.takeIf { it.isNotBlank() }?.let { rating ->
-            Text("  ·  ", style = searchText(13.sp, FontWeight.Medium, Color(0xFFD4D7DB)))
-            Text("IMDb $rating", style = searchText(13.sp, FontWeight.Bold, SearchColors.imdb))
+            Text("  ·  ", style = redesignText(13.sp, FontWeight.Medium, Color(0xFFD4D7DB)))
+            Text("IMDb $rating", style = redesignText(13.sp, FontWeight.Bold, RedesignColors.imdb))
         }
     }
 }
@@ -652,12 +656,12 @@ private fun SearchPeoplePanel(
             .padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 8.dp),
     ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(Res.string.compose_search_people), style = searchText(16.sp, FontWeight.Bold))
+            Text(stringResource(Res.string.compose_search_people), style = redesignText(16.sp, FontWeight.Bold))
             Spacer(Modifier.weight(1f))
             if (showSeeAll) {
                 Text(
                     stringResource(Res.string.search_see_all),
-                    style = searchText(13.sp, FontWeight.Medium, SearchColors.textSecondary),
+                    style = redesignText(13.sp, FontWeight.Medium, RedesignColors.textSecondary),
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onSeeAll).padding(4.dp),
                 )
             }
@@ -673,12 +677,12 @@ private fun SearchPeoplePanel(
                 PersonAvatar(person, Modifier.size(46.dp))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(person.name, style = searchText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(person.name, style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     personSubtitle(person)?.let {
-                        Text(it, style = searchText(12.sp, color = SearchColors.textMuted), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(it, style = redesignText(12.sp, color = RedesignColors.textMuted), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = SearchColors.textMuted, modifier = Modifier.size(20.dp))
+                Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = RedesignColors.textMuted, modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -692,9 +696,9 @@ private fun SearchPersonCard(person: SearchPerson, onClick: (() -> Unit)?, modif
     ) {
         PersonAvatar(person, Modifier.fillMaxWidth(0.78f).aspectRatio(1f))
         Spacer(Modifier.height(10.dp))
-        Text(person.name, style = searchText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        Text(person.name, style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         person.department?.let {
-            Text(it, style = searchText(12.sp, color = SearchColors.textMuted), maxLines = 1, textAlign = TextAlign.Center)
+            Text(it, style = redesignText(12.sp, color = RedesignColors.textMuted), maxLines = 1, textAlign = TextAlign.Center)
         }
     }
 }
@@ -703,7 +707,7 @@ private fun SearchPersonCard(person: SearchPerson, onClick: (() -> Unit)?, modif
 private fun PersonAvatar(person: SearchPerson, modifier: Modifier) {
     Box(modifier.clip(CircleShape).background(Color(0xFF24262B)), contentAlignment = Alignment.Center) {
         val initials = person.name.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
-        Text(initials, style = searchText(15.sp, FontWeight.SemiBold, SearchColors.textSecondary))
+        Text(initials, style = redesignText(15.sp, FontWeight.SemiBold, RedesignColors.textSecondary))
         if (!person.profilePhoto.isNullOrBlank()) {
             NuvioAsyncImage(
                 model = person.profilePhoto,
@@ -727,17 +731,17 @@ internal fun SearchDesktopEmptyState(
 ) {
     Column(modifier.fillMaxWidth().padding(top = 96.dp, bottom = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.size(64.dp).clip(RoundedCornerShape(20.dp)).background(SearchColors.fill),
+            Modifier.size(64.dp).clip(RoundedCornerShape(20.dp)).background(RedesignColors.fill),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.Search, contentDescription = null, tint = SearchColors.textSecondary, modifier = Modifier.size(28.dp))
+            Icon(Icons.Rounded.Search, contentDescription = null, tint = RedesignColors.textSecondary, modifier = Modifier.size(28.dp))
         }
         Spacer(Modifier.height(18.dp))
-        Text(title, style = searchText(24.sp, FontWeight.Bold, letterSpacing = SearchTightTracking), textAlign = TextAlign.Center)
+        Text(title, style = redesignText(24.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking), textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
         Text(
             message,
-            style = searchText(15.sp, color = SearchColors.textSecondary, lineHeight = 22.sp),
+            style = redesignText(15.sp, color = RedesignColors.textSecondary, lineHeight = 22.sp),
             textAlign = TextAlign.Center,
             modifier = Modifier.widthIn(max = 520.dp),
         )
@@ -755,9 +759,9 @@ internal fun SearchDesktopEmptyState(
 private fun SearchPillButton(label: String, primary: Boolean, onClick: () -> Unit) {
     Text(
         label,
-        style = searchText(14.sp, FontWeight.SemiBold, if (primary) Color.Black else SearchColors.textPrimary),
+        style = redesignText(14.sp, FontWeight.SemiBold, if (primary) Color.Black else RedesignColors.textPrimary),
         modifier = Modifier.clip(RoundedCornerShape(999.dp))
-            .background(if (primary) Color.White else SearchColors.fillStrong)
+            .background(if (primary) Color.White else RedesignColors.fillStrong)
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 10.dp),
     )
@@ -835,7 +839,7 @@ internal fun LazyListScope.searchDesktopList(
                     .nuvioConsumePointerEvents(),
             )
             if (headerColor.alpha > 0.5f) {
-                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(SearchColors.hairline))
+                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
             }
             Column(Modifier.fillMaxWidth().padding(horizontal = gutter).padding(top = (topPadding ?: 0.dp) + 14.dp, bottom = 14.dp)) {
                 SearchHeroField(
@@ -947,7 +951,7 @@ internal fun LazyListScope.searchDesktopList(
             item(key = "search-skeleton-spotlight") {
                 Box(
                     itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth().height(300.dp)
-                        .clip(RoundedCornerShape(18.dp)).background(SearchColors.fill),
+                        .clip(RoundedCornerShape(18.dp)).background(RedesignColors.fill),
                 )
             }
             items(2, key = { "search-skeleton:$it" }) {
@@ -1036,9 +1040,9 @@ internal fun SearchDropdownChip(
     val shape = RoundedCornerShape(999.dp)
     val fill by animateColorAsState(
         when {
-            expanded -> SearchColors.fillStrong
+            expanded -> RedesignColors.fillStrong
             hovered && enabled -> Color.White.copy(alpha = 0.10f)
-            else -> SearchColors.fill
+            else -> RedesignColors.fill
         },
         tween(140),
         label = "dropdown_fill",
@@ -1047,7 +1051,7 @@ internal fun SearchDropdownChip(
     Box(modifier) {
         Row(
             Modifier.clip(shape).background(fill)
-                .border(1.dp, if (expanded) SearchColors.hairlineFocused.copy(alpha = 0.35f) else SearchColors.hairline, shape)
+                .border(1.dp, if (expanded) RedesignColors.hairlineFocused.copy(alpha = 0.35f) else RedesignColors.hairline, shape)
                 .hoverable(interaction)
                 .clickable(enabled = enabled, interactionSource = interaction, indication = null) { expanded = true }
                 .padding(start = 14.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
@@ -1055,7 +1059,7 @@ internal fun SearchDropdownChip(
         ) {
             Text(
                 label,
-                style = searchText(13.sp, FontWeight.Medium, if (enabled) SearchColors.textPrimary else SearchColors.textMuted.copy(alpha = 0.6f)),
+                style = redesignText(13.sp, FontWeight.Medium, if (enabled) RedesignColors.textPrimary else RedesignColors.textMuted.copy(alpha = 0.6f)),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 220.dp),
@@ -1064,7 +1068,7 @@ internal fun SearchDropdownChip(
             Icon(
                 Icons.Rounded.KeyboardArrowDown,
                 contentDescription = null,
-                tint = if (enabled) SearchColors.textSecondary else SearchColors.textMuted.copy(alpha = 0.5f),
+                tint = if (enabled) RedesignColors.textSecondary else RedesignColors.textMuted.copy(alpha = 0.5f),
                 modifier = Modifier.size(18.dp).rotate(chevronTurn),
             )
         }
@@ -1074,7 +1078,7 @@ internal fun SearchDropdownChip(
             offset = DpOffset(0.dp, 6.dp),
             containerColor = Color(0xFF17181C),
             shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, SearchColors.hairline),
+            border = BorderStroke(1.dp, RedesignColors.hairline),
             modifier = Modifier.widthIn(min = 200.dp, max = 340.dp).heightIn(max = 420.dp),
         ) {
             options.forEach { option ->
@@ -1083,14 +1087,14 @@ internal fun SearchDropdownChip(
                     text = {
                         Text(
                             option.label,
-                            style = searchText(14.sp, if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                                if (isSelected) SearchColors.textPrimary else SearchColors.textSecondary),
+                            style = redesignText(14.sp, if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                if (isSelected) RedesignColors.textPrimary else RedesignColors.textSecondary),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
                     trailingIcon = if (isSelected) {
-                        { Icon(Icons.Rounded.Check, contentDescription = null, tint = SearchColors.textPrimary, modifier = Modifier.size(18.dp)) }
+                        { Icon(Icons.Rounded.Check, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(18.dp)) }
                     } else null,
                     onClick = {
                         expanded = false
@@ -1119,16 +1123,16 @@ private fun SearchDesktopDiscoveryChips(
             items(suggestions) { suggestion ->
                 val isSelected = selected == suggestion
                 val shape = RoundedCornerShape(999.dp)
-                val fill by animateColorAsState(if (isSelected) SearchColors.textPrimary else SearchColors.fill, tween(160), label = "tag_fill")
-                val ink by animateColorAsState(if (isSelected) Color(0xFF0E0F12) else SearchColors.textPrimary, tween(160), label = "tag_ink")
+                val fill by animateColorAsState(if (isSelected) RedesignColors.textPrimary else RedesignColors.fill, tween(160), label = "tag_fill")
+                val ink by animateColorAsState(if (isSelected) Color(0xFF0E0F12) else RedesignColors.textPrimary, tween(160), label = "tag_ink")
                 Row(
                     Modifier.clip(shape).background(fill)
-                        .border(1.dp, if (isSelected) Color.Transparent else SearchColors.hairline, shape)
+                        .border(1.dp, if (isSelected) Color.Transparent else RedesignColors.hairline, shape)
                         .clickable { onSelect(suggestion.takeUnless { isSelected }) }
                         .padding(start = 14.dp, end = if (isSelected) 8.dp else 14.dp, top = 7.dp, bottom = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(discoveryChipLabel(suggestion), style = searchText(13.sp, FontWeight.SemiBold, ink), maxLines = 1)
+                    Text(discoveryChipLabel(suggestion), style = redesignText(13.sp, FontWeight.SemiBold, ink), maxLines = 1)
                     if (isSelected) {
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.Rounded.Close, stringResource(Res.string.search_remove_filter), tint = ink, modifier = Modifier.size(16.dp))
@@ -1143,7 +1147,7 @@ private fun SearchDesktopDiscoveryChips(
             Spacer(Modifier.height(8.dp))
             Text(
                 stringResource(Res.string.search_discovery_date_window, recentDiscoveryStart(today).toString(), today.toString()),
-                style = searchText(12.sp, color = SearchColors.textMuted),
+                style = redesignText(12.sp, color = RedesignColors.textMuted),
             )
         }
     }
@@ -1210,7 +1214,7 @@ private fun LazyListScope.searchDesktopDiscoveryResults(
             ) {
                 Text(
                     discoveryStatusMessage(state),
-                    style = searchText(15.sp, color = SearchColors.textSecondary),
+                    style = redesignText(15.sp, color = RedesignColors.textSecondary),
                     textAlign = TextAlign.Center,
                 )
                 if (state.failed) {
@@ -1226,10 +1230,10 @@ private fun LazyListScope.searchDesktopDiscoveryResults(
 private fun SearchTextAction(label: String, onClick: () -> Unit, accessibleLabel: String? = null) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val color by animateColorAsState(if (hovered) SearchColors.textPrimary else SearchColors.textSecondary, tween(140), label = "text_action")
+    val color by animateColorAsState(if (hovered) RedesignColors.textPrimary else RedesignColors.textSecondary, tween(140), label = "text_action")
     Text(
         label,
-        style = searchText(13.sp, FontWeight.Medium, color),
+        style = redesignText(13.sp, FontWeight.Medium, color),
         modifier = Modifier.clip(RoundedCornerShape(6.dp)).hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             // A short visible label can carry a fuller accessible name (e.g. "Clear all recent searches").
@@ -1303,7 +1307,7 @@ private fun LazyListScope.searchDesktopTagPage(
         item(key = "tag-skeleton-spotlight") {
             Box(
                 itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth().height(300.dp)
-                    .clip(RoundedCornerShape(18.dp)).background(SearchColors.fill),
+                    .clip(RoundedCornerShape(18.dp)).background(RedesignColors.fill),
             )
         }
     }
@@ -1355,7 +1359,7 @@ private fun LazyListScope.searchDesktopTagPage(
                 itemModifier().fillMaxWidth().padding(horizontal = gutter).padding(top = 48.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(discoveryStatusMessage(status), style = searchText(15.sp, color = SearchColors.textSecondary), textAlign = TextAlign.Center)
+                Text(discoveryStatusMessage(status), style = redesignText(15.sp, color = RedesignColors.textSecondary), textAlign = TextAlign.Center)
                 if (shelves.failed) {
                     Spacer(Modifier.height(14.dp))
                     SearchPillButton(stringResource(Res.string.search_discovery_retry), primary = true, onClick = shelves.retry)
@@ -1369,7 +1373,7 @@ private fun LazyListScope.searchDesktopTagPage(
 private fun SearchBackLink(label: String, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val color by animateColorAsState(if (hovered) SearchColors.textPrimary else SearchColors.textSecondary, tween(140), label = "back_link")
+    val color by animateColorAsState(if (hovered) RedesignColors.textPrimary else RedesignColors.textSecondary, tween(140), label = "back_link")
     Row(
         Modifier.padding(start = 4.dp, top = 12.dp).clip(RoundedCornerShape(8.dp)).hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
@@ -1378,7 +1382,7 @@ private fun SearchBackLink(label: String, onClick: () -> Unit) {
     ) {
         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, style = searchText(14.sp, FontWeight.Medium, color))
+        Text(label, style = redesignText(14.sp, FontWeight.Medium, color))
     }
 }
 
@@ -1456,7 +1460,7 @@ private fun SearchPersonProfileCard(
             PersonAvatar(person.copy(profilePhoto = detail?.profilePhoto ?: person.profilePhoto), Modifier.size(72.dp))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(person.name, style = searchText(18.sp, FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(person.name, style = redesignText(18.sp, FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val facts = listOfNotNull(
                     person.department,
                     detail?.birthday?.take(4)?.takeIf { it.length == 4 }?.let { year ->
@@ -1464,31 +1468,31 @@ private fun SearchPersonProfileCard(
                     },
                 )
                 if (facts.isNotEmpty()) {
-                    Text(facts.joinToString(" · "), style = searchText(13.sp, color = SearchColors.textMuted), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(facts.joinToString(" · "), style = redesignText(13.sp, color = RedesignColors.textMuted), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
             // Placeholder: favouriting people isn't built yet, so this intentionally does nothing.
             IconButton(onClick = {}, modifier = Modifier.testTag("search_person_favorite")) {
-                Icon(Icons.Rounded.FavoriteBorder, contentDescription = stringResource(Res.string.search_person_favorite), tint = SearchColors.textSecondary)
+                Icon(Icons.Rounded.FavoriteBorder, contentDescription = stringResource(Res.string.search_person_favorite), tint = RedesignColors.textSecondary)
             }
         }
         detail?.biography?.trim()?.takeIf { it.isNotEmpty() }?.let { bio ->
             Spacer(Modifier.height(14.dp))
-            Text(bio, style = searchText(13.sp, color = SearchColors.textSecondary, lineHeight = 19.sp), maxLines = 4, overflow = TextOverflow.Ellipsis)
+            Text(bio, style = redesignText(13.sp, color = RedesignColors.textSecondary, lineHeight = 19.sp), maxLines = 4, overflow = TextOverflow.Ellipsis)
         }
         person.knownForTitles.takeIf { it.isNotEmpty() }?.let { titles ->
             Spacer(Modifier.height(10.dp))
             Text(
                 stringResource(Res.string.search_person_known_for, titles.joinToString(", ")),
-                style = searchText(12.sp, color = SearchColors.textMuted),
+                style = redesignText(12.sp, color = RedesignColors.textMuted),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.weight(1f))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(Res.string.search_person_view_profile), style = searchText(13.sp, FontWeight.SemiBold))
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = SearchColors.textPrimary, modifier = Modifier.size(18.dp))
+            Text(stringResource(Res.string.search_person_view_profile), style = redesignText(13.sp, FontWeight.SemiBold))
+            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(18.dp))
         }
     }
 }

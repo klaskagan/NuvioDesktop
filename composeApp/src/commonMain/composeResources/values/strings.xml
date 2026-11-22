@@ -533,6 +533,7 @@
     <string name="search_sort_title">Sort results</string>
     <string name="search_sort_relevance">Best match</string>
     <string name="search_more_options">More options</string>
+    <string name="person_favorite">Favorite</string>
     <string name="search_person_known_for">Known for %1$s</string>
     <string name="search_person_view_profile">View profile</string>
     <string name="search_person_favorite">Add to favorites</string>

@@ -1,5 +1,6 @@
 package com.nuvio.app.features.search
 
+import com.nuvio.app.core.ui.RedesignTypography
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.background
@@ -407,7 +408,7 @@ fun SearchScreen(
     ) {
         if (backdropController != null) ShellBackdrop(backdropController)
         CompositionLocalProvider(LocalBackdropFocusController provides backdropController) {
-        SearchDesktopTypography(enabled = isDesktop) {
+        RedesignTypography(enabled = isDesktop) {
         // Desktop: one centred column, at most ~1240dp of content, never closer than 40dp to the edges.
         val gutter = if (isDesktop) maxOf(40.dp, (maxWidth - 1240.dp) / 2) else 16.dp
         val contentWidth = if (isDesktop) maxWidth - gutter * 2 else maxWidth

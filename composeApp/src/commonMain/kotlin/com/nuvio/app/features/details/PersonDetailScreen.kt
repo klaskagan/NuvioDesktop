@@ -4,6 +4,23 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.ui.unit.em
+import com.nuvio.app.core.ui.BackdropFocusController
+import com.nuvio.app.core.ui.RedesignColors
+import com.nuvio.app.core.ui.RedesignTightTracking
+import com.nuvio.app.core.ui.RedesignTypography
+import com.nuvio.app.core.ui.ShellBackdrop
+import com.nuvio.app.core.ui.redesignText
+import nuvio.composeapp.generated.resources.person_favorite
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.semantics.Role
 import com.nuvio.app.features.details.components.InlineTmdbRating
@@ -168,12 +185,25 @@ fun PersonDetailScreen(
         }
     }
 
+    // Desktop redesign: ambient backdrop from the person's most popular credit, Inter type, and
+    // a crossfade between loading, error and content instead of a hard swap.
+    val backdrop = remember { if (isDesktop) BackdropFocusController() else null }
+    val backdropArt = (uiState as? PersonDetailUiState.Success)?.personDetail?.let(::personBackdropArt)
+    LaunchedEffect(backdrop, backdropArt) { backdrop?.base = backdropArt }
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .then(if (backdrop == null) Modifier.background(MaterialTheme.colorScheme.background) else Modifier),
     ) {
-        when (val state = uiState) {
+        if (backdrop != null) ShellBackdrop(backdrop)
+        RedesignTypography(enabled = isDesktop) {
+        AnimatedContent(
+            targetState = uiState,
+            contentKey = { it::class },
+            transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(180)) },
+            label = "person_detail_state",
+        ) { state ->
+        when (state) {
             is PersonDetailUiState.Loading -> PersonDetailSkeleton(
                 personId = personId,
                 personName = personName,
@@ -211,6 +241,8 @@ fun PersonDetailScreen(
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
+        }
+        }
         }
 
 
@@ -290,7 +322,9 @@ private fun PersonDetailContent(
     val compactList = rememberLazyListState()
     val paneState = rememberSaveableStateHolder()
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(background).background(gradient)) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize().then(if (isDesktop) Modifier else Modifier.background(background).background(gradient)),
+    ) {
         val wide = maxWidth >= PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH
         val padding = if (wide) 40.dp else 20.dp
         val list = if (wide) wideList else compactList
@@ -304,9 +338,14 @@ private fun PersonDetailContent(
             if (wide) {
                 PersonIdentitySidebar(
                     person, initialProfilePhoto, avatarTransitionKey, sharedTransitionScope, animatedVisibilityScope,
-                    Modifier.width(PERSON_DETAIL_WIDE_SIDEBAR_WIDTH).fillMaxHeight().testTag("actor_preview_wide"),
+                    Modifier.width(PERSON_DETAIL_WIDE_SIDEBAR_WIDTH).fillMaxHeight().testTag("actor_preview_wide")
+                        .then(if (isDesktop) Modifier.background(Color.White.copy(alpha = 0.035f)) else Modifier),
                 )
-                Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outline.copy(alpha = 0.30f)))
+                Box(
+                    Modifier.width(1.dp).fillMaxHeight().background(
+                        if (isDesktop) RedesignColors.hairline else MaterialTheme.colorScheme.outline.copy(alpha = 0.30f),
+                    ),
+                )
             }
             Column(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
                 if (subview != null) {
@@ -387,6 +426,7 @@ private fun PersonOverview(
             }
             if (knownFor == null || knownFor.isNotEmpty()) {
                 item("shelf:KnownFor") {
+                    Crossfade(knownFor, animationSpec = tween(320), label = "known_for") { knownFor ->
                     if (knownFor == null) {
                         // Keep this key at the top while the curated shelf loads. A prepended item
                         // would leave LazyColumn anchored to Movies after the response arrives.
@@ -404,13 +444,15 @@ private fun PersonOverview(
                             viewAllPillSize = NuvioViewAllPillSize.Compact,
                         )
                     }
+                    }
                 }
             }
             items(sections, key = { "shelf:${it.first.name}" }) { (section, credits) ->
                 DetailPosterRailSection(
                     title = stringResource(section.titleResource),
                     items = credits,
-                    modifier = Modifier.padding(top = if (wide && knownFor.isNullOrEmpty() && section == sections.first().first) 0.dp else 24.dp),
+                    modifier = Modifier.animateItem(fadeInSpec = tween(220), placementSpec = tween(260))
+                        .padding(top = if (wide && knownFor.isNullOrEmpty() && section == sections.first().first) 0.dp else 24.dp),
                     watchedKeys = watchedKeys,
                     fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                     headerHorizontalPadding = padding,
@@ -634,6 +676,9 @@ internal fun PersonIdentitySidebar(
                 }
             }
 
+            if (isDesktop) {
+                PersonRedesignIdentity(person, creditSummary)
+            } else {
             Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 Text(
                     text = person.name,
@@ -661,6 +706,7 @@ internal fun PersonIdentitySidebar(
                 if (creditSummary.isNotBlank()) {
                     PersonSidebarFact(label = stringResource(Res.string.person_detail_credits), value = creditSummary)
                 }
+            }
             }
 
             person.biography?.takeIf { it.isNotBlank() }?.let { biography ->
@@ -945,7 +991,7 @@ private fun PersonDetailSkeleton(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .then(if (isDesktop) Modifier else Modifier.background(MaterialTheme.colorScheme.background)),
     ) {
         Box(
             modifier = Modifier
@@ -1245,7 +1291,7 @@ private fun PersonDetailError(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .then(if (isDesktop) Modifier else Modifier.background(MaterialTheme.colorScheme.background)),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1360,5 +1406,66 @@ private fun formatDateForDisplay(date: String): String? {
         "${localizedShortMonthName(month)} $day, $year"
     } else {
         null
+    }
+}
+
+
+/** Backdrop art for the person page: the banner of their most popular credit. */
+internal fun personBackdropArt(person: PersonDetail): String? =
+    (person.movieCredits + person.tvCredits)
+        .filter { !it.banner.isNullOrBlank() }
+        .maxByOrNull { it.popularity ?: -1.0 }
+        ?.banner
+
+/** Desktop identity block: department eyebrow, large name, fact pills and the Favorite placeholder. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PersonRedesignIdentity(person: PersonDetail, creditSummary: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            person.knownFor?.takeIf { it.isNotBlank() }?.let { department ->
+                Text(
+                    department.uppercase(),
+                    style = redesignText(12.sp, FontWeight.SemiBold, RedesignColors.textSecondary, letterSpacing = 0.08.em),
+                )
+            }
+            Text(
+                person.name,
+                style = redesignText(34.sp, FontWeight.ExtraBold, lineHeight = 38.sp, letterSpacing = RedesignTightTracking),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        val pills = listOfNotNull(
+            person.birthday?.let { personBirthLine(birthday = it, deathday = person.deathday) },
+            person.placeOfBirth?.takeIf { it.isNotBlank() },
+            creditSummary.takeIf { it.isNotBlank() },
+        )
+        if (pills.isNotEmpty()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                pills.forEach { pill ->
+                    Text(
+                        pill,
+                        style = redesignText(12.sp, FontWeight.Medium, RedesignColors.textSecondary),
+                        modifier = Modifier.clip(RoundedCornerShape(999.dp)).background(RedesignColors.fill)
+                            .border(1.dp, RedesignColors.hairline, RoundedCornerShape(999.dp))
+                            .padding(horizontal = 11.dp, vertical = 6.dp),
+                    )
+                }
+            }
+        }
+        // Placeholder: favouriting people isn't built yet, so the button intentionally does nothing.
+        Row(
+            Modifier.clip(RoundedCornerShape(999.dp)).background(RedesignColors.fillStrong)
+                .border(1.dp, RedesignColors.hairline, RoundedCornerShape(999.dp))
+                .clickable(role = Role.Button) {}
+                .testTag("person_favorite")
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.FavoriteBorder, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(7.dp))
+            Text(stringResource(Res.string.person_favorite), style = redesignText(14.sp, FontWeight.SemiBold))
+        }
     }
 }

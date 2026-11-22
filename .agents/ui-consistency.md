@@ -153,6 +153,12 @@ is hidden rather than failing the page. `SearchDiscoveryUiTest`
 (`tagCarouselsHideEmptyOrFailedRailsAndFeatureTheTopTitle`) covers this, and
 `SearchDiscoveryTest` covers the sort filters (Top rated vote floor, 90-day New window).
 
+The redesign's tokens live in `core/ui/RedesignStyle.kt` (`RedesignColors`, `redesignText`,
+`RedesignTypography`). Person Details (wide, desktop) is the second screen that uses them. On wide
+screens its profile pane stays a pinned side pane, not a scrolling header, because "View all"
+subviews keep the profile in place (`PersonCreditsNavigationTest`). The pane is redesigned in place:
+glass fill, department eyebrow, fact pills, and a Favorite placeholder tagged `person_favorite`.
+
 Panels that own a background must also own readable foreground colors.
 The football lineup and actor catalog screenshots exposed black inherited
 text on dark panels. Use a Material Surface with an explicit content color,
