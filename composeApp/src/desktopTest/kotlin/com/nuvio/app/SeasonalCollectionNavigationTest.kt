@@ -157,7 +157,7 @@ class SeasonalCollectionNavigationTest {
             onNodeWithText("Explore collection").performScrollTo().performClick()
             onNodeWithTag("collection_background_${collection.folders.single().id}").assertIsDisplayed()
             onNodeWithContentDescription("Search").performClick()
-            onNodeWithText("Search movies, shows...").assertIsDisplayed()
+            onNodeWithText("Search movies, shows, and people").assertIsDisplayed()
         } finally { FolderDetailRepository.clear(); CatalogRepository.clear(); server.stop(0) }
     }
 

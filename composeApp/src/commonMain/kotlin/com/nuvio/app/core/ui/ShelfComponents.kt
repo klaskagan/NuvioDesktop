@@ -66,6 +66,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight as ShelfFontWeight
 import androidx.compose.ui.zIndex
 import com.nuvio.app.navigation.excludeFromHistoryGestures
 import com.nuvio.app.isDesktop
@@ -103,6 +106,7 @@ fun <T> NuvioShelfSection(
     onViewAllClick: (() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null,
     viewAllPillSize: NuvioViewAllPillSize = NuvioViewAllPillSize.Default,
+    eyebrow: String? = null,
     key: ((T) -> Any)? = null,
     animatePlacement: Boolean = false,
     state: LazyListState = rememberLazyListState(),
@@ -133,6 +137,7 @@ fun <T> NuvioShelfSection(
                         onViewAllClick = onViewAllClick,
                         onTitleClick = onTitleClick,
                         viewAllPillSize = viewAllPillSize,
+                        eyebrow = eyebrow,
                     )
                 }
                 LazyRow(
@@ -485,6 +490,11 @@ fun NuvioPosterCard(
     }
 }
 
+/** Shelf header look. Editorial (desktop Home redesign) sets a small label above a larger title. */
+enum class NuvioShelfHeaderStyle { Standard, Editorial }
+
+val LocalNuvioShelfHeaderStyle = androidx.compose.runtime.compositionLocalOf { NuvioShelfHeaderStyle.Standard }
+
 @Composable
 internal fun NuvioShelfSectionHeader(
     title: String,
@@ -492,29 +502,45 @@ internal fun NuvioShelfSectionHeader(
     onViewAllClick: (() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null,
     viewAllPillSize: NuvioViewAllPillSize = NuvioViewAllPillSize.Default,
+    eyebrow: String? = null,
 ) {
     val tokens = MaterialTheme.nuvio
+    val editorial = LocalNuvioShelfHeaderStyle.current == NuvioShelfHeaderStyle.Editorial
     Column(
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = if (editorial) Alignment.Bottom else Alignment.CenterVertically,
         ) {
+            Column(modifier = Modifier.weight(1f)) {
+            if (editorial && !eyebrow.isNullOrBlank()) {
+                Text(
+                    text = eyebrow.uppercase(),
+                    style = redesignText(11.sp, ShelfFontWeight.Medium, RedesignColors.textMuted, letterSpacing = 0.1.em),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
             Text(
                 text = title,
                 modifier = Modifier
-                    .weight(1f)
                     .then(if (onTitleClick != null) {
                         Modifier.nuvioFocusBorder(RoundedCornerShape(NuvioTokens.Radius.md))
                             .clickable(onClick = onTitleClick)
                     } else Modifier),
-                style = MaterialTheme.typography.titleLarge,
-                color = tokens.colors.textPrimary,
+                style = if (editorial) {
+                    redesignText(24.sp, ShelfFontWeight.Bold, RedesignColors.textPrimary, letterSpacing = RedesignTightTracking)
+                } else {
+                    MaterialTheme.typography.titleLarge
+                },
+                color = if (editorial) RedesignColors.textPrimary else tokens.colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            }
             val viewAllPlaceholderModifier = if (onViewAllClick == null) {
                 Modifier
                     .alpha(0f)

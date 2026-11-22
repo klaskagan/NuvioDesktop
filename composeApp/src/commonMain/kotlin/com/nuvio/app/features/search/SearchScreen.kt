@@ -75,6 +75,8 @@ import androidx.compose.ui.graphics.Color
 import com.nuvio.app.core.ui.BackdropFocusController
 import com.nuvio.app.core.ui.BackdropSurface
 import com.nuvio.app.core.ui.LocalBackdropFocusController
+import com.nuvio.app.core.ui.LocalShellBackdropMode
+import com.nuvio.app.core.ui.ShellBackdropMode
 import com.nuvio.app.core.ui.ShellBackdrop
 import com.nuvio.app.core.ui.NavLayer
 import com.nuvio.app.core.ui.NavSide
@@ -369,7 +371,12 @@ fun SearchScreen(
     var sort by rememberSaveable(query.trim()) { mutableStateOf(SearchSort.Relevance) }
 
     // Ambient backdrop (desktop): the spotlight / first result's art, else the theme mesh. Never hover-driven.
-    val backdropController = remember { if (isDesktop) BackdropFocusController() else null }
+    // On the main tabs the shell owns the one backdrop; Search draws its own only when hosted alone.
+    val backdropMode = LocalShellBackdropMode.current
+    val shellBackdropController = LocalBackdropFocusController.current
+    val ownBackdropController = remember { if (isDesktop) BackdropFocusController() else null }
+    val backdropController = if (backdropMode == ShellBackdropMode.Solid) null else shellBackdropController ?: ownBackdropController
+    val drawsOwnBackdrop = backdropController != null && shellBackdropController == null
     val topResultArt = when {
         discovery != null && isDesktop && shelfView == null ->
             tagHeroItems(discoveryTopTen, discoveryShelves, scope).firstOrNull()?.let { it.banner ?: it.poster }
@@ -378,7 +385,10 @@ fun SearchScreen(
             (displayedSearch.spotlightFor(scope) ?: displayedSearch.results.inScope(scope).firstOrNull())?.let { it.banner ?: it.poster }
         else -> null
     }
-    LaunchedEffect(backdropController, topResultArt) { backdropController?.base = topResultArt }
+    // Visited tabs stay composed, so only the active screen may steer the shared backdrop.
+    ScreenActivityEffect(backdropController, topResultArt) { active ->
+        if (active) backdropController?.base = topResultArt
+    }
     // The sticky bar only turns solid once it is actually pinned; on desktop the idle hero sits above it.
     val stickyHeaderIndex = if (isDesktop && query.isBlank()) 1 else 0
     val headerScrolled by remember(listState, stickyHeaderIndex) {
@@ -409,9 +419,9 @@ fun SearchScreen(
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
     ) {
-        if (backdropController != null) {
+        if (backdropController != null && drawsOwnBackdrop) {
             Box(Modifier.fillMaxSize().navTransitionLayer(NavLayer.Background, NavSide.Underneath)) {
-                ShellBackdrop(backdropController)
+                ShellBackdrop(backdropController, showArtwork = backdropMode == ShellBackdropMode.Ambient)
             }
         }
         // Captured here: the layer Box below hides BoxWithConstraints' receiver.

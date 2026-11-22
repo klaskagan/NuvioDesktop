@@ -214,6 +214,7 @@ fun HomeHeroSection(
             viewportHeightDp = viewportHeight?.value,
             mobileBelowSectionHeightHintDp = mobileBelowSectionHeightHint?.value,
             preferDesktopLayout = isDesktop,
+            heroHeightCapDp = LocalHomeHeroHeightCap.current?.value,
         )
         val heroWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
         val heroHeightPx = with(LocalDensity.current) { layout.heroHeight.toPx() }
@@ -883,6 +884,7 @@ fun HomeHeroReservedSpace(
             viewportHeightDp = viewportHeight?.value,
             mobileBelowSectionHeightHintDp = mobileBelowSectionHeightHint?.value,
             preferDesktopLayout = isDesktop,
+            heroHeightCapDp = LocalHomeHeroHeightCap.current?.value,
         )
 
         Spacer(
@@ -1091,17 +1093,28 @@ private fun desktopHeroLogoSlotHeight(layout: HomeHeroLayout): Dp =
         else -> 104.dp
     }
 
+/**
+ * Desktop Home redesign: caps the hero so the tabs and the first row show on the first screen.
+ * The skeleton and reserved space read it too, so loading never changes the hero's height.
+ */
+val LocalHomeHeroHeightCap = androidx.compose.runtime.compositionLocalOf<Dp?> { null }
+
+private const val DESKTOP_HERO_MIN_CAPPED_HEIGHT = 380f
+
 internal fun homeHeroLayout(
     maxWidthDp: Float,
     viewportHeightDp: Float? = null,
     mobileBelowSectionHeightHintDp: Float? = null,
     preferDesktopLayout: Boolean = false,
+    heroHeightCapDp: Float? = null,
 ): HomeHeroLayout {
     if (preferDesktopLayout) {
         val heroHeight = desktopHeroHeight(
             maxWidthDp = maxWidthDp,
             viewportHeightDp = viewportHeightDp,
-        )
+        ).let { height ->
+            heroHeightCapDp?.let { cap -> minOf(height.value, cap).coerceAtLeast(DESKTOP_HERO_MIN_CAPPED_HEIGHT).dp } ?: height
+        }
         val ultrawideProgress = ultrawideViewportProgress(
             widthDp = maxWidthDp,
             heightDp = viewportHeightDp,

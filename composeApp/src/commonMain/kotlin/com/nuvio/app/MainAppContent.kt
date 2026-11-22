@@ -1593,6 +1593,9 @@ internal fun MainAppContent(
                     com.nuvio.app.features.settings.ThemeSettingsRepository.ensureLoaded()
                     com.nuvio.app.features.settings.ThemeSettingsRepository.pageTransition
                 }.collectAsStateWithLifecycle()
+                val shellBackdropMode by remember {
+                    com.nuvio.app.features.settings.ThemeSettingsRepository.shellBackdrop
+                }.collectAsStateWithLifecycle()
                 NavDisplay(
                     backStack = navBackStack,
                     modifier = Modifier
@@ -1611,11 +1614,14 @@ internal fun MainAppContent(
                     CompositionLocalProvider(
                         com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current,
                         com.nuvio.app.core.ui.LocalNavTransitionStyle provides pageTransitionStyle,
+                        com.nuvio.app.core.ui.LocalShellBackdropMode provides shellBackdropMode,
                     ) {
                     MainTabsDestination(
                         selectedTab = selectedTab,
                         initialHomeReady = initialHomeReady,
                         rootRouteActive = currentRoute is TabsRoute,
+                        sidebarHandedOff = currentRoute is PersonDetailRoute &&
+                            shellBackdropMode != com.nuvio.app.core.ui.ShellBackdropMode.Solid,
                         useTabletFloatingTabBar = useTabletFloatingTabBar,
                         useNativeNavigation = useNativeNavigation,
                         useNativeTabBar = useNativeTabBar,
@@ -1868,6 +1874,7 @@ internal fun MainAppContent(
                     CompositionLocalProvider(
                         com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current,
                         com.nuvio.app.core.ui.LocalNavTransitionStyle provides pageTransitionStyle,
+                        com.nuvio.app.core.ui.LocalShellBackdropMode provides shellBackdropMode,
                     ) {
                     DetailNavigationFrame(
                         route = route,
@@ -1875,6 +1882,8 @@ internal fun MainAppContent(
                         onTabSelected = ::selectDetailNavigationTab,
                         onProfileSelected = selectNavigationProfile,
                         onAddProfileRequested = onSwitchProfile,
+                        frostedSidebar = shellBackdropMode != com.nuvio.app.core.ui.ShellBackdropMode.Solid,
+                        sidebarHandedOff = currentRoute is TabsRoute && selectedTab in com.nuvio.app.core.ui.ShellBackdropTabs,
                     ) {
                         PersonDestination(
                             route = route,

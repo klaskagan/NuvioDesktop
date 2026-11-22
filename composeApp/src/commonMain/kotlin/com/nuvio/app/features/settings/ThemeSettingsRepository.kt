@@ -1,6 +1,7 @@
 package com.nuvio.app.features.settings
 
 import com.nuvio.app.core.ui.NavTransitionStyle
+import com.nuvio.app.core.ui.ShellBackdropMode
 
 import com.nuvio.app.core.ui.AppTheme
 import com.nuvio.app.core.ui.CustomThemeColors
@@ -41,6 +42,9 @@ object ThemeSettingsRepository {
     /** Desktop page-to-page motion; Home hero's layered parallax by default. */
     private val _pageTransition = MutableStateFlow(NavTransitionStyle.Default)
     val pageTransition: StateFlow<NavTransitionStyle> = _pageTransition.asStateFlow()
+    /** Desktop redesign background: blurred artwork, the theme mesh only, or the plain theme colour. */
+    private val _shellBackdrop = MutableStateFlow(ShellBackdropMode.Default)
+    val shellBackdrop: StateFlow<ShellBackdropMode> = _shellBackdrop.asStateFlow()
 
     private val _selectedAppLanguage = MutableStateFlow(AppLanguage.DEVICE)
     val selectedAppLanguage: StateFlow<AppLanguage> = _selectedAppLanguage.asStateFlow()
@@ -105,6 +109,7 @@ object ThemeSettingsRepository {
         _liquidGlassNativeTabBarEnabled.value = false
         _desktopNavigationLayout.value = DesktopNavigationLayout.Default
         _pageTransition.value = NavTransitionStyle.Default
+        _shellBackdrop.value = ShellBackdropMode.Default
         NativeTabBridge.publishAccentColor(ThemeColors.White.nativeAccentHex)
         NativeTabBridge.publishLiquidGlassEnabled(false)
         _selectedAppLanguage.value = AppLanguage.DEVICE
@@ -138,6 +143,7 @@ object ThemeSettingsRepository {
             ThemeSettingsStorage.loadDesktopNavigationLayout(),
         )
         _pageTransition.value = NavTransitionStyle.fromName(ThemeSettingsStorage.loadPageTransition())
+        _shellBackdrop.value = ShellBackdropMode.fromName(ThemeSettingsStorage.loadShellBackdrop())
         val appLanguage = AppLanguage.fromCode(ThemeSettingsStorage.loadSelectedAppLanguage())
         ThemeSettingsStorage.applySelectedAppLanguage(appLanguage.code)
         _selectedAppLanguage.value = appLanguage
@@ -197,6 +203,13 @@ object ThemeSettingsRepository {
         if (_pageTransition.value == style) return
         _pageTransition.value = style
         ThemeSettingsStorage.savePageTransition(style.name)
+    }
+
+    fun setShellBackdrop(mode: ShellBackdropMode) {
+        ensureLoaded()
+        if (_shellBackdrop.value == mode) return
+        _shellBackdrop.value = mode
+        ThemeSettingsStorage.saveShellBackdrop(mode.name)
     }
 
     fun setAppLanguage(language: AppLanguage) {

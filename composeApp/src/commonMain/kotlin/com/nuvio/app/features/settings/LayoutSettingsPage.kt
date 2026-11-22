@@ -5,6 +5,8 @@ import nuvio.composeapp.generated.resources.settings_page_transition_sheet_title
 import nuvio.composeapp.generated.resources.settings_page_transition
 
 import com.nuvio.app.core.ui.NavTransitionStyle
+import com.nuvio.app.core.ui.ShellBackdropMode
+import nuvio.composeapp.generated.resources.settings_shell_backdrop
 
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.getValue
@@ -166,6 +168,11 @@ internal fun LazyListScope.layoutSettingsContent(
             var showNavBarStyleSheet by remember { mutableStateOf(false) }
             var showDesktopNavigationSheet by remember { mutableStateOf(false) }
             var showPageTransitionSheet by remember { mutableStateOf(false) }
+            var showShellBackdropSheet by remember { mutableStateOf(false) }
+            val shellBackdrop by remember {
+                ThemeSettingsRepository.ensureLoaded()
+                ThemeSettingsRepository.shellBackdrop
+            }.collectAsStateWithLifecycle()
             val pageTransition by remember {
                 ThemeSettingsRepository.ensureLoaded()
                 ThemeSettingsRepository.pageTransition
@@ -206,6 +213,13 @@ internal fun LazyListScope.layoutSettingsContent(
                             description = stringResource(pageTransition.labelRes),
                             isTablet = isTablet,
                             onClick = { showPageTransitionSheet = true },
+                        )
+                        SettingsGroupDivider(isTablet = isTablet)
+                        SettingsNavigationRow(
+                            title = stringResource(Res.string.settings_shell_backdrop),
+                            description = stringResource(shellBackdrop.labelRes),
+                            isTablet = isTablet,
+                            onClick = { showShellBackdropSheet = true },
                         )
                         SettingsGroupDivider(isTablet = isTablet)
                         SettingsNavigationRow(
@@ -255,8 +269,24 @@ internal fun LazyListScope.layoutSettingsContent(
                     }
                 }
             }
+            if (showShellBackdropSheet) {
+                LayoutChoiceBottomSheet(
+                    title = stringResource(Res.string.settings_shell_backdrop),
+                    options = ShellBackdropMode.entries,
+                    label = { stringResource(it.labelRes) },
+                    selected = shellBackdrop,
+                    onSelected = {
+                        ThemeSettingsRepository.setShellBackdrop(it)
+                        showShellBackdropSheet = false
+                    },
+                    onDismiss = { showShellBackdropSheet = false },
+                )
+            }
             if (showPageTransitionSheet) {
-                PageTransitionBottomSheet(
+                LayoutChoiceBottomSheet(
+                    title = stringResource(Res.string.settings_page_transition_sheet_title),
+                    options = NavTransitionStyle.entries,
+                    label = { stringResource(it.labelRes) },
                     selected = pageTransition,
                     onSelected = {
                         ThemeSettingsRepository.setPageTransition(it)
@@ -362,9 +392,12 @@ private fun DesktopNavigationLayoutBottomSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PageTransitionBottomSheet(
-    selected: NavTransitionStyle,
-    onSelected: (NavTransitionStyle) -> Unit,
+private fun <T> LayoutChoiceBottomSheet(
+    title: String,
+    options: List<T>,
+    label: @Composable (T) -> String,
+    selected: T,
+    onSelected: (T) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -385,7 +418,7 @@ private fun PageTransitionBottomSheet(
         ) {
             item {
                 Text(
-                    text = stringResource(Res.string.settings_page_transition_sheet_title),
+                    text = title,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
@@ -393,12 +426,12 @@ private fun PageTransitionBottomSheet(
                 )
             }
 
-            itemsIndexed(NavTransitionStyle.entries) { index, layout ->
+            itemsIndexed(options) { index, layout ->
                 if (index > 0) {
                     NuvioBottomSheetDivider()
                 }
                 NuvioBottomSheetActionRow(
-                    title = stringResource(layout.labelRes),
+                    title = label(layout),
                     onClick = {
                         onSelected(layout)
                         coroutineScope.launch {

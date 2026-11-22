@@ -48,6 +48,7 @@ fun HomeSkeletonHero(
             viewportHeightDp = viewportHeight?.value,
             mobileBelowSectionHeightHintDp = mobileBelowSectionHeightHint?.value,
             preferDesktopLayout = isDesktop,
+            heroHeightCapDp = LocalHomeHeroHeightCap.current?.value,
         )
         val containerWidth = maxWidth
         val contentHorizontalPadding = sectionPadding ?: layout.contentHorizontalPadding

@@ -41,6 +41,7 @@ fun HomeCatalogRowSection(
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
     allowPortraitFallback: Boolean = true,
     rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
+    eyebrow: String? = null,
 ) {
     val scope = rememberCoroutineScope()
     val calendar = section.calendarState
@@ -68,6 +69,7 @@ fun HomeCatalogRowSection(
             onViewAllClick = onViewAllClick, onPosterClick = onPosterClick,
             onPosterLongClick = onPosterLongClick, allowPortraitFallback = allowPortraitFallback,
             rowStyle = rowStyle,
+            eyebrow = eyebrow,
             rankingLayout = if (rowStyle == HomeRowStyle.NumberedRanking) NumberedRankingLayout(maxWidth) else null,
         )
     }
@@ -88,6 +90,7 @@ private fun HomeCatalogRowSectionContent(
     onPosterLongClick: ((MetaPreview) -> Unit)?,
     allowPortraitFallback: Boolean,
     rowStyle: HomeRowStyle,
+    eyebrow: String?,
     rankingLayout: NumberedRankingLayout?,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
@@ -114,6 +117,7 @@ private fun HomeCatalogRowSectionContent(
         onViewAllClick = onViewAllClick,
         onTitleClick = onViewAllClick?.takeIf { isDesktop },
         viewAllPillSize = NuvioViewAllPillSize.Compact,
+        eyebrow = eyebrow,
         key = { item -> item.stableKey() },
     ) { item ->
         val watched = WatchingState.isPosterWatched(watchedKeys, item, fullyWatchedSeriesKeys)

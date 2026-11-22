@@ -25,6 +25,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.ui.unit.em
 import com.nuvio.app.core.ui.BackdropFocusController
+import com.nuvio.app.core.ui.LocalShellBackdropMode
+import com.nuvio.app.core.ui.LocalBackdropContentStartInset
+import com.nuvio.app.core.ui.ShellBackdropMode
 import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignTightTracking
 import com.nuvio.app.core.ui.RedesignTypography
@@ -200,7 +203,10 @@ fun PersonDetailScreen(
 
     // Desktop redesign: ambient backdrop from the person's most popular credit, Inter type, and
     // a crossfade between loading, error and content instead of a hard swap.
-    val backdrop = remember { if (isDesktop) BackdropFocusController() else null }
+    val backdropMode = LocalShellBackdropMode.current
+    val backdrop = remember(backdropMode == ShellBackdropMode.Solid) {
+        if (isDesktop && backdropMode != ShellBackdropMode.Solid) BackdropFocusController() else null
+    }
     val backdropArt = (uiState as? PersonDetailUiState.Success)?.personDetail?.let(::personBackdropArt)
     LaunchedEffect(backdrop, backdropArt) { backdrop?.base = backdropArt }
     Box(
@@ -212,11 +218,11 @@ fun PersonDetailScreen(
         // layered parallax or a full slide, while the nav entry itself switches instantly.
         if (backdrop != null) {
             Box(Modifier.fillMaxSize().navTransitionLayer(NavLayer.Background, NavSide.Above)) {
-                ShellBackdrop(backdrop)
+                ShellBackdrop(backdrop, showArtwork = backdropMode == ShellBackdropMode.Ambient)
             }
         }
         val slide = Modifier.navTransitionLayer(NavLayer.Content, NavSide.Above)
-        Box(Modifier.fillMaxSize().then(slide)) {
+        Box(Modifier.fillMaxSize().then(slide).padding(start = LocalBackdropContentStartInset.current)) {
         RedesignTypography(enabled = isDesktop) {
         AnimatedContent(
             targetState = uiState,

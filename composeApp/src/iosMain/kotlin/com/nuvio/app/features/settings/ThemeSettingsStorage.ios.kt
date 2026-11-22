@@ -19,6 +19,7 @@ actual object ThemeSettingsStorage {
     private const val liquidGlassNativeTabBarEnabledKey = "liquid_glass_native_tab_bar_enabled"
     private const val desktopNavigationLayoutKey = "desktop_navigation_layout"
     private const val pageTransitionKey = "page_transition"
+    private const val shellBackdropKey = "shell_backdrop"
     private const val selectedAppLanguageKey = "selected_app_language"
     private const val navBarStyleKey = "nav_bar_style"
     private const val navBarGlowEnabledKey = "nav_bar_glow_enabled"
@@ -36,6 +37,7 @@ actual object ThemeSettingsStorage {
         liquidGlassNativeTabBarEnabledKey,
         desktopNavigationLayoutKey,
         pageTransitionKey,
+        shellBackdropKey,
         navBarStyleKey,
     )
 
@@ -146,6 +148,16 @@ actual object ThemeSettingsStorage {
         )
     }
 
+    actual fun loadShellBackdrop(): String? =
+        NSUserDefaults.standardUserDefaults.stringForKey(ProfileScopedKey.of(shellBackdropKey))
+
+    actual fun saveShellBackdrop(modeName: String) {
+        NSUserDefaults.standardUserDefaults.setObject(
+            modeName,
+            forKey = ProfileScopedKey.of(shellBackdropKey),
+        )
+    }
+
     actual fun loadSelectedAppLanguage(): String? {
         val value = NSUserDefaults.standardUserDefaults.stringForKey(selectedAppLanguageKey)
         if (value != null) return value
@@ -203,6 +215,7 @@ actual object ThemeSettingsStorage {
         loadLiquidGlassNativeTabBarEnabled()?.let { put(liquidGlassNativeTabBarEnabledKey, encodeSyncBoolean(it)) }
         loadDesktopNavigationLayout()?.let { put(desktopNavigationLayoutKey, encodeSyncString(it)) }
         loadPageTransition()?.let { put(pageTransitionKey, encodeSyncString(it)) }
+        loadShellBackdrop()?.let { put(shellBackdropKey, encodeSyncString(it)) }
         loadNavBarStyle()?.let { put(navBarStyleKey, encodeSyncString(it)) }
     }
 
@@ -221,6 +234,7 @@ actual object ThemeSettingsStorage {
         payload.decodeSyncBoolean(liquidGlassNativeTabBarEnabledKey)?.let(::saveLiquidGlassNativeTabBarEnabled)
         payload.decodeSyncString(desktopNavigationLayoutKey)?.let(::saveDesktopNavigationLayout)
         payload.decodeSyncString(pageTransitionKey)?.let(::savePageTransition)
+        payload.decodeSyncString(shellBackdropKey)?.let(::saveShellBackdrop)
         payload.decodeSyncString(navBarStyleKey)?.let(::saveNavBarStyle)
         applySelectedAppLanguage(loadSelectedAppLanguage() ?: AppLanguage.DEVICE.code)
     }

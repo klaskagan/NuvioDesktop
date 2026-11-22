@@ -45,6 +45,24 @@ Person Details opening with no transition). Apply these to every redesigned scre
   (`SearchScopeTabs`). Avoid default grey indication boxes on redesigned surfaces.
 - **Chrome reacts to real state:** a sticky bar fades its dim and blur in only once actually
   pinned.
+- **The tabs shell owns the one ambient backdrop** (`MainTabsDestination.kt`, `ShellBackdrop`). A
+  redesigned tab joins `ShellBackdropTabs`, reads `LocalBackdropFocusController`, and sets `base`
+  inside `ScreenActivityEffect` only while active: visited tabs stay composed and would otherwise
+  steer it from behind. Tabs outside the set keep the solid page; the shell fades the backdrop and
+  the sidebar's frost out for them. Don't mount a second `ShellBackdrop` in a tab (Search keeps one
+  only for when it is hosted alone, as in tests). `LocalShellBackdropMode` (Settings → Layout →
+  Background, synced as `shell_backdrop`) is Ambient, Mesh (no artwork) or Solid (null controller,
+  so the existing `controller != null` fallbacks restore the opaque look).
+- **Don't make every Home row a blur source.** Home's pinned tabs first blurred the rows beneath
+  them the way Search's bar does (`hazeSource` on each list item). On Home's long list of image
+  rows that nearly doubled render time: `SeasonalCollectionNavigationTest.homeExploreRowsGridAndBackKeepSeasonAndShuffle`
+  went from 43 s to 66–81 s and past its 1-minute limit, and back to 34 s without it. Home's bar uses
+  `BackdropSurface.stickyHeaderOpaque` instead. Treat that test's runtime as the regression check
+  before adding per-row effects to Home.
+- **Frosted sidebars come in pairs.** A page with its own backdrop in a separate nav entry (Person)
+  passes `frostedSidebar` to `DetailNavigationFrame` and insets its content, not its backdrop, by
+  `LocalBackdropContentStartInset`. While two such entries cross, the one leaving hides its sidebar
+  (`sidebarHandedOff`); two overlapping dims would darken the strip for the length of the transition.
 
 Regression check: open the screen, navigate to and back from a detail page, type and refine a
 query, switch tabs, and scroll one step. There should be no frame where content pops, jumps, or

@@ -69,8 +69,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.core.ui.BackdropSurface
 import com.nuvio.app.core.ui.DisintegrationRequest
 import com.nuvio.app.core.ui.LocalNuvioNavBarScrollState
 import com.nuvio.app.core.ui.NuvioLoadingIndicator
@@ -774,9 +776,18 @@ internal fun DesktopHoverSidebar(
     hoverSource: MutableInteractionSource = remember { MutableInteractionSource() },
     profileStackVisible: Boolean = false,
     onProfileStackVisibleChange: (Boolean) -> Unit = {},
+    frosted: Boolean = false,
+    hazeState: HazeState? = null,
     modifier: Modifier = Modifier,
 ) {
     val tokens = MaterialTheme.nuvio
+    // Over the ambient backdrop the sidebar is frosted glass: a blur of what is behind it under
+    // the same dim as Search's pinned bar. It eases to the solid theme colour everywhere else.
+    val frost by animateFloatAsState(
+        targetValue = if (frosted && hazeState != null) 1f else 0f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "desktop_sidebar_frost",
+    )
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
     val avatars by AvatarRepository.avatars.collectAsStateWithLifecycle()
@@ -794,8 +805,15 @@ internal fun DesktopHoverSidebar(
             .width(sidebarWidth)
             .fillMaxHeight()
             .hoverable(hoverSource)
-            .zIndex(NuvioTokens.Z.navigation),
-        color = tokens.colors.background,
+            .zIndex(NuvioTokens.Z.navigation)
+            .then(
+                if (frost > 0f && hazeState != null) {
+                    Modifier.hazeEffect(state = hazeState) { blurRadius = 24.dp }
+                } else {
+                    Modifier
+                },
+            ),
+        color = lerp(tokens.colors.background, BackdropSurface.stickyHeader, frost),
         contentColor = tokens.colors.textPrimary,
     ) {
         BoxWithConstraints(
@@ -813,6 +831,15 @@ internal fun DesktopHoverSidebar(
                 profileStackTop + profileStackHeight + DesktopSidebarProfileStackNavGap
             } else {
                 0.dp
+            }
+            if (frost > 0f) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .width(1.dp)
+                        .background(Color.White.copy(alpha = 0.10f * frost)),
+                )
             }
             val showHistory = LocalHistorySource.current != null
             val itemCount = AppScreenTab.entries.size - if (showHistory) 0 else 1

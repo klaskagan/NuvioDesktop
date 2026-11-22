@@ -15,6 +15,8 @@ internal expect object ThemeSettingsStorage {
     fun saveDesktopNavigationLayout(layoutName: String)
     fun loadPageTransition(): String?
     fun savePageTransition(styleName: String)
+    fun loadShellBackdrop(): String?
+    fun saveShellBackdrop(modeName: String)
     fun loadSelectedAppLanguage(): String?
     fun saveSelectedAppLanguage(languageCode: String)
     fun applySelectedAppLanguage(languageCode: String)

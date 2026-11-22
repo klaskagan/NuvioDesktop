@@ -72,7 +72,7 @@ class MainAppTabNavigationTest {
         onNodeWithText("Collection name").assertIsDisplayed()
         onNodeWithContentDescription("Search").performClick()
         mainClock.advanceTimeBy(500)
-        onNodeWithText("Search movies, shows...").assertIsDisplayed()
+        onNodeWithText("Search movies, shows, and people").assertIsDisplayed()
     }
 
     private fun verifyTabs(
@@ -95,8 +95,8 @@ class MainAppTabNavigationTest {
                 onNodeWithContentDescription(tab).performClick()
                 waitForIdle()
                 if (tab == "Calendar") onNodeWithTag("calendar-screen").assertExists()
-                if (tab == "Search") onNodeWithText("Search movies, shows...").assertExists()
-                else onNodeWithText("Search movies, shows...").assertDoesNotExist()
+                if (tab == "Search") onNodeWithText("Search movies, shows, and people").assertExists()
+                else onNodeWithText("Search movies, shows, and people").assertDoesNotExist()
             }
         }
         val directory = File("build/reports/tab-history").apply { mkdirs() }

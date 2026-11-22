@@ -27,6 +27,24 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.AppScreenTab
 import com.nuvio.app.isDesktop
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.lazy.LazyItemScope
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.graphics.Color
+import com.nuvio.app.core.ui.BackdropSurface
+import com.nuvio.app.core.ui.LocalBackdropFocusController
+import com.nuvio.app.core.ui.LocalNuvioShelfHeaderStyle
+import com.nuvio.app.core.ui.NavLayer
+import com.nuvio.app.core.ui.NavSide
+import com.nuvio.app.core.ui.NuvioShelfHeaderStyle
+import com.nuvio.app.core.ui.RedesignTypography
+import com.nuvio.app.core.ui.navTransitionLayer
+import com.nuvio.app.features.home.components.LocalHomeHeroHeightCap
 import com.nuvio.app.core.auth.AuthRepository
 import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.network.NetworkCondition
@@ -974,6 +992,49 @@ fun HomeScreen(
         homeCatalogLoading = homeUiState.isLoading,
     )
 
+    // Desktop redesign (direction "Editorial"): the rows sit on the shell's ambient backdrop, tabs
+    // under the hero filter them, and the first catalog leads as a numbered ranking.
+    val backdropController = LocalBackdropFocusController.current.takeIf { isDesktop }
+    val heroBackdropArt = homeUiState.heroItems.firstOrNull()?.let { it.banner ?: it.poster }
+    // Visited tabs stay composed, so only the active screen may steer the shared backdrop. It shows
+    // the first hero title and stays put while the carousel rotates.
+    ScreenActivityEffect(backdropController, heroBackdropArt) { active ->
+        if (active) backdropController?.base = heroBackdropArt
+    }
+    var homeTab by rememberSaveable { mutableStateOf(HomeTab.ForYou) }
+    val tabContinueWatchingItems = remember(continueWatchingItems, homeTab) {
+        if (isDesktop) continueWatchingItems.filter { it.belongsTo(homeTab) } else continueWatchingItems
+    }
+    val tabUpcomingItems = remember(upcomingItems, homeTab) {
+        if (isDesktop) upcomingItems.filter { it.belongsTo(homeTab) } else upcomingItems
+    }
+    val homeTabsIndex = if (showHeroSlot) 1 else 0
+    val homeTabsPinned by remember(homeListState, homeTabsIndex) {
+        derivedStateOf {
+            homeListState.firstVisibleItemIndex > homeTabsIndex ||
+                (homeListState.firstVisibleItemIndex == homeTabsIndex && homeListState.firstVisibleItemScrollOffset > 0)
+        }
+    }
+    val homeTabsColor by animateColorAsState(
+        targetValue = when {
+            !homeTabsPinned -> Color.Transparent
+            backdropController == null -> MaterialTheme.colorScheme.background
+            else -> BackdropSurface.stickyHeaderOpaque
+        },
+        animationSpec = tween(220),
+        label = "home_tabs_pinned",
+    )
+    val homeTabsTopInset by animateDpAsState(
+        targetValue = if (homeTabsPinned) topChromePadding ?: 0.dp else 0.dp,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "home_tabs_inset",
+    )
+    // Switching tabs from deep in the list returns to the tab strip instead of leaving the user
+    // somewhere in the middle of different rows.
+    LaunchedEffect(homeTab) {
+        if (homeListState.firstVisibleItemIndex > homeTabsIndex) homeListState.animateScrollToItem(homeTabsIndex)
+    }
+
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val homeSectionPadding = homeSectionHorizontalPaddingForWidth(maxWidth.value)
         val posterCardStyle = rememberPosterCardStyleUiState()
@@ -1032,11 +1093,37 @@ fun HomeScreen(
             topChromePadding
         }
 
+        val leadRankingKey = remember(homeTab, enabledHomeItems, sectionsMap, rowStyles) {
+            if (!isDesktop) null else homeLeadRankingKey(
+                tab = homeTab,
+                orderedSections = enabledHomeItems.mapNotNull { sectionsMap[it.key] },
+                rowStyles = rowStyles,
+            )
+        }
+        // Rows fade/slide when a tab changes them. They are deliberately not blur sources for the pinned
+        // tabs: a haze source per Home row nearly doubled render time, so the bar uses an opaque dim.
+        val homeItemModifier: LazyItemScope.() -> Modifier = {
+            if (isDesktop) {
+                Modifier
+                    .animateItem(fadeInSpec = tween(220), placementSpec = tween(260, easing = FastOutSlowInEasing), fadeOutSpec = tween(160))
+            } else {
+                Modifier
+            }
+        }
+        val heroBlendColor = MaterialTheme.colorScheme.background
+        val screenMaxHeight = maxHeight
+        RedesignTypography(enabled = isDesktop) {
+        CompositionLocalProvider(
+            LocalNuvioShelfHeaderStyle provides if (isDesktop) NuvioShelfHeaderStyle.Editorial else NuvioShelfHeaderStyle.Standard,
+            LocalHomeHeroHeightCap provides if (isDesktop) screenMaxHeight * HOME_REDESIGN_HERO_VIEWPORT_FRACTION else null,
+        ) {
         NuvioScreen(
-            modifier = Modifier.fillMaxSize().then(heroStretchModifier),
+            modifier = Modifier.fillMaxSize().then(heroStretchModifier)
+                .navTransitionLayer(NavLayer.Content, NavSide.Underneath),
             horizontalPadding = 0.dp,
             topPadding = effectiveTopPadding,
             listState = homeListState,
+            drawBackground = backdropController == null,
         ) {
             if (showHeroSlot) {
                 item(key = "home_hero", contentType = "hero") {
@@ -1206,10 +1293,28 @@ fun HomeScreen(
                 }
 
                 else -> {
+                    if (isDesktop) {
+                        stickyHeader(key = "home_tabs", contentType = "tabs") {
+                            HomeTabsBar(
+                                selected = homeTab,
+                                onSelect = { homeTab = it },
+                                pinnedColor = homeTabsColor,
+                                blendColor = if (showHeroSlot && backdropController != null && !homeTabsPinned) heroBlendColor else Color.Transparent,
+                                horizontalPadding = homeSectionPadding,
+                                topInset = homeTabsTopInset,
+                            )
+                        }
+                    }
+                    var renderedRows = 0
+                    if (continueWatchingPreferences.isVisible) {
+                        if (tabContinueWatchingItems.isNotEmpty()) renderedRows++
+                        if (tabUpcomingItems.isNotEmpty()) renderedRows++
+                    }
                     homeContinueWatchingSections(
+                        itemModifier = homeItemModifier,
                         preferences = continueWatchingPreferences,
-                        continueWatchingItems = continueWatchingItems,
-                        upcomingItems = upcomingItems,
+                        continueWatchingItems = tabContinueWatchingItems,
+                        upcomingItems = tabUpcomingItems,
                         dataSourceKey = effectiveWatchProgressSource,
                         sectionPadding = homeSectionPadding,
                         layout = continueWatchingLayout,
@@ -1223,8 +1328,10 @@ fun HomeScreen(
                     keyedEnabledHomeItems.forEach { keyedSettingsItem ->
                         val settingsItem = keyedSettingsItem.value
                         if (settingsItem.key == com.nuvio.app.features.collection.SeasonalCollection.HOME_KEY) {
-                            visibleSeasonalSection?.let { section ->
+                            visibleSeasonalSection?.takeIf { !isDesktop || homeTab.showsSeasonalSpotlight() }?.let { section ->
+                                renderedRows++
                                 item(key = "seasonal_spotlight_${seasonalTheme.id}", contentType = "seasonal") {
+                                    Box(homeItemModifier()) {
                                     SeasonalSpotlightSection(
                                         theme = seasonalTheme,
                                         artworkFolder = com.nuvio.app.features.collection.SeasonalCollection.activeFolder(seasonalCollection, seasonalTheme),
@@ -1237,18 +1344,20 @@ fun HomeScreen(
                                         onPosterClick = onPosterClick,
                                         onPosterLongClick = onPosterLongClick,
                                     )
+                                    }
                                 }
                             }
 
                         } else if (settingsItem.isCollection) {
                             val collection = collectionsMap[settingsItem.key]
-                            if (collection != null) {
+                            if (collection != null && (!isDesktop || homeTab.showsCollections())) {
+                                renderedRows++
                                 item(key = keyedSettingsItem.lazyKey, contentType = "collection") {
                                     HomeCollectionRowSection(
                                         collection = collection,
                                         rowStyleKey = settingsItem.key.takeIf { isDesktop },
                                         rowStyle = rowStyles[settingsItem.key] ?: HomeRowStyle.Automatic,
-                                        modifier = Modifier.padding(bottom = 12.dp),
+                                        modifier = homeItemModifier().padding(bottom = 12.dp),
                                         sectionPadding = homeSectionPadding,
                                         animateGifs = animateCollectionGifs,
                                         onFolderClick = onFolderClick,
@@ -1257,19 +1366,30 @@ fun HomeScreen(
                             }
                         } else {
                             val section = sectionsMap[settingsItem.key]
-                            if (section != null && (section.items.isNotEmpty() || section.calendarState != null)) {
+                            if (section != null && isDesktop && !section.belongsTo(homeTab)) {
+                                // Filtered out by the selected tab.
+                            } else if (section != null && (section.items.isNotEmpty() || section.calendarState != null)) {
+                                renderedRows++
+                                val leadsAsRanking = section.key == leadRankingKey
                                 item(key = keyedSettingsItem.lazyKey, contentType = "catalog") {
                                     HomeCatalogRowSection(
                                         section = section,
-                                        rowStyle = if (section.calendarState == null) rowStyles[section.key] ?: HomeRowStyle.Automatic else HomeRowStyle.Automatic,
-                                        entries = if (isDesktop) {
+                                        eyebrow = section.addonName.takeIf { isDesktop },
+                                        rowStyle = when {
+                                            leadsAsRanking -> HomeRowStyle.NumberedRanking
+                                            section.calendarState == null -> rowStyles[section.key] ?: HomeRowStyle.Automatic
+                                            else -> HomeRowStyle.Automatic
+                                        },
+                                        entries = if (leadsAsRanking) {
+                                            section.items.take(HOME_LEAD_RANKING_SIZE)
+                                        } else if (isDesktop) {
                                             // The row is lazy, so desktop can expose the fetched catalog without
                                             // composing every poster up front. Mobile keeps its compact preview.
                                             section.items
                                         } else {
                                             section.items.take(homeCatalogPreviewLimit)
                                         },
-                                        modifier = Modifier.padding(bottom = 12.dp),
+                                        modifier = homeItemModifier().padding(bottom = 12.dp),
                                         sectionPadding = homeSectionPadding,
                                         onViewAllClick = if (section.canOpenCatalog(homeCatalogPreviewLimit)) {
                                             onCatalogClick?.let { { it(section) } }
@@ -1292,13 +1412,28 @@ fun HomeScreen(
                             }
                         }
                     }
+                    if (isDesktop && renderedRows == 0) {
+                        item(key = "home_tab_empty", contentType = "empty") {
+                            HomeEmptyStateCard(
+                                modifier = homeItemModifier().padding(horizontal = homeSectionPadding),
+                                title = stringResource(Res.string.home_tab_empty_title),
+                                message = stringResource(Res.string.home_tab_empty_message),
+                            )
+                        }
+                    }
                 }
             }
+        }
+        }
         }
     }
 }
 
+/** Desktop redesign: the hero takes this share of the window so the tabs and first row show without scrolling. */
+private const val HOME_REDESIGN_HERO_VIEWPORT_FRACTION = 0.72f
+
 private fun LazyListScope.homeContinueWatchingSections(
+    itemModifier: LazyItemScope.() -> Modifier = { Modifier },
     preferences: ContinueWatchingPreferencesUiState,
     continueWatchingItems: List<ContinueWatchingItem>,
     upcomingItems: List<ContinueWatchingItem>,
@@ -1321,7 +1456,7 @@ private fun LazyListScope.homeContinueWatchingSections(
                 style = preferences.style,
                 useEpisodeThumbnails = preferences.useEpisodeThumbnails,
                 blurNextUp = preferences.blurNextUp,
-                modifier = Modifier.padding(bottom = 12.dp),
+                modifier = itemModifier().padding(bottom = 12.dp),
                 sectionPadding = sectionPadding,
                 layout = layout,
                 listState = continueWatchingListState,
@@ -1340,7 +1475,7 @@ private fun LazyListScope.homeContinueWatchingSections(
                 style = preferences.style,
                 useEpisodeThumbnails = preferences.useEpisodeThumbnails,
                 blurNextUp = preferences.blurNextUp,
-                modifier = Modifier.padding(bottom = 12.dp),
+                modifier = itemModifier().padding(bottom = 12.dp),
                 title = stringResource(Res.string.upcoming_section_title),
                 sectionPadding = sectionPadding,
                 layout = layout,

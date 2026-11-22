@@ -538,6 +538,10 @@
     <string name="settings_page_transition_sheet_title">Page transitions</string>
     <string name="settings_page_transition_hero">Hero carousel</string>
     <string name="settings_page_transition_slide">Full slide</string>
+    <string name="settings_shell_backdrop">Background</string>
+    <string name="settings_shell_backdrop_ambient">Ambient artwork</string>
+    <string name="settings_shell_backdrop_mesh">Theme glow</string>
+    <string name="settings_shell_backdrop_solid">Solid</string>
     <string name="search_person_known_for">Known for %1$s</string>
     <string name="search_person_view_profile">View profile</string>
     <string name="search_person_favorite">Add to favorites</string>
@@ -731,6 +735,12 @@
     <string name="hero_mark_watched">Mark as watched</string>
     <string name="hero_remove_from_library">Remove from library</string>
     <string name="home_view_all">View All</string>
+    <string name="home_tab_for_you">For you</string>
+    <string name="home_tab_movies">Movies</string>
+    <string name="home_tab_shows">Shows</string>
+    <string name="home_tab_my_lists">My lists</string>
+    <string name="home_tab_empty_title">Nothing here yet</string>
+    <string name="home_tab_empty_message">None of your Home rows belong to this tab.</string>
     <string name="play_manually">Play manually</string>
     <string name="poster_logo_content_description">%1$s logo</string>
     <string name="settings_account">Account</string>

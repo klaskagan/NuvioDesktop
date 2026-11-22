@@ -22,6 +22,9 @@ import nuvio.composeapp.generated.resources.calendar_screen_title
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.draw.alpha
+import com.nuvio.app.core.ui.LocalBackdropContentStartInset
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +65,10 @@ internal fun DetailNavigationFrame(
     onTabSelected: (AppScreenTab) -> Unit,
     onProfileSelected: (NuvioProfile) -> Unit,
     onAddProfileRequested: () -> Unit,
+    /** True when the page draws the ambient backdrop, so the sidebar matches the main tabs' frosted one. */
+    frostedSidebar: Boolean = false,
+    /** Two frosted sidebars overlap while entries cross; the one leaving hides so their dims don't stack. */
+    sidebarHandedOff: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val enabled by ThemeSettingsRepository.detailNavigationEnabled.collectAsStateWithLifecycle()
@@ -117,9 +124,17 @@ internal fun DetailNavigationFrame(
             }
         } else Modifier
         Box(Modifier.fillMaxSize().then(revealOnPointerMotion)) {
-            Box(Modifier.fillMaxSize().hazeSource(haze).padding(start = if (sidebar) {
+            val sidebarInset = if (sidebar) {
                 if (style == NavBarStyle.EXPANDED) DesktopSidebarExpandedWidth else DesktopSidebarCollapsedWidth
-            } else 0.dp)) { content() }
+            } else 0.dp
+            val frosted = sidebar && frostedSidebar
+            // A frosted sidebar needs the page's backdrop under it, so the page insets its own content.
+            Box(Modifier.fillMaxSize().hazeSource(haze).padding(start = if (frosted) 0.dp else sidebarInset)) {
+                CompositionLocalProvider(
+                    LocalBackdropContentStartInset provides if (frosted) sidebarInset else 0.dp,
+                    content = content,
+                )
+            }
             if (sidebar) {
                 DesktopHoverSidebar(
                     selectedTab = selectedTab,
@@ -131,7 +146,9 @@ internal fun DetailNavigationFrame(
                     hoverSource = hoverSource,
                     profileStackVisible = profileStackVisible,
                     onProfileStackVisibleChange = { profileStackVisible = it },
-                    modifier = Modifier.align(Alignment.CenterStart),
+                    frosted = frostedSidebar,
+                    hazeState = haze,
+                    modifier = Modifier.align(Alignment.CenterStart).alpha(if (frosted && sidebarHandedOff) 0f else 1f),
                 )
             } else {
                 AnimatedVisibility(

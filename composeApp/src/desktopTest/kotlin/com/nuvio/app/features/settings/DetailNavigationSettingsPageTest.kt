@@ -52,7 +52,7 @@ class DetailNavigationSettingsPageTest {
 
     @Test fun pageGroupsControlsAndShowsThreeSecondsByDefault() {
         showPage()
-        assertEquals(SettingsPage.Appearance, SettingsPage.DetailNavigation.parentPage)
+        assertEquals(SettingsPage.Layout, SettingsPage.DetailNavigation.parentPage)
         compose.onNodeWithText("Auto-hide detail top bar").assertExists()
         compose.onNodeWithText("3 s").assertExists()
         compose.onNodeWithContentDescription("Hide Delay").assertIsEnabled()

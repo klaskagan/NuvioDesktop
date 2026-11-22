@@ -17,6 +17,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
+import com.nuvio.app.AppScreenTab
+import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.settings_shell_backdrop_ambient
+import nuvio.composeapp.generated.resources.settings_shell_backdrop_mesh
+import nuvio.composeapp.generated.resources.settings_shell_backdrop_solid
+import org.jetbrains.compose.resources.StringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -46,7 +53,42 @@ class BackdropFocusController {
     val target: String? get() = base
 }
 
-/** Present only on screens that draw [ShellBackdrop]. */
+/** What the redesigned desktop screens draw behind their content (Settings → Layout → Background). */
+enum class ShellBackdropMode(val labelRes: StringResource) {
+    /** Blurred artwork of the screen's lead title over the theme mesh. */
+    Ambient(Res.string.settings_shell_backdrop_ambient),
+
+    /** The theme mesh only; never artwork. */
+    Mesh(Res.string.settings_shell_backdrop_mesh),
+
+    /** No backdrop: screens keep the plain theme background. */
+    Solid(Res.string.settings_shell_backdrop_solid),
+    ;
+
+    companion object {
+        val Default = Ambient
+
+        fun fromName(name: String?): ShellBackdropMode =
+            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: Default
+    }
+}
+
+/** The user's choice, provided per nav entry in `MainAppContent.kt`. */
+val LocalShellBackdropMode = compositionLocalOf { ShellBackdropMode.Default }
+
+/**
+ * Tabs whose screens are drawn for the shell backdrop. Other tabs keep the plain theme
+ * background until they are redesigned; the shell fades the backdrop out for them.
+ */
+internal val ShellBackdropTabs = setOf(AppScreenTab.Home, AppScreenTab.Search)
+
+/**
+ * Start inset a backdrop screen applies to its content (not its backdrop) when the frame around
+ * it lets the backdrop run under a frosted sidebar.
+ */
+val LocalBackdropContentStartInset = compositionLocalOf { 0.dp }
+
+/** The shell's controller on the main tabs, or a screen's own; null means no backdrop is drawn. */
 val LocalBackdropFocusController = staticCompositionLocalOf<BackdropFocusController?> { null }
 
 private const val BackdropFocusDebounceMs = 250L
@@ -66,6 +108,7 @@ private val artworkScrim = Brush.verticalGradient(
 fun ShellBackdrop(
     controller: BackdropFocusController,
     modifier: Modifier = Modifier,
+    showArtwork: Boolean = true,
 ) {
     val amoled = MaterialTheme.colorScheme.background == Color.Black
     var settledUrl by remember { mutableStateOf(controller.target) }
@@ -76,11 +119,11 @@ fun ShellBackdrop(
             .collect { settledUrl = it }
     }
 
-    val loaded = rememberArtworkBackdrop(settledUrl)
+    val loaded = rememberArtworkBackdrop(settledUrl.takeIf { showArtwork })
     // Hold the previous artwork while the next one loads, so focus changes crossfade art→art.
     var shown by remember { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(settledUrl, loaded) {
-        if (settledUrl == null) shown = null else if (loaded != null) shown = loaded
+    LaunchedEffect(settledUrl, loaded, showArtwork) {
+        if (settledUrl == null || !showArtwork) shown = null else if (loaded != null) shown = loaded
     }
 
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -114,6 +157,8 @@ object BackdropSurface {
     val card = Color.White.copy(alpha = 0.045f)
     /** Dim over a Haze blur: scrolled content reads as soft colour, never as legible text, behind the bar. */
     val stickyHeader = Color(0xFF0E0F12).copy(alpha = 0.72f)
+    /** For pinned bars with no blur behind them (Home's tabs): dense enough that rows don't read through. */
+    val stickyHeaderOpaque = Color(0xFF0E0F12).copy(alpha = 0.94f)
 }
 
 fun Modifier.backdropCard(shape: Shape): Modifier = background(BackdropSurface.card, shape)

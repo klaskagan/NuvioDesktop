@@ -2,6 +2,16 @@ package com.nuvio.app
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import com.nuvio.app.core.ui.BackdropFocusController
+import com.nuvio.app.core.ui.LocalBackdropFocusController
+import com.nuvio.app.core.ui.LocalShellBackdropMode
+import com.nuvio.app.core.ui.NavLayer
+import com.nuvio.app.core.ui.NavSide
+import com.nuvio.app.core.ui.ShellBackdrop
+import com.nuvio.app.core.ui.ShellBackdropMode
+import com.nuvio.app.core.ui.ShellBackdropTabs
+import com.nuvio.app.core.ui.navTransitionLayer
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -73,6 +83,8 @@ internal fun MainTabsDestination(
     selectedTab: AppScreenTab,
     initialHomeReady: Boolean,
     rootRouteActive: Boolean,
+    /** A page with its own frosted sidebar (Person) is on top; this one hides so their dims don't stack. */
+    sidebarHandedOff: Boolean = false,
     useTabletFloatingTabBar: Boolean,
     useNativeNavigation: Boolean,
     useNativeTabBar: Boolean,
@@ -146,6 +158,16 @@ internal fun MainTabsDestination(
             0.dp
         }
         val navBarGlowEnabled by ThemeSettingsRepository.navBarGlowEnabled.collectAsStateWithLifecycle()
+        // Desktop redesign: one ambient backdrop for every tab, steered by the active screen.
+        val shellBackdropMode = LocalShellBackdropMode.current
+        val shellBackdropController = remember { if (isDesktop) BackdropFocusController() else null }
+        val shellBackdropEnabled = shellBackdropController != null && shellBackdropMode != ShellBackdropMode.Solid
+        val shellBackdropVisible = shellBackdropEnabled && selectedTab in ShellBackdropTabs
+        val shellBackdropAlpha by animateFloatAsState(
+            targetValue = if (shellBackdropVisible) 1f else 0f,
+            animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+            label = "shell_backdrop_alpha",
+        )
         var isTopProfileSwitcherOpen by remember { mutableStateOf(false) }
         val floatingNavigationItems = listOf(
             FloatingNavigationItem(
@@ -240,7 +262,7 @@ internal fun MainTabsDestination(
             },
         ) { innerPadding ->
             Box(modifier = Modifier.fillMaxSize()) {
-                val requiresNavBarHaze = if (useDesktopTopBar) {
+                val requiresNavBarHaze = if (useDesktopTopBar || (useDesktopSidebar && shellBackdropEnabled)) {
                     true
                 } else if (isTabletLayout) {
                     useFloatingTopBar
@@ -252,7 +274,28 @@ internal fun MainTabsDestination(
                 } else {
                     navBarStyleSetting == NavBarStyle.ADAPTIVE
                 }
+                // The backdrop spans the whole window, sidebar strip included, and sits inside the
+                // haze source so the sidebar and top bar blur it together with the page.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (requiresNavBarHaze) Modifier.hazeSource(state = navBarHazeState) else Modifier),
+                ) {
+                if (shellBackdropController != null && shellBackdropAlpha > 0f) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .navTransitionLayer(NavLayer.Background, NavSide.Underneath)
+                            .graphicsLayer { alpha = shellBackdropAlpha },
+                    ) {
+                        ShellBackdrop(
+                            controller = shellBackdropController,
+                            showArtwork = shellBackdropMode == ShellBackdropMode.Ambient,
+                        )
+                    }
+                }
                 CompositionLocalProvider(
+                    LocalBackdropFocusController provides shellBackdropController.takeIf { shellBackdropEnabled },
                     LocalNuvioBottomNavigationOverlayPadding provides if (useNativeBottomTabs) 49.dp else if (!isDesktop && !isTabletLayout && navBarStyleSetting != NavBarStyle.CLASSIC) 72.dp else 0.dp,
                     LocalNuvioNavBarScrollState provides navBarScrollState,
                 ) {
@@ -266,11 +309,11 @@ internal fun MainTabsDestination(
                         actions = tabActions,
                         modifier = Modifier
                             .fillMaxSize()
-                            .then(if (requiresNavBarHaze) Modifier.hazeSource(state = navBarHazeState) else Modifier)
                             .then(if (shouldAttachNestedScroll) Modifier.nestedScroll(navBarScrollState.nestedScrollConnection) else Modifier)
                             .padding(innerPadding)
                             .padding(start = contentStartPadding),
                     )
+                }
                 }
 
                 if (useDesktopSidebar) {
@@ -284,7 +327,11 @@ internal fun MainTabsDestination(
                         hoverSource = sidebarHoverSource,
                         profileStackVisible = isProfileStackVisible,
                         onProfileStackVisibleChange = { isProfileStackVisible = it },
-                        modifier = Modifier.align(Alignment.CenterStart),
+                        frosted = shellBackdropVisible,
+                        hazeState = navBarHazeState,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .alpha(if (shellBackdropVisible && sidebarHandedOff) 0f else 1f),
                     )
                 }
 
