@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.BackdropFocusController
 import com.nuvio.app.core.ui.BackdropSurface
+import com.nuvio.app.core.ui.DesktopMergedTopBarHeight
 import com.nuvio.app.core.ui.LocalBackdropContentStartInset
 import com.nuvio.app.core.ui.LocalBackdropFocusController
 import com.nuvio.app.core.ui.LocalScreenActive
@@ -65,6 +69,8 @@ import com.nuvio.app.features.collection.StreamingCollection
 import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
 import com.nuvio.app.features.home.MetaPreview
+import com.nuvio.app.features.settings.DesktopNavigationLayout
+import com.nuvio.app.features.settings.ThemeSettingsRepository
 import com.nuvio.app.features.home.components.LoadMoreOnScrollEffect
 import com.nuvio.app.features.watched.WatchedRepository
 import dev.chrisbanes.haze.hazeEffect
@@ -201,6 +207,15 @@ internal fun StreamingProviderScreen(
             ) {
                 // Same column as Search: at most ~1240dp of content, never closer than 40dp to the edges.
                 val gutter = maxOf(40.dp, (maxWidth - 1240.dp) / 2)
+                // With the top-bar layout the merged bar overlays detail pages (DetailNavigationFrame),
+                // so the header starts below it, like Search's; the sidebar layout has nothing on top.
+                val navigationEnabled by ThemeSettingsRepository.detailNavigationEnabled.collectAsStateWithLifecycle()
+                val navigationLayout by ThemeSettingsRepository.desktopNavigationLayout.collectAsStateWithLifecycle()
+                val underTopBar = navigationEnabled &&
+                    !(navigationLayout == DesktopNavigationLayout.Sidebar && maxWidth + LocalBackdropContentStartInset.current >= 768.dp)
+                val headerTop = if (underTopBar) {
+                    WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + DesktopMergedTopBarHeight + 8.dp
+                } else 24.dp
                 val contentWidth = maxWidth - gutter * 2
                 val posterCardStyle = rememberPosterCardStyleUiState()
                 val columns = remember(contentWidth, posterCardStyle.widthDp) {
@@ -235,7 +250,7 @@ internal fun StreamingProviderScreen(
                             if (headerColor.alpha > 0.5f) {
                                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
                             }
-                            Column(Modifier.fillMaxWidth().padding(horizontal = gutter).padding(top = 24.dp, bottom = 6.dp)) {
+                            Column(Modifier.fillMaxWidth().padding(horizontal = gutter).padding(top = headerTop, bottom = 6.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     NuvioBackButton(
                                         onClick = goBack,
