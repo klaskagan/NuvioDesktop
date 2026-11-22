@@ -211,6 +211,16 @@ Favorite placeholder tagged `person_favorite`, and the bio) that scrolls with th
 subviews show a compact header (`actor_header_compact`). Tablets keep the side pane.
 `PersonCreditsNavigationTest` covers this.
 
+The Person timeline ("Career", `PersonCareerTimeline.kt`) has one tab per department with credits
+(`CareerDepartment`, shared `RedesignTabs`). It first read only TMDB cast credits, so a director's page
+showed only acting cameos. The tab for the person's known-for department comes first and is selected;
+"As self" is last; one department shows no tab row. Crew rows show their jobs where cast rows show
+characters. Rows sit under one label per year. Row keys include the department, so a tab switch fades
+rows instead of sliding a title between lists, and the tab row must not move. The whole row opens the
+title by pointer, but only the title text is the semantic button: a merged clickable row hid the
+rating, type and role nodes. `PersonCreditsTest` (department mapping, tab order) and
+`PersonCreditsNavigationTest.directorTimelineOpensOnDirectingAndSwitchesToActingInPlace` cover this.
+
 Panels that own a background must also own readable foreground colors.
 The football lineup and actor catalog screenshots exposed black inherited
 text on dark panels. Use a Material Surface with an explicit content color,

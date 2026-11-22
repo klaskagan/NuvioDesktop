@@ -84,6 +84,49 @@ internal fun upcomingPersonCredits(person: PersonDetail, today: LocalDate): List
         .filter { it.creditDate()?.let { date -> date > today } == true }
         .sortedWith(creditOrder(false) { it.creditDate() })
 
+private val selfCharacterPattern = Regex("^(self|himself|herself|themselves|themself)\\b", RegexOption.IGNORE_CASE)
+
+/** True when every role on the title is the person appearing as themselves (documentaries, award shows). */
+internal fun ActingCredit.isSelfOnly(): Boolean =
+    characters.isNotEmpty() && characters.all { selfCharacterPattern.containsMatchIn(it.trim()) }
+
+internal fun careerDepartmentOf(tmdbDepartment: String?): CareerDepartment =
+    when (tmdbDepartment?.trim()?.lowercase()) {
+        "acting", "actors" -> CareerDepartment.Acting
+        "directing" -> CareerDepartment.Directing
+        "writing" -> CareerDepartment.Writing
+        "production" -> CareerDepartment.Production
+        "creator" -> CareerDepartment.Creator
+        else -> CareerDepartment.Crew
+    }
+
+/** Timeline credits per department; a person built without them (older callers) is all acting. */
+internal fun PersonDetail.career(): Map<CareerDepartment, List<ActingCredit>> =
+    careerCredits.ifEmpty {
+        val (self, acting) = actingCredits.partition { it.isSelfOnly() }
+        mapOf(CareerDepartment.Acting to acting, CareerDepartment.Self to self)
+    }.filterValues { it.isNotEmpty() }
+
+/** Tab order: the department the person is known for, then the others by size, appearances as self last. */
+internal fun careerTabs(person: PersonDetail): List<CareerDepartment> {
+    val career = person.career()
+    val main = person.knownFor?.let(::careerDepartmentOf)
+    return career.keys.sortedWith(
+        compareBy<CareerDepartment>(
+            { it != main },
+            { it == CareerDepartment.Self },
+            { -career.getValue(it).size },
+            { it.ordinal },
+        ),
+    )
+}
+
+/** First and last released year among [credits], for the tab's summary line. */
+internal fun careerYearSpan(credits: List<ActingCredit>, today: LocalDate): Pair<Int, Int>? {
+    val years = credits.mapNotNull { it.media.creditDate()?.takeIf { date -> date <= today }?.year }
+    return if (years.isEmpty()) null else years.min() to years.max()
+}
+
 internal sealed interface ActingPeriod {
     data object Upcoming : ActingPeriod
     data class Year(val value: Int) : ActingPeriod

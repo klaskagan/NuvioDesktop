@@ -339,7 +339,6 @@ private fun PersonDetailContent(
             PersonSubview.Upcoming to upcomingPersonCredits(person, today),
         ).filter { it.second.isNotEmpty() }
     }
-    val timeline = remember(person.actingCredits, today) { personActingTimeline(person.actingCredits, today).values.flatten() }
     val wideList = rememberLazyListState()
     val compactList = rememberLazyListState()
     val paneState = rememberSaveableStateHolder()
@@ -408,7 +407,7 @@ private fun PersonDetailContent(
                 } else {
                     paneState.SaveableStateProvider(if (wide) "wide-overview" else "compact-overview") {
                         PersonOverview(
-                            person, knownFor, sections, timeline, today, list, wide, padding, initialProfilePhoto, avatarTransitionKey,
+                            person, knownFor, sections, today, list, wide, padding, initialProfilePhoto, avatarTransitionKey,
                             sharedTransitionScope, animatedVisibilityScope, watchedKeys, fullyWatchedSeriesKeys,
                             onOpenSubview, onOpenMeta,
                             header = if (redesignHeader) {
@@ -446,7 +445,6 @@ private fun PersonOverview(
     person: PersonDetail,
     knownFor: List<MetaPreview>?,
     sections: List<Pair<PersonSubview, List<MetaPreview>>>,
-    timeline: List<ActingCredit>,
     today: LocalDate,
     list: LazyListState,
     wide: Boolean,
@@ -461,6 +459,15 @@ private fun PersonOverview(
     onOpenMeta: (MetaPreview) -> Unit,
     header: (@Composable () -> Unit)? = null,
 ) {
+    val career = remember(person) { person.career() }
+    val careerTabs = remember(person) { careerTabs(person) }
+    val careerCounts = remember(career) { career.mapValues { it.value.size } }
+    // Saved with the overview, so Back from a title returns to the same tab.
+    var careerTabName by rememberSaveable(person.tmdbId) { mutableStateOf<String?>(null) }
+    val careerTab = careerTabs.firstOrNull { it.name == careerTabName } ?: careerTabs.firstOrNull()
+    val timeline = remember(career, careerTab, today) {
+        careerTab?.let { personActingTimeline(career.getValue(it), today).values.flatten() }.orEmpty()
+    }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = list,
@@ -524,121 +531,20 @@ private fun PersonOverview(
                     viewAllPillSize = NuvioViewAllPillSize.Compact,
                 )
             }
-            if (timeline.isNotEmpty()) {
-                item("timeline-heading") {
-                    NuvioShelfSectionHeader(
-                        stringResource(Res.string.person_acting_timeline),
-                        Modifier.padding(start = padding, end = padding, top = 24.dp),
-                        viewAllPillSize = NuvioViewAllPillSize.Compact,
-                    )
-                }
-            }
-            itemsIndexed(timeline, key = { _, credit -> credit.media.stableKey() }) { index, credit ->
-                val media = credit.media
-                val open = { onOpenMeta(media) }
-                val lineColor = MaterialTheme.colorScheme.outline
-                val dotColor = MaterialTheme.nuvio.colors.textMuted
-                val yearWidth = 44.dp
-                val gap = 8.dp
-                val markerWidth = 10.dp
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = padding)
-                        .drawBehind {
-                            val fromStart = (yearWidth + gap + markerWidth / 2).toPx()
-                            val x = if (layoutDirection == LayoutDirection.Ltr) fromStart else size.width - fromStart
-                            val mid = size.height / 2
-                            drawLine(
-                                lineColor, Offset(x, if (index == 0) mid else 0f),
-                                Offset(x, if (index == timeline.lastIndex) mid else size.height), 1.dp.toPx(),
-                            )
-                            drawCircle(dotColor, 3.dp.toPx(), Offset(x, mid))
-                        }
-                        .padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(gap),
-                ) {
-                    val date = media.creditDate()
-                    Text(
-                        date?.year?.toString() ?: "—",
-                        Modifier.width(yearWidth),
-                        textAlign = TextAlign.End,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.nuvio.colors.textMuted,
-                    )
-                    Spacer(Modifier.width(markerWidth))
-                    HomePosterCard(
-                        item = media, basePosterWidthDp = 56, respectGlobalPosterStyle = false,
-                        enhanceLandscapeTitles = false, showTitleBelow = false, placeholderTitle = "",
-                        isWatched = WatchingState.isPosterWatched(watchedKeys, media, fullyWatchedSeriesKeys),
-                        onClick = open,
-                    )
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            media.name,
-                            Modifier.clickable(role = Role.Button, onClick = open).padding(vertical = 2.dp),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.nuvio.colors.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        val type = when (credit.kind) {
-                            ActingCreditKind.Movie -> null
-                            ActingCreditKind.TvMovie -> stringResource(Res.string.person_credit_tv_movie)
-                            ActingCreditKind.Video -> stringResource(Res.string.person_credit_video)
-                            ActingCreditKind.TvSeries -> stringResource(Res.string.person_credit_tv_series)
-                        }
-                        val upcoming = date != null && date > today
-                        if (media.sortRating != null || type != null || upcoming) {
-                            val muted = MaterialTheme.nuvio.colors.textMuted
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                media.sortRating?.let { InlineTmdbRating(it, media.voteCount) }
-                                if (media.sortRating != null && type != null) {
-                                    Box(Modifier.size(3.dp).background(muted, CircleShape))
-                                }
-                                val label = listOfNotNull(
-                                    type,
-                                    if (upcoming) stringResource(Res.string.person_upcoming) else null,
-                                ).joinToString(" · ")
-                                if (label.isNotEmpty()) {
-                                    Text(
-                                        label,
-                                        modifier = if (credit.episodeCount != null) Modifier.weight(1f) else Modifier,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = muted,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                credit.episodeCount?.let { count ->
-                                    Text(
-                                        if (credit.episodeCountIsMinimum) {
-                                            stringResource(Res.string.person_credit_episode_minimum, count)
-                                        } else {
-                                            pluralStringResource(Res.plurals.person_credit_episode_count, count, count)
-                                        },
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = muted,
-                                        maxLines = 1,
-                                    )
-                                }
-                            }
-                        }
-                        if (credit.characters.isNotEmpty()) {
-                            Text(
-                                credit.characters.joinToString(" · "),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.nuvio.colors.textMuted,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-            }
+            personCareerTimeline(
+                tabs = careerTabs,
+                selected = careerTab,
+                counts = careerCounts,
+                credits = timeline,
+                today = today,
+                padding = padding,
+                // The wide desktop page passes its redesigned header; other layouts keep their row style.
+                redesign = header != null,
+                watchedKeys = watchedKeys,
+                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                onSelect = { careerTabName = it.name },
+                onOpenMeta = onOpenMeta,
+            )
         }
         NuvioDesktopVerticalScrollbar(
             state = list,

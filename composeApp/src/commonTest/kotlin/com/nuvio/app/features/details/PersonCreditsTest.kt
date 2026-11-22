@@ -149,6 +149,62 @@ class PersonCreditsTest {
         assertEquals(listOf(later, earlier, unknown), order(PersonCreditSort.Popularity))
     }
 
+    @Test fun careerSplitsCrewByDepartmentWithJobsAndSeparatesAppearancesAsSelf() {
+        val response = json.decodeFromString<TmdbPersonCombinedCreditsResponse>(
+            """{"cast":[
+                {"id":1,"media_type":"movie","title":"Cameo","character":"Projectionist","release_date":"1998-01-01"},
+                {"id":2,"media_type":"movie","title":"Documentary","character":"Self","release_date":"2015-01-01"}
+            ],"crew":[
+                {"id":3,"media_type":"movie","title":"Epic","job":"Director","department":"Directing","release_date":"2023-07-21"},
+                {"id":3,"media_type":"movie","title":"Epic","job":"Screenplay","department":"Writing"},
+                {"id":3,"media_type":"movie","title":"Epic","job":"Story","department":"Writing"},
+                {"id":3,"media_type":"movie","title":"Epic","job":"Producer","department":"Production"},
+                {"id":4,"media_type":"movie","title":"Debut","job":"Director","department":"Directing","release_date":"1998-06-05"},
+                {"id":4,"media_type":"movie","title":"Debut","job":"Director of Photography","department":"Camera"},
+                {"id":4,"media_type":"movie","title":"Debut","job":"Editor","department":"Editing"},
+                {"id":5,"media_type":"tv","name":"Show","job":"Executive Producer","department":"Production","episode_count":8}
+            ]}""",
+        )
+        val career = mapPersonFilmography(response, "en-US", emptyMap(), preferCrew = true).careerCredits
+        assertEquals(listOf("Epic", "Debut"), career.getValue(CareerDepartment.Directing).map { it.media.name })
+        assertEquals(listOf("Director"), career.getValue(CareerDepartment.Directing).first().characters)
+        assertEquals(listOf("Screenplay", "Story"), career.getValue(CareerDepartment.Writing).single().characters)
+        // Departments without a tab of their own share Crew, one row per title with all its jobs.
+        assertEquals(listOf("Director of Photography", "Editor"), career.getValue(CareerDepartment.Crew).single().characters)
+        assertEquals(8, career.getValue(CareerDepartment.Production).first { it.media.type == "series" }.episodeCount)
+        assertEquals(listOf("Cameo"), career.getValue(CareerDepartment.Acting).map { it.media.name })
+        assertEquals(listOf("Documentary"), career.getValue(CareerDepartment.Self).map { it.media.name })
+
+        val person = PersonDetail(
+            tmdbId = 1, name = "Director", biography = null, birthday = null, deathday = null, placeOfBirth = null,
+            profilePhoto = null, knownFor = "Directing", movieCredits = emptyList(), tvCredits = emptyList(),
+            careerCredits = career,
+        )
+        // Known-for department first, the rest by size (ties in enum order), appearances as self last.
+        assertEquals(
+            listOf(
+                CareerDepartment.Directing, CareerDepartment.Production, CareerDepartment.Acting,
+                CareerDepartment.Writing, CareerDepartment.Crew, CareerDepartment.Self,
+            ),
+            careerTabs(person),
+        )
+        assertEquals(CareerDepartment.Acting, careerTabs(person.copy(knownFor = "Acting")).first())
+        assertEquals(1998 to 2023, careerYearSpan(career.getValue(CareerDepartment.Directing), today))
+    }
+
+    @Test fun careerFallsBackToActingCreditsWhenNoDepartmentsWereMapped() {
+        val person = PersonDetail(
+            tmdbId = 1, name = "Actor", biography = null, birthday = null, deathday = null, placeOfBirth = null,
+            profilePhoto = null, knownFor = null, movieCredits = emptyList(), tvCredits = emptyList(),
+            actingCredits = listOf(
+                ActingCredit(item("Role", "2020-01-01"), listOf("Jack")),
+                ActingCredit(item("Awards", "2021-01-01"), listOf("Self - Presenter")),
+            ),
+        )
+        assertEquals(listOf(CareerDepartment.Acting, CareerDepartment.Self), careerTabs(person))
+        assertEquals(listOf("Role"), person.career().getValue(CareerDepartment.Acting).map { it.media.name })
+    }
+
     @Test fun timelineGroupsUpcomingAndUnknownDatesAroundReleasedYears() {
         val movies = listOf(
             item("Older", "2020-01-01"),

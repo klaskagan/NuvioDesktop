@@ -4,6 +4,7 @@ import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.stableKey
 import com.nuvio.app.features.details.PersonDetail
+import com.nuvio.app.features.details.isSelfOnly
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -319,7 +320,6 @@ private val excludedFilmographyGenres = setOf(10763, 10764, 10767) // TMDB TV Ne
 private const val DocumentaryGenre = 99
 /** TV roles with fewer episodes than this are guest spots, not what the person is known for. */
 private const val MinSeriesEpisodes = 3
-private val selfCharacterPattern = Regex("^(self|himself|herself|themselves|themself)\\b", RegexOption.IGNORE_CASE)
 
 /**
  * The featured person's titles for the merged Search grid: directors keep only titles they
@@ -329,7 +329,7 @@ private val selfCharacterPattern = Regex("^(self|himself|herself|themselves|them
  */
 internal fun filterSearchFilmography(detail: PersonDetail, isDirector: Boolean): List<MetaPreview> {
     val selfOnlyKeys = detail.actingCredits
-        .filter { credit -> credit.characters.isNotEmpty() && credit.characters.all { selfCharacterPattern.containsMatchIn(it.trim()) } }
+        .filter { it.isSelfOnly() }
         .mapTo(mutableSetOf()) { it.media.stableKey() }
     val guestSpotKeys = detail.actingCredits
         .filter { credit -> credit.media.type == "series" && (credit.episodeCount ?: Int.MAX_VALUE) < MinSeriesEpisodes }

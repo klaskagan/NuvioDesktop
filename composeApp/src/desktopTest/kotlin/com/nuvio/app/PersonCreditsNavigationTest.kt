@@ -180,11 +180,11 @@ class PersonCreditsNavigationTest {
             onNodeWithContentDescription("Back").performClick()
             val overview = onNodeWithTag("actor_overview")
             overview.performScrollToIndex(2)
-            val years = onAllNodesWithText("1988")
-            years.assertCountEquals(2)
-            val firstYearY = years[0].assertIsDisplayed().fetchSemanticsNode().boundsInRoot.center.y
-            val secondYearY = years[1].assertIsDisplayed().fetchSemanticsNode().boundsInRoot.center.y
-            assertEquals(101f, secondYearY - firstYearY, 1f, "The compact poster still determines the timeline row height")
+            // Both credits are from 1988: the year labels its group once, not every row.
+            onAllNodesWithText("1988").assertCountEquals(1)
+            val firstRowY = onNodeWithText("Fixture Acting Movie").assertIsDisplayed().fetchSemanticsNode().boundsInRoot.center.y
+            val secondRowY = onNodeWithText("Fixture Acting Series").assertIsDisplayed().fetchSemanticsNode().boundsInRoot.center.y
+            assertEquals(101f, secondRowY - firstRowY, 1f, "The compact poster still determines the timeline row height")
             onNodeWithText("Series role", substring = true).assertIsDisplayed()
             val role = onNodeWithText("Actor role").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
             onNodeWithText("Movie").assertDoesNotExist()
@@ -198,8 +198,57 @@ class PersonCreditsNavigationTest {
             val seriesVotes = onNodeWithText("500").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
             kotlin.test.assertTrue(seriesType.left > seriesVotes.right)
             onNodeWithTag("actor_preview_compact").assertDoesNotExist()
-            onNodeWithText("Acting Timeline").assertIsDisplayed()
+            onNodeWithText("Career").assertIsDisplayed()
+            // One department: no tab row.
+            onNodeWithTag("person_career_tabs").assertDoesNotExist()
             saveActorCapture("inline-timeline")
+        }
+
+    @Test fun directorTimelineOpensOnDirectingAndSwitchesToActingInPlace() =
+        runDesktopComposeUiTest(width = 1450, height = 900) {
+            requireIsolation()
+            val base = actor(525, "Director fixture")
+            val directed = MetaPreview("fixture:directed", "movie", "Fixture Directed Movie", rawReleaseDate = "2010-07-16")
+            val director = base.copy(
+                knownFor = "Directing",
+                careerCredits = mapOf(
+                    CareerDepartment.Acting to base.actingCredits,
+                    CareerDepartment.Directing to listOf(ActingCredit(directed, listOf("Director"))),
+                    CareerDepartment.Writing to listOf(
+                        ActingCredit(directed, listOf("Screenplay", "Story")),
+                        ActingCredit(MetaPreview("fixture:written", "movie", "Fixture Written Movie", rawReleaseDate = "2006-01-01"), listOf("Writer")),
+                    ),
+                ),
+            )
+            setContent {
+                ActorNavigation(PersonDetailRoute(525, director.name), PersonDetailLoaders(
+                    detail = { _, _ -> director },
+                    cachedKnownFor = { null },
+                    knownFor = { emptyList() },
+                ))
+            }
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Movies").fetchSemanticsNodes().isNotEmpty() }
+            onNodeWithTag("actor_overview").performScrollToNode(hasText("Director"))
+            val tabs = onNodeWithTag("person_career_tabs")
+            val tabsTop = tabs.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+            // The department the person is known for comes first and is selected, not Acting.
+            onNodeWithText("Directing").assertIsSelected()
+            onNodeWithText("Fixture Directed Movie").assertIsDisplayed()
+            onNodeWithText("Director").assertIsDisplayed()
+            onNodeWithText("2010, 1 title").assertIsDisplayed()
+            onNodeWithText("Fixture Acting Movie").assertDoesNotExist()
+            saveActorCapture("director-timeline")
+            onNodeWithText("Acting").performClick()
+            waitForIdle()
+            onNodeWithText("Acting").assertIsSelected()
+            onNodeWithText("Actor role").assertIsDisplayed()
+            onNodeWithText("Fixture Directed Movie").assertDoesNotExist()
+            onNodeWithText("1988, 2 titles").assertIsDisplayed()
+            assertEquals(tabsTop, tabs.fetchSemanticsNode().boundsInRoot.top, "Switching tabs must not move the tab row")
+            onNodeWithText("Writing").performClick()
+            waitForIdle()
+            onNodeWithText("Screenplay · Story").assertIsDisplayed()
+            saveActorCapture("director-timeline-writing")
         }
 
     private fun ComposeUiTest.saveActorCapture(name: String) {

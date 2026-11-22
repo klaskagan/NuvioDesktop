@@ -2,6 +2,9 @@ package com.nuvio.app.features.tmdb
 
 import com.nuvio.app.features.details.ActingCredit
 import com.nuvio.app.features.details.ActingCreditKind
+import com.nuvio.app.features.details.CareerDepartment
+import com.nuvio.app.features.details.careerDepartmentOf
+import com.nuvio.app.features.details.isSelfOnly
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.stableKey
 import kotlinx.serialization.SerialName
@@ -16,6 +19,7 @@ internal data class TmdbPersonFilmography(
     val genreIds: Map<String, Set<Int>>,
     val allCredits: List<MetaPreview>,
     val directedKeys: Set<String>,
+    val careerCredits: Map<CareerDepartment, List<ActingCredit>>,
 )
 
 internal fun mapPersonFilmography(
@@ -36,9 +40,8 @@ internal fun mapPersonFilmography(
     }
 
     val roles = filmographyCast.groupBy { "${it.appType}:tmdb:${it.id}" }
-    val actingCredits = cast.map { media ->
-        val titleCredits = roles[media.stableKey()].orEmpty()
-        val characters = titleCredits.mapNotNull { it.character?.trim()?.takeIf(String::isNotEmpty) }.distinct()
+    fun careerCredit(media: MetaPreview, titleCredits: List<TmdbPersonCredit>, role: (TmdbPersonCredit) -> String?): ActingCredit {
+        val characters = titleCredits.mapNotNull { role(it)?.trim()?.takeIf(String::isNotEmpty) }.distinct()
         val kind = when {
             media.type == "series" -> ActingCreditKind.TvSeries
             titleCredits.any { TV_MOVIE_GENRE_ID in it.genreIds } -> ActingCreditKind.TvMovie
@@ -51,8 +54,24 @@ internal fun mapPersonFilmography(
                 .mapNotNull { it.episodeCount }
         } else emptyList()
         // Two role credits can count the same episode. The largest count is a safe lower bound.
-        ActingCredit(media, characters, kind, episodeCounts.maxOrNull(), episodeCounts.size > 1)
+        return ActingCredit(media, characters, kind, episodeCounts.maxOrNull(), episodeCounts.size > 1)
     }
+    val actingCredits = cast.map { media -> careerCredit(media, roles[media.stableKey()].orEmpty()) { it.character } }
+    // The timeline's tabs: cast split into roles and appearances as self, crew grouped by department with its jobs.
+    val crewByKey = crew.associateBy { it.stableKey() }
+    val (selfCredits, roleCredits) = actingCredits.partition { it.isSelfOnly() }
+    val careerCredits = buildMap {
+        put(CareerDepartment.Acting, roleCredits)
+        put(CareerDepartment.Self, selfCredits)
+        credits.crew.filter { it.appType != null }.groupBy { careerDepartmentOf(it.department) }.forEach { (department, jobs) ->
+            put(
+                department,
+                jobs.groupBy { "${it.appType}:tmdb:${it.id}" }.mapNotNull { (key, titleCredits) ->
+                    crewByKey[key]?.let { media -> careerCredit(media, titleCredits) { it.job } }
+                },
+            )
+        }
+    }.filterValues { it.isNotEmpty() }
     val genreIds = (credits.cast + credits.crew).filter { it.appType != null }
         .groupBy { "${it.appType}:tmdb:${it.id}" }
         .mapValues { (_, matching) -> matching.flatMap { it.genreIds }.toSet() }
@@ -61,7 +80,7 @@ internal fun mapPersonFilmography(
         .mapTo(mutableSetOf()) { "${it.appType}:tmdb:${it.id}" }
 
     return TmdbPersonFilmography(
-        preferred("movie"), preferred("series"), actingCredits, genreIds, (cast + crew).distinctBy { it.stableKey() }, directedKeys,
+        preferred("movie"), preferred("series"), actingCredits, genreIds, (cast + crew).distinctBy { it.stableKey() }, directedKeys, careerCredits,
     )
 }
 
@@ -142,6 +161,7 @@ internal data class TmdbPersonCredit(
     @SerialName("original_name") val originalName: String? = null,
     val character: String? = null,
     val job: String? = null,
+    val department: String? = null,
     val video: Boolean? = null,
     @SerialName("credit_id") val creditId: String? = null,
     @SerialName("episode_count") val episodeCount: Int? = null,

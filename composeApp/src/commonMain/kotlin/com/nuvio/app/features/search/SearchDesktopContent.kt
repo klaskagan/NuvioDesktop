@@ -1,6 +1,7 @@
 package com.nuvio.app.features.search
 
 import com.nuvio.app.core.ui.RedesignColors
+import com.nuvio.app.core.ui.RedesignTabs
 import com.nuvio.app.core.ui.RedesignTightTracking
 import com.nuvio.app.core.ui.redesignText
 import com.nuvio.app.core.ui.SearchHeroTitleSize
@@ -271,56 +272,14 @@ internal fun SearchScopeTabs(
 ) {
     // Null counts = a tag page: always All / Movies / Shows, without numbers (discover has no exact totals).
     val scopes = if (counts == null) listOf(SearchScope.All, SearchScope.Movies, SearchScope.Shows) else SearchScope.entries
-    val density = LocalDensity.current
-    // Each tab reports where it sits so one underline can slide between them.
-    val bounds = remember { mutableStateMapOf<SearchScope, Pair<Dp, Dp>>() }
-    val target = bounds[selected]
-    val indicatorX by animateDpAsState(target?.first ?: 0.dp, tween(260, easing = FastOutSlowInEasing), label = "tab_x")
-    val indicatorW by animateDpAsState(target?.second ?: 0.dp, tween(260, easing = FastOutSlowInEasing), label = "tab_w")
-    Box(modifier.padding(start = 4.dp, top = 16.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-            scopes.forEach { scope ->
-                val count = counts?.get(scope) ?: 0
-                if (counts != null && scope != SearchScope.All && count == 0) return@forEach
-                val interaction = remember { MutableInteractionSource() }
-                val hovered by interaction.collectIsHoveredAsState()
-                val isSelected = scope == selected
-                val labelColor by animateColorAsState(
-                    when {
-                        isSelected -> RedesignColors.textPrimary
-                        hovered -> RedesignColors.textSecondary
-                        else -> RedesignColors.textMuted
-                    },
-                    tween(160),
-                    label = "tab_label",
-                )
-                Row(
-                    modifier = Modifier
-                        .onGloballyPositioned { coords ->
-                            with(density) {
-                                bounds[scope] = coords.positionInParent().x.toDp() to coords.size.width.toDp()
-                            }
-                        }
-                        .hoverable(interaction)
-                        .clickable(interactionSource = interaction, indication = null) { onSelect(scope) }
-                        .padding(top = 4.dp, bottom = 13.dp),
-                    verticalAlignment = Alignment.Bottom,
-                ) {
-                    Text(scope.label(), style = redesignText(14.sp, FontWeight.SemiBold, labelColor))
-                    Spacer(Modifier.width(5.dp))
-                    if (counts != null) {
-                        Text(count.toString(), style = redesignText(14.sp, FontWeight.Medium, labelColor.copy(alpha = 0.6f)))
-                    }
-                }
-            }
-        }
-        if (target != null) {
-            Box(
-                Modifier.align(Alignment.BottomStart).offset(x = indicatorX).width(indicatorW).height(2.dp)
-                    .clip(RoundedCornerShape(2.dp)).background(RedesignColors.textPrimary),
-            )
-        }
-    }
+    RedesignTabs(
+        items = scopes.filter { counts == null || it == SearchScope.All || (counts[it] ?: 0) > 0 },
+        selected = selected,
+        label = { it.label() },
+        onSelect = onSelect,
+        modifier = modifier.padding(start = 4.dp, top = 16.dp),
+        count = { scope -> counts?.let { it[scope] ?: 0 } },
+    )
 }
 
 @Composable

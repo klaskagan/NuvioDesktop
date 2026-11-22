@@ -1792,7 +1792,20 @@
     <string name="person_died">Died %1$s</string>
     <string name="person_known_for">Known for: %1$s</string>
     <string name="person_known_for_shelf">Known For</string>
-    <string name="person_acting_timeline">Acting Timeline</string>
+    <string name="person_career_timeline">Career</string>
+    <string name="person_career_summary">%1$d – %2$d, %3$s</string>
+    <string name="person_career_summary_one_year">%1$d, %2$s</string>
+    <plurals name="person_career_title_count">
+        <item quantity="one">%1$d title</item>
+        <item quantity="other">%1$d titles</item>
+    </plurals>
+    <string name="person_career_acting">Acting</string>
+    <string name="person_career_directing">Directing</string>
+    <string name="person_career_writing">Writing</string>
+    <string name="person_career_production">Production</string>
+    <string name="person_career_creator">Creator</string>
+    <string name="person_career_crew">Crew</string>
+    <string name="person_career_self">As self</string>
     <string name="person_unknown_date">Unknown date</string>
     <string name="person_year_newest">Release year • Newest first</string>
     <string name="person_year_oldest">Release year • Oldest first</string>

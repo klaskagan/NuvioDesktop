@@ -18,7 +18,12 @@ data class PersonDetail(
     val allCredits: List<MetaPreview> = emptyList(),
     /** Stable keys of titles this person directed. */
     val directedKeys: Set<String> = emptySet(),
+    /** Timeline credits per department. Crew credits carry their jobs in [ActingCredit.characters]. */
+    val careerCredits: Map<CareerDepartment, List<ActingCredit>> = emptyMap(),
 )
+
+/** Timeline tabs. [Crew] merges every department without its own tab; [Self] is cast credits as themselves. */
+enum class CareerDepartment { Acting, Directing, Writing, Production, Creator, Crew, Self }
 
 enum class ActingCreditKind { Movie, TvMovie, Video, TvSeries }
 

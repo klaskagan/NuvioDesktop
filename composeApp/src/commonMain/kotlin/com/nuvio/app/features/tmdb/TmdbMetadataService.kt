@@ -234,6 +234,7 @@ object TmdbMetadataService {
                 movieCredits = filmography.movies,
                 tvCredits = filmography.series,
                 directedKeys = filmography.directedKeys,
+                careerCredits = filmography.careerCredits,
             )
             synchronized(personCacheLock) { personCache[cacheKey] = detail }
             detail
