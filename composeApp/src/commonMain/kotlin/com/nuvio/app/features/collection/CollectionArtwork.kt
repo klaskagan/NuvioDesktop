@@ -14,11 +14,15 @@ import com.nuvio.app.features.catalog.CatalogHeroBackdrop
 
 /** Only the requested community collections opt into the artwork presentation. */
 internal fun Collection.usesConfiguredArtwork(): Boolean {
-    if (id == SeasonalCollection.ID) return true
+    if (id == SeasonalCollection.ID || id == StreamingCollection.ID) return true
     if (!id.endsWith("-community")) return false
-    return title.equals("By Decade", true) || title.equals("Studios", true) ||
-        (title.replace("ㅤ", "").isBlank() && folders.map { it.title }.containsAll(listOf("Trakt", "Netflix", "Prime Video")))
+    return title.equals("By Decade", true) || title.equals("Studios", true) || isCommunityStreamingCollection()
 }
+
+/** The synced community streaming collection: untitled, with a folder per service. */
+internal fun Collection.isCommunityStreamingCollection(): Boolean =
+    id.endsWith("-community") && title.replace("ㅤ", "").isBlank() &&
+        folders.map { it.title }.containsAll(listOf("Trakt", "Netflix", "Prime Video"))
 
 internal fun Collection.artworkFolder(folderId: String): CollectionFolder? =
     folders.firstOrNull { it.id == folderId && (!it.heroBackdropUrl.isNullOrBlank() || it.seasonalThemeId != null) }?.takeIf { usesConfiguredArtwork() }

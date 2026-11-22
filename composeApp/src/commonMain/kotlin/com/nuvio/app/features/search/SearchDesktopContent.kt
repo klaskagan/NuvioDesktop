@@ -13,29 +13,15 @@ import nuvio.composeapp.generated.resources.search_person_born
 import nuvio.composeapp.generated.resources.search_person_favorite
 import nuvio.composeapp.generated.resources.search_person_known_for
 import nuvio.composeapp.generated.resources.search_person_view_profile
-import com.nuvio.app.features.home.HomeHeroMetaLoadEffect
+import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.HomeHeroMetaStore
-import com.nuvio.app.features.home.HomeRowStyle
-import com.nuvio.app.features.home.rememberHomeHeroState
-import com.nuvio.app.features.home.stableKey
-import com.nuvio.app.features.home.components.HomeCatalogRowSection
-import com.nuvio.app.features.home.components.HomeHeroSection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import nuvio.composeapp.generated.resources.search_clear_history
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import com.nuvio.app.core.ui.NuvioViewAllPillSize
-import com.nuvio.app.features.details.components.DetailPosterRailSection
 import nuvio.composeapp.generated.resources.search_shelf_back
-import nuvio.composeapp.generated.resources.search_shelf_new_movies
-import nuvio.composeapp.generated.resources.search_shelf_new_shows
-import nuvio.composeapp.generated.resources.search_shelf_popular_movies
-import nuvio.composeapp.generated.resources.search_shelf_popular_shows
-import nuvio.composeapp.generated.resources.search_shelf_top_rated_movies
-import nuvio.composeapp.generated.resources.search_shelf_top_rated_shows
-import nuvio.composeapp.generated.resources.search_tag_top
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -715,7 +701,7 @@ internal fun SearchDesktopEmptyState(
 }
 
 @Composable
-private fun SearchPillButton(label: String, primary: Boolean, onClick: () -> Unit) {
+internal fun SearchPillButton(label: String, primary: Boolean, onClick: () -> Unit) {
     Text(
         label,
         style = redesignText(14.sp, FontWeight.SemiBold, if (primary) Color.Black else RedesignColors.textPrimary),
@@ -746,6 +732,8 @@ internal fun LazyListScope.searchDesktopList(
     discoveryUi: SearchDiscoveryUi,
     shelves: SearchDiscoveryShelvesUi,
     topTen: SearchTopTenUi,
+    collectionRows: List<HomeCatalogSection>,
+    rowLayout: StreamingRowLayout,
     heroMeta: HomeHeroMetaStore,
     shelfView: SearchShelfView?,
     onShelfView: (SearchShelfView?) -> Unit,
@@ -775,6 +763,7 @@ internal fun LazyListScope.searchDesktopList(
     onPosterClick: ((MetaPreview) -> Unit)?,
     onPosterLongClick: ((MetaPreview) -> Unit)?,
     onPersonClick: ((SearchPerson) -> Unit)?,
+    onCatalogClick: ((HomeCatalogSection) -> Unit)? = null,
 ) {
     val normalizedQuery = query.trim()
     val isWaiting = normalizedQuery.isNotBlank() && lastRequestedQuery != normalizedQuery
@@ -820,7 +809,7 @@ internal fun LazyListScope.searchDesktopList(
                     )
                 }
                 if (discovery != null && shelfView == null) {
-                    SearchScopeTabs(selected = scope, counts = null, onSelect = onScopeChange)
+                    TagPageControls(scope = scope, onScopeChange = onScopeChange, fallbackCountry = shelves.fallbackCountry)
                 }
                 if (showResults) {
                     SearchScopeTabs(
@@ -872,10 +861,12 @@ internal fun LazyListScope.searchDesktopList(
     }
 
     if (discovery != null && shelfView == null) {
-        searchDesktopTagPage(
+        streamingProviderPage(
             selection = discovery,
             shelves = shelves,
             topTen = topTen,
+            collectionRows = collectionRows,
+            layout = rowLayout,
             heroMeta = heroMeta,
             scope = scope,
             gutter = gutter,
@@ -885,6 +876,7 @@ internal fun LazyListScope.searchDesktopList(
             onPosterClick = onPosterClick,
             onPosterLongClick = onPosterLongClick,
             onViewAll = onShelfView,
+            onCollectionRowViewAll = onCatalogClick,
         )
         return
     }
@@ -1112,7 +1104,7 @@ private fun SearchDesktopDiscoveryChips(
     }
 }
 
-private fun LazyListScope.searchDesktopDiscoveryResults(
+internal fun LazyListScope.searchDesktopDiscoveryResults(
     selection: SearchDiscovery,
     view: SearchShelfView,
     onBack: () -> Unit,
@@ -1132,7 +1124,7 @@ private fun LazyListScope.searchDesktopDiscoveryResults(
     }
     item(key = "discovery-header") {
         SearchSectionHeader(
-            title = shelfTitle(SearchShelfKey(view.sort, view.television ?: true)),
+            title = shelfTitle(SearchShelfKey(view.sort, view.television ?: true), selection),
             count = state.items.takeIf { it.isNotEmpty() }?.let { stringResource(Res.string.search_titles_count, it.size) },
             modifier = itemModifier().padding(horizontal = gutter).padding(top = 8.dp),
         )
@@ -1186,7 +1178,7 @@ private fun LazyListScope.searchDesktopDiscoveryResults(
 }
 
 @Composable
-private fun SearchTextAction(label: String, onClick: () -> Unit, accessibleLabel: String? = null) {
+internal fun SearchTextAction(label: String, onClick: () -> Unit, accessibleLabel: String? = null) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val color by animateColorAsState(if (hovered) RedesignColors.textPrimary else RedesignColors.textSecondary, tween(140), label = "text_action")
@@ -1205,131 +1197,8 @@ private fun SearchTextAction(label: String, onClick: () -> Unit, accessibleLabel
 }
 
 
-// ---------- Tag page (desktop): spotlight + Home-style carousels ----------
-
-/** The tag page's featured title: the most popular title for the active tab. */
-internal fun SearchDiscoveryShelvesUi.spotlight(scope: SearchScope): MetaPreview? {
-    val shows = rails[SearchShelfKey(SearchShelfSort.Popular, television = true)].orEmpty().firstOrNull()
-    val movies = rails[SearchShelfKey(SearchShelfSort.Popular, television = false)].orEmpty().firstOrNull()
-    return when (scope) {
-        SearchScope.Movies -> movies
-        SearchScope.Shows -> shows
-        else -> listOfNotNull(shows, movies).maxByOrNull { it.popularity ?: -1.0 }
-    }
-}
-
-private fun SearchShelfKey.visibleIn(scope: SearchScope) = when (scope) {
-    SearchScope.Movies -> !television
-    SearchScope.Shows -> television
-    else -> true
-}
-
 @Composable
-private fun shelfTitle(key: SearchShelfKey): String = when (key.sort) {
-    SearchShelfSort.Popular -> stringResource(if (key.television) Res.string.search_shelf_popular_shows else Res.string.search_shelf_popular_movies)
-    SearchShelfSort.TopRated -> stringResource(if (key.television) Res.string.search_shelf_top_rated_shows else Res.string.search_shelf_top_rated_movies)
-    SearchShelfSort.New -> stringResource(if (key.television) Res.string.search_shelf_new_shows else Res.string.search_shelf_new_movies)
-}
-
-private fun LazyListScope.searchDesktopTagPage(
-    selection: SearchDiscovery,
-    shelves: SearchDiscoveryShelvesUi,
-    topTen: SearchTopTenUi,
-    heroMeta: HomeHeroMetaStore,
-    scope: SearchScope,
-    gutter: Dp,
-    itemModifier: LazyItemScope.() -> Modifier,
-    watchedKeys: Set<String>,
-    fullyWatchedSeriesKeys: Set<String>,
-    onPosterClick: ((MetaPreview) -> Unit)?,
-    onPosterLongClick: ((MetaPreview) -> Unit)?,
-    onViewAll: (SearchShelfView) -> Unit,
-) {
-    val heroItems = tagHeroItems(topTen, shelves, scope)
-    if (heroItems.isNotEmpty()) {
-        item(key = "tag-hero") {
-            // Home's rotating hero (auto-advance, progress dots, logo, ratings row), as a card in the column.
-            HomeHeroMetaLoadEffect(heroItems, heroMeta)
-            val hero = rememberHomeHeroState(heroItems, heroMeta)
-            Box(itemModifier().padding(horizontal = gutter).padding(top = 22.dp).clip(RoundedCornerShape(18.dp))) {
-                HomeHeroSection(
-                    items = hero.items,
-                    viewportHeight = SearchTagHeroViewport,
-                    sectionPadding = 28.dp,
-                    showImdbRating = hero.showImdbRating,
-                    showMdbListRatings = hero.showMdbListRatings,
-                    onItemClick = onPosterClick,
-                )
-            }
-        }
-    } else if (shelves.loading || topTen.loading) {
-        item(key = "tag-skeleton-spotlight") {
-            Box(
-                itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth().height(300.dp)
-                    .clip(RoundedCornerShape(18.dp)).background(RedesignColors.fill),
-            )
-        }
-    }
-    // Charts first: what's hot on the service right now, in the app's numbered ranking style.
-    topTen.sections.filter { (chart, _) -> chart.visibleIn(scope) }.forEach { (chart, section) ->
-        item(key = "tag-top10:${section.key}") {
-            HomeCatalogRowSection(
-                section = section,
-                modifier = itemModifier().padding(top = 14.dp),
-                watchedKeys = watchedKeys,
-                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                sectionPadding = gutter,
-                onPosterClick = onPosterClick,
-                onPosterLongClick = onPosterLongClick,
-                rowStyle = HomeRowStyle.NumberedRanking,
-            )
-        }
-    }
-    if (shelves.loading && shelves.isEmpty) {
-        items(3, key = { "tag-skeleton-row:$it" }) {
-            com.nuvio.app.features.home.components.HomeSkeletonRow(
-                modifier = itemModifier().padding(top = 12.dp),
-                horizontalPadding = gutter,
-            )
-        }
-    }
-    SEARCH_SHELF_KEYS.filter { it.visibleIn(scope) }.forEach { key ->
-        val rail = shelves.rails[key].orEmpty()
-        if (rail.isEmpty()) return@forEach
-        item(key = "tag-rail:${key.sort}:${key.television}") {
-            DetailPosterRailSection(
-                title = shelfTitle(key),
-                items = rail,
-                watchedKeys = watchedKeys,
-                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                headerHorizontalPadding = gutter,
-                onPosterClick = onPosterClick,
-                onPosterLongClick = onPosterLongClick,
-                onViewAllClick = { onViewAll(SearchShelfView(key.sort, key.television)) },
-                viewAllPillSize = NuvioViewAllPillSize.Compact,
-                modifier = itemModifier().padding(top = 14.dp),
-            )
-        }
-    }
-    if (!shelves.loading && (shelves.failed || shelves.needsCountry || shelves.isEmpty)) {
-        item(key = "tag-status") {
-            val status = shelves.asStatus()
-            Column(
-                itemModifier().fillMaxWidth().padding(horizontal = gutter).padding(top = 48.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(discoveryStatusMessage(status), style = redesignText(15.sp, color = RedesignColors.textSecondary), textAlign = TextAlign.Center)
-                if (shelves.failed) {
-                    Spacer(Modifier.height(14.dp))
-                    SearchPillButton(stringResource(Res.string.search_discovery_retry), primary = true, onClick = shelves.retry)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SearchBackLink(label: String, onClick: () -> Unit) {
+internal fun SearchBackLink(label: String, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val color by animateColorAsState(if (hovered) RedesignColors.textPrimary else RedesignColors.textSecondary, tween(140), label = "back_link")
@@ -1346,46 +1215,6 @@ private fun SearchBackLink(label: String, onClick: () -> Unit) {
 }
 
 
-/** Taller than the results spotlight, shorter than Home's full-window hero. */
-private val SearchTagHeroViewport = 640.dp
-
-private fun SearchTopTenCatalog.visibleIn(scope: SearchScope) = when (scope) {
-    SearchScope.Movies -> television == false
-    SearchScope.Shows -> television == true
-    else -> true
-}
-
-/**
- * The tag page hero rotates through the service's Top 10 (shows and movies interleaved) or, for
- * genre-style tags and services without a chart, the most popular titles. The first item also
- * drives the ambient backdrop.
- */
-internal fun tagHeroItems(topTen: SearchTopTenUi, shelves: SearchDiscoveryShelvesUi, scope: SearchScope): List<MetaPreview> {
-    fun interleave(shows: List<MetaPreview>, movies: List<MetaPreview>) = when (scope) {
-        SearchScope.Movies -> movies
-        SearchScope.Shows -> shows
-        else -> buildList {
-            for (i in 0 until maxOf(shows.size, movies.size)) {
-                shows.getOrNull(i)?.let(::add)
-                movies.getOrNull(i)?.let(::add)
-            }
-        }
-    }
-    val charts = topTen.sections.filter { (chart, _) -> chart.visibleIn(scope) }
-    val fromCharts = if (charts.isEmpty()) emptyList() else interleave(
-        charts.filter { it.first.television != false }.flatMap { it.second.items },
-        charts.filter { it.first.television == false }.flatMap { it.second.items },
-    )
-    val pool = fromCharts.ifEmpty {
-        interleave(
-            shelves.rails[SearchShelfKey(SearchShelfSort.Popular, television = true)].orEmpty(),
-            shelves.rails[SearchShelfKey(SearchShelfSort.Popular, television = false)].orEmpty(),
-        )
-    }
-    return pool.distinctBy { it.stableKey() }.take(TAG_HERO_SIZE)
-}
-
-private const val TAG_HERO_SIZE = 8
 
 
 // ---------- Single-person profile ----------

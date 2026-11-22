@@ -48,6 +48,7 @@ object CollectionRepository {
 
     private var hasLoaded = false
     private var seasonalMigrationPending = false
+    private var streamingSeedPending = false
 
     fun initialize() {
         if (hasLoaded) return
@@ -55,6 +56,7 @@ object CollectionRepository {
         val payload = CollectionStorage.loadPayload()
         if (payload.isNullOrBlank()) {
             seedSeasonalCollection()
+            seedStreamingCollection()
             return
         }
 
@@ -67,7 +69,10 @@ object CollectionRepository {
             if (normalized.size != decoded.size) {
                 persist(sync = false)
             }
-        }.onSuccess { seedSeasonalCollection() }.onFailure { e ->
+        }.onSuccess {
+            seedSeasonalCollection()
+            seedStreamingCollection()
+        }.onFailure { e ->
             log.e(e) { "Failed to load collections from storage" }
         }
     }
@@ -87,16 +92,50 @@ object CollectionRepository {
         CollectionStorage.saveSeasonalSeedVersion(if (seasonalMigrationPending) -SeasonalCollection.VERSION else SeasonalCollection.VERSION)
     }
 
-    internal fun hasPendingSeasonalMigration(): Boolean = seasonalMigrationPending
+    /**
+     * Adds the streaming-services collection once, right after the community collection it copies
+     * its artwork from. Nothing is recorded while that collection is missing, so a device that
+     * only gets it from its first sync seeds then. Follows the seasonal seed's pending-sync rules.
+     */
+    private fun seedStreamingCollection() {
+        val version = CollectionStorage.streamingSeedVersion()
+        val exists = _collections.value.any { it.id == StreamingCollection.ID }
+        if (kotlin.math.abs(version) >= StreamingCollection.VERSION) {
+            streamingSeedPending = version < 0 && exists
+            return
+        }
+        if (!exists) {
+            val seeded = StreamingCollection.seedFrom(_collections.value) ?: return
+            _collections.value = _collections.value.withStreamingCollection(CollectionMobileSettingsRepository.applyToCollection(seeded))
+            streamingSeedPending = true
+            if (!persist(sync = false)) return
+        }
+        CollectionStorage.saveStreamingSeedVersion(if (streamingSeedPending) -StreamingCollection.VERSION else StreamingCollection.VERSION)
+    }
+
+    private fun List<Collection>.withStreamingCollection(streaming: Collection): List<Collection> {
+        val sourceIndex = indexOfFirst { it.id == StreamingCollection.source(this)?.id }
+        return toMutableList().apply { add(if (sourceIndex < 0) size else sourceIndex + 1, streaming) }
+    }
+
+    private fun acknowledgeStreamingSeed() {
+        streamingSeedPending = false
+        CollectionStorage.saveStreamingSeedVersion(StreamingCollection.VERSION)
+    }
+
+    /** A seeded default collection (seasonal or streaming) that the account hasn't received yet. */
+    internal fun hasPendingSeasonalMigration(): Boolean = seasonalMigrationPending || streamingSeedPending
 
     internal fun acknowledgeSeasonalMigration() {
         seasonalMigrationPending = false
         CollectionStorage.saveSeasonalSeedVersion(SeasonalCollection.VERSION)
+        if (streamingSeedPending) acknowledgeStreamingSeed()
     }
 
     fun onProfileChanged() {
         hasLoaded = false
         seasonalMigrationPending = false
+        streamingSeedPending = false
         _collections.value = emptyList()
         rawCollectionsJson = JsonArray(emptyList())
     }
@@ -104,6 +143,7 @@ object CollectionRepository {
     fun clearLocalState() {
         hasLoaded = false
         seasonalMigrationPending = false
+        streamingSeedPending = false
         _collections.value = emptyList()
         rawCollectionsJson = JsonArray(emptyList())
     }
@@ -130,7 +170,12 @@ object CollectionRepository {
     fun removeCollection(collectionId: String) {
         ensureLoaded()
         _collections.value = _collections.value.filter { it.id != collectionId }
-        if (collectionId == SeasonalCollection.ID) acknowledgeSeasonalMigration()
+        if (collectionId == SeasonalCollection.ID) {
+            seasonalMigrationPending = false
+            CollectionStorage.saveSeasonalSeedVersion(SeasonalCollection.VERSION)
+        }
+        // Removing it is the user's choice: record the seed so it is never added again.
+        if (collectionId == StreamingCollection.ID) acknowledgeStreamingSeed()
         persist()
     }
 
@@ -240,10 +285,22 @@ object CollectionRepository {
         if (ProfileRepository.activeProfileId != profileId) return null
         rawCollectionsJson = repaired
         val seasonal = _collections.value.firstOrNull { it.id == SeasonalCollection.ID }
-        val incoming = if (seasonalMigrationPending && seasonal != null && collections.none { it.id == seasonal.id }) collections + seasonal else collections
+        val withSeasonal = if (seasonalMigrationPending && seasonal != null && collections.none { it.id == seasonal.id }) collections + seasonal else collections
+        val streaming = _collections.value.firstOrNull { it.id == StreamingCollection.ID }
+        val incoming = if (streamingSeedPending && streaming != null && collections.none { it.id == streaming.id }) {
+            withSeasonal.withStreamingCollection(streaming)
+        } else withSeasonal
         val normalized = normalizeCollections(incoming, source = "remote sync")
         _collections.value = CollectionMobileSettingsRepository.applyToCollections(normalized)
-        if (persist(sync = false) && collections.any { it.id == SeasonalCollection.ID }) acknowledgeSeasonalMigration()
+        if (persist(sync = false)) {
+            if (collections.any { it.id == SeasonalCollection.ID }) {
+                seasonalMigrationPending = false
+                CollectionStorage.saveSeasonalSeedVersion(SeasonalCollection.VERSION)
+            }
+            if (collections.any { it.id == StreamingCollection.ID }) acknowledgeStreamingSeed()
+        }
+        // The first sync can deliver the community collection the streaming collection copies.
+        seedStreamingCollection()
         return collections.size
     }
 

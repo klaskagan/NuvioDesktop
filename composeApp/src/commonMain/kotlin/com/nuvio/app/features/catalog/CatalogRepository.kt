@@ -239,6 +239,7 @@ private suspend fun fetchCollectionSourcePage(
         ?.firstOrNull { it.id == target.folderId }
         ?.resolvedSources
         ?.firstOrNull { it.catalogRouteKey() == target.sourceKey }
+        ?.let { com.nuvio.app.features.collection.StreamingCollection.regionalSource(target.collectionId, target.folderId, it) }
         ?: error(getString(Res.string.catalog_load_failed))
 
     return when {

@@ -95,6 +95,8 @@ internal class SearchDiscoverySession {
     private var shelves = SearchDiscoveryShelves()
     /** Top 10 charts for the selected provider tag; survives "View all" and back. */
     val topTen = SearchTopTenCache()
+    /** A service's own rows (the Service collections slot) for the selected provider tag. */
+    val collectionRows = StreamingCollectionRowsCache()
     /** The tag page hero's own metadata store, so it never prunes Home's hero entries. */
     val heroMeta = com.nuvio.app.features.home.HomeHeroMetaStore()
 
@@ -138,6 +140,8 @@ internal fun rememberSearchDiscovery(
     hideUnplayable: Boolean,
     hideUnreleased: Boolean,
     view: SearchShelfView? = null,
+    /** The region the tag page's carousels used (e.g. the fallback), so the grid shows the same catalog. */
+    regionOverride: String? = null,
     loadPage: suspend (Boolean, Int, SearchDiscovery, String?, LocalDate) -> TmdbEntityRailPageResult? =
         { television, page, chip, country, today -> loadSearchDiscoveryMedium(television, page, chip, country, today, view?.sort) },
     filterResults: suspend (List<MetaPreview>) -> List<MetaPreview> = SearchRepository::filterDiscoveryResults,
@@ -147,15 +151,15 @@ internal fun rememberSearchDiscovery(
     val day = discoveryToday()
     val localSession = LocalSearchDiscoverySession.current
     val session = localSession ?: remember { SearchDiscoverySession() }
-    val pageKey = listOf(selection, countryOverride, deviceRegion, day.takeIf { selection?.kind == DiscoveryKind.Recent }, hideUnplayable, hideUnreleased, view)
+    val pageKey = listOf(selection, countryOverride, deviceRegion, day.takeIf { selection?.kind == DiscoveryKind.Recent }, hideUnplayable, hideUnreleased, view, regionOverride)
     val pages = remember(session, pageKey) { session.pagesFor(pageKey, view?.television) }
     val request = pages.request
-    LaunchedEffect(selection, active, countryOverride, deviceRegion, day, hideUnplayable, hideUnreleased, request) {
+    LaunchedEffect(selection, active, countryOverride, deviceRegion, day, hideUnplayable, hideUnreleased, request, regionOverride) {
         if (selection == null || !active || pages.completedRequest == request) return@LaunchedEffect
         if (pages.moviePage == null && pages.tvPage == null) return@LaunchedEffect
         pages.state = pages.state.copy(loading = true, failed = false)
         try {
-            val region = when (val resolved = resolveDiscoveryRegion(selection, countryOverride, deviceRegion)) {
+            val region = when (val resolved = resolveDiscoveryRegion(selection, countryOverride, deviceRegion, regionOverride)) {
                 DiscoveryRegion.Missing -> {
                     pages.completedRequest = request
                     pages.state = SearchDiscoveryUi(needsCountry = true)
@@ -211,20 +215,36 @@ private sealed interface DiscoveryRegion {
 }
 
 /** Provider tags need a streaming country; other tags resolve to no region. */
-private suspend fun resolveDiscoveryRegion(selection: SearchDiscovery, override: String?, deviceRegion: String?): DiscoveryRegion {
+private suspend fun resolveDiscoveryRegion(
+    selection: SearchDiscovery,
+    override: String?,
+    deviceRegion: String?,
+    pageRegion: String? = null,
+): DiscoveryRegion {
     if (selection.kind != DiscoveryKind.Provider) return DiscoveryRegion.Resolved(null, null)
     val regions = SearchStreamingCountry.regions()
-    val code = SearchStreamingCountry.effective(override, deviceRegion, regions) ?: return DiscoveryRegion.Missing
+    val code = pageRegion?.takeIf(regions::containsKey)
+        ?: SearchStreamingCountry.effective(override, deviceRegion, regions)
+        ?: return DiscoveryRegion.Missing
     return DiscoveryRegion.Resolved(code, regions[code])
 }
 
 /** One carousel on a desktop tag page. */
 internal data class SearchShelfKey(val sort: SearchShelfSort, val television: Boolean)
 
-/** Carousel order on a tag page: each ordering shows shows first, then movies. */
-internal val SEARCH_SHELF_KEYS = SearchShelfSort.entries.flatMap { sort ->
+/** The carousels every tag has: each ordering shows shows first, then movies. */
+internal val SEARCH_SHELF_KEYS = listOf(SearchShelfSort.Popular, SearchShelfSort.TopRated, SearchShelfSort.New).flatMap { sort ->
     listOf(SearchShelfKey(sort, television = true), SearchShelfKey(sort, television = false))
 }
+
+/** A tag's carousels: a streaming service adds its Originals (films only where the spec names a studio). */
+internal fun shelfKeysFor(selection: SearchDiscovery?): List<SearchShelfKey> =
+    listOf(true, false)
+        .filter { selection?.originalsFilters(it) != null }
+        .map { SearchShelfKey(SearchShelfSort.Originals, it) } + SEARCH_SHELF_KEYS
+
+/** Rails that depend on the streaming country; a service's Originals are the same everywhere. */
+private val SearchShelfKey.usesRegion: Boolean get() = sort != SearchShelfSort.Originals
 
 internal data class SearchDiscoveryShelvesUi(
     val rails: Map<SearchShelfKey, List<MetaPreview>> = emptyMap(),
@@ -233,6 +253,10 @@ internal data class SearchDiscoveryShelvesUi(
     val needsCountry: Boolean = false,
     val hidResults: Boolean = false,
     val retry: () -> Unit = {},
+    /** The region the region-filtered rails were loaded for; null for tags without one. */
+    val region: String? = null,
+    /** Set when the streaming country had no catalog for the service and the fallback region is shown. */
+    val fallbackCountry: String? = null,
 ) {
     fun asStatus() = SearchDiscoveryUi(failed = failed, needsCountry = needsCountry, hidResults = hidResults, load = retry)
     val isEmpty: Boolean get() = rails.values.all { it.isEmpty() }
@@ -247,7 +271,9 @@ internal class SearchDiscoveryShelves {
 /**
  * Loads page 1 of every carousel for a tag in parallel. A rail that fails or has no TMDB query
  * (e.g. a movie-only genre on TV) comes back empty and is hidden; only all rails failing is an error.
- * Cached per selection in the session so returning from "View all" doesn't reload.
+ * A service with nothing in the streaming country (TMDB has no Lithuanian catalog for some) is
+ * reloaded once for [STREAMING_FALLBACK_REGION]. Cached per selection in the session so returning
+ * from "View all" doesn't reload.
  */
 @Composable
 internal fun rememberSearchDiscoveryShelves(
@@ -269,43 +295,97 @@ internal fun rememberSearchDiscoveryShelves(
     LaunchedEffect(selection, active, countryOverride, deviceRegion, day, hideUnplayable, hideUnreleased, request) {
         if (selection == null || !active || shelves.completedRequest == request) return@LaunchedEffect
         shelves.state = shelves.state.copy(loading = true, failed = false)
-        val region = when (val resolved = resolveDiscoveryRegion(selection, countryOverride, deviceRegion)) {
+        // The region list comes from TMDB too: offline, the page shows its retry state instead of throwing.
+        val discoveryRegion = try {
+            resolveDiscoveryRegion(selection, countryOverride, deviceRegion)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            shelves.completedRequest = request
+            shelves.state = SearchDiscoveryShelvesUi(failed = true)
+            return@LaunchedEffect
+        }
+        val resolved = when (discoveryRegion) {
             DiscoveryRegion.Missing -> {
                 shelves.completedRequest = request
                 shelves.state = SearchDiscoveryShelvesUi(needsCountry = true)
                 return@LaunchedEffect
             }
-            is DiscoveryRegion.Resolved -> resolved.code
+            is DiscoveryRegion.Resolved -> discoveryRegion
         }
-        var failures = 0
-        var hid = false
-        val rails = coroutineScope {
-            SEARCH_SHELF_KEYS.map { shelf ->
-                async {
-                    val page = try {
-                        loadRail(shelf, selection, region, day)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (_: Exception) {
-                        failures++
-                        null
-                    }
-                    val incoming = page?.items.orEmpty()
-                    val kept = filterResults(incoming).distinctBy(MetaPreview::stableKey)
-                    if (kept.size < incoming.size) hid = true
-                    shelf to kept
-                }
-            }.map { it.await() }.toMap()
-        }
+        val loaded = loadTagShelves(selection, resolved.code, day, loadRail, filterResults)
+        if (selection.kind == DiscoveryKind.Provider && loaded.region != null) StreamingCatalogRegion.record(selection.name, loaded.region)
         shelves.completedRequest = request
         shelves.state = SearchDiscoveryShelvesUi(
-            rails = rails,
-            failed = failures == SEARCH_SHELF_KEYS.size,
-            hidResults = hid,
+            rails = loaded.rails,
+            failed = loaded.failed,
+            hidResults = loaded.hidResults,
+            region = loaded.region,
+            fallbackCountry = if (!loaded.usedFallback) null else {
+                runCatching { SearchStreamingCountry.regions()[STREAMING_FALLBACK_REGION] }.getOrNull() ?: STREAMING_FALLBACK_REGION
+            },
         )
     }
     if (selection == null) return SearchDiscoveryShelvesUi()
     return shelves.state.copy(retry = { if (!shelves.state.loading) shelves.request++ })
+}
+
+private class ShelfLoad(val key: SearchShelfKey, val items: List<MetaPreview>, val incoming: Int, val failed: Boolean = false)
+
+internal class TagShelvesLoad(
+    val rails: Map<SearchShelfKey, List<MetaPreview>>,
+    val failed: Boolean,
+    val hidResults: Boolean,
+    val region: String?,
+    val usedFallback: Boolean,
+)
+
+/**
+ * Page 1 of every carousel of a tag, in parallel. When a service has no titles at all in
+ * [region] (the region-filtered rails all loaded and came back empty), those rails are loaded
+ * once more for [STREAMING_FALLBACK_REGION]; a failed request never triggers the fallback.
+ */
+internal suspend fun loadTagShelves(
+    selection: SearchDiscovery,
+    region: String?,
+    day: LocalDate,
+    loadRail: suspend (SearchShelfKey, SearchDiscovery, String?, LocalDate) -> TmdbEntityRailPageResult?,
+    filterResults: suspend (List<MetaPreview>) -> List<MetaPreview>,
+): TagShelvesLoad {
+    suspend fun load(keys: List<SearchShelfKey>, railRegion: String?) = coroutineScope {
+        keys.map { shelf ->
+            async {
+                val page = try {
+                    loadRail(shelf, selection, railRegion, day)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    return@async ShelfLoad(shelf, emptyList(), incoming = 0, failed = true)
+                }
+                val incoming = page?.items.orEmpty()
+                ShelfLoad(shelf, filterResults(incoming).distinctBy(MetaPreview::stableKey), incoming.size)
+            }
+        }.map { it.await() }
+    }
+    var usedRegion = region
+    var loads = load(shelfKeysFor(selection), region)
+    val regional = loads.filter { it.key.usesRegion }
+    val emptyRegion = selection.kind == DiscoveryKind.Provider && region != STREAMING_FALLBACK_REGION &&
+        regional.none { it.failed } && regional.all { it.incoming == 0 }
+    if (emptyRegion) {
+        val fallback = load(regional.map { it.key }, STREAMING_FALLBACK_REGION)
+        if (fallback.any { it.incoming > 0 }) {
+            loads = loads.filterNot { it.key.usesRegion } + fallback
+            usedRegion = STREAMING_FALLBACK_REGION
+        }
+    }
+    return TagShelvesLoad(
+        rails = loads.associate { it.key to it.items },
+        failed = loads.all { it.failed },
+        hidResults = loads.any { it.items.size < it.incoming },
+        region = usedRegion,
+        usedFallback = usedRegion != region,
+    )
 }
 
 @Composable

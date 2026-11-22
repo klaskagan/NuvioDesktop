@@ -421,7 +421,9 @@ object FolderDetailRepository {
                 val source = currentTab.source
                 when {
                     source?.isTmdb == true -> TmdbCollectionSourceResolver.resolve(
-                        source = source,
+                        source = activeCollectionId?.let { collectionId ->
+                            _uiState.value.folder?.let { StreamingCollection.regionalSource(collectionId, it.id, source) }
+                        } ?: source,
                         page = if (reset) 1 else requestedSkip,
                     )
 

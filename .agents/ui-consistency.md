@@ -222,6 +222,34 @@ is hidden rather than failing the page. `SearchDiscoveryUiTest`
 (`tagCarouselsHideEmptyOrFailedRailsAndFeatureTheTopTitle`) covers this, and
 `SearchDiscoveryTest` covers the sort filters (Top rated vote floor, 90-day New window).
 
+The tag page is one shared implementation, `streamingProviderPage` in
+`features/search/StreamingProviderPage.kt`. Search's tags and the service folders of the
+`nuvio-streaming` collection (`StreamingProviderScreen`) both call it, so the two cannot drift:
+add or change a row there, never in one caller. The user had asked for the streaming collection
+to show what Search's Netflix tag shows, because the two used different catalog sources.
+
+- Row order and hidden rows are one user setting for every tag (`StreamingRowLayout`,
+  profile-scoped, device-local), edited from "Customize rows" in the page header: an anchored
+  panel with drag handles and switches that applies live. Do not hard-code a row sequence in
+  the page; add a `StreamingRowId` and let `tagPageRows` place it.
+- Rows only some services have go in the **Service collections** slot: the sources of the
+  service's folder in the streaming collection (Marvel, Pixar…). The slot keeps one position
+  in the order and takes no space where a service has none. A row the tag lacks (no chart, no
+  original films) is skipped the same way.
+- A service's Originals come from TMDB networks (shows) and, only where a studio makes nothing
+  but that service's originals, a production company (films); see `StreamingProviderSpec`.
+- When the streaming country has no catalog for a service (TMDB has none for Lithuania on
+  several), the region-filtered rails reload once for the United Kingdom
+  (`STREAMING_FALLBACK_REGION`), and a note beside the tabs says which catalog is shown. Top 10
+  picks the chart for the streaming country, then the UK, then any. "View all" and the slot's
+  rows use the region the page ended up with (`StreamingCatalogRegion`). A failed request is
+  not an empty catalog and must not trigger the fallback.
+- Esc closes an open in-page panel before it navigates Back (`AppKeyboardShortcuts.overlayEscape`).
+
+`StreamingRowLayoutTest` covers the order, the slot, Originals and the fallback;
+`SearchTopTenTest` the chart choice; `StreamingProviderNavigationTest` the folder-to-page
+navigation and the panel.
+
 The redesign's tokens live in `core/ui/RedesignStyle.kt` (`RedesignColors`, `redesignText`,
 `RedesignTypography`). Person Details (desktop, wide) is the second screen that uses them. It has
 an ambient backdrop and a full-width header (avatar, department eyebrow, name, fact pills, a

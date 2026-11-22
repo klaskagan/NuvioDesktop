@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.features.addons.ManagedAddon
 import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.catalog.CatalogTarget
@@ -15,20 +16,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
-/**
- * FlixPatrol "Top 10" charts published by catalog addons (e.g. AIOMetadata) under ids like
- * `flixpatrol.netflix.lt.series`. Keyed by the provider tag's name in [SearchDiscovery].
+/*
+ * FlixPatrol "Top 10" charts are published by catalog addons (e.g. AIOMetadata) under ids like
+ * `flixpatrol.netflix.lt.series`: service slug (see [StreamingProviderSpec.slug]), country, kind.
  */
-private val flixPatrolSlugs = mapOf(
-    "Netflix" to "netflix",
-    "Prime Video" to "amazon-prime",
-    "Apple TV" to "apple-tv",
-    "Disney+" to "disney",
-    "Hulu" to "hulu",
-    "HBO Max" to "hbo-max",
-    "Paramount+" to "paramount",
-    "Peacock" to "peacock",
-)
 
 /** One installed addon catalog, reduced to what Top 10 matching needs. */
 internal data class SearchAddonCatalog(
@@ -43,14 +34,24 @@ internal data class SearchAddonCatalog(
 internal data class SearchTopTenCatalog(val catalog: SearchAddonCatalog, val television: Boolean?)
 
 /**
- * Charts for a provider tag, shows first, then movies, then combined; one per kind, from the first
- * addon that has it. Empty for non-provider tags or when no installed addon publishes the chart.
+ * Charts for a provider tag, shows first, then movies, then combined; one per kind. Each kind
+ * prefers the chart for [region] (the streaming country), then [STREAMING_FALLBACK_REGION], then
+ * whichever chart an installed addon lists first. Empty for non-provider tags or without a chart.
  */
-internal fun topTenCatalogsFor(selection: SearchDiscovery, catalogs: List<SearchAddonCatalog>): List<SearchTopTenCatalog> {
+internal fun topTenCatalogsFor(
+    selection: SearchDiscovery,
+    catalogs: List<SearchAddonCatalog>,
+    region: String? = null,
+): List<SearchTopTenCatalog> {
     if (selection.kind != DiscoveryKind.Provider) return emptyList()
-    val slug = flixPatrolSlugs[selection.name] ?: return emptyList()
+    val slug = streamingProviderSpec(selection.name)?.slug ?: return emptyList()
+    val prefix = "flixpatrol.$slug."
+    val preferredRegions = listOfNotNull(region?.lowercase(), STREAMING_FALLBACK_REGION.lowercase())
+    fun SearchAddonCatalog.regionRank(): Int =
+        preferredRegions.indexOf(id.removePrefix(prefix).substringBeforeLast('.', "").lowercase())
+            .let { if (it < 0) preferredRegions.size else it }
     return catalogs
-        .filter { it.id.startsWith("flixpatrol.$slug.") }
+        .filter { it.id.startsWith(prefix) }
         .mapNotNull { catalog ->
             when (catalog.id.substringAfterLast('.')) {
                 "series" -> SearchTopTenCatalog(catalog, television = true)
@@ -59,7 +60,8 @@ internal fun topTenCatalogsFor(selection: SearchDiscovery, catalogs: List<Search
                 else -> null
             }
         }
-        .distinctBy { it.television }
+        .groupBy { it.television }
+        .map { (_, charts) -> charts.minBy { it.catalog.regionRank() } }
         .sortedBy { when (it.television) { true -> 0; false -> 1; null -> 2 } }
 }
 
@@ -94,8 +96,10 @@ internal fun rememberSearchTopTen(
 ): SearchTopTenUi {
     val session = LocalSearchDiscoverySession.current ?: remember { SearchDiscoverySession() }
     val cache = session.topTen
-    val charts = remember(selection, addons) {
-        selection?.let { topTenCatalogsFor(it, addons.searchAddonCatalogs()) }.orEmpty()
+    val countryOverride by SearchStreamingCountry.override.collectAsStateWithLifecycle()
+    val region = countryOverride ?: SearchPreferencesStorage.deviceRegion()
+    val charts = remember(selection, addons, region) {
+        selection?.let { topTenCatalogsFor(it, addons.searchAddonCatalogs(), region) }.orEmpty()
     }
     val key = charts.map { it.catalog }
     LaunchedEffect(key, active) {

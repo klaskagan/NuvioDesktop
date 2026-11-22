@@ -84,6 +84,8 @@ private val discoveryAliases = listOf(
     discovery(DiscoveryKind.Provider, "HBO Max", "1899", "max", "hbo"),
     discovery(DiscoveryKind.Provider, "Paramount+", "531", "paramount plus"),
     discovery(DiscoveryKind.Provider, "Peacock", "386"),
+    discovery(DiscoveryKind.Provider, "Crunchyroll", "283"),
+    discovery(DiscoveryKind.Provider, "Discovery+", "520|524", "discovery", "discovery plus"),
     discovery(DiscoveryKind.Genre, "Comedy", "35"),
     discovery(DiscoveryKind.Genre, "Romantic comedy", "35,10749", "romcom", "rom-com", televisionValue = "35", televisionKeywordId = seasonalKeywordIds.getValue("romance")),
     discovery(DiscoveryKind.Genre, "Dark comedy", "35", "black comedy", keywordId = 10123),
@@ -151,8 +153,17 @@ internal fun searchDiscoverySuggestions(query: String): List<SearchDiscovery> {
     return (exact + prefixes + comedyVariants + related).distinct().take(8)
 }
 
-/** Orderings for a tag page's carousels (desktop). Null keeps the tag's own ordering. */
-internal enum class SearchShelfSort { Popular, TopRated, New }
+/**
+ * Orderings for a tag page's carousels (desktop). Null keeps the tag's own ordering.
+ * [Originals] is a service's own productions, which swaps the tag's filters (see [originalsFilters]).
+ */
+internal enum class SearchShelfSort { Originals, Popular, TopRated, New }
+
+/** The provider tag for a service name or alias ("Apple TV+", "disney plus"); null for anything else. */
+internal fun searchProviderDiscovery(name: String): SearchDiscovery? {
+    val normalized = name.trim().lowercase()
+    return discoveryAliases.firstOrNull { (aliases, tag) -> tag.kind == DiscoveryKind.Provider && normalized in aliases }?.second
+}
 
 internal const val SEARCH_SHELF_TOP_RATED_MIN_VOTES = 200
 internal const val SEARCH_SHELF_NEW_DAYS = 90
@@ -165,7 +176,7 @@ internal fun Map<String, String>.withShelfSort(sort: SearchShelfSort?, televisio
     if (sort == null) return this
     val date = if (television) "first_air_date" else "primary_release_date"
     return this + when (sort) {
-        SearchShelfSort.Popular -> mapOf("sort_by" to "popularity.desc")
+        SearchShelfSort.Originals, SearchShelfSort.Popular -> mapOf("sort_by" to "popularity.desc")
         SearchShelfSort.TopRated -> mapOf(
             "sort_by" to "vote_average.desc",
             "vote_count.gte" to SEARCH_SHELF_TOP_RATED_MIN_VOTES.toString(),
@@ -185,6 +196,9 @@ internal suspend fun loadSearchDiscoveryMedium(
     country: String?,
     today: LocalDate,
     sort: SearchShelfSort? = null,
-) = discovery.filters(television, country, today)?.let { filters ->
+) = (
+    if (sort == SearchShelfSort.Originals) discovery.originalsFilters(television)
+    else discovery.filters(television, country, today)
+    )?.let { filters ->
     TmdbMetadataService.searchDiscoveryPage(television, page, filters.withShelfSort(sort, television, today))
 }

@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.asSharedFlow
  */
 object AppKeyboardShortcuts {
     internal var searchEscape: (() -> Boolean)? = null
+    /** An open in-page panel (e.g. Customize rows) takes Esc before Search or Back do. */
+    internal var overlayEscape: (() -> Boolean)? = null
     private val focusSearch = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val focusSearchRequests: SharedFlow<Unit> = focusSearch.asSharedFlow()
 

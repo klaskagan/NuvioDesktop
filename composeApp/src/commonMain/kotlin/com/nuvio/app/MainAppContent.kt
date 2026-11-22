@@ -1257,7 +1257,8 @@ internal fun MainAppContent(
                         title = section.title,
                         subtitle = section.subtitle,
                         target = section.target,
-                        fromCollectionFolder = navController.currentRoute is FolderDetailRoute,
+                        fromCollectionFolder = navController.currentRoute is FolderDetailRoute ||
+                            navController.currentRoute is StreamingProviderRoute,
                     ),
                 )
                 navController.navigate(
@@ -1574,6 +1575,7 @@ internal fun MainAppContent(
                 }
 
                 PlatformEscapeShortcut {
+                    if (AppKeyboardShortcuts.overlayEscape?.invoke() == true) return@PlatformEscapeShortcut
                     val handledBySearch = currentRoute is TabsRoute && selectedTab == AppScreenTab.Search &&
                         selectedPosterActionTarget == null && featurePosterOverlay.content == null &&
                         AppKeyboardShortcuts.searchEscape?.invoke() == true
@@ -1816,12 +1818,20 @@ internal fun MainAppContent(
                                         ?.firstOrNull { it.id == folderId }
                                         ?.title
                                         .orEmpty()
+                                    // A service folder of the streaming collection opens the page Search's
+                                    // provider tag shows; mobile has no tag page, so it keeps the folder view.
+                                    val opensServicePage = isDesktop &&
+                                        com.nuvio.app.features.collection.StreamingCollection.provider(collectionId, folderId) != null
                                     navController.navigate(
-                                        FolderDetailRoute(
-                                            collectionId = collectionId,
-                                            folderId = folderId,
-                                            title = folderTitle.ifBlank { collectionsTitle },
-                                        )
+                                        if (opensServicePage) {
+                                            StreamingProviderRoute(collectionId = collectionId, folderId = folderId, title = folderTitle)
+                                        } else {
+                                            FolderDetailRoute(
+                                                collectionId = collectionId,
+                                                folderId = folderId,
+                                                title = folderTitle.ifBlank { collectionsTitle },
+                                            )
+                                        }
                                     )
                                 },
                                 onRequestedSettingsPageConsumed = {
@@ -2102,6 +2112,35 @@ internal fun MainAppContent(
                             route = route,
                             navController = navController,
                         )
+                    }
+                }
+                entry<StreamingProviderRoute>(
+                    // Like Person Details: the entry switches instantly and the page animates its own
+                    // layers (navTransitionLayer), so the sidebar both entries draw stays still.
+                    metadata = NavDisplay.transitionSpec { EnterTransition.None togetherWith ExitTransition.None } +
+                        NavDisplay.popTransitionSpec { EnterTransition.None togetherWith ExitTransition.None },
+                ) { route ->
+                    CompositionLocalProvider(
+                        com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current,
+                        com.nuvio.app.core.ui.LocalNavTransitionStyle provides pageTransitionStyle,
+                        com.nuvio.app.core.ui.LocalShellBackdropMode provides shellBackdropMode,
+                    ) {
+                        DetailNavigationFrame(
+                            route = route,
+                            selectedTab = selectedTab,
+                            onTabSelected = ::selectDetailNavigationTab,
+                            onProfileSelected = selectNavigationProfile,
+                            onAddProfileRequested = onSwitchProfile,
+                            frostedSidebar = shellBackdropMode != com.nuvio.app.core.ui.ShellBackdropMode.Solid,
+                            sidebarHandedOff = currentRoute is TabsRoute && selectedTab in com.nuvio.app.core.ui.ShellBackdropTabs,
+                        ) {
+                            StreamingProviderDestination(
+                                route = route,
+                                navController = navController,
+                                onCatalogClick = onCatalogClick,
+                                onPosterLongClick = openPosterActions,
+                            )
+                        }
                     }
                 }
                 entry<FolderDetailRoute> { route ->

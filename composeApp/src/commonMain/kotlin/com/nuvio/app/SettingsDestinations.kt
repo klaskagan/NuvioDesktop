@@ -18,6 +18,7 @@ import com.nuvio.app.navigation.CollectionEditorPageRoute
 import com.nuvio.app.navigation.CollectionEditorRoute
 import com.nuvio.app.navigation.CollectionsRoute
 import com.nuvio.app.navigation.FolderDetailRoute
+import com.nuvio.app.navigation.StreamingProviderRoute
 import com.nuvio.app.navigation.NuvioNavigator
 import com.nuvio.app.navigation.PartyRoute
 import com.nuvio.app.navigation.SettingsPageRoute
@@ -142,6 +143,24 @@ internal fun CollectionEditorPageDestination(
                 ),
             )
         },
+    )
+}
+
+@Composable
+internal fun StreamingProviderDestination(
+    route: StreamingProviderRoute,
+    navController: NuvioNavigator,
+    onCatalogClick: (HomeCatalogSection) -> Unit,
+    onPosterLongClick: (PosterActionTarget) -> Unit,
+) {
+    com.nuvio.app.features.search.StreamingProviderScreen(
+        collectionId = route.collectionId,
+        folderId = route.folderId,
+        title = route.title,
+        onBack = rememberGuardedPopBackStack(navController, route),
+        onPosterClick = rememberOpenMeta(navController),
+        onPosterLongClick = { onPosterLongClick(PosterActionTarget(preview = it)) },
+        onCatalogClick = onCatalogClick,
     )
 }
 

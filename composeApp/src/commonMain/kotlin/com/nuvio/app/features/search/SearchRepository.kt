@@ -95,6 +95,8 @@ object SearchRepository {
     fun onProfileChanged() {
         hideUnplayableLoaded = false
         ensurePreferencesLoaded()
+        StreamingRowLayoutRepository.onProfileChanged()
+        StreamingProviderSessions.clear()
     }
 
     fun setHideUnplayable(hide: Boolean) {

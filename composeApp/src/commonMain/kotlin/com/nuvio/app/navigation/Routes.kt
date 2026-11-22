@@ -136,6 +136,14 @@ data class FolderDetailRoute(
     override val title: String = "",
 ) : AppRoute
 
+/** A streaming service's page, opened from its folder in the streaming collection (desktop). */
+@Serializable
+data class StreamingProviderRoute(
+    val collectionId: String,
+    val folderId: String,
+    override val title: String = "",
+) : AppRoute
+
 @Serializable
 data class StreamRoute(
     val launchId: Long,

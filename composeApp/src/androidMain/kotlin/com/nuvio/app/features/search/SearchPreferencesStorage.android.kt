@@ -25,6 +25,15 @@ internal actual object SearchPreferencesStorage {
 
     actual fun saveShowUnplayable(show: Boolean) = save(showUnplayableKey, show)
 
+    private const val tagRowLayoutKey = "search_provider_row_layout"
+
+    actual fun loadTagRowLayout(): String? =
+        DiscoverSelectionStorage.preferences?.getString(ProfileScopedKey.of(tagRowLayoutKey), null)
+
+    actual fun saveTagRowLayout(payload: String) {
+        DiscoverSelectionStorage.preferences?.edit()?.putString(ProfileScopedKey.of(tagRowLayoutKey), payload)?.apply()
+    }
+
     private fun load(key: String): Boolean =
         DiscoverSelectionStorage.preferences?.getBoolean(ProfileScopedKey.of(key), false) ?: false
 

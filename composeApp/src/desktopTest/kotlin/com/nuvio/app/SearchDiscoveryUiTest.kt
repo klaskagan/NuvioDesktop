@@ -12,7 +12,10 @@ import com.nuvio.app.features.search.SearchScope
 import com.nuvio.app.features.search.SearchShelfKey
 import com.nuvio.app.features.search.SearchShelfSort
 import com.nuvio.app.features.search.rememberSearchDiscoveryShelves
-import com.nuvio.app.features.search.spotlight
+import com.nuvio.app.features.search.SearchTopTenUi
+import com.nuvio.app.features.search.StreamingRowLayout
+import com.nuvio.app.features.search.tagHeroItems
+import com.nuvio.app.features.search.tagPageRows
 import com.nuvio.app.features.search.SearchStreamingCountry
 import com.nuvio.app.features.search.rememberSearchDiscovery
 import com.nuvio.app.features.search.searchDiscoverySuggestions
@@ -133,9 +136,14 @@ class SearchDiscoveryUiTest {
             assertEquals(emptyList(), shelves.rails[SearchShelfKey(SearchShelfSort.TopRated, television = true)])
             assertEquals(emptyList(), shelves.rails[SearchShelfKey(SearchShelfSort.New, television = false)])
             assertEquals(listOf("Popular show"), shelves.rails[SearchShelfKey(SearchShelfSort.Popular, television = true)]?.map { it.name })
-            // The spotlight is the most popular title for the active tab.
-            assertEquals("Popular show", shelves.spotlight(SearchScope.All)?.name)
-            assertEquals("Popular movie", shelves.spotlight(SearchScope.Movies)?.name)
+            // Without a chart the hero leads with the most popular titles for the active tab.
+            assertEquals("Popular show", tagHeroItems(SearchTopTenUi(), shelves, SearchScope.All).first().name)
+            assertEquals("Popular movie", tagHeroItems(SearchTopTenUi(), shelves, SearchScope.Movies).first().name)
+            // The page lists the rails that have titles, in the row layout's order.
+            assertEquals(
+                listOf("tag-rail:Popular:true", "tag-rail:Popular:false", "tag-rail:TopRated:false", "tag-rail:New:true"),
+                tagPageRows(StreamingRowLayout(), shelves, SearchTopTenUi(), emptyList(), SearchScope.All).map { it.key },
+            )
         }
     }
 

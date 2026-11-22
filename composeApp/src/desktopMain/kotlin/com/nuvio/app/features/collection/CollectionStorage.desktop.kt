@@ -9,6 +9,9 @@ internal actual object CollectionStorage {
     actual fun seasonalSeedVersion(): Int = store.getInt(ProfileScopedKey.of("seasonal_seed_version")) ?: 0
     actual fun saveSeasonalSeedVersion(version: Int) { store.putInt(ProfileScopedKey.of("seasonal_seed_version"), version) }
 
+    actual fun streamingSeedVersion(): Int = store.getInt(ProfileScopedKey.of("streaming_seed_version")) ?: 0
+    actual fun saveStreamingSeedVersion(version: Int) { store.putInt(ProfileScopedKey.of("streaming_seed_version"), version) }
+
     actual fun loadPayload(): String? =
         store.getString(ProfileScopedKey.of("collections"))
 

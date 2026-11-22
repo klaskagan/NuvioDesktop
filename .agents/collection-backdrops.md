@@ -60,6 +60,26 @@ collection/source identity when expanding an addon-backed collection row so its
 artwork and pagination remain attached to that folder. Personal and other
 community collections retain their standard presentation.
 
+## Streaming services collection
+
+`nuvio-streaming` (`StreamingCollection.kt`) is seeded once as a copy of the community
+streaming collection's service folders and artwork; the community collection itself is never
+changed. On desktop its service folders open the service page Search's provider tags show
+(`StreamingProviderRoute`); other folders, and mobile, keep the folder view.
+
+- A service folder is recognised by its stable id (`streaming_<slug>`) inside that collection.
+  Do not add a marker field to `CollectionFolder`: with `encodeDefaults` it would be written
+  into every stored and synced collection.
+- A service folder's own sources are its extra rows on the page (the Service collections
+  slot). TMDB sources filtered by watch provider are saved without a region and take the
+  page's region when queried (`withStreamingRegion`); the saved source and its route key
+  must stay region-free.
+- Seeding waits for the community collection, so a device that first gets it from sync seeds
+  then, and it follows the seasonal seed's pending-push rules. A deleted streaming collection
+  is not seeded again. `StreamingCollectionSeedTest` and `StreamingCollectionTest` cover this.
+- Tests that touch `CollectionRepository` storage must run with
+  `-I scripts/desktop-ui-tests.init.gradle`; without it they would seed into the real profile.
+
 ## Layout and scrolling
 
 - Render artwork full width behind the introduction, with proportional

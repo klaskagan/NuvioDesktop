@@ -26,6 +26,15 @@ internal actual object SearchPreferencesStorage {
 
     actual fun saveShowUnplayable(show: Boolean) = save(showUnplayableKey, show)
 
+    private const val tagRowLayoutKey = "search_provider_row_layout"
+
+    actual fun loadTagRowLayout(): String? =
+        NSUserDefaults.standardUserDefaults.stringForKey(ProfileScopedKey.of(tagRowLayoutKey))
+
+    actual fun saveTagRowLayout(payload: String) {
+        NSUserDefaults.standardUserDefaults.setObject(payload, forKey = ProfileScopedKey.of(tagRowLayoutKey))
+    }
+
     private fun load(key: String): Boolean = NSUserDefaults.standardUserDefaults.boolForKey(ProfileScopedKey.of(key))
 
     private fun save(key: String, value: Boolean) {

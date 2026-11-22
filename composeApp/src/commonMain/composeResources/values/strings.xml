@@ -552,6 +552,17 @@
     <string name="search_shelf_top_rated_movies">Top rated movies</string>
     <string name="search_shelf_new_shows">New shows</string>
     <string name="search_shelf_new_movies">New movies</string>
+    <string name="search_shelf_originals_shows">%1$s original shows</string>
+    <string name="search_shelf_originals_movies">%1$s original movies</string>
+    <string name="search_row_top10_shows">Top 10 shows</string>
+    <string name="search_row_top10_movies">Top 10 movies</string>
+    <string name="search_row_originals_shows">Original shows</string>
+    <string name="search_row_originals_movies">Original movies</string>
+    <string name="search_row_service_collections">Service collections</string>
+    <string name="search_row_service_collections_hint">Marvel, Pixar, DC and other rows a service has of its own</string>
+    <string name="search_rows_customize">Customize rows</string>
+    <string name="search_rows_customize_hint">Drag to reorder. The order applies to every service.</string>
+    <string name="search_catalog_fallback">Showing the %1$s catalog</string>
     <string name="search_shelf_view_all">View all</string>
     <string name="search_tag_top">Top in %1$s</string>
     <string name="search_shelf_back">Back to %1$s</string>

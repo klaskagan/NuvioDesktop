@@ -17,6 +17,7 @@ import com.nuvio.app.navigation.CatalogRoute
 import com.nuvio.app.navigation.DetailRoute
 import com.nuvio.app.navigation.EntityBrowseRoute
 import com.nuvio.app.navigation.FolderDetailRoute
+import com.nuvio.app.navigation.StreamingProviderRoute
 import com.nuvio.app.navigation.PersonDetailRoute
 import com.nuvio.app.navigation.PlayerRoute
 import com.nuvio.app.navigation.StreamRoute
@@ -42,6 +43,7 @@ fun ControllerNavigationHost(
         is PersonDetailRoute -> "PersonDetailRoute:${currentRoute.personId}"
         is EntityBrowseRoute -> "EntityBrowseRoute:${currentRoute.entityId}"
         is FolderDetailRoute -> "FolderDetailRoute:${currentRoute.collectionId}:${currentRoute.folderId}"
+        is StreamingProviderRoute -> "StreamingProviderRoute:${currentRoute.collectionId}:${currentRoute.folderId}"
         null -> ""
         else -> currentRoute::class.simpleName ?: ""
     }
@@ -51,7 +53,7 @@ fun ControllerNavigationHost(
             currentRoute is TabsRoute && selectedTab == AppScreenTab.Home
         ControllerFocusEngine.deferNavigationToCompose = when (currentRoute) {
             // Screens instrumented with controllerFocusable are driven by the spatial engine.
-            is TabsRoute, is CatalogRoute, is FolderDetailRoute, is EntityBrowseRoute -> false
+            is TabsRoute, is CatalogRoute, is FolderDetailRoute, is StreamingProviderRoute, is EntityBrowseRoute -> false
             // Details, streams, player and settings leaves rely on Compose focus instead.
             null -> false
             else -> true
@@ -75,7 +77,8 @@ fun ControllerNavigationHost(
                     selectLabel = "Play Stream",
                     backLabel = "Back",
                 )
-                currentRoute is FolderDetailRoute || currentRoute is CatalogRoute || currentRoute is EntityBrowseRoute ->
+                currentRoute is FolderDetailRoute || currentRoute is StreamingProviderRoute ||
+                    currentRoute is CatalogRoute || currentRoute is EntityBrowseRoute ->
                     ControllerScreenContext(
                         screenType = ControllerScreenType.Catalog,
                         selectLabel = "Open",

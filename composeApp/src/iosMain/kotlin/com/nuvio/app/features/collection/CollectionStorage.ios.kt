@@ -9,6 +9,9 @@ actual object CollectionStorage {
     actual fun seasonalSeedVersion(): Int = NSUserDefaults.standardUserDefaults.integerForKey(ProfileScopedKey.of("seasonal_seed_version")).toInt()
     actual fun saveSeasonalSeedVersion(version: Int) { NSUserDefaults.standardUserDefaults.setInteger(version.toLong(), forKey = ProfileScopedKey.of("seasonal_seed_version")) }
 
+    actual fun streamingSeedVersion(): Int = NSUserDefaults.standardUserDefaults.integerForKey(ProfileScopedKey.of("streaming_seed_version")).toInt()
+    actual fun saveStreamingSeedVersion(version: Int) { NSUserDefaults.standardUserDefaults.setInteger(version.toLong(), forKey = ProfileScopedKey.of("streaming_seed_version")) }
+
     actual fun loadPayload(): String? =
         NSUserDefaults.standardUserDefaults.stringForKey(ProfileScopedKey.of(payloadKey))
 

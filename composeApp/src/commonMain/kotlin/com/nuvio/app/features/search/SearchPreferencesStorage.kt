@@ -12,4 +12,8 @@ internal expect object SearchPreferencesStorage {
     /** Stored inverted so a missing key means the default: unplayable results hidden. */
     fun loadShowUnplayable(): Boolean
     fun saveShowUnplayable(show: Boolean)
+
+    /** Profile-scoped row order and hidden rows of tag pages, as JSON (see StreamingRowLayout). */
+    fun loadTagRowLayout(): String?
+    fun saveTagRowLayout(payload: String)
 }

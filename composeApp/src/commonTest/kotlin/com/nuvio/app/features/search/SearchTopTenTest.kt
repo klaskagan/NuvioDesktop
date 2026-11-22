@@ -35,4 +35,25 @@ class SearchTopTenTest {
         assertTrue(topTenCatalogsFor(tag("Peacock"), installed).isEmpty())
         assertTrue(topTenCatalogsFor(tag("Comedy"), installed).isEmpty())
     }
+
+    @Test
+    fun eachChartPrefersTheStreamingCountryThenTheUnitedKingdom() {
+        val charts = listOf(
+            catalog("movie", "flixpatrol.netflix.us.movie"),
+            catalog("movie", "flixpatrol.netflix.gb.movie"),
+            catalog("movie", "flixpatrol.netflix.lt.movie"),
+            catalog("series", "flixpatrol.netflix.us.series"),
+            catalog("series", "flixpatrol.netflix.gb.series"),
+            catalog("all", "flixpatrol.crunchyroll.us.all"),
+        )
+        fun ids(name: String, region: String?) = topTenCatalogsFor(tag(name), charts, region).map { it.catalog.id }
+        // Lithuania has a movie chart but no series chart: series falls back to the UK, not the US.
+        assertEquals(listOf("flixpatrol.netflix.gb.series", "flixpatrol.netflix.lt.movie"), ids("Netflix", "LT"))
+        assertEquals(listOf("flixpatrol.netflix.us.series", "flixpatrol.netflix.us.movie"), ids("Netflix", "us"))
+        // No region known, or a country without any chart: the UK chart.
+        assertEquals(listOf("flixpatrol.netflix.gb.series", "flixpatrol.netflix.gb.movie"), ids("Netflix", null))
+        assertEquals(listOf("flixpatrol.netflix.gb.series", "flixpatrol.netflix.gb.movie"), ids("Netflix", "FR"))
+        // Neither the country nor the UK: whatever chart the addon lists first.
+        assertEquals(listOf("flixpatrol.crunchyroll.us.all"), ids("Crunchyroll", "LT"))
+    }
 }

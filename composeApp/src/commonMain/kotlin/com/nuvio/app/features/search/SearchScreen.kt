@@ -138,6 +138,7 @@ fun SearchScreen(
     searchFocusRequestCount: Int = 0,
     scrollToTopRequests: Flow<Unit> = emptyFlow(),
     onStreamingCountrySettings: () -> Unit = {},
+    onCatalogClick: ((com.nuvio.app.features.home.HomeCatalogSection) -> Unit)? = null,
 ) {
     val focusRequester = remember { FocusRequester() }
     var isSearchFocused by remember { mutableStateOf(false) }
@@ -279,24 +280,36 @@ fun SearchScreen(
 
     // Desktop tag pages show carousels; the paged grid only loads once a carousel's "View all" is open.
     val shelfView = discoverySession.view.takeIf { isDesktop }
-    val discoveryUi = rememberSearchDiscovery(
-        selection = discovery.takeIf { !isDesktop || shelfView != null },
-        active = screenActive,
-        hideUnplayable = hideUnplayable,
-        hideUnreleased = homeCatalogSettingsUiState.hideUnreleasedContent,
-        view = shelfView,
-    )
-    val discoveryTopTen = rememberSearchTopTen(
-        selection = discovery.takeIf { isDesktop },
-        addons = addonsUiState.addons,
-        active = screenActive,
-    )
     val discoveryShelves = rememberSearchDiscoveryShelves(
         selection = discovery.takeIf { isDesktop },
         active = screenActive,
         hideUnplayable = hideUnplayable,
         hideUnreleased = homeCatalogSettingsUiState.hideUnreleasedContent,
     )
+    val discoveryUi = rememberSearchDiscovery(
+        selection = discovery.takeIf { !isDesktop || shelfView != null },
+        active = screenActive,
+        hideUnplayable = hideUnplayable,
+        hideUnreleased = homeCatalogSettingsUiState.hideUnreleasedContent,
+        view = shelfView,
+        regionOverride = discoveryShelves.region.takeIf { isDesktop },
+    )
+    val discoveryTopTen = rememberSearchTopTen(
+        selection = discovery.takeIf { isDesktop },
+        addons = addonsUiState.addons,
+        active = screenActive,
+    )
+    // A service's own rows and the shared row order: the same ones its streaming folder shows.
+    val discoveryCollectionRows = rememberStreamingCollectionRows(
+        selection = discovery.takeIf { isDesktop },
+        region = discoveryShelves.region,
+        addons = addonsUiState.addons,
+        active = screenActive,
+    )
+    val tagRowLayout by remember {
+        StreamingRowLayoutRepository.ensureLoaded()
+        StreamingRowLayoutRepository.layout
+    }.collectAsStateWithLifecycle()
 
     ScreenActivityEffect(query, addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent, hideUnplayable) { screenActive ->
         if (!screenActive) return@ScreenActivityEffect
@@ -512,6 +525,8 @@ fun SearchScreen(
                 discoveryUi = discoveryUi,
                 shelves = discoveryShelves,
                 topTen = discoveryTopTen,
+                collectionRows = discoveryCollectionRows,
+                rowLayout = tagRowLayout,
                 heroMeta = discoverySession.heroMeta,
                 shelfView = shelfView,
                 onShelfView = {

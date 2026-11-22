@@ -27,6 +27,14 @@ internal actual object SearchPreferencesStorage {
 
     actual fun saveShowUnplayable(show: Boolean) = save(showUnplayableKey, show)
 
+    private const val tagRowLayoutKey = "search_provider_row_layout"
+
+    actual fun loadTagRowLayout(): String? = store.getString(ProfileScopedKey.of(tagRowLayoutKey))
+
+    actual fun saveTagRowLayout(payload: String) {
+        store.putString(ProfileScopedKey.of(tagRowLayoutKey), payload)
+    }
+
     private fun load(key: String): Boolean = store.getString(ProfileScopedKey.of(key)) == "true"
 
     private fun save(key: String, value: Boolean) {
