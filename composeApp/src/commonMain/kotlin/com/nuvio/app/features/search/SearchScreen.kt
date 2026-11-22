@@ -76,6 +76,9 @@ import com.nuvio.app.core.ui.BackdropFocusController
 import com.nuvio.app.core.ui.BackdropSurface
 import com.nuvio.app.core.ui.LocalBackdropFocusController
 import com.nuvio.app.core.ui.ShellBackdrop
+import com.nuvio.app.core.ui.NavLayer
+import com.nuvio.app.core.ui.NavSide
+import com.nuvio.app.core.ui.navTransitionLayer
 import com.nuvio.app.core.ui.NuvioInputField
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.NuvioScreen
@@ -406,12 +409,21 @@ fun SearchScreen(
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
     ) {
-        if (backdropController != null) ShellBackdrop(backdropController)
+        if (backdropController != null) {
+            Box(Modifier.fillMaxSize().navTransitionLayer(NavLayer.Background, NavSide.Underneath)) {
+                ShellBackdrop(backdropController)
+            }
+        }
+        // Captured here: the layer Box below hides BoxWithConstraints' receiver.
+        val screenMaxWidth = maxWidth
+        val screenMaxHeight = maxHeight
+        // When a detail page opens over Search, its content leaves like the hero's outgoing slide.
+        Box(Modifier.fillMaxSize().navTransitionLayer(NavLayer.Content, NavSide.Underneath)) {
         CompositionLocalProvider(LocalBackdropFocusController provides backdropController) {
         RedesignTypography(enabled = isDesktop) {
         // Desktop: one centred column, at most ~1240dp of content, never closer than 40dp to the edges.
-        val gutter = if (isDesktop) maxOf(40.dp, (maxWidth - 1240.dp) / 2) else 16.dp
-        val contentWidth = if (isDesktop) maxWidth - gutter * 2 else maxWidth
+        val gutter = if (isDesktop) maxOf(40.dp, (screenMaxWidth - 1240.dp) / 2) else 16.dp
+        val contentWidth = if (isDesktop) screenMaxWidth - gutter * 2 else screenMaxWidth
         val posterCardStyle = rememberPosterCardStyleUiState()
         val searchStyle = remember(posterCardStyle, searchLandscape) {
             posterCardStyle.copy(
@@ -423,18 +435,18 @@ fun SearchScreen(
             searchGridColumns(contentWidth, posterCardStyle.widthDp, searchLandscape)
         }
         val peopleColumns = remember(contentWidth) { (contentWidth / 170.dp).toInt().coerceIn(3, 8) }
-        val discoverColumns = remember(contentWidth, maxHeight, posterCardStyle.widthDp, isDesktop) {
+        val discoverColumns = remember(contentWidth, screenMaxHeight, posterCardStyle.widthDp, isDesktop) {
             if (isDesktop) {
                 posterGridColumnCountForCatalogWidth(
                     screenWidth = contentWidth,
                     basePosterWidthDp = posterCardStyle.widthDp,
                 )
             } else {
-                posterGridColumnCountForWidth(maxWidth)
+                posterGridColumnCountForWidth(screenMaxWidth)
             }
         }
-        val homeSectionPadding = remember(maxWidth) {
-            homeSectionHorizontalPaddingForWidth(maxWidth.value)
+        val homeSectionPadding = remember(screenMaxWidth) {
+            homeSectionHorizontalPaddingForWidth(screenMaxWidth.value)
         }
         val headerTitle = when {
             query.isNotBlank() -> stringResource(Res.string.compose_nav_search)
@@ -722,6 +734,7 @@ fun SearchScreen(
             }
         }
         }
+    }
     }
     }
     }

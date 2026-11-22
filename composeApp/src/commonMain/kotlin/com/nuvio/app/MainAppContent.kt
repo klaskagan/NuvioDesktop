@@ -5,6 +5,8 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.fadeOut
@@ -1601,6 +1603,8 @@ internal fun MainAppContent(
                     entryProvider = entryProvider<NavKey> {
                 entry<TabsRoute> {
                     val tabsRouteActiveState = rememberUpdatedState(currentRoute is TabsRoute)
+                    // Screens inside the tabs (Search) animate their own layers when a detail opens over them.
+                    CompositionLocalProvider(com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current) {
                     MainTabsDestination(
                         selectedTab = selectedTab,
                         initialHomeReady = initialHomeReady,
@@ -1824,6 +1828,7 @@ internal fun MainAppContent(
                         onProfileSelected = selectNavigationProfile,
                         onAddProfileRequested = onSwitchProfile,
                     )
+                    }
                 }
                 entry<DetailRoute> { route ->
                     DetailNavigationFrame(
@@ -1844,20 +1849,16 @@ internal fun MainAppContent(
                     }
                 }
                 entry<PersonDetailRoute>(
-                    // The entry only crossfades (on Home hero's pager spring); PersonDetailScreen drifts its
-                    // backdrop and content in with the hero's parallax, so the app sidebar stays still.
+                    // The entry switches instantly; Search and PersonDetailScreen animate their own layers
+                    // (navTransitionLayer), so the app sidebar both entries draw stays still.
                     metadata = if (isDesktop) {
-                        NavDisplay.transitionSpec {
-                            fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
-                                fadeOut(spring(stiffness = Spring.StiffnessMediumLow))
-                        } + NavDisplay.popTransitionSpec {
-                            fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
-                                fadeOut(spring(stiffness = Spring.StiffnessMediumLow))
-                        }
+                        NavDisplay.transitionSpec { EnterTransition.None togetherWith ExitTransition.None } +
+                            NavDisplay.popTransitionSpec { EnterTransition.None togetherWith ExitTransition.None }
                     } else {
                         emptyMap()
                     },
                 ) { route ->
+                    CompositionLocalProvider(com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current) {
                     DetailNavigationFrame(
                         route = route,
                         selectedTab = selectedTab,
@@ -1871,6 +1872,7 @@ internal fun MainAppContent(
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = LocalNavAnimatedContentScope.current,
                         )
+                    }
                     }
                 }
                 entry<EntityBrowseRoute> { route ->

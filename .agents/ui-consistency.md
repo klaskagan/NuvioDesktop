@@ -14,13 +14,19 @@ Person Details opening with no transition). Apply these to every redesigned scre
   it drifts (`alpha = 1 - |offset|`). Backgrounds drift little (`HERO_BACKGROUND_PARALLAX`, 5.5% of
   the width) and foreground content drifts more (`HERO_CONTENT_PARALLAX`, 18%), on the pager's
   no-bounce, medium-low-stiffness spring. Use those values instead of inventing new ones.
-- **Navigation into a detail screen** uses that layered parallax. The nav entry only crossfades
-  (same spring), so the app sidebar both entries draw stays still. Inside the page, the backdrop
-  drifts in 5.5% and the content 18%, mirrored on return. Reference: `personParallaxEnter` in
-  `PersonDetailScreen` and `entry<PersonDetailRoute>` in `MainAppContent.kt`.
-  A whole page sliding a third of the screen, plus the avatar flying over it as a shared element
-  (the first attempt), was rejected as too busy. Don't fly individual elements across pages; let
-  them move with their layer.
+- **Navigation between screens** uses `Modifier.navTransitionLayer(layer, side)`
+  (`core/ui/NavTransitionLayer.kt`). The nav entry switches instantly (`EnterTransition.None`), and
+  each screen animates its own Background and Content layers, so the app sidebar both entries draw
+  never moves. `NavSide.Underneath` screens (Search) leave to the left; `NavSide.Above` screens
+  (Person) arrive from the right, mirrored on Back. Screens read the scope from `LocalNavLayerScope`
+  (provided per entry in `MainAppContent.kt`); without it there's no motion, e.g. in tests.
+  Two styles are under review (`NavTransitionStyle`, temporary toggle on the Person page):
+  `HeroParallax` (Home hero values) and `FullSlide`. Record the chosen one here and delete the toggle.
+  A whole page sliding a third of the screen plus a shared-element avatar flying over it was rejected
+  as too busy. Don't fly individual elements across pages; let them move with their layer.
+- **Late sections reserve their space:** a section that loads after its neighbours shows a
+  same-size placeholder (Person `KnownForPlaceholder`), so nothing below it shifts. The shift read
+  as motion "starting from the top right".
 - **State changes crossfade:** loading → content → error (`AnimatedContent` keyed on the state
   class), and a late-arriving section fades in (Person Known For).
 - **Lists move, they don't jump:** give list items `Modifier.animateItem()` (fade plus

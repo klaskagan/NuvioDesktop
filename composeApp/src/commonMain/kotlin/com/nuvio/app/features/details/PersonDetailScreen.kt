@@ -25,6 +25,11 @@ import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignTightTracking
 import com.nuvio.app.core.ui.RedesignTypography
 import com.nuvio.app.core.ui.ShellBackdrop
+import com.nuvio.app.core.ui.NavLayer
+import com.nuvio.app.core.ui.NavSide
+import com.nuvio.app.core.ui.NavTransitionPreview
+import com.nuvio.app.core.ui.NavTransitionStyle
+import com.nuvio.app.core.ui.navTransitionLayer
 import com.nuvio.app.core.ui.redesignText
 import nuvio.composeapp.generated.resources.person_favorite
 import androidx.compose.foundation.clickable
@@ -201,15 +206,14 @@ fun PersonDetailScreen(
             .fillMaxSize()
             .then(if (backdrop == null) Modifier.background(MaterialTheme.colorScheme.background) else Modifier),
     ) {
-        // Entering mirrors Home's hero carousel: each layer fades in as it drifts in from the right,
-        // the backdrop barely (5.5% of the width) and the content more (18%), on the pager's spring.
-        // The nav entry only crossfades, so the app sidebar both entries draw stays still.
+        // Layers animate with the shared desktop nav transition (navTransitionLayer): Home hero's
+        // layered parallax or a full slide, while the nav entry itself switches instantly.
         if (backdrop != null) {
-            Box(Modifier.fillMaxSize().then(personParallaxEnter(animatedVisibilityScope, PERSON_BACKDROP_PARALLAX))) {
+            Box(Modifier.fillMaxSize().navTransitionLayer(NavLayer.Background, NavSide.Above)) {
                 ShellBackdrop(backdrop)
             }
         }
-        val slide = personParallaxEnter(animatedVisibilityScope, PERSON_CONTENT_PARALLAX)
+        val slide = Modifier.navTransitionLayer(NavLayer.Content, NavSide.Above)
         Box(Modifier.fillMaxSize().then(slide)) {
         RedesignTypography(enabled = isDesktop) {
         AnimatedContent(
@@ -262,6 +266,10 @@ fun PersonDetailScreen(
         }
 
 
+        if (isDesktop) {
+            // TEMPORARY: compare the two transition styles; remove once one is chosen.
+            NavTransitionStyleToggle(Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.statusBars).padding(top = 36.dp, end = 40.dp))
+        }
         if (!LocalUseNativeNavigation.current) {
             if (isDesktop) {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -475,7 +483,9 @@ private fun PersonOverview(
                     if (knownFor == null) {
                         // Keep this key at the top while the curated shelf loads. A prepended item
                         // would leave LazyColumn anchored to Movies after the response arrives.
-                        Spacer(Modifier.height(1.dp))
+                        // On desktop it reserves the row's height, so arriving data doesn't push the
+                        // rows below down (that shift read as motion starting from the top right).
+                        if (isDesktop) KnownForPlaceholder(padding) else Spacer(Modifier.height(1.dp))
                     } else {
                         DetailPosterRailSection(
                             title = stringResource(Res.string.person_known_for_shelf),
@@ -1529,30 +1539,6 @@ private fun PersonRedesignIdentity(person: PersonDetail, creditSummary: String, 
 }
 
 
-/** Same layer drift as Home's hero (HERO_BACKGROUND_PARALLAX / HERO_CONTENT_PARALLAX). */
-private const val PERSON_BACKDROP_PARALLAX = 0.055f
-private const val PERSON_CONTENT_PARALLAX = 0.18f
-
-/** Home's hero pager spring: no bounce, medium-low stiffness. */
-private fun <T> personTransitionSpring() =
-    spring<T>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
-
-/**
- * A layer that fades in while drifting [parallax] × width in from the right as the person page
- * enters, and drifts back out to the right on return: the hero's alpha-follows-offset parallax.
- */
-@Composable
-private fun personParallaxEnter(animatedVisibilityScope: AnimatedVisibilityScope?, parallax: Float): Modifier {
-    if (!isDesktop || animatedVisibilityScope == null) return Modifier
-    return with(animatedVisibilityScope) {
-        Modifier.animateEnterExit(
-            enter = slideInHorizontally(personTransitionSpring()) { (it * parallax).toInt() } +
-                fadeIn(personTransitionSpring()),
-            exit = slideOutHorizontally(personTransitionSpring()) { (it * parallax).toInt() } +
-                fadeOut(personTransitionSpring()),
-        )
-    }
-}
 
 @Composable
 private fun PersonAvatarImage(person: PersonDetail, fallbackProfilePhoto: String?, avatarTransitionKey: String, modifier: Modifier) {
@@ -1675,5 +1661,47 @@ private fun DesktopPersonDetailSkeleton(
                 horizontalPadding = 40.dp,
             )
         }
+    }
+}
+
+
+/** TEMPORARY review control: picks the style used the next time a person page opens or closes. */
+@Composable
+private fun NavTransitionStyleToggle(modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(999.dp)
+    Row(
+        modifier.clip(shape).background(Color.Black.copy(alpha = 0.45f)).border(1.dp, RedesignColors.hairline, shape).padding(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf(NavTransitionStyle.HeroParallax to "Hero carousel", NavTransitionStyle.FullSlide to "Full slide").forEach { (style, label) ->
+            val selected = NavTransitionPreview.style == style
+            Text(
+                label,
+                style = redesignText(12.sp, FontWeight.SemiBold, if (selected) Color(0xFF0E0F12) else RedesignColors.textSecondary),
+                modifier = Modifier.clip(shape).background(if (selected) RedesignColors.textPrimary else Color.Transparent)
+                    .clickable { NavTransitionPreview.style = style }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
+    }
+}
+
+
+/** Desktop stand-in for the Known For row while it loads: title bar plus a poster row of the same size. */
+@Composable
+private fun KnownForPlaceholder(horizontalPadding: Dp) {
+    val style = rememberPosterCardStyleUiState()
+    val landscape = style.catalogLandscapeModeEnabled
+    val width = if (landscape) landscapePosterWidth(style.widthDp) else style.widthDp.dp
+    val height = if (landscape) landscapePosterHeightForWidth(width) else style.heightDp.dp
+    Column {
+        Box(Modifier.padding(start = horizontalPadding, bottom = 12.dp).width(120.dp).height(20.dp).skeleton())
+        SkeletonPosterRow(
+            width = width,
+            height = height,
+            cornerRadius = style.cornerRadiusDp.dp,
+            showLabels = !landscape && !style.hideLabelsEnabled,
+            horizontalPadding = horizontalPadding,
+        )
     }
 }
