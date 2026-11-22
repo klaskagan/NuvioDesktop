@@ -200,7 +200,9 @@ class HistoryNavigationTest {
             }
             onNodeWithText("Today").performClick()
             ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(report, "${layout.name}.png"))
-            val homeBounds = onNodeWithContentDescription("Home").fetchSemanticsNode().boundsInRoot
+            // The top bar has no Home item: Home's tabs lead it, and For you is Home's default.
+            val homeEntry = if (layout == DesktopNavigationLayout.TopBar) "For you" else "Home"
+            val homeBounds = onNodeWithContentDescription(homeEntry).fetchSemanticsNode().boundsInRoot
             onNodeWithTag("history-card-event-1").performMouseInput { click(button = MouseButton.Secondary) }
             onNodeWithText("Go to details").assertIsDisplayed()
             mainClock.advanceTimeBy(1_500)
@@ -223,7 +225,7 @@ class HistoryNavigationTest {
             nextPage.complete(TrackingHistoryPage(listOf(watch), null))
             onNodeWithTag("history-screen").assertDoesNotExist()
             onNodeWithContentDescription("History").assertDoesNotExist()
-            onNodeWithContentDescription("Home").assertIsDisplayed()
+            onNodeWithContentDescription(homeEntry).assertIsDisplayed()
         } finally {
             TrackingProviderRegistry.unregisterHistoryReader(fake)
             MetaDetailsRepository.clear()

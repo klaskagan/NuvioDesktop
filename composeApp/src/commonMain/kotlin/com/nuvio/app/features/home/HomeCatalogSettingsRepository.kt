@@ -37,6 +37,8 @@ data class HomeCatalogSettingsItem(
     val isPinnedToTop: Boolean = false,
     val supportsHero: Boolean = true,
     val rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
+    /** The catalog's content type (movie, series, …); blank for collections. */
+    val mediaType: String = "",
 ) {
     val displayTitle: String
         get() = customTitle.ifBlank { defaultTitle }
@@ -49,6 +51,8 @@ data class HomeCatalogSettingsUiState(
     val hideUnreleasedContent: Boolean = false,
     val items: List<HomeCatalogSettingsItem> = emptyList(),
     val rowStyles: Map<String, HomeRowStyle> = emptyMap(),
+    /** Hero catalogs picked for a Home tab, by [HomeTab.heroSourceId]. Empty means automatic. */
+    val heroTabSources: Map<String, Set<String>> = emptyMap(),
 ) {
     val signature: String
         get() = buildString {
@@ -63,6 +67,8 @@ data class HomeCatalogSettingsUiState(
                     "${item.key}:${item.order}:${item.enabled}:${item.heroSourceEnabled}:${item.customTitle}"
                 }
             )
+            append('|')
+            append(heroTabSources.entries.sortedBy { it.key }.joinToString(";") { "${it.key}=${it.value.sorted()}" })
         }
 }
 
@@ -78,6 +84,7 @@ internal data class HomeCatalogSettingsSnapshot(
     val showCatalogType: Boolean,
     val hideUnreleasedContent: Boolean,
     val preferences: Map<String, HomeCatalogPreference>,
+    val heroTabSources: Map<String, Set<String>> = emptyMap(),
 )
 
 @Serializable
@@ -98,6 +105,7 @@ private data class StoredHomeCatalogSettingsPayload(
     val items: List<StoredHomeCatalogPreference> = emptyList(),
     val appliedCollectionOrder: List<String>? = null,
     val rowStyles: Map<String, String> = emptyMap(),
+    val heroTabSources: Map<String, List<String>> = emptyMap(),
 )
 
 object HomeCatalogSettingsRepository {
@@ -132,6 +140,7 @@ object HomeCatalogSettingsRepository {
             preferencesRef.value = value
         }
     private var rowStyles: Map<String, String> = emptyMap()
+    private var heroTabSources: Map<String, List<String>> = emptyMap()
     private var appliedCollectionOrder: List<String>? = null
     private var seasonalCollectionsEnabled = true
     private var heroEnabled = true
@@ -140,6 +149,7 @@ object HomeCatalogSettingsRepository {
 
     fun onProfileChanged() {
         rowStyles = emptyMap()
+        heroTabSources = emptyMap()
         hasLoaded = false
         preferences = emptyMap()
         appliedCollectionOrder = null
@@ -158,6 +168,7 @@ object HomeCatalogSettingsRepository {
 
     fun clearLocalState() {
         rowStyles = emptyMap()
+        heroTabSources = emptyMap()
         hasLoaded = false
         definitions = emptyList()
         collectionDefinitions = emptyList()
@@ -292,6 +303,30 @@ object HomeCatalogSettingsRepository {
         }
     }
 
+    /**
+     * Picks or drops a hero catalog for the Movies or Shows tab. Like the For you hero catalogs
+     * this stays on this device's copy of the settings and is capped at [HERO_SOURCE_SELECTION_LIMIT].
+     */
+    internal fun setHeroTabSourceEnabled(tab: HomeTab, key: String, enabled: Boolean) {
+        val id = tab.heroSourceId ?: return
+        ensureLoaded()
+        val definition = definitions.firstOrNull { it.key == key } ?: return
+        if (!definition.supportsHero || definition.type.homeMediaTab() != tab) return
+        val known = definitions.mapTo(mutableSetOf()) { it.key }
+        val current = heroTabSources[id].orEmpty().filter { it in known }
+        val updated = when {
+            !enabled -> current - key
+            key in current -> current
+            current.size >= HERO_SOURCE_SELECTION_LIMIT -> current
+            else -> current + key
+        }
+        if (updated == heroTabSources[id].orEmpty()) return
+        heroTabSources = if (updated.isEmpty()) heroTabSources - id else heroTabSources + (id to updated)
+        publish()
+        persist()
+        HomeRepository.applyCurrentSettings()
+    }
+
     fun setEnabled(key: String, enabled: Boolean) {
         updatePreference(key) { preference ->
             preference.copy(enabled = enabled)
@@ -315,6 +350,7 @@ object HomeCatalogSettingsRepository {
     fun resetToDefaults() {
         ensureLoaded()
         rowStyles = emptyMap()
+        heroTabSources = emptyMap()
         appliedCollectionOrder = null
         seasonalCollectionsEnabled = true
         heroEnabled = true
@@ -400,6 +436,7 @@ object HomeCatalogSettingsRepository {
         if (parsedPayload != null) {
             lastPersistedPayload = payload
             rowStyles = parsedPayload.rowStyles
+            heroTabSources = parsedPayload.heroTabSources
             appliedCollectionOrder = parsedPayload.appliedCollectionOrder
             seasonalCollectionsEnabled = parsedPayload.seasonalCollectionsEnabled
             heroEnabled = parsedPayload.heroEnabled
@@ -479,6 +516,7 @@ object HomeCatalogSettingsRepository {
                     order = value.order,
                 )
             },
+            heroTabSources = heroTabSources.mapValues { it.value.toSet() },
         )
         val catalogItems = definitions
             .map { definition ->
@@ -486,6 +524,7 @@ object HomeCatalogSettingsRepository {
                 HomeCatalogSettingsItem(
                     key = definition.key,
                     supportsHero = definition.supportsHero,
+                    mediaType = definition.type,
                     rowStyle = HomeRowStyle.fromId(rowStyles[definition.key]),
                     defaultTitle = definition.defaultTitle,
                     addonName = definition.addonName,
@@ -523,6 +562,7 @@ object HomeCatalogSettingsRepository {
             hideUnreleasedContent = hideUnreleasedContent,
             items = items,
             rowStyles = rowStyles.mapValues { HomeRowStyle.fromId(it.value) },
+            heroTabSources = heroTabSources.mapValues { it.value.toSet() },
         )
         if (_uiState.value != nextState) _uiState.value = nextState
     }
@@ -537,6 +577,7 @@ object HomeCatalogSettingsRepository {
                 items = preferences.values.sortedBy { it.order },
                 appliedCollectionOrder = appliedCollectionOrder,
                 rowStyles = rowStyles,
+                heroTabSources = heroTabSources,
             ),
         )
         if (payload == lastPersistedPayload) return

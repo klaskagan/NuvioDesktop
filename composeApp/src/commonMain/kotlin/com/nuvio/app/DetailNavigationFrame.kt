@@ -38,8 +38,8 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nuvio.app.core.ui.desktopNavigationContentPadding
-import com.nuvio.app.core.ui.DesktopNavigationBar
+import com.nuvio.app.core.ui.DesktopMergedTopBar
+import com.nuvio.app.features.home.rememberHomeNavigationTabs
 import com.nuvio.app.core.ui.FloatingNavigationItem
 import com.nuvio.app.features.profiles.NuvioProfile
 import com.nuvio.app.features.profiles.ProfileSwitcherTab
@@ -161,12 +161,6 @@ internal fun DetailNavigationFrame(
                 ) {
                     val items = listOf(
                         FloatingNavigationItem(
-                            selected = selectedTab == AppScreenTab.Home,
-                            onClick = { onTabSelected(AppScreenTab.Home) },
-                            icon = Icons.Filled.Home,
-                            label = stringResource(Res.string.compose_nav_home),
-                        ),
-                        FloatingNavigationItem(
                             selected = selectedTab == AppScreenTab.Search,
                             onClick = { onTabSelected(AppScreenTab.Search) },
                             drawable = Res.drawable.sidebar_search,
@@ -208,14 +202,16 @@ internal fun DetailNavigationFrame(
                             },
                         ),
                     )
-                    DesktopNavigationBar(
+                    DesktopMergedTopBar(
+                        tabs = rememberHomeNavigationTabs(
+                            homeSelected = selectedTab == AppScreenTab.Home,
+                            onOpenHome = { onTabSelected(AppScreenTab.Home) },
+                        ),
                         items = items,
-                        contentPadding = desktopNavigationContentPadding(),
+                        windowWidth = screenWidth,
                         hazeState = haze,
                         navBarStyle = style,
                         profileSwitcherOpen = topProfileOpen,
-                        windowWidth = screenWidth,
-                        glowEnabled = glow,
                         isDetailScreen = true,
                     )
                 }

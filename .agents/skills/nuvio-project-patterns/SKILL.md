@@ -235,6 +235,13 @@ existing init script, which gives the test JVM a separate app-data home and an i
 ./gradlew -I scripts/desktop-ui-tests.init.gradle :composeApp:desktopTest --tests 'com.nuvio.app.MainAppTabNavigationTest'
 ```
 
+The isolated profile lives in `composeApp/build/tmp/desktopTest/isolated-home` and survives
+between runs, and all test classes in a run share one JVM. A class that changes a stored setting
+without restoring it changes the next class's layout: `PersonCreditsNavigationTest` fails after
+`ConfiguredCollectionNavigationTest` and `HistoryNavigationTest` in the same run, and passes alone.
+Before treating a layout assertion as a regression, delete that directory and rerun the class on
+its own.
+
 These integration tests skip without the isolation flag supplied by that script;
 a skipped run does not verify the navigation regression. Do not use a real user
 profile as a full-app test fixture.

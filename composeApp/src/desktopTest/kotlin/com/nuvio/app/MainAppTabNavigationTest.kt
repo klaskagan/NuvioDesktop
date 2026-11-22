@@ -92,7 +92,8 @@ class MainAppTabNavigationTest {
         }
         repeat(2) {
             sequence.forEach { tab ->
-                onNodeWithContentDescription(tab).performClick()
+                // The top bar has no Home item: Home's tabs lead the bar, and For you is Home's default.
+                onNodeWithContentDescription(if (tab == "Home" && layout == DesktopNavigationLayout.TopBar) "For you" else tab).performClick()
                 waitForIdle()
                 if (tab == "Calendar") onNodeWithTag("calendar-screen").assertExists()
                 if (tab == "Search") onNodeWithText("Search movies, shows, and people").assertExists()

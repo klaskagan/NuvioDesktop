@@ -787,7 +787,8 @@ internal fun LazyListScope.searchDesktopList(
     }
 
     if (query.isBlank()) {
-        item(key = "search-hero") { SearchIdleHero(itemModifier().padding(horizontal = gutter)) }
+        // With a top bar the hero starts under it; it used to slide beneath the bar's items.
+        item(key = "search-hero") { SearchIdleHero(itemModifier().padding(top = topPadding ?: 0.dp).padding(horizontal = gutter)) }
     }
     stickyHeader(key = "search-bar") {
         Box(Modifier.fillMaxWidth()) {

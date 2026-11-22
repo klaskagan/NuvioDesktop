@@ -1,5 +1,13 @@
 package com.nuvio.app.features.home.components
 
+import com.nuvio.app.core.build.AppFeaturePolicy
+import com.nuvio.app.core.build.TrailerPlaybackMode
+import com.nuvio.app.core.ui.LocalScreenActive
+import com.nuvio.app.features.trailer.TrailerPlaybackSource
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.testTag as heroTestTag
+import nuvio.composeapp.generated.resources.home_hero_collapse
+import nuvio.composeapp.generated.resources.home_hero_expand
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -143,8 +151,12 @@ fun HomeHeroSection(
     showImdbRating: Boolean = true,
     showMdbListRatings: Boolean = false,
     onItemClick: ((MetaPreview) -> Unit)? = null,
+    /** Board tile: the corner control expands the tile and plays the current title's trailer. */
+    expanded: Boolean = false,
+    onToggleExpanded: (() -> Unit)? = null,
 ) {
     if (items.isEmpty()) return
+    val expandedState = rememberUpdatedState(expanded)
 
     val pagerState = key(items.size) {
         rememberPagerState(
@@ -182,7 +194,8 @@ fun HomeHeroSection(
         }
         autoAdvanceProgress.snapTo(0f)
         timedPage = autoScrollPage
-        autoAdvanceProgress.runHeroCountdown { heroHoldActive }
+        // An expanded tile is playing a trailer; the carousel waits for the user.
+        autoAdvanceProgress.runHeroCountdown { heroHoldActive || expandedState.value }
         while (pagerState.isScrollInProgress) {
             delay(100L)
         }
@@ -254,6 +267,8 @@ fun HomeHeroSection(
                     showImdbRating = showImdbRating,
                     showMdbListRatings = showMdbListRatings,
                     onItemClick = onItemClick,
+                    expanded = expanded,
+                    onToggleExpanded = onToggleExpanded,
                 )
             } else {
                 DefaultHomeHeroFrame(
@@ -603,6 +618,8 @@ private fun DesktopHomeHeroFrame(
     showImdbRating: Boolean,
     showMdbListRatings: Boolean,
     onItemClick: ((MetaPreview) -> Unit)?,
+    expanded: Boolean,
+    onToggleExpanded: (() -> Unit)?,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val opacity = NuvioTokens.Opacity
@@ -625,6 +642,10 @@ private fun DesktopHomeHeroFrame(
             includePagerNeighbors = includePagerNeighbors,
             desktopFrame = true,
         )
+
+        if (expanded) {
+            HeroExpandedTrailer(item = items[pagerState.settledPage % items.size])
+        }
 
         Box(
             modifier = Modifier
@@ -704,7 +725,20 @@ private fun DesktopHomeHeroFrame(
                 )
             }
 
-            if (isFullscreenActionSupported) {
+            if (onToggleExpanded != null) {
+                // On the board the hero is a tile, so this control expands the tile (and plays the
+                // trailer) instead of toggling the window. A window toggle here read as a tile control.
+                FullscreenActionButton(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 16.dp).heroTestTag("home_hero_expand"),
+                    buttonSize = 44.dp,
+                    iconSize = 22.dp,
+                    containerColor = colorScheme.surfaceVariant.copy(alpha = 0.82f),
+                    contentColor = colorScheme.onSurface,
+                    expandedOverride = expanded,
+                    onClickOverride = onToggleExpanded,
+                    labelOverride = stringResource(if (expanded) Res.string.home_hero_collapse else Res.string.home_hero_expand),
+                )
+            } else if (isFullscreenActionSupported) {
                 FullscreenActionButton(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -735,6 +769,23 @@ private fun DesktopHomeHeroFrame(
             )
         }
     }
+}
+
+/** The trailer of the title an expanded board tile is showing, with sound: expanding is a request to watch it. */
+@Composable
+private fun HeroExpandedTrailer(item: MetaPreview) {
+    if (AppFeaturePolicy.trailerPlaybackMode != TrailerPlaybackMode.IN_APP) return
+    val screenActive = LocalScreenActive.current
+    var source by remember(item.type, item.id) { mutableStateOf<TrailerPlaybackSource?>(null) }
+    LaunchedEffect(item.type, item.id, screenActive) {
+        source = if (screenActive) resolveHomePosterHoverTrailerPlaybackSource(item) else null
+    }
+    HomePosterHoverTrailer(
+        playbackSource = source,
+        soundEnabled = true,
+        startPositionSeconds = 0,
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 @Composable
@@ -1094,12 +1145,10 @@ private fun desktopHeroLogoSlotHeight(layout: HomeHeroLayout): Dp =
     }
 
 /**
- * Desktop Home redesign: caps the hero so the tabs and the first row show on the first screen.
- * The skeleton and reserved space read it too, so loading never changes the hero's height.
+ * Desktop Home redesign: the height of the board's featured tile, which the hero fills exactly.
+ * The skeleton and reserved space read it too, so loading never changes the tile's height.
  */
 val LocalHomeHeroHeightCap = androidx.compose.runtime.compositionLocalOf<Dp?> { null }
-
-private const val DESKTOP_HERO_MIN_CAPPED_HEIGHT = 380f
 
 internal fun homeHeroLayout(
     maxWidthDp: Float,
@@ -1112,9 +1161,7 @@ internal fun homeHeroLayout(
         val heroHeight = desktopHeroHeight(
             maxWidthDp = maxWidthDp,
             viewportHeightDp = viewportHeightDp,
-        ).let { height ->
-            heroHeightCapDp?.let { cap -> minOf(height.value, cap).coerceAtLeast(DESKTOP_HERO_MIN_CAPPED_HEIGHT).dp } ?: height
-        }
+        ).let { height -> heroHeightCapDp?.dp ?: height }
         val ultrawideProgress = ultrawideViewportProgress(
             widthDp = maxWidthDp,
             heightDp = viewportHeightDp,
@@ -1133,14 +1180,15 @@ internal fun homeHeroLayout(
                 stop = DESKTOP_HERO_ULTRAWIDE_HORIZONTAL_PADDING_DP,
                 fraction = ultrawideProgress,
             ).dp,
-            contentVerticalPadding = lerp(
+            // As a board tile the hero is short, so its text sits closer to the edge under a smaller logo.
+            contentVerticalPadding = if (heroHeightCapDp != null) 26.dp else lerp(
                 start = 40f,
                 stop = DESKTOP_HERO_ULTRAWIDE_BOTTOM_PADDING_DP,
                 fraction = ultrawideProgress,
             ).dp,
             topFadeHeight = DESKTOP_HERO_TOP_FADE_HEIGHT_DP.dp,
             bottomFadeHeight = DESKTOP_HERO_BOTTOM_FADE_HEIGHT_DP.dp,
-            logoWidthFraction = 0.74f,
+            logoWidthFraction = if (heroHeightCapDp != null) 0.5f else 0.74f,
             backgroundMotionStrength = 1f - ultrawideProgress,
         )
     }

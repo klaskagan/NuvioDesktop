@@ -1,5 +1,11 @@
 package com.nuvio.app.features.home
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import com.nuvio.app.core.ui.DesktopNavigationTabs
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -8,10 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
@@ -30,6 +32,32 @@ import nuvio.composeapp.generated.resources.home_tab_shows
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
+/**
+ * Which Home tab is showing. It lives outside Home because the desktop top bar shows these tabs on
+ * every screen: picking one from Search or a detail page opens Home on it.
+ */
+internal object HomeTabSelection {
+    var tab by mutableStateOf(HomeTab.ForYou)
+}
+
+/** Home's tabs as the top bar's leading entries; none is selected while another screen is showing. */
+@Composable
+internal fun rememberHomeNavigationTabs(homeSelected: Boolean, onOpenHome: () -> Unit): DesktopNavigationTabs {
+    val labels = HomeTab.entries.map { stringResource(it.labelRes) }
+    val selected = HomeTabSelection.tab
+    val openHome by rememberUpdatedState(onOpenHome)
+    return remember(labels, selected, homeSelected) {
+        DesktopNavigationTabs(
+            labels = labels,
+            selectedIndex = selected.ordinal.takeIf { homeSelected },
+            onSelect = { index ->
+                HomeTabSelection.tab = HomeTab.entries[index]
+                openHome()
+            },
+        )
+    }
+}
+
 /** Desktop Home's filter tabs. They narrow the rows the user already configured; nothing is refetched. */
 internal enum class HomeTab(val labelRes: StringResource) {
     ForYou(Res.string.home_tab_for_you),
@@ -38,10 +66,45 @@ internal enum class HomeTab(val labelRes: StringResource) {
     MyLists(Res.string.home_tab_my_lists),
 }
 
-private fun String.homeMediaTab(): HomeTab? = when {
+internal fun String.homeMediaTab(): HomeTab? = when {
     equals("movie", ignoreCase = true) -> HomeTab.Movies
     isSeriesLikeWatchingContentType() -> HomeTab.Shows
     else -> null
+}
+
+/** How a tab's own hero catalogs are keyed in stored settings; null for tabs that share For you's hero. */
+internal val HomeTab.heroSourceId: String?
+    get() = when (this) {
+        HomeTab.Movies -> "movies"
+        HomeTab.Shows -> "shows"
+        HomeTab.ForYou, HomeTab.MyLists -> null
+    }
+
+/** A Home catalog as the hero source rules see it, in the user's Home order. */
+internal data class HomeHeroSourceCandidate(
+    val key: String,
+    val type: String,
+    val enabled: Boolean,
+    val forYouSource: Boolean,
+    val supportsHero: Boolean = true,
+)
+
+/**
+ * The catalogs that feed the Movies or Shows hero. The user's own picks for the tab win; with
+ * none, the For you hero catalogs of that type are used; with none of those either, the tab's
+ * first visible catalog. So a tab's hero always matches the tab without any setup.
+ */
+internal fun resolveTabHeroSourceKeys(
+    tab: HomeTab,
+    orderedCatalogs: List<HomeHeroSourceCandidate>,
+    chosen: Collection<String>,
+): List<String> {
+    val eligible = orderedCatalogs.filter { it.supportsHero && it.type.homeMediaTab() == tab }
+    val picked = eligible.filter { it.key in chosen }
+    if (picked.isNotEmpty()) return picked.map { it.key }
+    val shared = eligible.filter { it.forYouSource }
+    if (shared.isNotEmpty()) return shared.map { it.key }
+    return listOfNotNull(eligible.firstOrNull { it.enabled }?.key)
 }
 
 /** Movies or Shows from the catalog's own type; a mixed or untyped catalog goes by most of its items. */
@@ -65,64 +128,21 @@ internal fun ContinueWatchingItem.belongsTo(tab: HomeTab): Boolean = when (tab) 
 internal fun HomeTab.showsCollections(): Boolean = this == HomeTab.ForYou || this == HomeTab.MyLists
 internal fun HomeTab.showsSeasonalSpotlight(): Boolean = this == HomeTab.ForYou
 
-internal const val HOME_LEAD_RANKING_SIZE = 10
-
 /**
- * The row that leads a tab as a numbered ranking: the first addon catalog in the user's order with
- * at least ten titles, unless the user already chose a row style for it. The numbers are the
- * catalog's own order, so its title is kept.
- */
-internal fun homeLeadRankingKey(
-    tab: HomeTab,
-    orderedSections: List<HomeCatalogSection>,
-    rowStyles: Map<String, HomeRowStyle>,
-): String? {
-    if (tab == HomeTab.MyLists) return null
-    val lead = orderedSections.firstOrNull { section ->
-        section.target is CatalogTarget.Addon && section.calendarState == null && section.belongsTo(tab) &&
-            section.items.size >= HOME_LEAD_RANKING_SIZE && section.items.none { it.calendarCard != null }
-    } ?: return null
-    val chosen = rowStyles[lead.key] ?: HomeRowStyle.Automatic
-    return lead.key.takeIf { chosen == HomeRowStyle.Automatic && supportsHomeRowStyle(lead.key) }
-}
-
-/**
- * The tab strip under the hero. It pins while the rows scroll: [pinnedColor] fades in only once
- * it is actually pinned, and [blendColor] softens the hero's solid lower edge into the
- * ambient backdrop while it is not.
+ * Home's own tab strip, for the sidebar layout (the top-bar layout shows the tabs in the bar
+ * itself). It stays pinned while the page scrolls; [pinnedColor] fades in only once content is
+ * actually passing beneath it.
  */
 @Composable
 internal fun HomeTabsBar(
     selected: HomeTab,
     onSelect: (HomeTab) -> Unit,
     pinnedColor: Color,
-    blendColor: Color,
     horizontalPadding: Dp,
     topInset: Dp,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier
-            .fillMaxWidth()
-            .drawBehind {
-                if (blendColor.alpha > 0f) {
-                    // Starts above the bar so the list's gap after the hero is covered too.
-                    val lead = 32.dp.toPx()
-                    val height = 220.dp.toPx()
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            0f to blendColor,
-                            lead / (lead + height) to blendColor,
-                            1f to Color.Transparent,
-                            startY = -lead,
-                            endY = height,
-                        ),
-                        topLeft = Offset(0f, -lead),
-                        size = Size(size.width, lead + height),
-                    )
-                }
-            },
-    ) {
+    Box(modifier.fillMaxWidth()) {
         Box(
             Modifier.matchParentSize()
                 .background(pinnedColor)

@@ -45,11 +45,15 @@ internal fun FullscreenActionButton(
     iconSize: Dp = 24.dp,
     containerColor: Color = Color.Transparent,
     contentColor: Color = MaterialTheme.colorScheme.onBackground,
+    /** Set together to reuse the control for expanding something other than the window (Home's featured tile). */
+    expandedOverride: Boolean? = null,
+    onClickOverride: (() -> Unit)? = null,
+    labelOverride: String? = null,
 ) {
-    if (!isFullscreenActionSupported) return
+    if (onClickOverride == null && !isFullscreenActionSupported) return
 
-    val isActive = isFullscreenActionActive()
-    val label = stringResource(
+    val isActive = expandedOverride ?: isFullscreenActionActive()
+    val label = labelOverride ?: stringResource(
         if (isActive) {
             Res.string.action_exit_fullscreen
         } else {
@@ -66,7 +70,7 @@ internal fun FullscreenActionButton(
             .clickable(
                 enabled = enabled,
                 role = Role.Button,
-                onClick = ::toggleFullscreenAction,
+                onClick = onClickOverride ?: ::toggleFullscreenAction,
             )
             .semantics {
                 contentDescription = label
