@@ -142,7 +142,10 @@ hero is still visible).
 Every desktop Search results view uses the same layout: the All / Movies / Shows tabs,
 a spotlight hero, then the content. Tag pages (Netflix, Comedy, Alien invasion…)
 first showed a bare merged grid with no tabs; the user asked for them to match the
-results page. A tag page is the spotlight plus Home-style carousels
+results page. A tag page is Home's rotating hero (`HomeHeroSection` with its own
+`HomeHeroMetaStore`, because a shared store prunes Home's hero entries), then, for streaming
+services, numbered "Top 10" rows from any installed FlixPatrol chart catalog
+(`flixpatrol.<service>.…`, `HomeRowStyle.NumberedRanking`; `SearchTopTenTest`), then Home-style carousels
 (`DetailPosterRailSection`, i.e. `NuvioShelfSection` + `HomePosterCard`) for
 Popular, Top rated, and New, with shows and movies in each. "View all" opens the
 paged grid, and Back returns to the cached carousels. One failed or empty carousel

@@ -1,6 +1,13 @@
 package com.nuvio.app.features.search
 
 import androidx.compose.foundation.background
+import com.nuvio.app.features.home.HomeHeroMetaLoadEffect
+import com.nuvio.app.features.home.HomeHeroMetaStore
+import com.nuvio.app.features.home.HomeRowStyle
+import com.nuvio.app.features.home.rememberHomeHeroState
+import com.nuvio.app.features.home.stableKey
+import com.nuvio.app.features.home.components.HomeCatalogRowSection
+import com.nuvio.app.features.home.components.HomeHeroSection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -757,6 +764,8 @@ internal fun LazyListScope.searchDesktopList(
     discovery: SearchDiscovery?,
     discoveryUi: SearchDiscoveryUi,
     shelves: SearchDiscoveryShelvesUi,
+    topTen: SearchTopTenUi,
+    heroMeta: HomeHeroMetaStore,
     shelfView: SearchShelfView?,
     onShelfView: (SearchShelfView?) -> Unit,
     onDiscoverySelect: (SearchDiscovery?) -> Unit,
@@ -885,6 +894,8 @@ internal fun LazyListScope.searchDesktopList(
         searchDesktopTagPage(
             selection = discovery,
             shelves = shelves,
+            topTen = topTen,
+            heroMeta = heroMeta,
             scope = scope,
             gutter = gutter,
             itemModifier = itemModifier,
@@ -1242,6 +1253,8 @@ private fun shelfTitle(key: SearchShelfKey): String = when (key.sort) {
 private fun LazyListScope.searchDesktopTagPage(
     selection: SearchDiscovery,
     shelves: SearchDiscoveryShelvesUi,
+    topTen: SearchTopTenUi,
+    heroMeta: HomeHeroMetaStore,
     scope: SearchScope,
     gutter: Dp,
     itemModifier: LazyItemScope.() -> Modifier,
@@ -1251,25 +1264,43 @@ private fun LazyListScope.searchDesktopTagPage(
     onPosterLongClick: ((MetaPreview) -> Unit)?,
     onViewAll: (SearchShelfView) -> Unit,
 ) {
-    val spotlight = shelves.spotlight(scope)
-    if (spotlight != null) {
-        item(key = "tag-spotlight") {
-            SearchSpotlight(
-                item = spotlight,
-                people = emptyList(),
-                badge = stringResource(Res.string.search_tag_top, discoveryChipLabel(selection)),
-                onDetails = { onPosterClick?.invoke(spotlight) },
-                onMore = onPosterLongClick?.let { { it(spotlight) } },
-                onPersonClick = null,
-                onSeeAllPeople = {},
-                modifier = itemModifier().padding(horizontal = gutter).padding(top = 22.dp),
-            )
+    val heroItems = tagHeroItems(topTen, shelves, scope)
+    if (heroItems.isNotEmpty()) {
+        item(key = "tag-hero") {
+            // Home's rotating hero (auto-advance, progress dots, logo, ratings row), as a card in the column.
+            HomeHeroMetaLoadEffect(heroItems, heroMeta)
+            val hero = rememberHomeHeroState(heroItems, heroMeta)
+            Box(itemModifier().padding(horizontal = gutter).padding(top = 22.dp).clip(RoundedCornerShape(18.dp))) {
+                HomeHeroSection(
+                    items = hero.items,
+                    viewportHeight = SearchTagHeroViewport,
+                    sectionPadding = 28.dp,
+                    showImdbRating = hero.showImdbRating,
+                    showMdbListRatings = hero.showMdbListRatings,
+                    onItemClick = onPosterClick,
+                )
+            }
         }
-    } else if (shelves.loading) {
+    } else if (shelves.loading || topTen.loading) {
         item(key = "tag-skeleton-spotlight") {
             Box(
                 itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth().height(300.dp)
                     .clip(RoundedCornerShape(18.dp)).background(SearchColors.fill),
+            )
+        }
+    }
+    // Charts first: what's hot on the service right now, in the app's numbered ranking style.
+    topTen.sections.filter { (chart, _) -> chart.visibleIn(scope) }.forEach { (chart, section) ->
+        item(key = "tag-top10:${section.key}") {
+            HomeCatalogRowSection(
+                section = section,
+                modifier = itemModifier().padding(top = 14.dp),
+                watchedKeys = watchedKeys,
+                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                sectionPadding = gutter,
+                onPosterClick = onPosterClick,
+                onPosterLongClick = onPosterLongClick,
+                rowStyle = HomeRowStyle.NumberedRanking,
             )
         }
     }
@@ -1332,3 +1363,45 @@ private fun SearchBackLink(label: String, onClick: () -> Unit) {
         Text(label, style = searchText(14.sp, FontWeight.Medium, color))
     }
 }
+
+
+/** Taller than the results spotlight, shorter than Home's full-window hero. */
+private val SearchTagHeroViewport = 640.dp
+
+private fun SearchTopTenCatalog.visibleIn(scope: SearchScope) = when (scope) {
+    SearchScope.Movies -> television == false
+    SearchScope.Shows -> television == true
+    else -> true
+}
+
+/**
+ * The tag page hero rotates through the service's Top 10 (shows and movies interleaved) or, for
+ * genre-style tags and services without a chart, the most popular titles. The first item also
+ * drives the ambient backdrop.
+ */
+internal fun tagHeroItems(topTen: SearchTopTenUi, shelves: SearchDiscoveryShelvesUi, scope: SearchScope): List<MetaPreview> {
+    fun interleave(shows: List<MetaPreview>, movies: List<MetaPreview>) = when (scope) {
+        SearchScope.Movies -> movies
+        SearchScope.Shows -> shows
+        else -> buildList {
+            for (i in 0 until maxOf(shows.size, movies.size)) {
+                shows.getOrNull(i)?.let(::add)
+                movies.getOrNull(i)?.let(::add)
+            }
+        }
+    }
+    val charts = topTen.sections.filter { (chart, _) -> chart.visibleIn(scope) }
+    val fromCharts = if (charts.isEmpty()) emptyList() else interleave(
+        charts.filter { it.first.television != false }.flatMap { it.second.items },
+        charts.filter { it.first.television == false }.flatMap { it.second.items },
+    )
+    val pool = fromCharts.ifEmpty {
+        interleave(
+            shelves.rails[SearchShelfKey(SearchShelfSort.Popular, television = true)].orEmpty(),
+            shelves.rails[SearchShelfKey(SearchShelfSort.Popular, television = false)].orEmpty(),
+        )
+    }
+    return pool.distinctBy { it.stableKey() }.take(TAG_HERO_SIZE)
+}
+
+private const val TAG_HERO_SIZE = 8

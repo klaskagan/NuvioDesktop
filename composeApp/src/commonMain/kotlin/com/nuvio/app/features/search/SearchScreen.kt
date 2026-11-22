@@ -280,6 +280,11 @@ fun SearchScreen(
         hideUnreleased = homeCatalogSettingsUiState.hideUnreleasedContent,
         view = shelfView,
     )
+    val discoveryTopTen = rememberSearchTopTen(
+        selection = discovery.takeIf { isDesktop },
+        addons = addonsUiState.addons,
+        active = screenActive,
+    )
     val discoveryShelves = rememberSearchDiscoveryShelves(
         selection = discovery.takeIf { isDesktop },
         active = screenActive,
@@ -362,7 +367,8 @@ fun SearchScreen(
     // Ambient backdrop (desktop): the spotlight / first result's art, else the theme mesh. Never hover-driven.
     val backdropController = remember { if (isDesktop) BackdropFocusController() else null }
     val topResultArt = when {
-        discovery != null && isDesktop && shelfView == null -> discoveryShelves.spotlight(scope)?.let { it.banner ?: it.poster }
+        discovery != null && isDesktop && shelfView == null ->
+            tagHeroItems(discoveryTopTen, discoveryShelves, scope).firstOrNull()?.let { it.banner ?: it.poster }
         discovery != null -> discoveryUi.items.firstOrNull()?.let { it.banner ?: it.poster }
         query.isNotBlank() ->
             (displayedSearch.spotlightFor(scope) ?: displayedSearch.results.inScope(scope).firstOrNull())?.let { it.banner ?: it.poster }
@@ -482,6 +488,8 @@ fun SearchScreen(
                 discovery = discovery,
                 discoveryUi = discoveryUi,
                 shelves = discoveryShelves,
+                topTen = discoveryTopTen,
+                heroMeta = discoverySession.heroMeta,
                 shelfView = shelfView,
                 onShelfView = {
                     discoverySession.view = it

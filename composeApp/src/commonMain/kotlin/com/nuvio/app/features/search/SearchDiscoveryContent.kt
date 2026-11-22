@@ -93,6 +93,10 @@ internal class SearchDiscoverySession {
     private var pages = SearchDiscoveryPages()
     private var shelvesKey: Any? = null
     private var shelves = SearchDiscoveryShelves()
+    /** Top 10 charts for the selected provider tag; survives "View all" and back. */
+    val topTen = SearchTopTenCache()
+    /** The tag page hero's own metadata store, so it never prunes Home's hero entries. */
+    val heroMeta = com.nuvio.app.features.home.HomeHeroMetaStore()
 
     fun select(value: SearchDiscovery?) {
         if (selection == value) return

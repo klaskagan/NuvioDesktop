@@ -39,7 +39,11 @@ internal data class HomeHeroMeta(
     val ratings: List<MetaExternalRating> = emptyList(),
 )
 
-internal object HomeHeroMetaRepository {
+/**
+ * Enriches hero items with details and ratings. Each hero owns one store: [load] prunes entries
+ * not in its list, so a second hero (Search tag pages) must not share Home's.
+ */
+internal class HomeHeroMetaStore {
     private val dispatcher = Dispatchers.Default.limitedParallelism(1)
     private val _metas = MutableStateFlow<Map<String, HomeHeroMeta>>(emptyMap())
     val metas: StateFlow<Map<String, HomeHeroMeta>> = _metas.asStateFlow()
@@ -115,6 +119,10 @@ internal object HomeHeroMetaRepository {
 internal fun MetaPreview.withHeroMeta(meta: HomeHeroMeta): MetaPreview {
     val details = meta.details
     return copy(
+        // Fill only what the item lacks: addon items carry their own art, TMDB discover items have no logo.
+        logo = logo ?: details?.logo?.takeIf { it.isNotBlank() },
+        banner = banner ?: details?.background?.takeIf { it.isNotBlank() },
+        description = description ?: details?.description?.takeIf { it.isNotBlank() },
         genres = details?.genres?.takeIf { it.isNotEmpty() } ?: genres,
         imdbRating = details?.imdbRating?.takeIf { it.isNotBlank() } ?: imdbRating,
         runtime = details?.runtime?.takeIf { it.isNotBlank() } ?: runtime,
@@ -126,7 +134,7 @@ internal fun MetaPreview.withHeroMeta(meta: HomeHeroMeta): MetaPreview {
 }
 
 @Composable
-internal fun HomeHeroMetaLoadEffect(items: List<MetaPreview>) {
+internal fun HomeHeroMetaLoadEffect(items: List<MetaPreview>, store: HomeHeroMetaStore = HomeHeroMetaRepository) {
     val mdbListSettings by remember {
         MdbListSettingsRepository.ensureLoaded()
         MdbListSettingsRepository.uiState
@@ -139,12 +147,12 @@ internal fun HomeHeroMetaLoadEffect(items: List<MetaPreview>) {
 
     LaunchedEffect(items, mdbListSettings, tmdbSettings) {
         delay(LOAD_DEBOUNCE_MS)
-        HomeHeroMetaRepository.load(items, mdbListSettings.takeIf { showMdbListRatings })
+        store.load(items, mdbListSettings.takeIf { showMdbListRatings })
     }
 }
 
 @Composable
-internal fun rememberHomeHeroState(items: List<MetaPreview>): HomeHeroState {
+internal fun rememberHomeHeroState(items: List<MetaPreview>, store: HomeHeroMetaStore = HomeHeroMetaRepository): HomeHeroState {
     val mdbListSettings by remember {
         MdbListSettingsRepository.ensureLoaded()
         MdbListSettingsRepository.uiState
@@ -153,7 +161,7 @@ internal fun rememberHomeHeroState(items: List<MetaPreview>): HomeHeroState {
         MetaScreenSettingsRepository.ensureLoaded()
         MetaScreenSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
-    val metas by HomeHeroMetaRepository.metas.collectAsStateWithLifecycle()
+    val metas by store.metas.collectAsStateWithLifecycle()
     val showMdbListRatings = mdbListSettings.isActive && mdbListSettings.showOnHero
 
     val heroItems = remember(items, metas) {
@@ -165,6 +173,9 @@ internal fun rememberHomeHeroState(items: List<MetaPreview>): HomeHeroState {
         showMdbListRatings = showMdbListRatings,
     )
 }
+
+/** Home's hero store. */
+internal val HomeHeroMetaRepository = HomeHeroMetaStore()
 
 private const val DETAILS_FETCH_CONCURRENCY = 4
 private const val RATINGS_TIMEOUT_MS = 5_000L
