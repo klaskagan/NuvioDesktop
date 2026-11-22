@@ -1785,6 +1785,19 @@ filterRows.forEach(filterRow => {
   filterRow.addEventListener("pointercancel", clearDrag);
 });
 
+// WKWebView (macOS controls) ignores scrollIntoView's `container` option and
+// scrolls every ancestor, including the fixed overlay document itself. Scroll
+// only the element's own scroll container instead.
+const scrollIntoContainer = (element, container, { block = null, inline = null, behavior = "auto" } = {}) => {
+  if (!element || !container) return;
+  const elementRect = element.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+  const options = { behavior };
+  if (block === "start") options.top = container.scrollTop + elementRect.top - containerRect.top;
+  if (inline === "start") options.left = container.scrollLeft + elementRect.left - containerRect.left;
+  container.scrollTo(options);
+};
+
 const normalizeItems = items =>
   Array.isArray(items) ? items.filter(item => item && typeof item === "object") : [];
 
@@ -1803,7 +1816,7 @@ const appendFilterChip = (container, label, selected, onSelect, isLoading = fals
   chip.addEventListener("click", event => {
     event.stopPropagation();
     if (!selected) {
-      chip.scrollIntoView({ behavior: "smooth", container: "nearest", inline: "start" });
+      scrollIntoContainer(chip, container, { inline: "start", behavior: "smooth" });
       onSelect();
     }
   });
@@ -2070,8 +2083,7 @@ const renderSourceModal = (modalOpened = false) => {
 
   if (!modalOpened || !sourceVirtualSpacer) {
     window.requestAnimationFrame(() => {
-      sourceFilterList.querySelector(".filter-chip.selected")
-        ?.scrollIntoView({ behavior: "instant", container: "nearest", inline: "start" });
+      scrollIntoContainer(sourceFilterList.querySelector(".filter-chip.selected"), sourceFilterList, { inline: "start" });
     });
   }
 
@@ -2206,8 +2218,7 @@ const renderEpisodeList = (modalOpened = false) => {
 
   if (!modalOpened) {
     window.requestAnimationFrame(() => {
-      seasonFilterList.querySelector(".filter-chip.selected")
-        ?.scrollIntoView({ behavior: "instant", container: "nearest", inline: "start" });
+      scrollIntoContainer(seasonFilterList.querySelector(".filter-chip.selected"), seasonFilterList, { inline: "start" });
     });
   }
 
@@ -2229,7 +2240,7 @@ const renderEpisodeList = (modalOpened = false) => {
     window.requestAnimationFrame(() => {
       const selectedEpisode = episodeList.querySelector(".track-row.episode-row.selected");
       if (selectedEpisode) {
-        selectedEpisode.scrollIntoView({ behavior: "instant", container: "nearest", block: "start" });
+        scrollIntoContainer(selectedEpisode, episodeList, { block: "start" });
       } else {
         episodeList.scrollTop = 0;
       }
@@ -2258,8 +2269,7 @@ const renderEpisodeStreams = (modalOpened = false) => {
 
   if (!modalOpened && currentEpisodeStreamItems?.length === 0) {
     window.requestAnimationFrame(() => {
-      episodeStreamFilterList.querySelector(".filter-chip.selected")
-        ?.scrollIntoView({ behavior: "instant", container: "nearest", inline: "start" });
+      scrollIntoContainer(episodeStreamFilterList.querySelector(".filter-chip.selected"), episodeStreamFilterList, { inline: "start" });
     });
   }
 
@@ -2730,6 +2740,15 @@ const renderSeekPreview = () => {
 };
 
 window.addEventListener("resize", invalidateSeekGeometry);
+// The overlay is a fixed full-window surface; a scrollIntoView that reaches the
+// document (WKWebView ignores `container`) would shift the controls and panels.
+const resetOverlayDocumentScroll = () => {
+  for (const element of [document.scrollingElement, document.documentElement, document.body]) {
+    if (element && (element.scrollTop || element.scrollLeft)) element.scrollTo(0, 0);
+  }
+};
+window.addEventListener("scroll", resetOverlayDocumentScroll, { passive: true });
+document.body.addEventListener("scroll", resetOverlayDocumentScroll, { passive: true });
 
 const renderActiveModal = (modalOpened = false) => {
   if (activeModal === "tvHandoff") renderTvHandoffList();
