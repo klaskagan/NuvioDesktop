@@ -59,6 +59,38 @@ Person Details opening with no transition). Apply these to every redesigned scre
   went from 43 s to 66–81 s and past its 1-minute limit, and back to 34 s without it. Home's bar uses
   `BackdropSurface.stickyHeaderOpaque` instead. Treat that test's runtime as the regression check
   before adding per-row effects to Home.
+- **Desktop Home opens on a board, not a full-width hero** (`HomeBoard.kt`): the hero carousel is a
+  tile (its height comes from `LocalHomeHeroHeightCap`, read by the skeleton too) beside a Resume
+  tile and an Up next list, with the tabs pinned above. The board takes the first
+  `HOME_BOARD_RESUME_ITEMS` resume items and the Continue Watching row shows the rest, so one title
+  never appears in both. When the board's set changes, a title moves to the head of that row; a
+  lazy row anchors on its first visible item, so `HomeScreen` puts a row still at its start back
+  at its start (seen as a sliver of a card left of the row's first card). Plain poster rows open
+  with `HomeRowLeadCard`; rows with a chosen style, rankings and calendar rows are left alone. The
+  lead card is present from the first frame and loads its landscape art in place: showing it only
+  once a banner was known made the row jump when hero metadata arrived after the posters.
+- **Home's hero tile expands; it does not toggle the window.** On the board the hero's corner
+  control used to be the window-fullscreen button, which read as "expand this card". It now expands
+  the tile over the whole board and plays the current title's trailer with sound
+  (`HomeHeroSection(expanded, onToggleExpanded)`); the carousel holds while expanded. Window
+  fullscreen stays on its shortcut and the system control. A row's lead card plays its trailer in
+  place on hover under the poster hover-preview settings; ordinary posters keep their overlay card.
+- **The top-bar layout has one bar** (`DesktopMergedTopBar`): Home's tabs (For you, Movies, Shows,
+  My lists) lead it in place of a Home item, the other destinations follow on the right, and one
+  underline slides between all of them. It is the same bar on main tabs and detail pages, so a Home
+  tab is reachable from Search. The tab choice lives in `HomeTabSelection`, and Home draws its own
+  tab strip only for the sidebar layout (`LocalHomeTabsHostedInNavigation`). Two earlier attempts
+  were rejected: a tab strip under the floating pill (tall empty band), and tabs placed beside the
+  pill (still two controls). Screens start their content at `topChromePadding`; Search's idle hero
+  used to ignore it and slid under the bar.
+- **Each Home tab's hero matches the tab.** Movies and Shows have their own hero pools
+  (`HomeUiState.movieHeroItems` / `showHeroItems`, built in `HomeRepository`); For you and My lists
+  share the mixed one. A tab's catalogs come from `resolveTabHeroSourceKeys`: the user's picks for
+  that tab (Settings → Home Layout → Hero catalogs, stored locally as `heroTabSources`), else the
+  For you hero catalogs of that type, else the tab's first visible catalog. Filtering the mixed
+  For you pool by type is not enough: with two movie catalogs picked it leaves Shows with a movie
+  hero. Load hero metadata for all pools together (`HomeHeroMetaStore.load` prunes to what it is
+  given). Regression: `HomeTabsTest`.
 - **Frosted sidebars come in pairs.** A page with its own backdrop in a separate nav entry (Person)
   passes `frostedSidebar` to `DetailNavigationFrame` and insets its content, not its backdrop, by
   `LocalBackdropContentStartInset`. While two such entries cross, the one leaving hides its sidebar

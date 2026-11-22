@@ -27,17 +27,19 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.AppScreenTab
 import com.nuvio.app.isDesktop
+import com.nuvio.app.features.watchprogress.continueWatchingItemKey
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.Color
 import com.nuvio.app.core.ui.BackdropSurface
 import com.nuvio.app.core.ui.LocalBackdropFocusController
+import com.nuvio.app.core.ui.LocalHomeTabsHostedInNavigation
 import com.nuvio.app.core.ui.LocalNuvioShelfHeaderStyle
 import com.nuvio.app.core.ui.NavLayer
 import com.nuvio.app.core.ui.NavSide
@@ -45,6 +47,9 @@ import com.nuvio.app.core.ui.NuvioShelfHeaderStyle
 import com.nuvio.app.core.ui.RedesignTypography
 import com.nuvio.app.core.ui.navTransitionLayer
 import com.nuvio.app.features.home.components.LocalHomeHeroHeightCap
+import com.nuvio.app.features.home.components.HomeBoard
+import com.nuvio.app.features.home.components.HomeBoardSideColumnMinWidth
+import com.nuvio.app.features.home.components.homeBoardResumeItems
 import com.nuvio.app.core.auth.AuthRepository
 import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.network.NetworkCondition
@@ -183,7 +188,11 @@ fun HomeScreen(
         state.addons.enabledAddons().toHomeAddonSignals()
     }
     val homeUiState by HomeRepository.uiState.collectAsStateWithLifecycle()
-    HomeHeroMetaLoadEffect(homeUiState.heroItems)
+    // Logos and ratings are loaded for every tab's hero, so switching tabs never shows a bare one.
+    val allHeroItems = remember(homeUiState.heroItems, homeUiState.movieHeroItems, homeUiState.showHeroItems) {
+        (homeUiState.heroItems + homeUiState.movieHeroItems + homeUiState.showHeroItems).distinctBy { it.stableKey() }
+    }
+    HomeHeroMetaLoadEffect(allHeroItems)
     val homeSettingsUiState by remember {
         HomeCatalogSettingsRepository.snapshot()
         HomeCatalogSettingsRepository.uiState
@@ -995,20 +1004,25 @@ fun HomeScreen(
     // Desktop redesign (direction "Editorial"): the rows sit on the shell's ambient backdrop, tabs
     // under the hero filter them, and the first catalog leads as a numbered ranking.
     val backdropController = LocalBackdropFocusController.current.takeIf { isDesktop }
-    val heroBackdropArt = homeUiState.heroItems.firstOrNull()?.let { it.banner ?: it.poster }
+    val homeTab = HomeTabSelection.tab
+    // With the top-bar layout the tabs are in the navigation bar, so Home draws no strip of its own.
+    val tabsInNavigation = LocalHomeTabsHostedInNavigation.current
+    // Movies and Shows show a hero of their own type; For you and My lists share the mixed one.
+    val tabHeroItems = if (isDesktop) homeUiState.heroItemsFor(homeTab) else homeUiState.heroItems
+    val heroBackdropArt = tabHeroItems.firstOrNull()?.let { it.banner ?: it.poster }
     // Visited tabs stay composed, so only the active screen may steer the shared backdrop. It shows
     // the first hero title and stays put while the carousel rotates.
     ScreenActivityEffect(backdropController, heroBackdropArt) { active ->
         if (active) backdropController?.base = heroBackdropArt
     }
-    var homeTab by rememberSaveable { mutableStateOf(HomeTab.ForYou) }
+    var heroExpanded by rememberSaveable { mutableStateOf(false) }
     val tabContinueWatchingItems = remember(continueWatchingItems, homeTab) {
         if (isDesktop) continueWatchingItems.filter { it.belongsTo(homeTab) } else continueWatchingItems
     }
     val tabUpcomingItems = remember(upcomingItems, homeTab) {
         if (isDesktop) upcomingItems.filter { it.belongsTo(homeTab) } else upcomingItems
     }
-    val homeTabsIndex = if (showHeroSlot) 1 else 0
+    val homeTabsIndex = 0
     val homeTabsPinned by remember(homeListState, homeTabsIndex) {
         derivedStateOf {
             homeListState.firstVisibleItemIndex > homeTabsIndex ||
@@ -1024,11 +1038,7 @@ fun HomeScreen(
         animationSpec = tween(220),
         label = "home_tabs_pinned",
     )
-    val homeTabsTopInset by animateDpAsState(
-        targetValue = if (homeTabsPinned) topChromePadding ?: 0.dp else 0.dp,
-        animationSpec = tween(220, easing = FastOutSlowInEasing),
-        label = "home_tabs_inset",
-    )
+    val homeTabsTopInset = 0.dp
     // Switching tabs from deep in the list returns to the tab strip instead of leaving the user
     // somewhere in the middle of different rows.
     LaunchedEffect(homeTab) {
@@ -1081,25 +1091,20 @@ fun HomeScreen(
         }
 
         val heroStretchState = rememberHeroStretchState(homeListState)
-        val heroStretchModifier = if (showHeroSlot) {
+        val heroStretchModifier = if (showHeroSlot && !isDesktop) {
             Modifier.nestedScroll(heroStretchState.nestedScrollConnection)
         } else {
             Modifier
         }
 
-        val effectiveTopPadding = if (showHeroSlot) {
+        val effectiveTopPadding = if (isDesktop && tabsInNavigation) {
+            topChromePadding ?: 0.dp
+        } else if (showHeroSlot || isDesktop) {
             0.dp
         } else {
             topChromePadding
         }
 
-        val leadRankingKey = remember(homeTab, enabledHomeItems, sectionsMap, rowStyles) {
-            if (!isDesktop) null else homeLeadRankingKey(
-                tab = homeTab,
-                orderedSections = enabledHomeItems.mapNotNull { sectionsMap[it.key] },
-                rowStyles = rowStyles,
-            )
-        }
         // Rows fade/slide when a tab changes them. They are deliberately not blur sources for the pinned
         // tabs: a haze source per Home row nearly doubled render time, so the bar uses an opaque dim.
         val homeItemModifier: LazyItemScope.() -> Modifier = {
@@ -1110,12 +1115,43 @@ fun HomeScreen(
                 Modifier
             }
         }
-        val heroBlendColor = MaterialTheme.colorScheme.background
         val screenMaxHeight = maxHeight
+        // The board: featured title beside Resume and Up next. Its resume items leave the Continue Watching row.
+        val collapsedBoardHeight = (screenMaxHeight * HOME_BOARD_VIEWPORT_FRACTION).coerceIn(430.dp, 540.dp)
+        // Expanding the featured tile gives it the whole board and most of the window for its trailer.
+        val boardHeight by animateDpAsState(
+            targetValue = if (heroExpanded) (screenMaxHeight - HOME_BOARD_EXPANDED_MARGIN).coerceAtLeast(collapsedBoardHeight) else collapsedBoardHeight,
+            animationSpec = tween(360, easing = FastOutSlowInEasing),
+            label = "home_board_height",
+        )
+        val boardHasSideColumn = isDesktop && showHeroSlot && maxWidth >= HomeBoardSideColumnMinWidth
+        val boardResumeItems = remember(tabContinueWatchingItems, boardHasSideColumn, continueWatchingPreferences.isVisible) {
+            homeBoardResumeItems(
+                items = if (continueWatchingPreferences.isVisible) tabContinueWatchingItems else emptyList(),
+                hasSideColumn = boardHasSideColumn,
+            )
+        }
+        val rowContinueWatchingItems = remember(continueWatchingItems, tabContinueWatchingItems, boardResumeItems) {
+            if (isDesktop) tabContinueWatchingItems.drop(boardResumeItems.size) else continueWatchingItems
+        }
+        val rowUpcomingItems = if (isDesktop) tabUpcomingItems else upcomingItems
+        // When the board's set changes, a title can move from the board to the head of the row. A lazy
+        // row keeps its first visible item in place, which would leave the newcomer scrolled off to
+        // the left, so a row still resting at its start is put back at its start.
+        val rowLeadKey = rowContinueWatchingItems.firstOrNull()?.let(::continueWatchingItemKey)
+        val lastRowLeadKey = remember { arrayOfNulls<String>(1) }
+        if (isDesktop && lastRowLeadKey[0] != rowLeadKey) {
+            if (lastRowLeadKey[0] != null && continueWatchingListState.firstVisibleItemIndex <= 1 &&
+                !continueWatchingListState.isScrollInProgress
+            ) {
+                continueWatchingListState.requestScrollToItem(0)
+            }
+            lastRowLeadKey[0] = rowLeadKey
+        }
         RedesignTypography(enabled = isDesktop) {
         CompositionLocalProvider(
             LocalNuvioShelfHeaderStyle provides if (isDesktop) NuvioShelfHeaderStyle.Editorial else NuvioShelfHeaderStyle.Standard,
-            LocalHomeHeroHeightCap provides if (isDesktop) screenMaxHeight * HOME_REDESIGN_HERO_VIEWPORT_FRACTION else null,
+            LocalHomeHeroHeightCap provides if (isDesktop) boardHeight else null,
         ) {
         NuvioScreen(
             modifier = Modifier.fillMaxSize().then(heroStretchModifier)
@@ -1125,12 +1161,23 @@ fun HomeScreen(
             listState = homeListState,
             drawBackground = backdropController == null,
         ) {
+            if (isDesktop && !tabsInNavigation) {
+                stickyHeader(key = "home_tabs", contentType = "tabs") {
+                    HomeTabsBar(
+                        selected = homeTab,
+                        onSelect = { HomeTabSelection.tab = it },
+                        pinnedColor = homeTabsColor,
+                        horizontalPadding = homeSectionPadding,
+                        topInset = homeTabsTopInset,
+                    )
+                }
+            }
             if (showHeroSlot) {
                 item(key = "home_hero", contentType = "hero") {
-                    val homeHeroState = rememberHomeHeroState(homeUiState.heroItems)
+                    val featured: @Composable () -> Unit = {
                     Crossfade(
                         targetState = showHeroSkeleton,
-                        modifier = Modifier.nuvioHorizontalScrollBleed(LocalVerticalBarPadding.current),
+                        modifier = if (isDesktop) Modifier else Modifier.nuvioHorizontalScrollBleed(LocalVerticalBarPadding.current),
                         animationSpec = tween(320),
                         label = "HomeHeroLoading",
                     ) { isLoading ->
@@ -1139,21 +1186,31 @@ fun HomeScreen(
                                 modifier = Modifier,
                                 viewportHeight = maxHeight,
                                 mobileBelowSectionHeightHint = mobileHeroBelowSectionHeightHint,
-                                sectionPadding = if (isDesktop) homeSectionPadding else null,
+                                sectionPadding = if (isDesktop) HOME_BOARD_FEATURED_PADDING else null,
                             )
 
-                            homeUiState.heroItems.isNotEmpty() -> HomeHeroSection(
+                            // A tab with its own hero swaps the carousel; the two fade through each other.
+                            homeUiState.heroItems.isNotEmpty() -> Crossfade(
+                                targetState = tabHeroItems,
+                                animationSpec = tween(320),
+                                label = "HomeHeroTab",
+                            ) { paneItems ->
+                            val homeHeroState = rememberHomeHeroState(paneItems)
+                            HomeHeroSection(
                                 items = homeHeroState.items,
                                 modifier = Modifier,
                                 viewportHeight = maxHeight,
                                 mobileBelowSectionHeightHint = mobileHeroBelowSectionHeightHint,
-                                sectionPadding = if (isDesktop) homeSectionPadding else null,
-                                listState = homeListState,
-                                stretchPx = { heroStretchState.stretchPx },
+                                sectionPadding = if (isDesktop) HOME_BOARD_FEATURED_PADDING else null,
+                                listState = homeListState.takeIf { !isDesktop },
+                                stretchPx = { if (isDesktop) 0f else heroStretchState.stretchPx },
                                 showImdbRating = homeHeroState.showImdbRating,
                                 showMdbListRatings = homeHeroState.showMdbListRatings,
                                 onItemClick = onPosterClick,
+                                expanded = isDesktop && heroExpanded,
+                                onToggleExpanded = if (isDesktop) ({ heroExpanded = !heroExpanded }) else null,
                             )
+                            }
 
                             else -> HomeHeroReservedSpace(
                                 modifier = Modifier,
@@ -1162,6 +1219,20 @@ fun HomeScreen(
                             )
                         }
                     }
+                    }
+                    if (isDesktop) {
+                        HomeBoard(
+                            height = boardHeight,
+                            expanded = heroExpanded,
+                            resumeItems = boardResumeItems,
+                            onResumeClick = onContinueWatchingClick,
+                            onResumeLongPress = onContinueWatchingLongPress,
+                            modifier = Modifier.padding(horizontal = homeSectionPadding).padding(top = 4.dp, bottom = 18.dp),
+                            featured = featured,
+                        )
+                    } else {
+                        featured()
+                    }
                 }
             }
 
@@ -1169,8 +1240,8 @@ fun HomeScreen(
                 isInitialHomeContentLoading -> {
                     homeContinueWatchingSections(
                         preferences = continueWatchingPreferences,
-                        continueWatchingItems = continueWatchingItems,
-                        upcomingItems = upcomingItems,
+                        continueWatchingItems = rowContinueWatchingItems,
+                        upcomingItems = rowUpcomingItems,
                         dataSourceKey = effectiveWatchProgressSource,
                         sectionPadding = homeSectionPadding,
                         layout = continueWatchingLayout,
@@ -1194,8 +1265,8 @@ fun HomeScreen(
                 !hasActiveAddons && !hasServerLibraries && !hasRenderableCollectionRows && visibleSeasonalSection == null -> {
                     homeContinueWatchingSections(
                         preferences = continueWatchingPreferences,
-                        continueWatchingItems = continueWatchingItems,
-                        upcomingItems = upcomingItems,
+                        continueWatchingItems = rowContinueWatchingItems,
+                        upcomingItems = rowUpcomingItems,
                         dataSourceKey = effectiveWatchProgressSource,
                         sectionPadding = homeSectionPadding,
                         layout = continueWatchingLayout,
@@ -1293,28 +1364,16 @@ fun HomeScreen(
                 }
 
                 else -> {
-                    if (isDesktop) {
-                        stickyHeader(key = "home_tabs", contentType = "tabs") {
-                            HomeTabsBar(
-                                selected = homeTab,
-                                onSelect = { homeTab = it },
-                                pinnedColor = homeTabsColor,
-                                blendColor = if (showHeroSlot && backdropController != null && !homeTabsPinned) heroBlendColor else Color.Transparent,
-                                horizontalPadding = homeSectionPadding,
-                                topInset = homeTabsTopInset,
-                            )
-                        }
-                    }
                     var renderedRows = 0
                     if (continueWatchingPreferences.isVisible) {
-                        if (tabContinueWatchingItems.isNotEmpty()) renderedRows++
-                        if (tabUpcomingItems.isNotEmpty()) renderedRows++
+                        if (boardResumeItems.isNotEmpty() || rowContinueWatchingItems.isNotEmpty()) renderedRows++
+                        if (rowUpcomingItems.isNotEmpty()) renderedRows++
                     }
                     homeContinueWatchingSections(
                         itemModifier = homeItemModifier,
                         preferences = continueWatchingPreferences,
-                        continueWatchingItems = tabContinueWatchingItems,
-                        upcomingItems = tabUpcomingItems,
+                        continueWatchingItems = rowContinueWatchingItems,
+                        upcomingItems = rowUpcomingItems,
                         dataSourceKey = effectiveWatchProgressSource,
                         sectionPadding = homeSectionPadding,
                         layout = continueWatchingLayout,
@@ -1370,19 +1429,13 @@ fun HomeScreen(
                                 // Filtered out by the selected tab.
                             } else if (section != null && (section.items.isNotEmpty() || section.calendarState != null)) {
                                 renderedRows++
-                                val leadsAsRanking = section.key == leadRankingKey
                                 item(key = keyedSettingsItem.lazyKey, contentType = "catalog") {
                                     HomeCatalogRowSection(
                                         section = section,
                                         eyebrow = section.addonName.takeIf { isDesktop },
-                                        rowStyle = when {
-                                            leadsAsRanking -> HomeRowStyle.NumberedRanking
-                                            section.calendarState == null -> rowStyles[section.key] ?: HomeRowStyle.Automatic
-                                            else -> HomeRowStyle.Automatic
-                                        },
-                                        entries = if (leadsAsRanking) {
-                                            section.items.take(HOME_LEAD_RANKING_SIZE)
-                                        } else if (isDesktop) {
+                                        leadCard = isDesktop,
+                                        rowStyle = if (section.calendarState == null) rowStyles[section.key] ?: HomeRowStyle.Automatic else HomeRowStyle.Automatic,
+                                        entries = if (isDesktop) {
                                             // The row is lazy, so desktop can expose the fetched catalog without
                                             // composing every poster up front. Mobile keeps its compact preview.
                                             section.items
@@ -1429,8 +1482,14 @@ fun HomeScreen(
     }
 }
 
-/** Desktop redesign: the hero takes this share of the window so the tabs and first row show without scrolling. */
-private const val HOME_REDESIGN_HERO_VIEWPORT_FRACTION = 0.72f
+/** Desktop redesign: the board takes this share of the window so the first row shows without scrolling. */
+private const val HOME_BOARD_VIEWPORT_FRACTION = 0.56f
+
+/** What an expanded board leaves of the window for the tabs above it and a hint of the row below. */
+private val HOME_BOARD_EXPANDED_MARGIN = 150.dp
+
+/** Inner padding of the hero's text inside the board's featured tile. */
+private val HOME_BOARD_FEATURED_PADDING = 26.dp
 
 private fun LazyListScope.homeContinueWatchingSections(
     itemModifier: LazyItemScope.() -> Modifier = { Modifier },

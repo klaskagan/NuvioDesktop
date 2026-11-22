@@ -4,6 +4,10 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import com.nuvio.app.core.ui.BackdropFocusController
+import com.nuvio.app.core.ui.DesktopMergedTopBar
+import com.nuvio.app.core.ui.DesktopMergedTopBarHeight
+import com.nuvio.app.core.ui.LocalHomeTabsHostedInNavigation
+import com.nuvio.app.features.home.rememberHomeNavigationTabs
 import com.nuvio.app.core.ui.LocalBackdropFocusController
 import com.nuvio.app.core.ui.LocalShellBackdropMode
 import com.nuvio.app.core.ui.NavLayer
@@ -119,7 +123,7 @@ internal fun MainTabsDestination(
         val topChromePadding = if (useFloatingTopBar || useDesktopTopBar) {
             val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             if (useDesktopTopBar) {
-                statusBarPadding + 48.dp + 64.dp
+                statusBarPadding + DesktopMergedTopBarHeight + 8.dp
             } else {
                 max(statusBarPadding + 24.dp, 48.dp) + 64.dp
             }
@@ -296,6 +300,7 @@ internal fun MainTabsDestination(
                 }
                 CompositionLocalProvider(
                     LocalBackdropFocusController provides shellBackdropController.takeIf { shellBackdropEnabled },
+                    LocalHomeTabsHostedInNavigation provides useDesktopTopBar,
                     LocalNuvioBottomNavigationOverlayPadding provides if (useNativeBottomTabs) 49.dp else if (!isDesktop && !isTabletLayout && navBarStyleSetting != NavBarStyle.CLASSIC) 72.dp else 0.dp,
                     LocalNuvioNavBarScrollState provides navBarScrollState,
                 ) {
@@ -366,17 +371,20 @@ internal fun MainTabsDestination(
                 }
 
                 if (useDesktopTopBar) {
-                    DesktopNavigationBar(
-                        items = floatingNavigationItems,
+                    // One bar for the top-bar layout: Home's tabs lead it in place of a Home item.
+                    DesktopMergedTopBar(
+                        tabs = rememberHomeNavigationTabs(
+                            homeSelected = selectedTab == AppScreenTab.Home,
+                            onOpenHome = { onTabSelected(AppScreenTab.Home) },
+                        ),
+                        items = floatingNavigationItems.drop(1),
+                        windowWidth = screenWidth,
                         modifier = Modifier.align(Alignment.TopCenter),
-                        contentPadding = desktopNavigationContentPadding(),
                         scrollState = navBarScrollState,
                         hazeState = navBarHazeState,
                         navBarStyle = navBarStyleSetting,
                         isHeroEnabled = homeCatalogSettingsUiState.heroEnabled,
                         profileSwitcherOpen = isTopProfileSwitcherOpen,
-                        windowWidth = screenWidth,
-                        glowEnabled = navBarGlowEnabled,
                     )
                 }
 

@@ -234,6 +234,8 @@ object HomeRepository {
             _uiState.value = HomeUiState(
                 isLoading = isLoading,
                 heroItems = _uiState.value.heroItems,
+                movieHeroItems = _uiState.value.movieHeroItems,
+                showHeroItems = _uiState.value.showHeroItems,
                 sections = sections,
                 errorMessage = if (sections.isEmpty()) lastErrorMessage else null,
             )
@@ -254,6 +256,34 @@ object HomeRepository {
         } else {
             emptyList()
         }
+        // Desktop Home tabs: Movies and Shows get a hero of their own type from their own catalogs.
+        fun tabHeroItems(tab: HomeTab): List<MetaPreview> {
+            if (!snapshot.heroEnabled) return emptyList()
+            val ordered = currentDefinitions.sortedBy { preferences[it.key]?.order ?: Int.MAX_VALUE }
+            val sourceKeys = resolveTabHeroSourceKeys(
+                tab = tab,
+                orderedCatalogs = ordered.map { definition ->
+                    HomeHeroSourceCandidate(
+                        key = definition.key,
+                        type = definition.type,
+                        enabled = preferences[definition.key]?.enabled != false,
+                        forYouSource = preferences[definition.key]?.heroSourceEnabled != false,
+                        supportsHero = definition.supportsHero,
+                    )
+                },
+                chosen = snapshot.heroTabSources[tab.heroSourceId].orEmpty(),
+            )
+            val tabRandom = Random((requestKey?.hashCode() ?: 0).absoluteValue + 2 + tab.ordinal)
+            return ordered
+                .filter { it.key in sourceKeys }
+                .mapNotNull { definition -> cachedSections[definition.cacheKey] }
+                .map { section -> section.withPosterOverlay().withReleaseFilter() }
+                .flatMap { section -> section.items }
+                .filter { item -> item.type.homeMediaTab() == tab }
+                .distinctBy { item -> "${item.type}:${item.id}" }
+                .shuffled(tabRandom)
+                .take(HOME_HERO_ITEM_LIMIT)
+        }
         lastPublishedCatalogHeroEmpty = snapshot.heroEnabled && catalogHeroItems.isEmpty()
         val heroItems = if (snapshot.heroEnabled) {
             catalogHeroItems.ifEmpty { cachedCollectionHeroItems }
@@ -264,6 +294,8 @@ object HomeRepository {
         val nextState = HomeUiState(
             isLoading = isLoading,
             heroItems = heroItems,
+            movieHeroItems = tabHeroItems(HomeTab.Movies),
+            showHeroItems = tabHeroItems(HomeTab.Shows),
             sections = sections,
             errorMessage = if (sections.isEmpty()) lastErrorMessage else null,
         )

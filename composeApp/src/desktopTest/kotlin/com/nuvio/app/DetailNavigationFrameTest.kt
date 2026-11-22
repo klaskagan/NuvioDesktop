@@ -15,9 +15,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.unit.dp
-import com.nuvio.app.core.ui.DesktopNavigationBar
+import com.nuvio.app.core.ui.DesktopMergedTopBar
+import com.nuvio.app.core.ui.DesktopNavigationTabs
 import com.nuvio.app.core.ui.FloatingNavigationItem
-import com.nuvio.app.core.ui.desktopNavigationContentPadding
 import com.nuvio.app.core.ui.NuvioTheme
 import com.nuvio.app.features.settings.DesktopNavigationLayout
 import com.nuvio.app.features.settings.NavBarStyle
@@ -61,26 +61,26 @@ class DetailNavigationFrameTest {
 
     @Test fun topBarHidesAfterInactivityAndMouseMovementRestartsTimer() {
         showFrame()
-        compose.onNodeWithContentDescription("Home").assertExists()
+        compose.onNodeWithContentDescription("Search").assertExists()
         compose.mainClock.advanceTimeBy(3_050)
         // Keep the menu composed while it fades and slides out.
-        compose.onNodeWithContentDescription("Home").assertExists()
+        compose.onNodeWithContentDescription("Search").assertExists()
         compose.mainClock.advanceTimeBy(300)
-        compose.onNodeWithContentDescription("Home").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Search").assertDoesNotExist()
         compose.onRoot().performMouseInput { enter(Offset(500f, 400f)) }
         compose.mainClock.advanceTimeBy(32)
-        compose.onNodeWithContentDescription("Home").assertExists()
+        compose.onNodeWithContentDescription("Search").assertExists()
         compose.mainClock.advanceTimeBy(2_000)
         compose.onRoot().performMouseInput { moveTo(Offset(510f, 400f)) }
         compose.mainClock.advanceTimeBy(2_000)
-        compose.onNodeWithContentDescription("Home").assertExists()
+        compose.onNodeWithContentDescription("Search").assertExists()
         compose.mainClock.advanceTimeBy(1_400)
-        compose.onNodeWithContentDescription("Home").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Search").assertDoesNotExist()
     }
 
     @Test fun adaptiveDetailsExpandOnHoverAndReturnToCompactAtTheSamePosition() {
         showFrame()
-        val home = compose.onNodeWithContentDescription("Home")
+        val home = compose.onNodeWithContentDescription("Search")
         val compact = home.fetchSemanticsNode().boundsInRoot
         home.performMouseInput { enter(center) }
         compose.mainClock.advanceTimeBy(400)
@@ -98,10 +98,10 @@ class DetailNavigationFrameTest {
         ThemeSettingsRepository.setNavBarStyle(NavBarStyle.COMPACT)
         val reference = mutableStateOf(false)
         showFrame(reference)
-        val details = compose.onNodeWithContentDescription("Home").fetchSemanticsNode().boundsInRoot
+        val details = compose.onNodeWithContentDescription("For you").fetchSemanticsNode().boundsInRoot
         compose.runOnIdle { reference.value = true }
         compose.mainClock.advanceTimeBy(32)
-        val root = compose.onNodeWithContentDescription("Home").fetchSemanticsNode().boundsInRoot
+        val root = compose.onNodeWithContentDescription("For you").fetchSemanticsNode().boundsInRoot
         assertEquals(root.top, details.top, 1f)
         assertEquals(root.left, details.left, 1f)
     }
@@ -110,40 +110,40 @@ class DetailNavigationFrameTest {
         ThemeSettingsRepository.setDetailNavigationAutoHide(false)
         showFrame()
         compose.mainClock.advanceTimeBy(10_000)
-        compose.onNodeWithContentDescription("Home").assertExists()
+        compose.onNodeWithContentDescription("Search").assertExists()
     }
 
     @Test fun disablingAutoHideRevealsHiddenTopBarImmediately() {
         showFrame()
         compose.mainClock.advanceTimeBy(3_400)
-        compose.onNodeWithContentDescription("Home").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Search").assertDoesNotExist()
         compose.runOnIdle { ThemeSettingsRepository.setDetailNavigationAutoHide(false) }
         compose.mainClock.advanceTimeBy(400)
-        compose.onNodeWithContentDescription("Home").assertExists()
+        compose.onNodeWithContentDescription("Search").assertExists()
         compose.mainClock.advanceTimeBy(10_000)
-        compose.onNodeWithContentDescription("Home").assertExists()
+        compose.onNodeWithContentDescription("Search").assertExists()
     }
 
     @Test fun configuredDelayKeepsTheBarVisibleBeyondTheDefaultThreeSeconds() {
         ThemeSettingsRepository.setDetailNavigationHideDelaySeconds(5)
         showFrame()
         compose.mainClock.advanceTimeBy(3_400)
-        compose.onNodeWithContentDescription("Home").assertExists()
+        compose.onNodeWithContentDescription("Search").assertExists()
         compose.mainClock.advanceTimeBy(2_000)
-        compose.onNodeWithContentDescription("Home").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Search").assertDoesNotExist()
     }
 
     @Test fun sidebarRemainsVisibleWithoutMouseMovement() {
         ThemeSettingsRepository.setDesktopNavigationLayout(DesktopNavigationLayout.Sidebar)
         showFrame()
         compose.mainClock.advanceTimeBy(10_000)
-        compose.onNodeWithContentDescription("Home").assertExists()
+        compose.onNodeWithContentDescription("Search").assertExists()
     }
 
     @Test fun disabledSettingLeavesDetailContentWithoutNavigation() {
         ThemeSettingsRepository.setDetailNavigationEnabled(false)
         showFrame()
-        compose.onNodeWithContentDescription("Home").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Search").assertDoesNotExist()
     }
 
     private fun showFrame(reference: State<Boolean>? = null) {
@@ -152,19 +152,23 @@ class DetailNavigationFrameTest {
             NuvioTheme {
                 Box(Modifier.requiredSize(1000.dp, 700.dp)) {
                     if (reference?.value == true) {
-                        DesktopNavigationBar(
-                            items = listOf("Home", "Search", "Library", "Calendar", "Settings").mapIndexed { index, label ->
+                        DesktopMergedTopBar(
+                            tabs = DesktopNavigationTabs(
+                                labels = listOf("For you", "Movies", "Shows", "My lists"),
+                                selectedIndex = 0,
+                                onSelect = {},
+                            ),
+                            items = listOf("Search", "Library", "Calendar", "Settings").map { label ->
                                 FloatingNavigationItem(
                                     label = label,
-                                    selected = index == 0,
+                                    selected = false,
                                     onClick = {},
                                     icon = Icons.Default.Home,
                                 )
                             },
-                            modifier = Modifier.align(Alignment.TopCenter),
-                            contentPadding = desktopNavigationContentPadding(),
-                            navBarStyle = NavBarStyle.COMPACT,
                             windowWidth = 1000.dp,
+                            modifier = Modifier.align(Alignment.TopCenter),
+                            navBarStyle = NavBarStyle.COMPACT,
                         )
                     } else DetailNavigationFrame(
                         route = "movie",

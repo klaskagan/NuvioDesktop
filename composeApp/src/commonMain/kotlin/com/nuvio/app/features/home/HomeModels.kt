@@ -61,9 +61,19 @@ fun HomeCatalogSection.canOpenCatalog(previewLimit: Int): Boolean =
 data class HomeUiState(
     val isLoading: Boolean = false,
     val heroItems: List<MetaPreview> = emptyList(),
+    /** Desktop Home tabs: hero titles for Movies and Shows, from their own hero catalogs. */
+    val movieHeroItems: List<MetaPreview> = emptyList(),
+    val showHeroItems: List<MetaPreview> = emptyList(),
     val sections: List<HomeCatalogSection> = emptyList(),
     val errorMessage: String? = null,
 )
+
+/** The hero a tab shows: its own pool, or For you's while that pool is empty or the tab has none. */
+internal fun HomeUiState.heroItemsFor(tab: HomeTab): List<MetaPreview> = when (tab) {
+    HomeTab.Movies -> movieHeroItems.ifEmpty { heroItems }
+    HomeTab.Shows -> showHeroItems.ifEmpty { heroItems }
+    HomeTab.ForYou, HomeTab.MyLists -> heroItems
+}
 
 internal fun shouldShowInitialHomeLoading(
     hasRenderableHomeRows: Boolean,

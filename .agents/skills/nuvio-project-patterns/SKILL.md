@@ -26,6 +26,11 @@ Paths below are relative to the NuvioDesktop repository root.
   including keyboard focus, outside-click/Escape dismissal, scrolling, selected
   state, and hidden empty status areas. Inspect the linked stylesheet rather
   than approximating the appearance with Compose or a native system dialog.
+  The macOS controls run in WKWebView, which ignores `scrollIntoView`'s
+  `container` option and scrolls the overlay document itself (opening Episodes
+  pushed the panel and control bar ~330 px up). Scroll lists/chip rows with
+  `scrollIntoContainer(element, container, …)`; check by opening Episodes on a
+  later episode of a long season — the panel must stay full height.
 - **Provider details:** reuse `DesktopDetailBackdrop`, `DetailActionButtons` and
   the desktop `NuvioBackButton` configuration in `MetaDetailsScreen.kt`. Keep
   viewport-filling artwork and the existing circular 48 dp back control; do not
@@ -234,6 +239,13 @@ existing init script, which gives the test JVM a separate app-data home and an i
 ```sh
 ./gradlew -I scripts/desktop-ui-tests.init.gradle :composeApp:desktopTest --tests 'com.nuvio.app.MainAppTabNavigationTest'
 ```
+
+The isolated profile lives in `composeApp/build/tmp/desktopTest/isolated-home` and survives
+between runs, and all test classes in a run share one JVM. A class that changes a stored setting
+without restoring it changes the next class's layout: `PersonCreditsNavigationTest` fails after
+`ConfiguredCollectionNavigationTest` and `HistoryNavigationTest` in the same run, and passes alone.
+Before treating a layout assertion as a regression, delete that directory and rerun the class on
+its own.
 
 These integration tests skip without the isolation flag supplied by that script;
 a skipped run does not verify the navigation regression. Do not use a real user

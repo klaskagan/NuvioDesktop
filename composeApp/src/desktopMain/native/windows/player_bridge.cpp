@@ -49,6 +49,7 @@ typedef enum mpv_format {
 typedef enum mpv_event_id {
     MPV_EVENT_NONE = 0,
     MPV_EVENT_SHUTDOWN = 1,
+    MPV_EVENT_VIDEO_RECONFIG = 17,
 } mpv_event_id;
 
 typedef struct mpv_event {
@@ -1298,7 +1299,8 @@ public:
         const std::string &font,
         const std::string &fontsDir,
         const std::string &shadowColor,
-        double shadowOffset
+        double shadowOffset,
+        double shadowBlur
     ) {
         if (!fontsDir.empty()) setStringProperty("sub-fonts-dir", fontsDir);
         setStringProperty("sub-font", font);
@@ -1306,6 +1308,7 @@ public:
         std::lock_guard<std::mutex> lock(mpvMutex);
         if (!mpv) return;
         mpvApi().setProperty(mpv, "sub-shadow-offset", MPV_FORMAT_DOUBLE, &shadowOffset);
+        mpvApi().setProperty(mpv, "sub-blur", MPV_FORMAT_DOUBLE, &shadowBlur);
     }
 
     void applySubtitleStyle(
@@ -1421,6 +1424,9 @@ private:
     mpv_handle *mpv = nullptr;
     std::thread eventThread;
     std::atomic_bool stopping = false;
+    bool rtxSuperResolution = false;
+    bool rtxHdr = false;
+    std::string appliedVideoFilter;
     std::atomic_bool shuttingDown = false;
     std::atomic_bool hwdecLogged = false;  // one-shot log for hwdec-current
 
@@ -1777,18 +1783,11 @@ private:
             }
             setMpvOptionStringLocked("hwdec-codecs", "all");
 
-            if (nvidiaRtxSuperResolutionEnabled && nvidiaRtxHdrEnabled) {
-                setMpvOptionStringLocked(
-                    "vf",
-                    "d3d11vpp=scale=2:scaling-mode=nvidia:format=x2bgr10:nvidia-true-hdr,format=x2bgr10:transfer=pq:primaries=bt.2020"
-                );
-            } else if (nvidiaRtxSuperResolutionEnabled) {
-                setMpvOptionStringLocked("vf", "d3d11vpp=scale=2:scaling-mode=nvidia");
-            } else if (nvidiaRtxHdrEnabled) {
-                setMpvOptionStringLocked(
-                    "vf",
-                    "d3d11vpp=format=x2bgr10:nvidia-true-hdr,format=x2bgr10:transfer=pq:primaries=bt.2020"
-                );
+            rtxSuperResolution = nvidiaRtxSuperResolutionEnabled;
+            rtxHdr = nvidiaRtxHdrEnabled;
+            appliedVideoFilter = rtxVideoFilter(false);
+            if (!appliedVideoFilter.empty()) {
+                setMpvOptionStringLocked("vf", appliedVideoFilter.c_str());
             }
             setMpvOptionStringLocked("target-colorspace-hint", "yes");
             if (decoderPriority == 0) {
@@ -2054,6 +2053,33 @@ private:
         }
     }
 
+    std::string rtxVideoFilter(bool sourceIsSdr) const {
+        const bool hdr = rtxHdr && sourceIsSdr;
+        if (rtxSuperResolution && hdr) {
+            return "d3d11vpp=scale=2:scaling-mode=nvidia:format=x2bgr10:nvidia-true-hdr,format=x2bgr10:transfer=pq:primaries=bt.2020";
+        }
+        if (rtxSuperResolution) {
+            return "d3d11vpp=scale=2:scaling-mode=nvidia";
+        }
+        if (hdr) {
+            return "d3d11vpp=format=x2bgr10:nvidia-true-hdr,format=x2bgr10:transfer=pq:primaries=bt.2020";
+        }
+        return "";
+    }
+
+    void updateRtxVideoFilter() {
+        if (!rtxHdr) return;
+        std::string gamma = stringProperty("video-params/gamma", "");
+        if (gamma.empty()) return;
+        const bool sourceIsSdr = gamma != "pq" && gamma != "hlg";
+        std::string wanted = rtxVideoFilter(sourceIsSdr);
+        if (wanted == appliedVideoFilter) return;
+        std::lock_guard<std::mutex> lock(mpvMutex);
+        if (!mpv) return;
+        mpvApi().setPropertyString(mpv, "vf", wanted.c_str());
+        appliedVideoFilter = wanted;
+    }
+
     void drainMpvEvents() {
         while (!stopping.load()) {
             mpv_handle *current = nullptr;
@@ -2069,6 +2095,9 @@ private:
             if (!event) continue;
             if (event->event_id == MPV_EVENT_SHUTDOWN) {
                 return;
+            }
+            if (event->event_id == MPV_EVENT_VIDEO_RECONFIG) {
+                updateRtxVideoFilter();
             }
         }
     }
@@ -2302,7 +2331,7 @@ private:
 
     std::string channelLayoutName(const std::string &channels, int channelCount) {
         std::string normalized = trim(channels);
-        if (!normalized.empty() && lowerCopy(normalized) != "unknown") {
+        if (!normalized.empty() && lowerCopy(normalized).rfind("unknown", 0) != 0) {
             std::string lower = lowerCopy(normalized);
             if (lower == "mono") return "Mono";
             if (lower == "stereo") return "Stereo";
@@ -3090,7 +3119,8 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleAppeara
     jstring font,
     jstring fontsDir,
     jstring shadowColor,
-    jfloat shadowOffset
+    jfloat shadowOffset,
+    jfloat shadowBlur
 ) {
     auto player = playerFromHandle(handle);
     if (!player) return;
@@ -3098,6 +3128,7 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleAppeara
         jstringToUtf8(env, font),
         jstringToUtf8(env, fontsDir),
         jstringToUtf8(env, shadowColor),
-        shadowOffset
+        shadowOffset,
+        shadowBlur
     );
 }

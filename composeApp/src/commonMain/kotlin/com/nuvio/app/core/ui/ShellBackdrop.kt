@@ -157,8 +157,8 @@ object BackdropSurface {
     val card = Color.White.copy(alpha = 0.045f)
     /** Dim over a Haze blur: scrolled content reads as soft colour, never as legible text, behind the bar. */
     val stickyHeader = Color(0xFF0E0F12).copy(alpha = 0.72f)
-    /** For pinned bars with no blur behind them (Home's tabs): dense enough that rows don't read through. */
-    val stickyHeaderOpaque = Color(0xFF0E0F12).copy(alpha = 0.94f)
+    /** For pinned bars with no blur behind them (Home's tabs): solid, so rows never read through the labels. */
+    val stickyHeaderOpaque = Color(0xFF0E0F12)
 }
 
 fun Modifier.backdropCard(shape: Shape): Modifier = background(BackdropSurface.card, shape)

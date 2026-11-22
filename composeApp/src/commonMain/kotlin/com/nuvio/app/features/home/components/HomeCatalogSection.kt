@@ -1,5 +1,7 @@
 package com.nuvio.app.features.home.components
 
+import com.nuvio.app.features.home.PosterShape
+import com.nuvio.app.core.ui.desktopCatalogShelfPosterBaseWidthDp
 import androidx.compose.foundation.layout.Column
 import com.nuvio.app.core.ui.NuvioPosterCard
 import com.nuvio.app.core.ui.NuvioPosterShape
@@ -42,6 +44,7 @@ fun HomeCatalogRowSection(
     allowPortraitFallback: Boolean = true,
     rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
     eyebrow: String? = null,
+    leadCard: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val calendar = section.calendarState
@@ -70,6 +73,7 @@ fun HomeCatalogRowSection(
             onPosterLongClick = onPosterLongClick, allowPortraitFallback = allowPortraitFallback,
             rowStyle = rowStyle,
             eyebrow = eyebrow,
+            leadCard = leadCard,
             rankingLayout = if (rowStyle == HomeRowStyle.NumberedRanking) NumberedRankingLayout(maxWidth) else null,
         )
     }
@@ -91,9 +95,20 @@ private fun HomeCatalogRowSectionContent(
     allowPortraitFallback: Boolean,
     rowStyle: HomeRowStyle,
     eyebrow: String?,
+    leadCard: Boolean,
     rankingLayout: NumberedRankingLayout?,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
+    // Desktop Home: a plain poster row opens with a wide card for its first title.
+    val leadItem = entries.firstOrNull()?.takeIf {
+        leadCard && rankingLayout == null && rowStyle == HomeRowStyle.Automatic &&
+            !posterCardStyle.catalogLandscapeModeEnabled && it.calendarCard == null &&
+            it.posterShape == PosterShape.Poster
+    }
+    // The shelf remembers its entries by equality, so it can hand back older but equal instances: match by key.
+    val leadKey = leadItem?.stableKey()
+    val leadHeight = desktopCatalogShelfPosterBaseWidthDp(posterCardStyle.widthDp).dp *
+        (posterCardStyle.heightDp.toFloat() / posterCardStyle.widthDp.coerceAtLeast(1))
     val rowState = rememberLazyListState()
     val excluded = preservesOriginalLandscapeArtwork(section.title, section.target) || entries.any { it.calendarCard != null }
 
@@ -142,6 +157,8 @@ private fun HomeCatalogRowSectionContent(
                     onLongClick = openActions,
                 )
             }
+        } else if (leadKey != null && item.stableKey() == leadKey) {
+            HomeRowLeadCard(item = item, width = leadHeight * (16f / 9f), height = leadHeight, onClick = openItem, onLongClick = openActions)
         } else HomePosterCard(
             item = rowStyle.artworkItem(item),
             allowPortraitFallback = allowPortraitFallback,

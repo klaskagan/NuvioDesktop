@@ -1,5 +1,13 @@
 package com.nuvio.app.features.settings
 
+import com.nuvio.app.isDesktop
+import com.nuvio.app.features.home.HomeHeroSourceCandidate
+import com.nuvio.app.features.home.HomeTab
+import com.nuvio.app.features.home.heroSourceId
+import com.nuvio.app.features.home.homeMediaTab
+import com.nuvio.app.features.home.resolveTabHeroSourceKeys
+import nuvio.composeapp.generated.resources.settings_homescreen_hero_automatic
+import nuvio.composeapp.generated.resources.settings_homescreen_hero_tab_selected_count
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.clickable
@@ -128,18 +136,56 @@ internal fun LazyListScope.homescreenSettingsContent(
     item {
         val catalogOnlyItems = items.filter { !it.isCollection && it.supportsHero }
         if (heroEnabled && catalogOnlyItems.isNotEmpty()) {
-            var heroSourcesExpanded by remember { mutableStateOf(false) }
+            val heroTabSources by remember { HomeCatalogSettingsRepository.uiState }
+                .collectAsStateWithLifecycle()
             SettingsSection(
                 title = stringResource(Res.string.settings_homescreen_section_hero_sources),
                 isTablet = isTablet,
             ) {
-                HeroSourcesDropdown(
-                    isTablet = isTablet,
-                    items = catalogOnlyItems,
-                    selectedHeroSourceCount = selectedHeroSourceCount,
-                    expanded = heroSourcesExpanded,
-                    onExpandedChange = { heroSourcesExpanded = it },
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Desktop Home has tabs: For you keeps the mixed hero, Movies and Shows get their own.
+                    HeroSourcesDropdown(
+                        isTablet = isTablet,
+                        label = if (isDesktop) stringResource(HomeTab.ForYou.labelRes) else null,
+                        items = catalogOnlyItems,
+                        isChecked = { it.heroSourceEnabled },
+                        emptyText = stringResource(Res.string.settings_homescreen_no_sources_selected),
+                        onToggle = { item, checked -> HomeCatalogSettingsRepository.setHeroSourceEnabled(item.key, checked) },
+                    )
+                    if (isDesktop) {
+                        listOf(HomeTab.Movies, HomeTab.Shows).forEach { tab ->
+                            val tabItems = catalogOnlyItems.filter { it.mediaType.homeMediaTab() == tab }
+                            if (tabItems.isNotEmpty()) {
+                                val chosen = heroTabSources.heroTabSources[tab.heroSourceId].orEmpty()
+                                val automaticTitles = remember(tab, catalogOnlyItems) {
+                                    val keys = resolveTabHeroSourceKeys(
+                                        tab = tab,
+                                        orderedCatalogs = catalogOnlyItems.map { item ->
+                                            HomeHeroSourceCandidate(
+                                                key = item.key,
+                                                type = item.mediaType,
+                                                enabled = item.enabled,
+                                                forYouSource = item.heroSourceEnabled,
+                                            )
+                                        },
+                                        chosen = emptySet(),
+                                    )
+                                    catalogOnlyItems.filter { it.key in keys }.joinToString(", ") { it.displayTitle }
+                                }
+                                HeroSourcesDropdown(
+                                    isTablet = isTablet,
+                                    label = stringResource(tab.labelRes),
+                                    items = tabItems,
+                                    isChecked = { it.key in chosen },
+                                    emptyText = stringResource(Res.string.settings_homescreen_hero_automatic, automaticTitles),
+                                    onToggle = { item, checked ->
+                                        HomeCatalogSettingsRepository.setHeroTabSourceEnabled(tab, item.key, checked)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -201,21 +247,28 @@ internal fun LazyListScope.homescreenSettingsContent(
     }
 }
 
+/**
+ * One hero-catalog picker: a summary line that opens the list of catalogs to choose from, capped at
+ * [HomeCatalogSettingsRepository.HERO_SOURCE_SELECTION_LIMIT]. [label] names the Home tab it feeds.
+ */
 @Composable
 private fun HeroSourcesDropdown(
     isTablet: Boolean,
+    label: String?,
     items: List<HomeCatalogSettingsItem>,
-    selectedHeroSourceCount: Int,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
+    isChecked: (HomeCatalogSettingsItem) -> Boolean,
+    emptyText: String,
+    onToggle: (HomeCatalogSettingsItem, Boolean) -> Unit,
 ) {
-    val noSourcesSelected = stringResource(Res.string.settings_homescreen_no_sources_selected)
+    var expanded by remember { mutableStateOf(false) }
+    val limit = HomeCatalogSettingsRepository.HERO_SOURCE_SELECTION_LIMIT
+    val selectedCount = items.count(isChecked)
     SettingsGroup(isTablet = isTablet) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-                .clickable { onExpandedChange(!expanded) },
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(
@@ -223,19 +276,19 @@ private fun HeroSourcesDropdown(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = stringResource(
-                        Res.string.settings_homescreen_selected_count,
-                        selectedHeroSourceCount,
-                        HomeCatalogSettingsRepository.HERO_SOURCE_SELECTION_LIMIT,
-                    ),
+                    text = if (label != null) {
+                        stringResource(Res.string.settings_homescreen_hero_tab_selected_count, label, selectedCount, limit)
+                    } else {
+                        stringResource(Res.string.settings_homescreen_selected_count, selectedCount, limit)
+                    },
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Medium,
                 )
                 Text(
-                    text = items.filter { it.heroSourceEnabled }
+                    text = items.filter(isChecked)
                         .joinToString(separator = ", ") { it.displayTitle }
-                        .ifBlank { noSourcesSelected },
+                        .ifBlank { emptyText },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -254,24 +307,18 @@ private fun HeroSourcesDropdown(
                     if (index > 0) {
                         SettingsGroupDivider(isTablet = isTablet)
                     }
+                    val checked = isChecked(item)
                     SettingsSwitchRow(
                         title = item.displayTitle,
-                        description = if (!item.heroSourceEnabled &&
-                            selectedHeroSourceCount >= HomeCatalogSettingsRepository.HERO_SOURCE_SELECTION_LIMIT
-                        ) {
-                            stringResource(
-                                Res.string.settings_homescreen_limit_reached,
-                                item.addonName,
-                                HomeCatalogSettingsRepository.HERO_SOURCE_SELECTION_LIMIT,
-                            )
+                        description = if (!checked && selectedCount >= limit) {
+                            stringResource(Res.string.settings_homescreen_limit_reached, item.addonName, limit)
                         } else {
                             item.addonName
                         },
-                        checked = item.heroSourceEnabled,
-                        enabled = item.heroSourceEnabled ||
-                            selectedHeroSourceCount < HomeCatalogSettingsRepository.HERO_SOURCE_SELECTION_LIMIT,
+                        checked = checked,
+                        enabled = checked || selectedCount < limit,
                         isTablet = isTablet,
-                        onCheckedChange = { HomeCatalogSettingsRepository.setHeroSourceEnabled(item.key, it) },
+                        onCheckedChange = { onToggle(item, it) },
                     )
                 }
             }
