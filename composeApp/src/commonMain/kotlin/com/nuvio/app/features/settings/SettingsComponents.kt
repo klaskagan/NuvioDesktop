@@ -170,6 +170,7 @@ internal fun SettingsSidebarItem(
     icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val tokens = MaterialTheme.nuvio
     val primary = tokens.colors.accent
@@ -179,7 +180,7 @@ internal fun SettingsSidebarItem(
 
     val sidebarItemShape = RoundedCornerShape(NuvioTokens.Space.s10)
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = tokens.spacing.listGap, vertical = NuvioTokens.Space.s2)
             .background(background, sidebarItemShape)
