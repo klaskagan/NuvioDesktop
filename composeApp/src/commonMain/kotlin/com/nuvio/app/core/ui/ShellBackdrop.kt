@@ -112,8 +112,8 @@ fun ShellBackdrop(
 /** Translucent surface for sections that sit on the ambient backdrop. */
 object BackdropSurface {
     val card = Color.White.copy(alpha = 0.045f)
-    /** Nearly opaque so scrolled content never reads through the search bar. */
-    val stickyHeader = Color(0xFF0E0F12).copy(alpha = 0.94f)
+    /** Dim over a Haze blur: scrolled content reads as soft colour, never as legible text, behind the bar. */
+    val stickyHeader = Color(0xFF0E0F12).copy(alpha = 0.72f)
 }
 
 fun Modifier.backdropCard(shape: Shape): Modifier = background(BackdropSurface.card, shape)

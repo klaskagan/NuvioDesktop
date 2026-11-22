@@ -133,8 +133,9 @@ Search redesign first crossfaded the blurred backdrop to each hovered poster;
 the user found that dizzying. Drive `ShellBackdrop` only from the screen's
 primary title (Search: the top result; fall back to the theme mesh), never from
 hover or focus. A sticky bar over the backdrop stays transparent until it is
-actually pinned, then turns near-opaque (`BackdropSurface.stickyHeader`) so
-scrolled content never reads through it. Check by sweeping the pointer across a
+actually pinned, then blurs what scrolls beneath it (Haze, every list item a
+`hazeSource`) under a dim `BackdropSurface.stickyHeader`, so content never reads
+through it as legible text. Check by sweeping the pointer across a
 results grid (backdrop unchanged) and scrolling one step (no dark band while the
 hero is still visible).
 
