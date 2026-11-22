@@ -4,6 +4,10 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -196,6 +200,19 @@ fun PersonDetailScreen(
             .then(if (backdrop == null) Modifier.background(MaterialTheme.colorScheme.background) else Modifier),
     ) {
         if (backdrop != null) ShellBackdrop(backdrop)
+        // Opening a person slides the page in from the right (and back out on return) while the
+        // navigation itself only crossfades, so the app sidebar in both entries stays put.
+        val slide = if (isDesktop && animatedVisibilityScope != null) {
+            with(animatedVisibilityScope) {
+                Modifier.animateEnterExit(
+                    enter = slideInHorizontally(tween(PERSON_SLIDE_MS, easing = FastOutSlowInEasing)) { it / 3 } +
+                        fadeIn(tween(PERSON_SLIDE_MS)),
+                    exit = slideOutHorizontally(tween(PERSON_EXIT_MS, easing = FastOutSlowInEasing)) { it / 3 } +
+                        fadeOut(tween(PERSON_EXIT_MS)),
+                )
+            }
+        } else Modifier
+        Box(Modifier.fillMaxSize().then(slide)) {
         RedesignTypography(enabled = isDesktop) {
         AnimatedContent(
             targetState = uiState,
@@ -241,6 +258,7 @@ fun PersonDetailScreen(
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
+        }
         }
         }
         }
@@ -334,8 +352,11 @@ private fun PersonDetailContent(
             isDesktop -> 36.dp
             else -> 8.dp
         }
-        Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).padding(top = topPadding)) {
-            if (wide) {
+        // Desktop redesign: a full-width header scrolls with the page instead of a pinned side pane.
+        val redesignHeader = wide && isDesktop
+        val sidebar = wide && !isDesktop
+        Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).padding(top = if (redesignHeader) 0.dp else topPadding)) {
+            if (sidebar) {
                 PersonIdentitySidebar(
                     person, initialProfilePhoto, avatarTransitionKey, sharedTransitionScope, animatedVisibilityScope,
                     Modifier.width(PERSON_DETAIL_WIDE_SIDEBAR_WIDTH).fillMaxHeight().testTag("actor_preview_wide")
@@ -352,16 +373,27 @@ private fun PersonDetailContent(
                     paneState.SaveableStateProvider(subview.name) {
                         PersonExpandedContent(
                             person, subview, knownFor, padding,
-                            profileHeader = if (!wide) {
-                                { grid ->
-                                    HeroSection(
-                                        person, initialProfilePhoto, avatarTransitionKey, horizontalPadding = 0.dp,
-                                        scrollOffset = {
-                                            heroScrollOffset(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset)
-                                        },
-                                    )
+                            profileHeader = when {
+                                redesignHeader -> {
+                                    { _ ->
+                                        PersonCompactHeader(
+                                            person, initialProfilePhoto, avatarTransitionKey,
+                                            Modifier.padding(top = PERSON_REDESIGN_TOP_INSET).testTag("actor_header_compact"),
+                                        )
+                                    }
                                 }
-                            } else null,
+                                !wide -> {
+                                    { grid ->
+                                        HeroSection(
+                                            person, initialProfilePhoto, avatarTransitionKey, horizontalPadding = 0.dp,
+                                            scrollOffset = {
+                                                heroScrollOffset(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset)
+                                            },
+                                        )
+                                    }
+                                }
+                                else -> null
+                            },
                             controlsTopInset = controlsTopInset,
                             watchedKeys = watchedKeys,
                             fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
@@ -375,6 +407,15 @@ private fun PersonDetailContent(
                             person, knownFor, sections, timeline, today, list, wide, padding, initialProfilePhoto, avatarTransitionKey,
                             sharedTransitionScope, animatedVisibilityScope, watchedKeys, fullyWatchedSeriesKeys,
                             onOpenSubview, onOpenMeta,
+                            header = if (redesignHeader) {
+                                {
+                                    PersonRedesignHeader(
+                                        person, initialProfilePhoto, avatarTransitionKey, sharedTransitionScope, animatedVisibilityScope,
+                                        Modifier.padding(horizontal = padding).padding(top = PERSON_REDESIGN_TOP_INSET, bottom = 28.dp)
+                                            .testTag("actor_preview_wide"),
+                                    )
+                                }
+                            } else null,
                         )
                     }
                 }
@@ -385,6 +426,8 @@ private fun PersonDetailContent(
 
 private val PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH = 900.dp
 private val PERSON_DETAIL_WIDE_SIDEBAR_WIDTH = 392.dp
+/** Clears the 48dp desktop back button (top 32dp) before the redesigned header starts. */
+private val PERSON_REDESIGN_TOP_INSET = 96.dp
 private const val HERO_COLLAPSE_SCROLL_RANGE = 220
 private fun heroScrollOffset(firstItem: Int, offset: Int): Int =
     if (firstItem > 0) HERO_COLLAPSE_SCROLL_RANGE else offset
@@ -409,6 +452,7 @@ private fun PersonOverview(
     fullyWatchedSeriesKeys: Set<String>,
     onOpenSubview: (PersonSubview) -> Unit,
     onOpenMeta: (MetaPreview) -> Unit,
+    header: (@Composable () -> Unit)? = null,
 ) {
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -416,6 +460,9 @@ private fun PersonOverview(
             modifier = Modifier.fillMaxSize().testTag("actor_overview"),
             contentPadding = PaddingValues(bottom = 40.dp),
         ) {
+            if (header != null) {
+                item("actor-header") { header() }
+            }
             if (!wide) {
                 item("actor-hero") {
                     HeroSection(
@@ -993,14 +1040,27 @@ private fun PersonDetailSkeleton(
             .fillMaxSize()
             .then(if (isDesktop) Modifier else Modifier.background(MaterialTheme.colorScheme.background)),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(accentGradient),
-        )
+        if (!isDesktop) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(accentGradient),
+            )
+        }
 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            if (maxWidth >= PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH) {
+            if (maxWidth >= PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH && isDesktop) {
+                // Mirrors PersonRedesignHeader so loading → content is a crossfade, not a re-layout.
+                DesktopPersonDetailSkeleton(
+                    personName = personName,
+                    avatarRequest = avatarRequest ?: profilePhoto,
+                    avatarSharedElementModifier = avatarSharedElementModifier,
+                    skeletonPosterWidth = skeletonPosterWidth,
+                    skeletonPosterHeight = skeletonPosterHeight,
+                    skeletonPosterCornerRadius = posterCardStyle.cornerRadiusDp.dp,
+                    showPosterLabels = !isLandscapeShelfMode && !posterCardStyle.hideLabelsEnabled,
+                )
+            } else if (maxWidth >= PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH) {
                 WidePersonDetailSkeleton(
                     personName = personName,
                     profilePhoto = profilePhoto,
@@ -1420,7 +1480,7 @@ internal fun personBackdropArt(person: PersonDetail): String? =
 /** Desktop identity block: department eyebrow, large name, fact pills and the Favorite placeholder. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PersonRedesignIdentity(person: PersonDetail, creditSummary: String) {
+private fun PersonRedesignIdentity(person: PersonDetail, creditSummary: String, nameSize: androidx.compose.ui.unit.TextUnit = 34.sp) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             person.knownFor?.takeIf { it.isNotBlank() }?.let { department ->
@@ -1431,7 +1491,7 @@ private fun PersonRedesignIdentity(person: PersonDetail, creditSummary: String) 
             }
             Text(
                 person.name,
-                style = redesignText(34.sp, FontWeight.ExtraBold, lineHeight = 38.sp, letterSpacing = RedesignTightTracking),
+                style = redesignText(nameSize, FontWeight.ExtraBold, lineHeight = nameSize * 1.12f, letterSpacing = RedesignTightTracking),
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1466,6 +1526,148 @@ private fun PersonRedesignIdentity(person: PersonDetail, creditSummary: String) 
             Icon(Icons.Rounded.FavoriteBorder, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(7.dp))
             Text(stringResource(Res.string.person_favorite), style = redesignText(14.sp, FontWeight.SemiBold))
+        }
+    }
+}
+
+
+internal const val PERSON_SLIDE_MS = 340
+private const val PERSON_EXIT_MS = 240
+
+@Composable
+@OptIn(ExperimentalSharedTransitionApi::class)
+private fun personAvatarModifier(
+    avatarTransitionKey: String,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+): Modifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+    with(sharedTransitionScope) {
+        Modifier.sharedElement(
+            sharedContentState = rememberSharedContentState(key = avatarTransitionKey),
+            animatedVisibilityScope = animatedVisibilityScope,
+        )
+    }
+} else Modifier
+
+@Composable
+private fun PersonAvatarImage(person: PersonDetail, fallbackProfilePhoto: String?, avatarTransitionKey: String, modifier: Modifier) {
+    val avatarUrl = person.profilePhoto?.takeIf { it.isNotBlank() } ?: fallbackProfilePhoto
+    val platformContext = LocalPlatformContext.current
+    val request = avatarUrl?.takeIf { it.isNotBlank() }?.let { url ->
+        remember(platformContext, url, avatarTransitionKey) {
+            ImageRequest.Builder(platformContext).data(url).memoryCacheKey(avatarTransitionKey)
+                .placeholderMemoryCacheKey(avatarTransitionKey).diskCacheKey(url).build()
+        }
+    }
+    Box(
+        modifier.clip(CircleShape).background(Color(0xFF24262B)).border(2.dp, Color.White.copy(alpha = 0.16f), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (request != null) {
+            AsyncImage(model = request, contentDescription = person.name, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+        } else {
+            Text(person.name.initials(), style = redesignText(28.sp, FontWeight.Bold, RedesignColors.textSecondary))
+        }
+    }
+}
+
+/** Desktop redesign header: avatar, eyebrow, name, fact pills, Favorite, then the bio. Scrolls with the page. */
+@Composable
+@OptIn(ExperimentalSharedTransitionApi::class)
+private fun PersonRedesignHeader(
+    person: PersonDetail,
+    fallbackProfilePhoto: String?,
+    avatarTransitionKey: String,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    modifier: Modifier = Modifier,
+) {
+    val credits = remember(person.movieCredits, person.tvCredits) { (person.movieCredits + person.tvCredits).distinctBy { it.id } }
+    val creditSummary = remember(credits) { buildCreditSummary(credits) }
+    Column(modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PersonAvatarImage(
+                person, fallbackProfilePhoto, avatarTransitionKey,
+                personAvatarModifier(avatarTransitionKey, sharedTransitionScope, animatedVisibilityScope).size(150.dp),
+            )
+            Spacer(Modifier.width(28.dp))
+            Box(Modifier.weight(1f)) { PersonRedesignIdentity(person, creditSummary, nameSize = 40.sp) }
+        }
+        person.biography?.takeIf { it.isNotBlank() }?.let { biography ->
+            Spacer(Modifier.height(20.dp))
+            Box(Modifier.widthIn(max = 860.dp)) {
+                ExpandableDescription(
+                    text = biography,
+                    style = redesignText(15.sp, color = RedesignColors.textSecondary, lineHeight = 23.sp),
+                    color = RedesignColors.textSecondary,
+                    collapsedMaxLines = 4,
+                )
+            }
+        }
+    }
+}
+
+/** Compact identity above a "View all" grid on desktop. */
+@Composable
+private fun PersonCompactHeader(person: PersonDetail, fallbackProfilePhoto: String?, avatarTransitionKey: String, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+        PersonAvatarImage(person, fallbackProfilePhoto, avatarTransitionKey, Modifier.size(56.dp))
+        Spacer(Modifier.width(14.dp))
+        Column {
+            person.knownFor?.takeIf { it.isNotBlank() }?.let {
+                Text(it.uppercase(), style = redesignText(11.sp, FontWeight.SemiBold, RedesignColors.textSecondary, letterSpacing = 0.08.em))
+            }
+            Text(person.name, style = redesignText(22.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+
+@Composable
+private fun DesktopPersonDetailSkeleton(
+    personName: String,
+    avatarRequest: Any?,
+    avatarSharedElementModifier: Modifier,
+    skeletonPosterWidth: Dp,
+    skeletonPosterHeight: Dp,
+    skeletonPosterCornerRadius: Dp,
+    showPosterLabels: Boolean,
+) {
+    Column(
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)
+            .padding(top = PERSON_REDESIGN_TOP_INSET),
+    ) {
+        Row(Modifier.padding(horizontal = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                avatarSharedElementModifier.size(150.dp).clip(CircleShape).skeleton(CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (avatarRequest != null) {
+                    AsyncImage(model = avatarRequest, contentDescription = personName, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+                }
+            }
+            Spacer(Modifier.width(28.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.width(90.dp).height(12.dp).skeleton())
+                Text(personName, style = redesignText(40.sp, FontWeight.ExtraBold, letterSpacing = RedesignTightTracking), maxLines = 2)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(130.dp, 150.dp, 120.dp).forEach { Box(Modifier.width(it).height(26.dp).skeleton(RoundedCornerShape(999.dp))) }
+                }
+                Box(Modifier.width(110.dp).height(36.dp).skeleton(RoundedCornerShape(999.dp)))
+            }
+        }
+        Column(Modifier.padding(horizontal = 40.dp).padding(top = 22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(1f, 0.94f, 0.6f).forEach { Box(Modifier.widthIn(max = 860.dp).fillMaxWidth(it).height(14.dp).skeleton()) }
+        }
+        repeat(2) {
+            Box(Modifier.padding(start = 40.dp, top = 36.dp, bottom = 12.dp).width(140.dp).height(18.dp).skeleton())
+            SkeletonPosterRow(
+                width = skeletonPosterWidth,
+                height = skeletonPosterHeight,
+                cornerRadius = skeletonPosterCornerRadius,
+                showLabels = showPosterLabels,
+                horizontalPadding = 40.dp,
+            )
         }
     }
 }

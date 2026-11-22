@@ -51,8 +51,9 @@ class PersonCreditsNavigationTest {
                 ))
             }
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Movies").fetchSemanticsNodes().isNotEmpty() }
+            // Desktop redesign: the profile is a full-width header at the top of the overview.
             val preview = onNodeWithTag("actor_preview_wide")
-            val sidebarBeforeExpansion = preview.fetchSemanticsNode().boundsInRoot
+            preview.assertIsDisplayed()
             saveActorCapture("wide-overview")
             val beforeScroll = preview.captureToImage().toAwtImage()
             val shelf = onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
@@ -63,12 +64,12 @@ class PersonCreditsNavigationTest {
             assertContentEquals(
                 beforeScroll.getRGB(0, 0, beforeScroll.width, beforeScroll.height, null, 0, beforeScroll.width),
                 afterScroll.getRGB(0, 0, afterScroll.width, afterScroll.height, null, 0, afterScroll.width),
-                "A scrolling shelf must leave the actor sidebar pixels untouched",
+                "A scrolling shelf must leave the actor header pixels untouched",
             )
             saveActorCapture("scrolled-shelf")
             onAllNodesWithContentDescription("View All").onFirst().performClick()
-            preview.assertIsDisplayed()
-            assertEquals(sidebarBeforeExpansion, preview.fetchSemanticsNode().boundsInRoot)
+            // "View all" keeps who you're browsing on screen with a compact header above the grid.
+            onNodeWithTag("actor_header_compact").assertIsDisplayed()
             runOnIdle { assertEquals(1, loadCount) }
             val firstCard = onNode(hasText("Fixture Movie 0") and hasClickAction()).fetchSemanticsNode().boundsInRoot
             val fourthCard = onNode(hasText("Fixture Movie 3") and hasClickAction()).fetchSemanticsNode().boundsInRoot
@@ -77,10 +78,8 @@ class PersonCreditsNavigationTest {
             onNodeWithText("Most popular").performClick()
             onNodeWithText("Latest").performClick()
             onNodeWithText("Released").assertIsDisplayed()
-            val pinned = preview.fetchSemanticsNode().boundsInRoot
             val grid = onNodeWithTag("catalog_grid")
             grid.performScrollToIndex(18)
-            assertEquals(pinned, preview.fetchSemanticsNode().boundsInRoot)
             val poster = onAllNodes(hasText("Fixture Movie 18") and hasClickAction()).onFirst()
             poster.assertIsDisplayed().performClick()
             onNodeWithText("Details for Fixture Movie 18").assertIsDisplayed()

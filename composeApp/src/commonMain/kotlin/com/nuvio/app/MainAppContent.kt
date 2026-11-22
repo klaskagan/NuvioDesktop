@@ -1841,7 +1841,19 @@ internal fun MainAppContent(
                         )
                     }
                 }
-                entry<PersonDetailRoute> { route ->
+                entry<PersonDetailRoute>(
+                    // The entry only crossfades; PersonDetailScreen slides its own content in from the
+                    // right, so the app sidebar drawn by both entries doesn't slide with it.
+                    metadata = if (isDesktop) {
+                        NavDisplay.transitionSpec {
+                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
+                        } + NavDisplay.popTransitionSpec {
+                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
+                        }
+                    } else {
+                        emptyMap()
+                    },
+                ) { route ->
                     DetailNavigationFrame(
                         route = route,
                         selectedTab = selectedTab,

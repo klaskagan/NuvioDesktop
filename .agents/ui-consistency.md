@@ -4,6 +4,37 @@ Read for changes to layout, loading, scrolling, gestures, or date presentation.
 These are shared defaults derived from confirmed failures. Explicit user choices
 take precedence; feature-specific contracts remain in feature documentation.
 
+## Smooth transitions (desktop redesign's main rule)
+
+Every visible change animates; nothing swaps, pops, or jumps. The user has repeatedly rejected
+redesign steps that changed the look but left hard cuts (results flashing skeletons on every
+keystroke, the hero vanishing so the search bar jumped up, a header turning dark in one frame,
+Person Details opening with no transition). Apply these to every redesigned screen:
+- **Navigation into a detail screen** slides the page content in from the right, and back out to
+  the right on return. The nav entry itself only crossfades (~220 ms), so the app sidebar that
+  both entries draw stays still. Reference: `PersonDetailScreen` (`animateEnterExit` with
+  `slideInHorizontally`, `PERSON_SLIDE_MS`) and its `entry<PersonDetailRoute>` metadata in
+  `MainAppContent.kt`.
+- **State changes crossfade:** loading → content → error (`AnimatedContent` keyed on the state
+  class), and a late-arriving section fades in (Person Known For).
+- **Lists move, they don't jump:** give list items `Modifier.animateItem()` (fade plus
+  placement), so inserted or removed sections slide instead of shifting the page.
+- **Refetches never flash placeholders:** keep the previous results on screen, dimmed, until new
+  ones arrive (Search `heldSearch`). Skeletons are for the first load only.
+- **Controls ease:** hover and selection colours tween (~140–220 ms), and tab indicators slide
+  (`SearchScopeTabs`). Avoid default grey indication boxes on redesigned surfaces.
+- **Chrome reacts to real state:** a sticky bar fades its dim and blur in only once actually
+  pinned.
+
+Regression check: open the screen, navigate to and back from a detail page, type and refine a
+query, switch tabs, and scroll one step. There should be no frame where content pops, jumps, or
+flashes. A build or test is not proof; watch it in the running app.
+
+When the user asks for a redesign, existing tests that assert the old layout (for example a pinned
+side pane) describe the design being replaced. Update those tests to the new design. Don't keep the
+old layout just to satisfy them. Part 3 of the Search redesign first kept the old Person side pane
+for that reason, and the user rejected it.
+
 ## Stable layout through state changes
 
 - Loading must not move controls, resize content, or change a scroll anchor.
@@ -154,10 +185,11 @@ is hidden rather than failing the page. `SearchDiscoveryUiTest`
 `SearchDiscoveryTest` covers the sort filters (Top rated vote floor, 90-day New window).
 
 The redesign's tokens live in `core/ui/RedesignStyle.kt` (`RedesignColors`, `redesignText`,
-`RedesignTypography`). Person Details (wide, desktop) is the second screen that uses them. On wide
-screens its profile pane stays a pinned side pane, not a scrolling header, because "View all"
-subviews keep the profile in place (`PersonCreditsNavigationTest`). The pane is redesigned in place:
-glass fill, department eyebrow, fact pills, and a Favorite placeholder tagged `person_favorite`.
+`RedesignTypography`). Person Details (desktop, wide) is the second screen that uses them. It has
+an ambient backdrop and a full-width header (avatar, department eyebrow, name, fact pills, a
+Favorite placeholder tagged `person_favorite`, and the bio) that scrolls with the page. "View all"
+subviews show a compact header (`actor_header_compact`). Tablets keep the side pane.
+`PersonCreditsNavigationTest` covers this.
 
 Panels that own a background must also own readable foreground colors.
 The football lineup and actor catalog screenshots exposed black inherited
