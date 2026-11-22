@@ -253,19 +253,19 @@ object SearchRepository {
                 resultChannel.trySend(IndexedSearchResult(index = PEOPLE_RESULT_INDEX, people = people))
                 // The top matching person's titles join the Movies & TV grid. Shares the person page's cache.
                 val featured = people.firstOrNull() ?: return@launch
-                val filmography = try {
+                val detail = try {
                     TmdbMetadataService.fetchPersonDetail(featured.tmdbId, preferCrewCredits = featured.isDirector)
-                        ?.let { filterSearchFilmography(it, isDirector = featured.isDirector) }
-                        .orEmpty()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
                     log.w(error) { "Filmography for search person failed" }
-                    emptyList()
+                    null
                 }
+                val filmography = detail?.let { filterSearchFilmography(it, isDirector = featured.isDirector) }.orEmpty()
                 timings.mark("filmography")
-                if (filmography.isNotEmpty()) {
-                    resultChannel.trySend(IndexedSearchResult(index = FILMOGRAPHY_RESULT_INDEX, filmography = filmography))
+                // Sent even without credits: the person's bio feeds the single-person profile card.
+                if (detail != null) {
+                    resultChannel.trySend(IndexedSearchResult(index = FILMOGRAPHY_RESULT_INDEX, filmography = filmography, person = detail))
                 }
             }
             val franchiseJob = launch {
@@ -296,6 +296,7 @@ object SearchRepository {
             val results = arrayOfNulls<IndexedSearchResult>(loaders.size)
             var people = emptyList<SearchPerson>()
             var filmography = emptyList<MetaPreview>()
+            var featuredPerson: com.nuvio.app.features.details.PersonDetail? = null
             var franchise = emptyList<MetaPreview>()
 
             suspend fun resolve(isFinished: Boolean): SearchUiState {
@@ -345,7 +346,7 @@ object SearchRepository {
                     },
                     isFinished = isFinished,
                     hasPendingAddonManifests = hasPendingAddonManifests,
-                )
+                ).copy(featuredPerson = featuredPerson?.takeIf { it.tmdbId == people.firstOrNull()?.tmdbId })
             }
 
             try {
@@ -354,6 +355,7 @@ object SearchRepository {
                         people = result.people.orEmpty()
                     } else if (result.index == FILMOGRAPHY_RESULT_INDEX) {
                         filmography = result.filmography.orEmpty()
+                        featuredPerson = result.person
                         warmPlayability(filmography)
                     } else if (result.index == FRANCHISE_RESULT_INDEX) {
                         franchise = result.filmography.orEmpty()
@@ -921,6 +923,7 @@ private data class IndexedSearchResult(
     val error: Throwable? = null,
     val people: List<SearchPerson>? = null,
     val filmography: List<MetaPreview>? = null,
+    val person: com.nuvio.app.features.details.PersonDetail? = null,
 )
 
 private fun Array<IndexedSearchResult?>.orderedSections(): List<HomeCatalogSection> =

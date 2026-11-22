@@ -332,6 +332,10 @@ object TmdbMetadataService {
                     popularity = result.popularity,
                     originalName = result.originalName,
                     knownForVotes = result.knownFor.sumOf { it.voteCount ?: 0 },
+                    knownForTitles = result.knownFor
+                        .mapNotNull { (it.title ?: it.name)?.trim()?.takeIf(String::isNotEmpty) }
+                        .distinct()
+                        .take(3),
                 )
             }
         }

@@ -20,6 +20,8 @@ data class SearchPerson(
     val originalName: String? = null,
     /** Total TMDB vote count of the person's known-for titles; zero marks an empty same-name stub. */
     val knownForVotes: Int = 0,
+    /** Up to three titles TMDB lists the person as known for. */
+    val knownForTitles: List<String> = emptyList(),
 ) {
     val isDirector: Boolean
         get() = department.equals("Directing", ignoreCase = true)
@@ -30,6 +32,8 @@ data class SearchUiState(
     /** Merged, deduplicated and relevance-ranked movie/series results from every provider. */
     val results: List<MetaPreview> = emptyList(),
     val people: List<SearchPerson> = emptyList(),
+    /** Full details (bio, birth) of the top person; fetched anyway for their filmography. */
+    val featuredPerson: com.nuvio.app.features.details.PersonDetail? = null,
     val emptyStateReason: SearchEmptyStateReason? = null,
     val errorMessage: String? = null,
 ) {

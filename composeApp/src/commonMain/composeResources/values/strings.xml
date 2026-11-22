@@ -533,6 +533,10 @@
     <string name="search_sort_title">Sort results</string>
     <string name="search_sort_relevance">Best match</string>
     <string name="search_more_options">More options</string>
+    <string name="search_person_known_for">Known for %1$s</string>
+    <string name="search_person_view_profile">View profile</string>
+    <string name="search_person_favorite">Add to favorites</string>
+    <string name="search_person_born">Born %1$s</string>
     <string name="search_shelf_popular_shows">Popular shows</string>
     <string name="search_shelf_popular_movies">Popular movies</string>
     <string name="search_shelf_top_rated_shows">Top rated shows</string>

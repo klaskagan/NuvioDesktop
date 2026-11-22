@@ -1,6 +1,13 @@
 package com.nuvio.app.features.search
 
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.ui.platform.testTag
+import com.nuvio.app.features.details.PersonDetail
+import nuvio.composeapp.generated.resources.search_person_born
+import nuvio.composeapp.generated.resources.search_person_favorite
+import nuvio.composeapp.generated.resources.search_person_known_for
+import nuvio.composeapp.generated.resources.search_person_view_profile
 import com.nuvio.app.features.home.HomeHeroMetaLoadEffect
 import com.nuvio.app.features.home.HomeHeroMetaStore
 import com.nuvio.app.features.home.HomeRowStyle
@@ -414,6 +421,7 @@ internal fun LazyListScope.searchDesktopResults(
             SearchSpotlight(
                 item = spotlight,
                 people = state.people,
+                featuredPerson = state.featuredPerson,
                 onDetails = { onPosterClick?.invoke(spotlight) },
                 onMore = onPosterLongClick?.let { { it(spotlight) } },
                 onPersonClick = onPersonClick,
@@ -502,6 +510,7 @@ private fun SearchSortChip(sort: SearchSort, onSortChange: (SearchSort) -> Unit)
 private fun SearchSpotlight(
     item: MetaPreview,
     people: List<SearchPerson>,
+    featuredPerson: PersonDetail? = null,
     badge: String? = null,
     onDetails: () -> Unit,
     onMore: (() -> Unit)?,
@@ -511,7 +520,16 @@ private fun SearchSpotlight(
 ) {
     Row(modifier.fillMaxWidth().height(300.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         SpotlightHero(item, badge ?: stringResource(Res.string.search_top_result), onDetails, onMore, Modifier.weight(1.65f).fillMaxHeight())
-        if (people.isNotEmpty()) {
+        if (people.size == 1) {
+            // One person: a short profile instead of a one-row list with an empty panel below it.
+            val person = people.single()
+            SearchPersonProfileCard(
+                person = person,
+                detail = featuredPerson?.takeIf { it.tmdbId == person.tmdbId },
+                onClick = onPersonClick?.let { { it(person) } },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+        } else if (people.isNotEmpty()) {
             SearchPeoplePanel(
                 people = people.take(4),
                 showSeeAll = people.size > 4,
@@ -656,8 +674,8 @@ private fun SearchPeoplePanel(
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(person.name, style = searchText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    person.department?.let {
-                        Text(it, style = searchText(12.sp, color = SearchColors.textMuted), maxLines = 1)
+                    personSubtitle(person)?.let {
+                        Text(it, style = searchText(12.sp, color = SearchColors.textMuted), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = SearchColors.textMuted, modifier = Modifier.size(20.dp))
@@ -1405,3 +1423,72 @@ internal fun tagHeroItems(topTen: SearchTopTenUi, shelves: SearchDiscoveryShelve
 }
 
 private const val TAG_HERO_SIZE = 8
+
+
+// ---------- Single-person profile ----------
+
+/** "Acting · Known for Dune, Wonka" for compact people rows. */
+@Composable
+private fun personSubtitle(person: SearchPerson): String? {
+    val knownFor = person.knownForTitles.takeIf { it.isNotEmpty() }
+        ?.let { stringResource(Res.string.search_person_known_for, it.joinToString(", ")) }
+    return listOfNotNull(person.department, knownFor).joinToString(" · ").ifBlank { null }
+}
+
+@Composable
+private fun SearchPersonProfileCard(
+    person: SearchPerson,
+    detail: PersonDetail?,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val fill by animateColorAsState(Color.White.copy(alpha = if (hovered) 0.08f else 0.05f), tween(160), label = "person_card")
+    Column(
+        modifier.clip(shape).background(fill).border(1.dp, Color.White.copy(alpha = 0.08f), shape)
+            .hoverable(interaction)
+            .clickable(enabled = onClick != null, interactionSource = interaction, indication = null) { onClick?.invoke() }
+            .padding(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PersonAvatar(person.copy(profilePhoto = detail?.profilePhoto ?: person.profilePhoto), Modifier.size(72.dp))
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(person.name, style = searchText(18.sp, FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val facts = listOfNotNull(
+                    person.department,
+                    detail?.birthday?.take(4)?.takeIf { it.length == 4 }?.let { year ->
+                        stringResource(Res.string.search_person_born, listOfNotNull(year, detail.placeOfBirth?.substringBefore(',')).joinToString(", "))
+                    },
+                )
+                if (facts.isNotEmpty()) {
+                    Text(facts.joinToString(" · "), style = searchText(13.sp, color = SearchColors.textMuted), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            // Placeholder: favouriting people isn't built yet, so this intentionally does nothing.
+            IconButton(onClick = {}, modifier = Modifier.testTag("search_person_favorite")) {
+                Icon(Icons.Rounded.FavoriteBorder, contentDescription = stringResource(Res.string.search_person_favorite), tint = SearchColors.textSecondary)
+            }
+        }
+        detail?.biography?.trim()?.takeIf { it.isNotEmpty() }?.let { bio ->
+            Spacer(Modifier.height(14.dp))
+            Text(bio, style = searchText(13.sp, color = SearchColors.textSecondary, lineHeight = 19.sp), maxLines = 4, overflow = TextOverflow.Ellipsis)
+        }
+        person.knownForTitles.takeIf { it.isNotEmpty() }?.let { titles ->
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(Res.string.search_person_known_for, titles.joinToString(", ")),
+                style = searchText(12.sp, color = SearchColors.textMuted),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(Res.string.search_person_view_profile), style = searchText(13.sp, FontWeight.SemiBold))
+            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = SearchColors.textPrimary, modifier = Modifier.size(18.dp))
+        }
+    }
+}
