@@ -7,6 +7,12 @@ import com.nuvio.app.features.search.SearchDiscoverySession
 import androidx.compose.ui.test.ExperimentalTestApi
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.search.SearchDiscoveryUi
+import com.nuvio.app.features.search.SearchDiscoveryShelvesUi
+import com.nuvio.app.features.search.SearchScope
+import com.nuvio.app.features.search.SearchShelfKey
+import com.nuvio.app.features.search.SearchShelfSort
+import com.nuvio.app.features.search.rememberSearchDiscoveryShelves
+import com.nuvio.app.features.search.spotlight
 import com.nuvio.app.features.search.SearchStreamingCountry
 import com.nuvio.app.features.search.rememberSearchDiscovery
 import com.nuvio.app.features.search.searchDiscoverySuggestions
@@ -88,6 +94,52 @@ class SearchDiscoveryUiTest {
     }
 
     @Test
+    fun tagCarouselsHideEmptyOrFailedRailsAndFeatureTheTopTitle() = runDesktopComposeUiTest {
+        val comedy = searchDiscoverySuggestions("comedy").first()
+        val session = SearchDiscoverySession().apply { select(comedy) }
+        lateinit var shelves: SearchDiscoveryShelvesUi
+        setContent {
+            CompositionLocalProvider(LocalSearchDiscoverySession provides session) {
+                shelves = rememberSearchDiscoveryShelves(
+                    selection = session.selection,
+                    active = true,
+                    hideUnplayable = false,
+                    hideUnreleased = false,
+                    loadRail = { key, _, _, _ ->
+                        when {
+                            key.sort == SearchShelfSort.TopRated && key.television -> error("TMDB down")
+                            key.sort == SearchShelfSort.New && !key.television -> null
+                            else -> TmdbEntityRailPageResult(
+                                listOf(
+                                    MetaPreview(
+                                        "tmdb:${key.sort}-${key.television}",
+                                        if (key.television) "series" else "movie",
+                                        "${key.sort} ${if (key.television) "show" else "movie"}",
+                                        popularity = if (key.television) 90.0 else 40.0,
+                                    ),
+                                ),
+                                hasMore = true,
+                            )
+                        }
+                    },
+                    filterResults = { it },
+                )
+            }
+        }
+        runOnIdle {
+            assertEquals(false, shelves.loading)
+            // One failed rail and one rail with no query don't fail the page; they're just hidden.
+            assertEquals(false, shelves.failed)
+            assertEquals(emptyList(), shelves.rails[SearchShelfKey(SearchShelfSort.TopRated, television = true)])
+            assertEquals(emptyList(), shelves.rails[SearchShelfKey(SearchShelfSort.New, television = false)])
+            assertEquals(listOf("Popular show"), shelves.rails[SearchShelfKey(SearchShelfSort.Popular, television = true)]?.map { it.name })
+            // The spotlight is the most popular title for the active tab.
+            assertEquals("Popular show", shelves.spotlight(SearchScope.All)?.name)
+            assertEquals("Popular movie", shelves.spotlight(SearchScope.Movies)?.name)
+        }
+    }
+
+    @Test
     fun streamingCountryUsesOverrideOrSupportedDeviceRegion() {
         val regions = mapOf("LT" to "Lithuania", "US" to "United States")
         assertEquals("LT", SearchStreamingCountry.effective(null, "LT", regions))
@@ -106,7 +158,8 @@ class SearchDiscoveryUiTest {
                 MainAppContent(initialTab = AppScreenTab.Search, ownsAppRuntime = false, showLaunchOverlay = false)
             }
         }
-        val field = onNodeWithText("Search movies, shows...")
+        // Desktop renders the redesigned Search (SearchDesktopContent): its own placeholder and layout.
+        val field = onNodeWithText("Search movies, shows, and people")
         field.performClick()
         onNode(hasSetTextAction()).performTextInput("apple")
         onNodeWithText("Apple TV").assertIsDisplayed()
@@ -116,9 +169,11 @@ class SearchDiscoveryUiTest {
         runOnIdle { checkNotNull(DesktopEscapeShortcut.onBack).invoke() }
         onNodeWithText("Earlier search").assertDoesNotExist()
         field.performClick()
+        // The redesign shows recents as chips with "Clear all" in the section header, so the old
+        // check that Clear all lines up with the per-row remove buttons no longer applies.
         val clearAll = onNodeWithContentDescription("Clear all recent searches")
-        val removeOne = onNodeWithContentDescription("Remove recent search")
-        assertEquals(removeOne.fetchSemanticsNode().boundsInRoot.center.x, clearAll.fetchSemanticsNode().boundsInRoot.center.x, 1f)
+        clearAll.assertIsDisplayed()
+        onNodeWithContentDescription("Remove recent search").assertIsDisplayed()
         val captures = File("build/reports/search-discovery-review").apply { mkdirs() }
         ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", captures.resolve("history.png"))
         clearAll.performClick()

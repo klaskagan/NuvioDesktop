@@ -139,6 +139,17 @@ through it as legible text. Check by sweeping the pointer across a
 results grid (backdrop unchanged) and scrolling one step (no dark band while the
 hero is still visible).
 
+Every desktop Search results view uses the same layout: the All / Movies / Shows tabs,
+a spotlight hero, then the content. Tag pages (Netflix, Comedy, Alien invasion…)
+first showed a bare merged grid with no tabs; the user asked for them to match the
+results page. A tag page is the spotlight plus Home-style carousels
+(`DetailPosterRailSection`, i.e. `NuvioShelfSection` + `HomePosterCard`) for
+Popular, Top rated, and New, with shows and movies in each. "View all" opens the
+paged grid, and Back returns to the cached carousels. One failed or empty carousel
+is hidden rather than failing the page. `SearchDiscoveryUiTest`
+(`tagCarouselsHideEmptyOrFailedRailsAndFeatureTheTopTitle`) covers this, and
+`SearchDiscoveryTest` covers the sort filters (Top rated vote floor, 90-day New window).
+
 Panels that own a background must also own readable foreground colors.
 The football lineup and actor catalog screenshots exposed black inherited
 text on dark panels. Use a Material Surface with an explicit content color,

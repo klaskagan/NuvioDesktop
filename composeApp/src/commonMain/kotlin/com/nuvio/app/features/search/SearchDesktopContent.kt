@@ -1,6 +1,22 @@
 package com.nuvio.app.features.search
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import nuvio.composeapp.generated.resources.search_clear_history
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import com.nuvio.app.core.ui.NuvioViewAllPillSize
+import com.nuvio.app.features.details.components.DetailPosterRailSection
+import nuvio.composeapp.generated.resources.search_shelf_back
+import nuvio.composeapp.generated.resources.search_shelf_new_movies
+import nuvio.composeapp.generated.resources.search_shelf_new_shows
+import nuvio.composeapp.generated.resources.search_shelf_popular_movies
+import nuvio.composeapp.generated.resources.search_shelf_popular_shows
+import nuvio.composeapp.generated.resources.search_shelf_top_rated_movies
+import nuvio.composeapp.generated.resources.search_shelf_top_rated_shows
+import nuvio.composeapp.generated.resources.search_tag_top
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -10,12 +26,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
-import nuvio.composeapp.generated.resources.search_availability_country
 import nuvio.composeapp.generated.resources.search_clear_all
 import nuvio.composeapp.generated.resources.search_discovery_date_window
 import nuvio.composeapp.generated.resources.search_discovery_retry
 import nuvio.composeapp.generated.resources.search_remove_filter
-import nuvio.composeapp.generated.resources.search_streaming_country
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.rounded.Check
@@ -233,10 +247,12 @@ internal fun SearchHeroField(
 @Composable
 internal fun SearchScopeTabs(
     selected: SearchScope,
-    counts: Map<SearchScope, Int>,
+    counts: Map<SearchScope, Int>?,
     onSelect: (SearchScope) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Null counts = a tag page: always All / Movies / Shows, without numbers (discover has no exact totals).
+    val scopes = if (counts == null) listOf(SearchScope.All, SearchScope.Movies, SearchScope.Shows) else SearchScope.entries
     val density = LocalDensity.current
     // Each tab reports where it sits so one underline can slide between them.
     val bounds = remember { mutableStateMapOf<SearchScope, Pair<Dp, Dp>>() }
@@ -245,9 +261,9 @@ internal fun SearchScopeTabs(
     val indicatorW by animateDpAsState(target?.second ?: 0.dp, tween(260, easing = FastOutSlowInEasing), label = "tab_w")
     Box(modifier.padding(start = 4.dp, top = 16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-            SearchScope.entries.forEach { scope ->
-                val count = counts[scope] ?: 0
-                if (scope != SearchScope.All && count == 0) return@forEach
+            scopes.forEach { scope ->
+                val count = counts?.get(scope) ?: 0
+                if (counts != null && scope != SearchScope.All && count == 0) return@forEach
                 val interaction = remember { MutableInteractionSource() }
                 val hovered by interaction.collectIsHoveredAsState()
                 val isSelected = scope == selected
@@ -274,7 +290,9 @@ internal fun SearchScopeTabs(
                 ) {
                     Text(scope.label(), style = searchText(14.sp, FontWeight.SemiBold, labelColor))
                     Spacer(Modifier.width(5.dp))
-                    Text(count.toString(), style = searchText(14.sp, FontWeight.Medium, labelColor.copy(alpha = 0.6f)))
+                    if (counts != null) {
+                        Text(count.toString(), style = searchText(14.sp, FontWeight.Medium, labelColor.copy(alpha = 0.6f)))
+                    }
                 }
             }
         }
@@ -310,7 +328,11 @@ internal fun SearchRecentChips(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(Res.string.compose_search_recent_searches), style = searchText(13.sp, FontWeight.SemiBold, SearchColors.textMuted))
             Spacer(Modifier.weight(1f))
-            SearchTextAction(stringResource(Res.string.search_clear_all), onClick = onClearAll)
+            SearchTextAction(
+                stringResource(Res.string.search_clear_all),
+                onClick = onClearAll,
+                accessibleLabel = stringResource(Res.string.search_clear_history),
+            )
         }
         Spacer(Modifier.height(10.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -473,6 +495,7 @@ private fun SearchSortChip(sort: SearchSort, onSortChange: (SearchSort) -> Unit)
 private fun SearchSpotlight(
     item: MetaPreview,
     people: List<SearchPerson>,
+    badge: String? = null,
     onDetails: () -> Unit,
     onMore: (() -> Unit)?,
     onPersonClick: ((SearchPerson) -> Unit)?,
@@ -480,7 +503,7 @@ private fun SearchSpotlight(
     modifier: Modifier = Modifier,
 ) {
     Row(modifier.fillMaxWidth().height(300.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        SpotlightHero(item, onDetails, onMore, Modifier.weight(1.65f).fillMaxHeight())
+        SpotlightHero(item, badge ?: stringResource(Res.string.search_top_result), onDetails, onMore, Modifier.weight(1.65f).fillMaxHeight())
         if (people.isNotEmpty()) {
             SearchPeoplePanel(
                 people = people.take(4),
@@ -494,7 +517,7 @@ private fun SearchSpotlight(
 }
 
 @Composable
-private fun SpotlightHero(item: MetaPreview, onDetails: () -> Unit, onMore: (() -> Unit)?, modifier: Modifier) {
+private fun SpotlightHero(item: MetaPreview, badge: String, onDetails: () -> Unit, onMore: (() -> Unit)?, modifier: Modifier) {
     val shape = RoundedCornerShape(18.dp)
     Box(modifier.clip(shape).background(Color(0xFF16171B)).clickable(onClick = onDetails)) {
         NuvioAsyncImage(
@@ -511,7 +534,7 @@ private fun SpotlightHero(item: MetaPreview, onDetails: () -> Unit, onMore: (() 
         )
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.55f))))
         Text(
-            text = stringResource(Res.string.search_top_result).uppercase(),
+            text = badge.uppercase(),
             style = searchText(11.sp, FontWeight.Bold, letterSpacing = 0.08.em),
             modifier = Modifier.padding(start = 26.dp, top = 22.dp)
                 .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.55f))
@@ -733,6 +756,9 @@ internal fun LazyListScope.searchDesktopList(
     contentAlpha: Float,
     discovery: SearchDiscovery?,
     discoveryUi: SearchDiscoveryUi,
+    shelves: SearchDiscoveryShelvesUi,
+    shelfView: SearchShelfView?,
+    onShelfView: (SearchShelfView?) -> Unit,
     onDiscoverySelect: (SearchDiscovery?) -> Unit,
     onStreamingCountrySettings: () -> Unit,
     headerColor: Color,
@@ -803,6 +829,9 @@ internal fun LazyListScope.searchDesktopList(
                         onStreamingCountrySettings = onStreamingCountrySettings,
                     )
                 }
+                if (discovery != null && shelfView == null) {
+                    SearchScopeTabs(selected = scope, counts = null, onSelect = onScopeChange)
+                }
                 if (showResults) {
                     SearchScopeTabs(
                         selected = scope,
@@ -852,9 +881,26 @@ internal fun LazyListScope.searchDesktopList(
         return
     }
 
-    if (discovery != null) {
+    if (discovery != null && shelfView == null) {
+        searchDesktopTagPage(
+            selection = discovery,
+            shelves = shelves,
+            scope = scope,
+            gutter = gutter,
+            itemModifier = itemModifier,
+            watchedKeys = watchedKeys,
+            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+            onPosterClick = onPosterClick,
+            onPosterLongClick = onPosterLongClick,
+            onViewAll = onShelfView,
+        )
+        return
+    }
+    if (discovery != null && shelfView != null) {
         searchDesktopDiscoveryResults(
             selection = discovery,
+            view = shelfView,
+            onBack = { onShelfView(null) },
             state = discoveryUi,
             columns = searchColumns,
             gutter = gutter,
@@ -1061,14 +1107,8 @@ private fun SearchDesktopDiscoveryChips(
                 }
             }
         }
-        if (selected?.kind == DiscoveryKind.Provider) {
-            Spacer(Modifier.height(8.dp))
-            SearchTextAction(
-                if (country == null) stringResource(Res.string.search_streaming_country)
-                else stringResource(Res.string.search_availability_country, country),
-                onClick = onStreamingCountrySettings,
-            )
-        }
+        // No "Availability in <country>" line: the streaming country lives in Settings, and a
+        // missing country still surfaces through the tag page's status message.
         if (selected?.kind == DiscoveryKind.Recent) {
             val today = discoveryToday()
             Spacer(Modifier.height(8.dp))
@@ -1082,6 +1122,8 @@ private fun SearchDesktopDiscoveryChips(
 
 private fun LazyListScope.searchDesktopDiscoveryResults(
     selection: SearchDiscovery,
+    view: SearchShelfView,
+    onBack: () -> Unit,
     state: SearchDiscoveryUi,
     columns: Int,
     gutter: Dp,
@@ -1091,9 +1133,14 @@ private fun LazyListScope.searchDesktopDiscoveryResults(
     onPosterClick: ((MetaPreview) -> Unit)?,
     onPosterLongClick: ((MetaPreview) -> Unit)?,
 ) {
+    item(key = "discovery-back") {
+        Box(itemModifier().padding(horizontal = gutter)) {
+            SearchBackLink(stringResource(Res.string.search_shelf_back, discoveryChipLabel(selection)), onClick = onBack)
+        }
+    }
     item(key = "discovery-header") {
         SearchSectionHeader(
-            title = discoveryChipLabel(selection),
+            title = shelfTitle(SearchShelfKey(view.sort, view.television ?: true)),
             count = state.items.takeIf { it.isNotEmpty() }?.let { stringResource(Res.string.search_titles_count, it.size) },
             modifier = itemModifier().padding(horizontal = gutter).padding(top = 8.dp),
         )
@@ -1147,7 +1194,7 @@ private fun LazyListScope.searchDesktopDiscoveryResults(
 }
 
 @Composable
-private fun SearchTextAction(label: String, onClick: () -> Unit) {
+private fun SearchTextAction(label: String, onClick: () -> Unit, accessibleLabel: String? = null) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val color by animateColorAsState(if (hovered) SearchColors.textPrimary else SearchColors.textSecondary, tween(140), label = "text_action")
@@ -1156,6 +1203,132 @@ private fun SearchTextAction(label: String, onClick: () -> Unit) {
         style = searchText(13.sp, FontWeight.Medium, color),
         modifier = Modifier.clip(RoundedCornerShape(6.dp)).hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            // A short visible label can carry a fuller accessible name (e.g. "Clear all recent searches").
+            .then(if (accessibleLabel != null) Modifier.clearAndSetSemantics {
+                contentDescription = accessibleLabel
+                role = Role.Button
+            } else Modifier)
             .padding(horizontal = 4.dp, vertical = 2.dp),
     )
+}
+
+
+// ---------- Tag page (desktop): spotlight + Home-style carousels ----------
+
+/** The tag page's featured title: the most popular title for the active tab. */
+internal fun SearchDiscoveryShelvesUi.spotlight(scope: SearchScope): MetaPreview? {
+    val shows = rails[SearchShelfKey(SearchShelfSort.Popular, television = true)].orEmpty().firstOrNull()
+    val movies = rails[SearchShelfKey(SearchShelfSort.Popular, television = false)].orEmpty().firstOrNull()
+    return when (scope) {
+        SearchScope.Movies -> movies
+        SearchScope.Shows -> shows
+        else -> listOfNotNull(shows, movies).maxByOrNull { it.popularity ?: -1.0 }
+    }
+}
+
+private fun SearchShelfKey.visibleIn(scope: SearchScope) = when (scope) {
+    SearchScope.Movies -> !television
+    SearchScope.Shows -> television
+    else -> true
+}
+
+@Composable
+private fun shelfTitle(key: SearchShelfKey): String = when (key.sort) {
+    SearchShelfSort.Popular -> stringResource(if (key.television) Res.string.search_shelf_popular_shows else Res.string.search_shelf_popular_movies)
+    SearchShelfSort.TopRated -> stringResource(if (key.television) Res.string.search_shelf_top_rated_shows else Res.string.search_shelf_top_rated_movies)
+    SearchShelfSort.New -> stringResource(if (key.television) Res.string.search_shelf_new_shows else Res.string.search_shelf_new_movies)
+}
+
+private fun LazyListScope.searchDesktopTagPage(
+    selection: SearchDiscovery,
+    shelves: SearchDiscoveryShelvesUi,
+    scope: SearchScope,
+    gutter: Dp,
+    itemModifier: LazyItemScope.() -> Modifier,
+    watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String>,
+    onPosterClick: ((MetaPreview) -> Unit)?,
+    onPosterLongClick: ((MetaPreview) -> Unit)?,
+    onViewAll: (SearchShelfView) -> Unit,
+) {
+    val spotlight = shelves.spotlight(scope)
+    if (spotlight != null) {
+        item(key = "tag-spotlight") {
+            SearchSpotlight(
+                item = spotlight,
+                people = emptyList(),
+                badge = stringResource(Res.string.search_tag_top, discoveryChipLabel(selection)),
+                onDetails = { onPosterClick?.invoke(spotlight) },
+                onMore = onPosterLongClick?.let { { it(spotlight) } },
+                onPersonClick = null,
+                onSeeAllPeople = {},
+                modifier = itemModifier().padding(horizontal = gutter).padding(top = 22.dp),
+            )
+        }
+    } else if (shelves.loading) {
+        item(key = "tag-skeleton-spotlight") {
+            Box(
+                itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth().height(300.dp)
+                    .clip(RoundedCornerShape(18.dp)).background(SearchColors.fill),
+            )
+        }
+    }
+    if (shelves.loading && shelves.isEmpty) {
+        items(3, key = { "tag-skeleton-row:$it" }) {
+            com.nuvio.app.features.home.components.HomeSkeletonRow(
+                modifier = itemModifier().padding(top = 12.dp),
+                horizontalPadding = gutter,
+            )
+        }
+    }
+    SEARCH_SHELF_KEYS.filter { it.visibleIn(scope) }.forEach { key ->
+        val rail = shelves.rails[key].orEmpty()
+        if (rail.isEmpty()) return@forEach
+        item(key = "tag-rail:${key.sort}:${key.television}") {
+            DetailPosterRailSection(
+                title = shelfTitle(key),
+                items = rail,
+                watchedKeys = watchedKeys,
+                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                headerHorizontalPadding = gutter,
+                onPosterClick = onPosterClick,
+                onPosterLongClick = onPosterLongClick,
+                onViewAllClick = { onViewAll(SearchShelfView(key.sort, key.television)) },
+                viewAllPillSize = NuvioViewAllPillSize.Compact,
+                modifier = itemModifier().padding(top = 14.dp),
+            )
+        }
+    }
+    if (!shelves.loading && (shelves.failed || shelves.needsCountry || shelves.isEmpty)) {
+        item(key = "tag-status") {
+            val status = shelves.asStatus()
+            Column(
+                itemModifier().fillMaxWidth().padding(horizontal = gutter).padding(top = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(discoveryStatusMessage(status), style = searchText(15.sp, color = SearchColors.textSecondary), textAlign = TextAlign.Center)
+                if (shelves.failed) {
+                    Spacer(Modifier.height(14.dp))
+                    SearchPillButton(stringResource(Res.string.search_discovery_retry), primary = true, onClick = shelves.retry)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchBackLink(label: String, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val color by animateColorAsState(if (hovered) SearchColors.textPrimary else SearchColors.textSecondary, tween(140), label = "back_link")
+    Row(
+        Modifier.padding(start = 4.dp, top = 12.dp).clip(RoundedCornerShape(8.dp)).hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(vertical = 4.dp, horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = searchText(14.sp, FontWeight.Medium, color))
+    }
 }

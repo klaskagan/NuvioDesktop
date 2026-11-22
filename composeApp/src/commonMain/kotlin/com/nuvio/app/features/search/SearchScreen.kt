@@ -271,8 +271,17 @@ fun SearchScreen(
         SearchRepository.hideUnplayable
     }.collectAsStateWithLifecycle()
 
+    // Desktop tag pages show carousels; the paged grid only loads once a carousel's "View all" is open.
+    val shelfView = discoverySession.view.takeIf { isDesktop }
     val discoveryUi = rememberSearchDiscovery(
-        selection = discovery,
+        selection = discovery.takeIf { !isDesktop || shelfView != null },
+        active = screenActive,
+        hideUnplayable = hideUnplayable,
+        hideUnreleased = homeCatalogSettingsUiState.hideUnreleasedContent,
+        view = shelfView,
+    )
+    val discoveryShelves = rememberSearchDiscoveryShelves(
+        selection = discovery.takeIf { isDesktop },
         active = screenActive,
         hideUnplayable = hideUnplayable,
         hideUnreleased = homeCatalogSettingsUiState.hideUnreleasedContent,
@@ -346,12 +355,14 @@ fun SearchScreen(
     val displayedSearch = if (isDesktop && query.isNotBlank() && !uiState.hasContent && heldSearch.hasContent) heldSearch else uiState
 
     // Desktop redesign: scope tabs and sort reset whenever the query changes.
-    var scope by rememberSaveable(query.trim()) { mutableStateOf(SearchScope.All) }
+    // Reset to All whenever the query or the selected tag changes.
+    var scope by rememberSaveable(query.trim(), discovery) { mutableStateOf(SearchScope.All) }
     var sort by rememberSaveable(query.trim()) { mutableStateOf(SearchSort.Relevance) }
 
     // Ambient backdrop (desktop): the spotlight / first result's art, else the theme mesh. Never hover-driven.
     val backdropController = remember { if (isDesktop) BackdropFocusController() else null }
     val topResultArt = when {
+        discovery != null && isDesktop && shelfView == null -> discoveryShelves.spotlight(scope)?.let { it.banner ?: it.poster }
         discovery != null -> discoveryUi.items.firstOrNull()?.let { it.banner ?: it.poster }
         query.isNotBlank() ->
             (displayedSearch.spotlightFor(scope) ?: displayedSearch.results.inScope(scope).firstOrNull())?.let { it.banner ?: it.poster }
@@ -470,6 +481,12 @@ fun SearchScreen(
                 contentAlpha = resultsAlpha,
                 discovery = discovery,
                 discoveryUi = discoveryUi,
+                shelves = discoveryShelves,
+                shelfView = shelfView,
+                onShelfView = {
+                    discoverySession.view = it
+                    listState.requestScrollToItem(0)
+                },
                 onDiscoverySelect = {
                     discoverySession.select(it)
                     listState.requestScrollToItem(0)

@@ -64,4 +64,29 @@ class SearchDiscoveryTest {
         assertEquals(mapOf("primary_release_date.gte" to "2026-10-22", "primary_release_date.lte" to "2026-11-20",
             "sort_by" to "primary_release_date.desc"), filters("new releases"))
     }
+
+    @Test
+    fun tagCarouselsLayerTheirOrderingOnTheTagFilters() {
+        val genre = mapOf("with_genres" to "35")
+        assertEquals(genre + ("sort_by" to "popularity.desc"), genre.withShelfSort(SearchShelfSort.Popular, false, today))
+        // Top rated needs a vote floor so a handful of 10/10 votes can't lead the row.
+        assertEquals(
+            genre + mapOf("sort_by" to "vote_average.desc", "vote_count.gte" to "200"),
+            genre.withShelfSort(SearchShelfSort.TopRated, true, today),
+        )
+        // New is the last 90 days up to today, on the medium's own date field.
+        assertEquals(
+            genre + mapOf(
+                "sort_by" to "first_air_date.desc",
+                "first_air_date.gte" to "2026-08-22",
+                "first_air_date.lte" to "2026-11-20",
+            ),
+            genre.withShelfSort(SearchShelfSort.New, true, today),
+        )
+        assertEquals("primary_release_date.desc", genre.withShelfSort(SearchShelfSort.New, false, today)["sort_by"])
+        // A carousel ordering replaces a tag's own ordering (New releases is date-sorted by default).
+        val recent = mapOf("sort_by" to "primary_release_date.desc")
+        assertEquals("popularity.desc", recent.withShelfSort(SearchShelfSort.Popular, false, today)["sort_by"])
+        assertEquals(genre, genre.withShelfSort(null, false, today))
+    }
 }

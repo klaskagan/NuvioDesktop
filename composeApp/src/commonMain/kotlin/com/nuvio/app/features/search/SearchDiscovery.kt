@@ -151,12 +151,40 @@ internal fun searchDiscoverySuggestions(query: String): List<SearchDiscovery> {
     return (exact + prefixes + comedyVariants + related).distinct().take(8)
 }
 
+/** Orderings for a tag page's carousels (desktop). Null keeps the tag's own ordering. */
+internal enum class SearchShelfSort { Popular, TopRated, New }
+
+internal const val SEARCH_SHELF_TOP_RATED_MIN_VOTES = 200
+internal const val SEARCH_SHELF_NEW_DAYS = 90
+
+/**
+ * Applies a carousel ordering on top of a tag's own discover filters. Top rated needs a vote floor
+ * (the same as the entity TOP_RATED rail) so obscure 10/10s don't lead; New keeps the last 90 days.
+ */
+internal fun Map<String, String>.withShelfSort(sort: SearchShelfSort?, television: Boolean, today: LocalDate): Map<String, String> {
+    if (sort == null) return this
+    val date = if (television) "first_air_date" else "primary_release_date"
+    return this + when (sort) {
+        SearchShelfSort.Popular -> mapOf("sort_by" to "popularity.desc")
+        SearchShelfSort.TopRated -> mapOf(
+            "sort_by" to "vote_average.desc",
+            "vote_count.gte" to SEARCH_SHELF_TOP_RATED_MIN_VOTES.toString(),
+        )
+        SearchShelfSort.New -> mapOf(
+            "sort_by" to "$date.desc",
+            "$date.gte" to today.minus(DatePeriod(days = SEARCH_SHELF_NEW_DAYS)).toString(),
+            "$date.lte" to today.toString(),
+        )
+    }
+}
+
 internal suspend fun loadSearchDiscoveryMedium(
     television: Boolean,
     page: Int,
     discovery: SearchDiscovery,
     country: String?,
     today: LocalDate,
+    sort: SearchShelfSort? = null,
 ) = discovery.filters(television, country, today)?.let { filters ->
-    TmdbMetadataService.searchDiscoveryPage(television, page, filters)
+    TmdbMetadataService.searchDiscoveryPage(television, page, filters.withShelfSort(sort, television, today))
 }

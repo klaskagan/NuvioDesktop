@@ -637,6 +637,7 @@ object TmdbMetadataService {
             releaseInfo = releaseInfo,
             rawReleaseDate = result.releaseDate ?: result.firstAirDate,
             popularity = result.popularity,
+            sortRating = result.voteAverage,
             voteCount = result.voteCount,
         )
     }

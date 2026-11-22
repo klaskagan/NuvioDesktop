@@ -81,31 +81,47 @@ internal data class SearchDiscoveryUi(
 
 internal val LocalSearchDiscoverySession = compositionLocalOf<SearchDiscoverySession?> { null }
 
+/** A tag page's "View all": one carousel's ordering, for one medium (null = movies and shows). */
+internal data class SearchShelfView(val sort: SearchShelfSort, val television: Boolean?)
+
 internal class SearchDiscoverySession {
     var selection by mutableStateOf<SearchDiscovery?>(null)
         private set
+    /** Desktop tag pages show carousels; non-null opens one carousel as a paged grid. */
+    var view by mutableStateOf<SearchShelfView?>(null)
     private var pageKey: Any? = null
     private var pages = SearchDiscoveryPages()
+    private var shelvesKey: Any? = null
+    private var shelves = SearchDiscoveryShelves()
 
     fun select(value: SearchDiscovery?) {
         if (selection == value) return
         pageKey = null
+        view = null
         selection = value
     }
 
-    fun pagesFor(key: Any): SearchDiscoveryPages {
+    fun shelvesFor(key: Any): SearchDiscoveryShelves {
+        if (shelvesKey != key) {
+            shelvesKey = key
+            shelves = SearchDiscoveryShelves()
+        }
+        return shelves
+    }
+
+    fun pagesFor(key: Any, television: Boolean? = null): SearchDiscoveryPages {
         if (pageKey != key) {
             pageKey = key
-            pages = SearchDiscoveryPages()
+            pages = SearchDiscoveryPages(television)
         }
         return pages
     }
 }
 
-internal class SearchDiscoveryPages {
+internal class SearchDiscoveryPages(television: Boolean? = null) {
     var state by mutableStateOf(SearchDiscoveryUi(loading = true))
-    var moviePage: Int? = 1
-    var tvPage: Int? = 1
+    var moviePage: Int? = 1.takeIf { television != true }
+    var tvPage: Int? = 1.takeIf { television != false }
     var request by mutableStateOf(0)
     var completedRequest = -1
     var consecutiveUnchangedPages = 0
@@ -117,8 +133,9 @@ internal fun rememberSearchDiscovery(
     active: Boolean,
     hideUnplayable: Boolean,
     hideUnreleased: Boolean,
+    view: SearchShelfView? = null,
     loadPage: suspend (Boolean, Int, SearchDiscovery, String?, LocalDate) -> TmdbEntityRailPageResult? =
-        ::loadSearchDiscoveryMedium,
+        { television, page, chip, country, today -> loadSearchDiscoveryMedium(television, page, chip, country, today, view?.sort) },
     filterResults: suspend (List<MetaPreview>) -> List<MetaPreview> = SearchRepository::filterDiscoveryResults,
 ): SearchDiscoveryUi {
     val countryOverride by SearchStreamingCountry.override.collectAsStateWithLifecycle()
@@ -126,25 +143,25 @@ internal fun rememberSearchDiscovery(
     val day = discoveryToday()
     val localSession = LocalSearchDiscoverySession.current
     val session = localSession ?: remember { SearchDiscoverySession() }
-    val pageKey = listOf(selection, countryOverride, deviceRegion, day.takeIf { selection?.kind == DiscoveryKind.Recent }, hideUnplayable, hideUnreleased)
-    val pages = remember(session, pageKey) { session.pagesFor(pageKey) }
+    val pageKey = listOf(selection, countryOverride, deviceRegion, day.takeIf { selection?.kind == DiscoveryKind.Recent }, hideUnplayable, hideUnreleased, view)
+    val pages = remember(session, pageKey) { session.pagesFor(pageKey, view?.television) }
     val request = pages.request
     LaunchedEffect(selection, active, countryOverride, deviceRegion, day, hideUnplayable, hideUnreleased, request) {
         if (selection == null || !active || pages.completedRequest == request) return@LaunchedEffect
         if (pages.moviePage == null && pages.tvPage == null) return@LaunchedEffect
         pages.state = pages.state.copy(loading = true, failed = false)
         try {
-            val region = if (selection.kind == DiscoveryKind.Provider) {
-                val regions = SearchStreamingCountry.regions()
-                val code = SearchStreamingCountry.effective(countryOverride, deviceRegion, regions)
-                if (code == null) {
+            val region = when (val resolved = resolveDiscoveryRegion(selection, countryOverride, deviceRegion)) {
+                DiscoveryRegion.Missing -> {
                     pages.completedRequest = request
                     pages.state = SearchDiscoveryUi(needsCountry = true)
                     return@LaunchedEffect
                 }
-                pages.state = pages.state.copy(country = regions[code])
-                code
-            } else null
+                is DiscoveryRegion.Resolved -> {
+                    if (resolved.name != null) pages.state = pages.state.copy(country = resolved.name)
+                    resolved.code
+                }
+            }
             val (movie, tv) = coroutineScope {
                 val movies = async { pages.moviePage?.let { loadPage(false, it, selection, region, day) } }
                 val shows = async { pages.tvPage?.let { loadPage(true, it, selection, region, day) } }
@@ -162,8 +179,12 @@ internal fun rememberSearchDiscovery(
                 pages.tvPage = null
             }
             pages.state = pages.state.copy(
-                items = if (selection.kind == DiscoveryKind.Recent) items.sortedByDescending { it.rawReleaseDate }
-                else items.sortedByDescending { it.popularity ?: -1.0 },
+                items = when {
+                    view?.sort == SearchShelfSort.TopRated -> items.sortedByDescending { it.sortRating ?: -1.0 }
+                    view?.sort == SearchShelfSort.New ||
+                        (view == null && selection.kind == DiscoveryKind.Recent) -> items.sortedByDescending { it.rawReleaseDate }
+                    else -> items.sortedByDescending { it.popularity ?: -1.0 }
+                },
                 loading = false,
                 hasMore = pages.moviePage != null || pages.tvPage != null,
                 hidResults = pages.state.hidResults || next.size < incoming.size,
@@ -178,6 +199,109 @@ internal fun rememberSearchDiscovery(
     }
     if (selection == null) return SearchDiscoveryUi()
     return pages.state.copy(load = { if (!pages.state.loading && pages.request == pages.completedRequest) pages.request++ })
+}
+
+private sealed interface DiscoveryRegion {
+    data object Missing : DiscoveryRegion
+    data class Resolved(val code: String?, val name: String?) : DiscoveryRegion
+}
+
+/** Provider tags need a streaming country; other tags resolve to no region. */
+private suspend fun resolveDiscoveryRegion(selection: SearchDiscovery, override: String?, deviceRegion: String?): DiscoveryRegion {
+    if (selection.kind != DiscoveryKind.Provider) return DiscoveryRegion.Resolved(null, null)
+    val regions = SearchStreamingCountry.regions()
+    val code = SearchStreamingCountry.effective(override, deviceRegion, regions) ?: return DiscoveryRegion.Missing
+    return DiscoveryRegion.Resolved(code, regions[code])
+}
+
+/** One carousel on a desktop tag page. */
+internal data class SearchShelfKey(val sort: SearchShelfSort, val television: Boolean)
+
+/** Carousel order on a tag page: each ordering shows shows first, then movies. */
+internal val SEARCH_SHELF_KEYS = SearchShelfSort.entries.flatMap { sort ->
+    listOf(SearchShelfKey(sort, television = true), SearchShelfKey(sort, television = false))
+}
+
+internal data class SearchDiscoveryShelvesUi(
+    val rails: Map<SearchShelfKey, List<MetaPreview>> = emptyMap(),
+    val loading: Boolean = false,
+    val failed: Boolean = false,
+    val needsCountry: Boolean = false,
+    val hidResults: Boolean = false,
+    val retry: () -> Unit = {},
+) {
+    fun asStatus() = SearchDiscoveryUi(failed = failed, needsCountry = needsCountry, hidResults = hidResults, load = retry)
+    val isEmpty: Boolean get() = rails.values.all { it.isEmpty() }
+}
+
+internal class SearchDiscoveryShelves {
+    var state by mutableStateOf(SearchDiscoveryShelvesUi(loading = true))
+    var request by mutableStateOf(0)
+    var completedRequest = -1
+}
+
+/**
+ * Loads page 1 of every carousel for a tag in parallel. A rail that fails or has no TMDB query
+ * (e.g. a movie-only genre on TV) comes back empty and is hidden; only all rails failing is an error.
+ * Cached per selection in the session so returning from "View all" doesn't reload.
+ */
+@Composable
+internal fun rememberSearchDiscoveryShelves(
+    selection: SearchDiscovery?,
+    active: Boolean,
+    hideUnplayable: Boolean,
+    hideUnreleased: Boolean,
+    loadRail: suspend (SearchShelfKey, SearchDiscovery, String?, LocalDate) -> TmdbEntityRailPageResult? =
+        { key, chip, country, today -> loadSearchDiscoveryMedium(key.television, 1, chip, country, today, key.sort) },
+    filterResults: suspend (List<MetaPreview>) -> List<MetaPreview> = SearchRepository::filterDiscoveryResults,
+): SearchDiscoveryShelvesUi {
+    val countryOverride by SearchStreamingCountry.override.collectAsStateWithLifecycle()
+    val deviceRegion = SearchPreferencesStorage.deviceRegion()
+    val day = discoveryToday()
+    val session = LocalSearchDiscoverySession.current ?: remember { SearchDiscoverySession() }
+    val key = listOf(selection, countryOverride, deviceRegion, day, hideUnplayable, hideUnreleased)
+    val shelves = remember(session, key) { session.shelvesFor(key) }
+    val request = shelves.request
+    LaunchedEffect(selection, active, countryOverride, deviceRegion, day, hideUnplayable, hideUnreleased, request) {
+        if (selection == null || !active || shelves.completedRequest == request) return@LaunchedEffect
+        shelves.state = shelves.state.copy(loading = true, failed = false)
+        val region = when (val resolved = resolveDiscoveryRegion(selection, countryOverride, deviceRegion)) {
+            DiscoveryRegion.Missing -> {
+                shelves.completedRequest = request
+                shelves.state = SearchDiscoveryShelvesUi(needsCountry = true)
+                return@LaunchedEffect
+            }
+            is DiscoveryRegion.Resolved -> resolved.code
+        }
+        var failures = 0
+        var hid = false
+        val rails = coroutineScope {
+            SEARCH_SHELF_KEYS.map { shelf ->
+                async {
+                    val page = try {
+                        loadRail(shelf, selection, region, day)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        failures++
+                        null
+                    }
+                    val incoming = page?.items.orEmpty()
+                    val kept = filterResults(incoming).distinctBy(MetaPreview::stableKey)
+                    if (kept.size < incoming.size) hid = true
+                    shelf to kept
+                }
+            }.map { it.await() }.toMap()
+        }
+        shelves.completedRequest = request
+        shelves.state = SearchDiscoveryShelvesUi(
+            rails = rails,
+            failed = failures == SEARCH_SHELF_KEYS.size,
+            hidResults = hid,
+        )
+    }
+    if (selection == null) return SearchDiscoveryShelvesUi()
+    return shelves.state.copy(retry = { if (!shelves.state.loading) shelves.request++ })
 }
 
 @Composable
