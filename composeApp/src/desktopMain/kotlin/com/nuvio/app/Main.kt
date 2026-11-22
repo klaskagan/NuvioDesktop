@@ -244,6 +244,7 @@ fun main(args: Array<String>) {
             }
 
             if (smokePlayerUrl == null) {
+                ClickableHandCursor(window)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

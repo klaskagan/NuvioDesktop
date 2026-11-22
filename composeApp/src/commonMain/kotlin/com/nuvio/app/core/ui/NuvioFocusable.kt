@@ -3,8 +3,8 @@ package com.nuvio.app.core.ui
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.nuvio.app.controller.ControllerManager
 import com.nuvio.app.isDesktop
 import kotlin.concurrent.Volatile
 
@@ -30,14 +31,13 @@ fun Modifier.nuvioFocusBorder(
     shape: Shape,
     borderWidth: Dp = 3.dp,
 ): Modifier = composed {
-    val navigationActive by com.nuvio.app.controller.ControllerManager.isNavigationActive
-        .collectAsState()
     var focused by remember { mutableStateOf(false) }
+    val navigating by ControllerManager.isNavigationActive.collectAsState()
     val tokens = MaterialTheme.nuvio
     this
         .onFocusChanged { focused = it.isFocused }
         .then(
-            if (focused && isDesktop && navigationActive) Modifier.border(
+            if (focused && navigating && isDesktop) Modifier.border(
                 width = borderWidth,
                 color = tokens.colors.focusRing,
                 shape = shape,
@@ -202,8 +202,6 @@ fun Modifier.nuvioFirstPosterCandidate(): Modifier = composed {
     val key = remember { Any() }
     val requester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
-    val navigationEnabled by DesktopNavigationPreference.enabled.collectAsState()
-    if (!navigationEnabled) return@composed this
     val screenActive = LocalScreenActive.current
     var focused by remember { mutableStateOf(false) }
 

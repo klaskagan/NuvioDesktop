@@ -26,6 +26,11 @@ Paths below are relative to the NuvioDesktop repository root.
   including keyboard focus, outside-click/Escape dismissal, scrolling, selected
   state, and hidden empty status areas. Inspect the linked stylesheet rather
   than approximating the appearance with Compose or a native system dialog.
+  The macOS controls run in WKWebView, which ignores `scrollIntoView`'s
+  `container` option and scrolls the overlay document itself (opening Episodes
+  pushed the panel and control bar ~330 px up). Scroll lists/chip rows with
+  `scrollIntoContainer(element, container, …)`; check by opening Episodes on a
+  later episode of a long season — the panel must stay full height.
 - **Provider details:** reuse `DesktopDetailBackdrop`, `DetailActionButtons` and
   the desktop `NuvioBackButton` configuration in `MetaDetailsScreen.kt`. Keep
   viewport-filling artwork and the existing circular 48 dp back control; do not
