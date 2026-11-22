@@ -127,6 +127,18 @@ physical TVs merely to validate an unrelated feature.
 Treat these as project defaults, not a restriction on a user-requested redesign.
 Update guidance when actual project conventions change; keep it short and concrete.
 
+## Code search: CodeGraph and jbcontext
+
+Use both indexes; they answer different questions.
+
+- CodeGraph first (`codegraph_explore` MCP tool, or `codegraph explore "<query>"`
+  in the shell) when you know symbol or file names, need callers, call paths or
+  the blast radius of an edit, or are about to edit code. Treat its returned
+  source as already read.
+- `jbcontext search` when you only know the behavior, not the names, or when
+  CodeGraph returns nothing useful (it matches words, not meaning).
+- Use grep only to list every literal occurrence of a string.
+
 <!-- jbcontext-instructions-start -->
 # Tools
 
@@ -134,8 +146,8 @@ Update guidance when actual project conventions change; keep it short and concre
 
 `jbcontext search "<query>"` searches the project's code with a prebuilt index that ranks code blocks by relevance to the query and shows the code of the top results. The query is a short sentence describing the code and/or the names you know, e.g. `jbcontext search "where failed HTTP requests are retried"` or `jbcontext search "RetryPolicy maxAttempts handling"`. Narrow to a directory with `-p <path>`.
 
-- `jbcontext search` is the main way to find code in this project, both by what it does and by the names you know. Make it your first code search in every task and use it for every code lookup after that; use `grep_search` only when you need every literal occurrence of a string.
-- When you review the project codebase, start with `jbcontext search`, using the behavior and the names from the issue, and keep using it for whatever code you need next: definitions, callers and usages, implementations, configuration or registrations. Use `grep_search` only to list every literal occurrence of a string.
+- `jbcontext search` is the main way to find code in this project, both by what it does and by the names you know. Use it alongside CodeGraph as described in "Code search" above; use `grep_search` only when you need every literal occurrence of a string.
+- When you review the project codebase, search by behavior with `jbcontext search` and by names, callers and usages with CodeGraph. Use `grep_search` only to list every literal occurrence of a string.
 - When you prepare tests, use `jbcontext search` to find the existing tests of the affected code and similar tests to copy the setup from.
 - Run `jbcontext search` on its own and read its whole output: don't pipe it into `head`, `grep` or other commands. Open the files it returns with `open`, not with terminal commands.
 
