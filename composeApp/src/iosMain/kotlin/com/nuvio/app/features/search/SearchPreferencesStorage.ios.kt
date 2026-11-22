@@ -1,9 +1,20 @@
 package com.nuvio.app.features.search
 
 import com.nuvio.app.core.storage.ProfileScopedKey
-import platform.Foundation.NSUserDefaults
+import platform.Foundation.*
 
 internal actual object SearchPreferencesStorage {
+    private const val countryKey = "search_streaming_country"
+
+    actual fun deviceRegion(): String? = NSLocale.currentLocale.countryCode
+
+    actual fun loadStreamingCountry(): String? = NSUserDefaults.standardUserDefaults.stringForKey(countryKey)
+
+    actual fun saveStreamingCountry(country: String?) {
+        if (country == null) NSUserDefaults.standardUserDefaults.removeObjectForKey(countryKey)
+        else NSUserDefaults.standardUserDefaults.setObject(country, forKey = countryKey)
+    }
+
     private const val landscapeKey = "search_landscape_posters"
     private const val showUnplayableKey = "search_show_unplayable"
 

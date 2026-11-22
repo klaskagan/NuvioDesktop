@@ -69,6 +69,13 @@ object SearchHistoryRepository {
         persist()
     }
 
+    fun clearHistory() {
+        ensureLoaded()
+        recentSearches = emptyList()
+        persist()
+        publish()
+    }
+
     private fun loadFromDisk() {
         hasLoaded = true
         _enabled.value = SearchHistoryStorage.loadEnabled() ?: true

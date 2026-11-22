@@ -209,6 +209,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
+import nuvio.composeapp.generated.resources.compose_settings_page_content_discovery
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.input.pointer.PointerButton
@@ -438,6 +439,7 @@ internal fun MainAppContent(
     val metaScreenSettingsTitle = stringResource(Res.string.compose_settings_page_meta_screen)
     val continueWatchingSettingsTitle = stringResource(Res.string.compose_settings_page_continue_watching)
     val debridSettingsTitle = stringResource(Res.string.compose_settings_page_debrid)
+    val streamingCountryPageTitle = stringResource(Res.string.compose_settings_page_content_discovery)
     val downloadsTitle = stringResource(Res.string.compose_settings_root_downloads_title)
     val addonsSettingsTitle = stringResource(Res.string.compose_settings_page_addons)
     val pluginsSettingsTitle = stringResource(Res.string.compose_settings_page_plugins)
@@ -454,6 +456,9 @@ internal fun MainAppContent(
         generation
     } else {
         0
+    }
+    val searchDiscoverySession = remember(profileId, appContentGeneration) {
+        com.nuvio.app.features.search.SearchDiscoverySession()
     }
     var initialHomeReady by rememberSaveable(ownsAppRuntime, appContentGeneration) {
         mutableStateOf(!ownsAppRuntime)
@@ -1564,7 +1569,12 @@ internal fun MainAppContent(
                     )
                 }
 
-                PlatformEscapeShortcut(navigateBack)
+                PlatformEscapeShortcut {
+                    val handledBySearch = currentRoute is TabsRoute && selectedTab == AppScreenTab.Search &&
+                        selectedPosterActionTarget == null && featurePosterOverlay.content == null &&
+                        AppKeyboardShortcuts.searchEscape?.invoke() == true
+                    if (!handledBySearch) navigateBack()
+                }
 
                 ControllerNavigationHost(
                     currentRoute = currentRoute,
@@ -1614,6 +1624,7 @@ internal fun MainAppContent(
                         },
                         state = remember(
                             searchListState,
+                            searchDiscoverySession,
                             appContentGeneration,
                             activeProfileIndex,
                             searchFocusRequestCount,
@@ -1626,6 +1637,7 @@ internal fun MainAppContent(
                         ) {
                             AppTabState(
                                 searchListState = searchListState,
+                                searchDiscoverySession = searchDiscoverySession,
                                 homeContentGeneration = appContentGeneration,
                                 profileId = activeProfileIndex,
                                 searchFocusRequestCount = searchFocusRequestCount,
@@ -1690,6 +1702,20 @@ internal fun MainAppContent(
                                             )
                                         ) {
                                             NuvioToastController.show(cloudLibraryPlayFailedText)
+                                        }
+                                    }
+                                },
+                                onStreamingCountrySettings = {
+                                    val page = "ContentDiscovery"
+                                    when {
+                                        desktopHistory != null -> navController.openDesktopSettings(page)
+                                        useNativeNavigation && !isTabletLayout -> {
+                                            activateTab(AppScreenTab.Settings)
+                                            navController.navigate(SettingsPageRoute(page, streamingCountryPageTitle))
+                                        }
+                                        else -> {
+                                            requestedSettingsPageName = page
+                                            activateTab(AppScreenTab.Settings)
                                         }
                                     }
                                 },

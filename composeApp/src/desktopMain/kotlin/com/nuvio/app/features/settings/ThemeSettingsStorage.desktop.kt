@@ -46,7 +46,7 @@ internal actual object ThemeSettingsStorage {
         detailNavigationAutoHideKey,
         detailNavigationHideDelayKey,
     )
-    private val deviceLocale = Locale.getDefault()
+    internal val deviceLocale = Locale.getDefault()
     private val store = DesktopStorage.store("nuvio_theme_settings")
 
     actual fun loadSelectedTheme(): String? =

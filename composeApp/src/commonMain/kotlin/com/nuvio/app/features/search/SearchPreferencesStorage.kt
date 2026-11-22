@@ -1,7 +1,11 @@
 package com.nuvio.app.features.search
 
-/** Search's own preferences, independent from Home and Calendar settings. Profile-scoped. */
+/** Search preferences, with profile-scoped result settings and a device-local watch region. */
 internal expect object SearchPreferencesStorage {
+    fun deviceRegion(): String?
+    fun loadStreamingCountry(): String?
+    fun saveStreamingCountry(country: String?)
+
     fun loadLandscapeEnabled(): Boolean
     fun saveLandscapeEnabled(enabled: Boolean)
 

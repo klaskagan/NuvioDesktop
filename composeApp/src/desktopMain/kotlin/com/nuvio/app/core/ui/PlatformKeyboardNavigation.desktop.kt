@@ -1,6 +1,12 @@
 package com.nuvio.app.core.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.core.storage.DesktopStorage
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusDirection
@@ -140,7 +146,17 @@ private fun applyNavigationCursor(hidden: Boolean) {
 actual fun PlatformKeyboardNavigationHost() {
     val focusManager = LocalFocusManager.current
 
-    DesktopKeyboardShortcutHost()
+    val enabled by DesktopNavigationPreference.enabled.collectAsStateWithLifecycle()
+    val navigationEnabled by rememberUpdatedState(enabled)
+    DesktopKeyboardShortcutHost(enabled)
+
+    if (enabled) ControllerInputHost(focusManager)
+
+    InstallNavigationKeyDispatcher(focusManager) { navigationEnabled }
+}
+
+@Composable
+private fun ControllerInputHost(focusManager: FocusManager) {
 
     // Controller polling + navigation feedback sounds. DesktopControllerInput normalises XInput
     // (Windows) and SDL2 (Linux/macOS) into the same spatial-engine events.
@@ -150,6 +166,8 @@ actual fun PlatformKeyboardNavigationHost() {
         onDispose {
             DesktopControllerInput.stop()
             DesktopControllerSound.uninstall()
+            ControllerManager.forceDeactivateController()
+            applyNavigationCursor(false)
         }
     }
 
@@ -161,9 +179,9 @@ actual fun PlatformKeyboardNavigationHost() {
                 when (event.id) {
                     MouseEvent.MOUSE_MOVED,
                     MouseEvent.MOUSE_DRAGGED,
-                    MouseEvent.MOUSE_PRESSED,
                     MouseEvent.MOUSE_WHEEL,
                     -> ControllerManager.notifyMouseOrKeyboardInput()
+                    MouseEvent.MOUSE_PRESSED -> ControllerManager.forceDeactivateController()
                 }
             }
         }
@@ -211,7 +229,15 @@ actual fun PlatformKeyboardNavigationHost() {
         }
     }
 
-    DisposableEffect(Unit) {
+}
+
+@Composable
+private fun InstallNavigationKeyDispatcher(
+    focusManager: FocusManager,
+    enabled: () -> Boolean,
+) {
+    val isEnabled by rememberUpdatedState(enabled)
+    DisposableEffect(focusManager) {
         val dispatcher = java.awt.KeyEventDispatcher { event: KeyEvent ->
             if (event.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
 
@@ -239,7 +265,7 @@ actual fun PlatformKeyboardNavigationHost() {
             // Enter activates the spatially focused item. Fall through to Compose when the engine
             // has nothing registered, so regular buttons keep their native Enter handling.
             if (event.keyCode == KeyEvent.VK_ENTER) {
-                return@KeyEventDispatcher ControllerManager.dispatchKeyboardSelect()
+                return@KeyEventDispatcher isEnabled() && ControllerManager.dispatchKeyboardSelect()
             }
 
             val direction = when (event.keyCode) {
@@ -258,11 +284,15 @@ actual fun PlatformKeyboardNavigationHost() {
                     ControllerDirection.Down -> PlayerCommand.VolumeDown
                 }
                 if (PlayerControllerBridge.dispatch(command)) {
-                    ControllerManager.notifyNavigationInput()
-                    ControllerSoundPlayer.playNavigate()
+                    if (isEnabled()) {
+                        ControllerManager.notifyNavigationInput()
+                        ControllerSoundPlayer.playNavigate()
+                    }
                     return@KeyEventDispatcher true
                 }
             }
+
+            if (!isEnabled()) return@KeyEventDispatcher false
 
             // The spatial engine drives instrumented screens (home shelves, catalog grids, sidebar).
             if (ControllerManager.dispatchKeyboardNavigation(direction)) {
@@ -283,5 +313,18 @@ actual fun PlatformKeyboardNavigationHost() {
             java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
                 .removeKeyEventDispatcher(dispatcher)
         }
+    }
+}
+
+
+internal actual object DesktopNavigationPreference {
+    private val store = DesktopStorage.store("nuvio_desktop_navigation")
+    private const val key = "enabled"
+    private val state = MutableStateFlow(store.getString(key) == "true")
+    actual val enabled: kotlinx.coroutines.flow.StateFlow<Boolean> = state.asStateFlow()
+
+    actual fun setEnabled(enabled: Boolean) {
+        store.putString(key, enabled.toString())
+        state.value = enabled
     }
 }

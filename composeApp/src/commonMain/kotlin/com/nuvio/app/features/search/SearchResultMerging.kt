@@ -169,11 +169,9 @@ private val rankedSearchOrder: Comparator<RankedSearchResult> =
     compareBy<RankedSearchResult> { it.band }
         .thenBy { if (it.isCreditBand) it.creditRank else 0 }
         .thenBy { if (it.isCreditBand) 0 else it.tier.ordinal }
-        // Addon results first by each provider's own relevance order, because many addons omit
-        // popularity (e.g. series search results).
-        .thenBy { if (it.isCreditBand) 0 else it.providerRank }
         .thenByDescending { it.item.popularity ?: -1.0 }
         .thenByDescending { it.item.voteCount ?: -1 }
+        .thenBy { if (it.isCreditBand) 0 else it.providerRank }
         .thenBy { it.order }
 
 private val franchiseLedSearchOrder: Comparator<RankedSearchResult> =
@@ -192,8 +190,8 @@ internal fun isSearchFranchiseMatch(collectionName: String, query: String): Bool
 /**
  * Merges every provider's search results into one list: duplicates (same IMDb/TMDB id, or same
  * normalized title + year + type) collapse into the entry with the richest metadata, titles that
- * share no query word are dropped, and the rest is ordered by match tier, then each provider's own
- * rank, popularity, vote count and provider order.
+ * share no query word are dropped, and the rest is ordered by match tier, then
+ * popularity, vote count and provider rank.
  *
  * Titles matching only some query words are kept only when no title matches them all (typos).
  * [requireAllQueryWords] drops them even then. Search sets it when the
@@ -360,6 +358,20 @@ internal fun filterSearchFilmography(detail: PersonDetail, isDirector: Boolean):
 internal fun appendNewSearchResults(shown: List<MetaPreview>, final: List<MetaPreview>): List<MetaPreview> {
     val shownKeys = shown.flatMapTo(mutableSetOf()) { searchDedupKeys(it) }
     return shown + final.filter { item -> searchDedupKeys(item).none(shownKeys::contains) }
+}
+
+internal fun publishLateSearchResults(
+    query: String,
+    shown: List<MetaPreview>,
+    ranked: List<MetaPreview>,
+): List<MetaPreview> {
+    val combined = appendNewSearchResults(shown, ranked)
+    fun isExact(item: MetaPreview) = searchRelevanceTier(item.name, query) == SearchRelevanceTier.Exact
+    val leader = ranked.firstOrNull()?.takeIf(::isExact) ?: return combined
+    val leaderKeys = searchDedupKeys(leader)
+    val previousIndex = combined.indexOfFirst { searchDedupKeys(it).any(leaderKeys::contains) }
+    if (previousIndex <= 0) return combined
+    return listOf(combined[previousIndex]) + combined.filterIndexed { index, _ -> index != previousIndex }
 }
 
 /** Final state of a search once every provider finished (or partial state while loading). */

@@ -9,3 +9,8 @@ import androidx.compose.runtime.Composable
  */
 @Composable
 expect fun PlatformKeyboardNavigationHost()
+
+internal expect object DesktopNavigationPreference {
+    val enabled: kotlinx.coroutines.flow.StateFlow<Boolean>
+    fun setEnabled(enabled: Boolean)
+}

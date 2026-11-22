@@ -301,3 +301,18 @@ transformed bounds give the return target. Cards that scale outside
 `rememberPosterLiftSource`. `hoverScaledCardReturnsWithoutShift` and
 `cardLeftDuringMenuReturnsUnscaled` cover both pointer paths.
 
+## Desktop Search keyboard shortcuts
+
+The desktop AWT Escape dispatcher runs before Compose key handlers. Route Escape
+to the focused Search field before global Back, and scope that priority to the
+active Search tab. A nonempty field clears in place, while the next Escape
+releases focus. Preserve route Back when a destination covers Search.
+`SearchDiscoveryUiTest` exercises the registered shortcut against the real
+Search tab, including both presses and the recent-search confirmation.
+
+Keep a browse session at the same lifetime as its scroll state when a Details
+destination can dispose the tab content. Search Discovery previously restored the
+query and scroll state but lost the chip and loaded pages. Reuse the shared
+near-end page loader (`LoadMoreOnScrollEffect`) with the retained cursor and a bounded run of pages that
+add no cards. `SearchDiscoveryUiTest` unmounts and remounts the browse content
+and checks its selected filter and results.

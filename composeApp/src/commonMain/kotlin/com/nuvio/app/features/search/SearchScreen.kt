@@ -1,6 +1,7 @@
 package com.nuvio.app.features.search
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +40,24 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.runtime.rememberUpdatedState
+import com.nuvio.app.AppKeyboardShortcuts
+import com.nuvio.app.core.ui.LocalScreenActive
+import com.nuvio.app.core.ui.DialogSurface
+import com.nuvio.app.core.ui.DialogButtons
+import com.nuvio.app.core.ui.DialogButton
+import com.nuvio.app.core.ui.DialogButtonStyle
+import nuvio.composeapp.generated.resources.search_clear_history
+import nuvio.composeapp.generated.resources.search_clear_history_message
+import nuvio.composeapp.generated.resources.search_cancel
+import nuvio.composeapp.generated.resources.search_clear_all
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextDirection
@@ -103,13 +122,16 @@ fun SearchScreen(
     onPersonClick: ((SearchPerson) -> Unit)? = null,
     searchFocusRequestCount: Int = 0,
     scrollToTopRequests: Flow<Unit> = emptyFlow(),
+    onStreamingCountrySettings: () -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
     var isSearchFocused by remember { mutableStateOf(false) }
+    var isRecentSearchFocused by remember { mutableStateOf(false) }
 
     ScreenActivityEffect(listState) { screenActive ->
         if (!screenActive) {
             isSearchFocused = false
+            isRecentSearchFocused = false
             focusRequester.freeFocus()
             listState.stopScroll()
         }
@@ -139,6 +161,67 @@ fun SearchScreen(
     val fullyWatchedSeriesKeys by WatchedRepository.fullyWatchedSeriesKeys.collectAsStateWithLifecycle()
     val networkStatusUiState by NetworkStatusRepository.uiState.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
+    val discoverySession = LocalSearchDiscoverySession.current ?: remember { SearchDiscoverySession() }
+    val discovery = discoverySession.selection
+    fun updateQuery(value: String) {
+        if (query != value) discoverySession.select(null)
+        query = value
+    }
+    var showClearHistory by remember { mutableStateOf(false) }
+    val dismissClearHistory: () -> Unit = {
+        showClearHistory = false
+        focusRequester.requestFocus()
+    }
+    val screenActive = LocalScreenActive.current
+    val focusManager = LocalFocusManager.current
+    val escapeHandler by rememberUpdatedState<() -> Boolean>({
+        when {
+            showClearHistory -> {
+                dismissClearHistory()
+                true
+            }
+            !isSearchFocused -> false
+            query.isNotEmpty() -> {
+                updateQuery("")
+                true
+            }
+            else -> {
+                focusRequester.freeFocus()
+                focusManager.clearFocus()
+                true
+            }
+        }
+    })
+    if (isDesktop && screenActive) {
+        DisposableEffect(Unit) {
+            val handler: () -> Boolean = { escapeHandler() }
+            AppKeyboardShortcuts.searchEscape = handler
+            onDispose {
+                if (AppKeyboardShortcuts.searchEscape === handler) AppKeyboardShortcuts.searchEscape = null
+            }
+        }
+    }
+    if (showClearHistory && screenActive) {
+        DialogSurface(
+            onDismissRequest = dismissClearHistory,
+            title = stringResource(Res.string.search_clear_history),
+            message = stringResource(Res.string.search_clear_history_message),
+        ) {
+            DialogButtons {
+                DialogButton(stringResource(Res.string.search_cancel), dismissClearHistory)
+                DialogButton(
+                    text = stringResource(Res.string.search_clear_all),
+                    style = DialogButtonStyle.Destructive,
+                    onClick = {
+                        SearchHistoryRepository.clearHistory()
+                        dismissClearHistory()
+                    },
+                )
+            }
+        }
+    }
+
+
     var lastRequestedQuery by rememberSaveable { mutableStateOf<String?>(null) }
     var searchLandscape by remember { mutableStateOf(SearchPreferencesStorage.loadLandscapeEnabled()) }
     var observedOfflineState by remember { mutableStateOf(false) }
@@ -179,6 +262,13 @@ fun SearchScreen(
         SearchRepository.hideUnplayable
     }.collectAsStateWithLifecycle()
 
+    val discoveryUi = rememberSearchDiscovery(
+        selection = discovery,
+        active = screenActive,
+        hideUnplayable = hideUnplayable,
+        hideUnreleased = homeCatalogSettingsUiState.hideUnreleasedContent,
+    )
+
     ScreenActivityEffect(query, addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent, hideUnplayable) { screenActive ->
         if (!screenActive) return@ScreenActivityEffect
         val normalizedQuery = query.trim()
@@ -196,11 +286,11 @@ fun SearchScreen(
     }
 
 
-    ScreenActivityEffect(query, lastRequestedQuery, uiState.isLoading, uiState.hasContent) { screenActive ->
+    ScreenActivityEffect(query, discovery, lastRequestedQuery, uiState.isLoading, uiState.hasContent) { screenActive ->
         if (!screenActive) return@ScreenActivityEffect
         val normalizedQuery = query.trim()
         if (normalizedQuery.isBlank()) return@ScreenActivityEffect
-        if (lastRequestedQuery != normalizedQuery) return@ScreenActivityEffect
+        if (discovery != null || lastRequestedQuery != normalizedQuery) return@ScreenActivityEffect
         if (uiState.isLoading || !uiState.hasContent) return@ScreenActivityEffect
         SearchHistoryRepository.recordSearch(normalizedQuery)
     }
@@ -272,9 +362,14 @@ fun SearchScreen(
         }
 
         CompositionLocalProvider(LocalPosterCardStyleOverride provides searchStyle.takeIf { query.isNotBlank() }) {
+        val visibleSearchItems = if (discovery == null) uiState.results else discoveryUi.items
+        PreserveSearchResultScrollAnchor(listState, query, searchColumns, visibleSearchItems)
         com.nuvio.app.features.home.components.LoadMoreOnScrollEffect(
-            state = listState, canLoadMore = discoverUiState.canLoadMore, isLoading = discoverUiState.isLoading,
-            enabled = query.isBlank(), onLoadMore = SearchRepository::loadMoreDiscover,
+            state = listState,
+            canLoadMore = if (discovery != null) discoveryUi.hasMore && !discoveryUi.failed else discoverUiState.canLoadMore,
+            isLoading = if (discovery != null) discoveryUi.loading else discoverUiState.isLoading,
+            enabled = query.isBlank() || discovery != null,
+            onLoadMore = if (discovery != null) discoveryUi.load else SearchRepository::loadMoreDiscover,
         )
         NuvioScreen(
             horizontalPadding = 0.dp,
@@ -305,23 +400,17 @@ fun SearchScreen(
                     ) {
                         NuvioInputField(
                             value = query,
-                            onValueChange = {
-                                focusRequester.captureFocus()
-                                query = it
-                            },
+                            onValueChange = ::updateQuery,
                             placeholder = stringResource(Res.string.compose_search_placeholder),
                             textStyle = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
                             shape = RoundedCornerShape(NuvioTokens.Radius.xl),
                             modifier = Modifier
                                 .weight(1f)
                                 .focusRequester(focusRequester)
-                                .onFocusChanged {
-                                    isSearchFocused = it.isFocused
-                                    if (query.isNotBlank()) focusRequester.captureFocus()
-                                },
+                                .onFocusChanged { isSearchFocused = it.isFocused },
                             trailingContent = if (query.isNotBlank()) {
                                 {
-                                    IconButton(onClick = { query = "" }) {
+                                    IconButton(onClick = { updateQuery("") }) {
                                         Icon(
                                             imageVector = Icons.Rounded.Close,
                                             contentDescription = stringResource(Res.string.compose_search_clear),
@@ -343,19 +432,44 @@ fun SearchScreen(
                             )
                         }
                     }
+                    val suggestions = searchDiscoverySuggestions(query)
+                    if (suggestions.isNotEmpty()) {
+                        SearchDiscoveryChips(
+                            suggestions = suggestions,
+                            selected = discovery,
+                            country = discoveryUi.country,
+                            onSelect = {
+                                discoverySession.select(it)
+                                listState.requestScrollToItem(0)
+                            },
+                            onStreamingCountrySettings = onStreamingCountrySettings,
+                        )
+                    }
                     androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(14.dp))
                 }
             }
         }
 
-        if (query.isBlank()) {
-            if (isSearchFocused && recentSearches.isNotEmpty()) {
-                focusRequester.captureFocus()
+        if (discovery != null) {
+            searchDiscoveryContent(
+                discoveryUi, searchColumns, searchLandscape, watchedUiState.watchedKeys,
+                fullyWatchedSeriesKeys, onPosterClick, onPosterLongClick,
+            )
+        } else if (query.isBlank()) {
+            if ((isSearchFocused || isRecentSearchFocused || showClearHistory) && recentSearches.isNotEmpty()) {
                 item(key = "recent_searches") {
                     SearchRecentSection(
                         recentSearches = recentSearches,
-                        onSearchPress = { recentQuery -> query = recentQuery },
-                        onRemoveSearch = SearchHistoryRepository::removeSearch,
+                        onSearchPress = { recentQuery ->
+                            updateQuery(recentQuery)
+                            focusRequester.requestFocus()
+                        },
+                        onRemoveSearch = { recentQuery ->
+                            SearchHistoryRepository.removeSearch(recentQuery)
+                            focusRequester.requestFocus()
+                        },
+                        onClearAll = { showClearHistory = true },
+                        modifier = Modifier.onFocusChanged { isRecentSearchFocused = it.hasFocus }.focusGroup(),
                     )
                 }
             }
@@ -442,6 +556,35 @@ fun SearchScreen(
     }
 }
 
+private class SearchScrollAnchor(var results: List<MetaPreview> = emptyList())
+
+@Composable
+private fun PreserveSearchResultScrollAnchor(
+    listState: LazyListState,
+    query: String,
+    columns: Int,
+    results: List<MetaPreview>,
+) {
+    val previous = remember(query, columns) { SearchScrollAnchor() }
+    SideEffect {
+        if (previous.results.isNotEmpty() && results.isNotEmpty() && previous.results !== results) {
+            val layout = listState.layoutInfo.visibleItemsInfo
+            val first = layout.firstOrNull { it.index == listState.firstVisibleItemIndex }
+            val key = first?.key as? String
+            val row = key?.takeIf { it.startsWith("search-row:") }?.substringAfter(':')?.toIntOrNull()
+            val item = row?.let { previous.results.getOrNull(it * columns) }
+            if (first != null && row != null && item != null) {
+                val newIndex = results.indexOfFirst { it.type == item.type && it.id == item.id }
+                if (newIndex >= 0 && newIndex / columns != row) {
+                    val target = first.index + newIndex / columns - row
+                    listState.requestScrollToItem(target.coerceAtLeast(0), listState.firstVisibleItemScrollOffset)
+                }
+            }
+        }
+        previous.results = results
+    }
+}
+
 @Composable
 private fun SearchEmptyStateCard(
     reason: SearchEmptyStateReason?,
@@ -500,11 +643,13 @@ private fun SearchEmptyStateCard(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchRecentSection(
     recentSearches: List<String>,
     onSearchPress: (String) -> Unit,
     onRemoveSearch: (String) -> Unit,
+    onClearAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -513,11 +658,27 @@ private fun SearchRecentSection(
             .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(
-            text = stringResource(Res.string.compose_search_recent_searches),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onBackground,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(Res.string.compose_search_recent_searches),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            val clearLabel = stringResource(Res.string.search_clear_history)
+            TooltipBox(
+                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                tooltip = { PlainTooltip { Text(clearLabel) } },
+                state = rememberTooltipState(),
+            ) {
+                IconButton(onClick = onClearAll) {
+                    Icon(Icons.Rounded.Close, clearLabel, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         Spacer(modifier = Modifier.height(4.dp))
         recentSearches.forEach { recentQuery ->
             SearchRecentRow(

@@ -53,13 +53,23 @@ class SearchResultMergingTest {
         val exact = meta(id = "tt2", name = "Dune", popularity = 10.0)
         val lessPopularPartial = meta(id = "tt3", name = "Dune: Prophecy", popularity = 100.0)
 
-        // Both partial matches are first in their provider, so popularity decides between them.
+        // Popularity overrides positions within one provider when title relevance ties.
         val merged = mergeSearchResults(
-            listOf(section("a", lessPopularPartial, exact), section("b", popularPartial)),
+            listOf(section("a", lessPopularPartial, exact, popularPartial)),
             "dune",
         )
 
         assertEquals(listOf("tt2", "tt1", "tt3"), merged.map { it.id })
+    }
+
+    @Test
+    fun `popular competing exact title leads even when provider ranks it second or returns it late`() {
+        val obscure = meta(id = "tt1", name = "Stranger Things", popularity = 0.3)
+        val popular = meta(id = "tt2", name = "Stranger Things", type = "series", popularity = 500.0)
+        val weaker = meta(id = "tt3", name = "Stranger Things: Behind the Scenes", popularity = 1000.0)
+        val ranked = mergeSearchResults(listOf(section("a", obscure, popular, weaker)), "stranger things")
+        assertEquals(listOf(popular, obscure, weaker), ranked)
+        assertEquals(ranked, publishLateSearchResults("stranger things", listOf(obscure, weaker), ranked))
     }
 
     @Test

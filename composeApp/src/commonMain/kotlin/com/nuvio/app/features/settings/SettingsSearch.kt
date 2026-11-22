@@ -269,6 +269,13 @@ internal fun settingsSearchEntries(
         pageLabel = contentDiscoveryPage,
         section = stringResource(Res.string.settings_content_discovery_section_search),
     )
+    addRow(
+        page = SettingsPage.ContentDiscovery,
+        key = "streaming-availability-country",
+        title = stringResource(Res.string.search_streaming_country),
+        pageLabel = contentDiscoveryPage,
+        section = stringResource(Res.string.settings_content_discovery_section_search),
+    )
     addPage(
         page = SettingsPage.Playback,
         key = "playback",
@@ -400,6 +407,16 @@ internal fun settingsSearchEntries(
         pageLabel = appearancePage,
         section = stringResource(Res.string.settings_appearance_section_display),
     )
+    if (com.nuvio.app.isDesktop) {
+        addRow(
+            page = SettingsPage.Appearance,
+            key = "controller-navigation",
+            title = stringResource(Res.string.settings_controller_navigation),
+            description = stringResource(Res.string.settings_controller_navigation_description),
+            pageLabel = appearancePage,
+            section = stringResource(Res.string.settings_appearance_section_display),
+        )
+    }
     if (liquidGlassNativeTabBarSupported) {
         addRow(
             page = SettingsPage.Layout,

@@ -46,6 +46,11 @@ import nuvio.composeapp.generated.resources.settings_appearance_app_language_she
 import nuvio.composeapp.generated.resources.settings_appearance_section_display
 import nuvio.composeapp.generated.resources.settings_appearance_section_theme
 import org.jetbrains.compose.resources.StringResource
+import com.nuvio.app.core.ui.DesktopNavigationPreference
+import com.nuvio.app.isDesktop
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import nuvio.composeapp.generated.resources.settings_controller_navigation
+import nuvio.composeapp.generated.resources.settings_controller_navigation_description
 import org.jetbrains.compose.resources.stringResource
 
 internal fun LazyListScope.appearanceSettingsContent(
@@ -91,6 +96,17 @@ internal fun LazyListScope.appearanceSettingsContent(
                     isTablet = isTablet,
                     onCheckedChange = onAmoledToggle,
                 )
+                if (isDesktop) {
+                    val enabled by DesktopNavigationPreference.enabled.collectAsStateWithLifecycle()
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_controller_navigation),
+                        description = stringResource(Res.string.settings_controller_navigation_description),
+                        checked = enabled,
+                        isTablet = isTablet,
+                        onCheckedChange = DesktopNavigationPreference::setEnabled,
+                    )
+                }
                 if (AppIconPlatform.isSupported) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsNavigationRow(

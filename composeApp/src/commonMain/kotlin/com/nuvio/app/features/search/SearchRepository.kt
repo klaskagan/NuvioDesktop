@@ -300,9 +300,41 @@ object SearchRepository {
 
             suspend fun resolve(isFinished: Boolean): SearchUiState {
                 val completedResults = results.filterNotNull()
+                val sections = results.orderedSections()
+                val exact = sections.flatMap { it.items }
+                    .filter { searchRelevanceTier(it.name, normalizedQuery) == SearchRelevanceTier.Exact }
+                    .distinctBy { it.type to it.id }
+                val metadata = if (exact.size > 1 && exact.any { it.popularity == null }) {
+                    kotlinx.coroutines.withTimeoutOrNull(750) {
+                        exact.map { it.type == "series" }.distinct().flatMap { television ->
+                            try {
+                                TmdbMetadataService.searchDiscoveryPage(television, 1, emptyMap(), normalizedQuery).items
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+                        }
+                    }.orEmpty()
+                } else emptyList()
                 return resolveSearchUiState(
                     query = normalizedQuery,
-                    sections = results.orderedSections(),
+                    sections = sections.map { section ->
+                        section.copy(items = section.items.map { item ->
+                            if (item.popularity != null ||
+                                searchRelevanceTier(item.name, normalizedQuery) != SearchRelevanceTier.Exact
+                            ) item else {
+                                val keys = searchDedupKeys(item)
+                                val matches = metadata.filter { candidate ->
+                                    searchDedupKeys(candidate).any(keys::contains)
+                                }
+                                val match = matches.singleOrNull { candidate ->
+                                    item.id == candidate.id || candidate.id in item.alternateIds
+                                } ?: matches.singleOrNull()
+                                item.copy(popularity = match?.popularity, voteCount = item.voteCount ?: match?.voteCount)
+                            }
+                        })
+                    },
                     people = people,
                     filmography = filmography,
                     franchise = franchise,
@@ -352,7 +384,8 @@ object SearchRepository {
             timings.mark("merged")
             val filtered = if (hideUnplayable) finished.withPlayableResultsOnly(canPlay) else finished
             val published = shownResults?.let { shown ->
-                filtered.copy(results = appendNewSearchResults(shown, filtered.results), emptyStateReason = null)
+                filtered.copy(results = if (franchise.isEmpty()) publishLateSearchResults(normalizedQuery, shown, filtered.results)
+                    else appendNewSearchResults(shown, filtered.results), emptyStateReason = null)
             } ?: filtered
             timings.mark("playability")
             publish(published)
@@ -375,6 +408,15 @@ object SearchRepository {
             ),
         )
         return page.withUnreleasedFilter().items.filter { !it.poster.isNullOrBlank() }
+    }
+
+    internal suspend fun filterDiscoveryResults(items: List<MetaPreview>): List<MetaPreview> {
+        val visible = com.nuvio.app.features.catalog.CatalogPage(items, items.size, null).withUnreleasedFilter().items
+        if (!_hideUnplayable.value) return visible
+        val availability = PlaybackAvailability.current()
+        return SearchUiState(results = visible).withPlayableResultsOnly { type, id ->
+            availability.canPlay(type = type, videoId = id, parentMetaId = id)
+        }.results
     }
 
     private suspend fun SearchUiState.withPlayableResultsOnly(canPlay: (String, String) -> Boolean): SearchUiState {

@@ -576,11 +576,41 @@ object TmdbMetadataService {
         return header
     }
 
+    internal suspend fun watchRegions(): Map<String, String> =
+        (fetch<TmdbWatchRegions>(endpoint = "watch/providers/regions", query = mapOf(
+            "language" to normalizeTmdbLanguage(TmdbSettingsRepository.snapshot().language),
+        )) ?: error("TMDB watch regions unavailable")).results.associate {
+            it.code to (it.nativeName ?: it.englishName ?: it.code)
+        }
+
+    internal suspend fun searchDiscoveryPage(
+        television: Boolean,
+        page: Int,
+        filters: Map<String, String>,
+        titleQuery: String? = null,
+    ): TmdbEntityRailPageResult {
+        val language = normalizeTmdbLanguage(TmdbSettingsRepository.snapshot().language)
+        val type = if (television) TmdbEntityMediaType.TV else TmdbEntityMediaType.MOVIE
+        val medium = if (television) "tv" else "movie"
+        val action = if (titleQuery == null) "discover" else "search"
+        val order = if (titleQuery == null) mapOf("sort_by" to "popularity.desc") else emptyMap()
+        val parameters = order + filters + mapOf("language" to language, "page" to page.toString(), "include_adult" to "false")
+        val response = fetch<TmdbDiscoverResponse>(
+            endpoint = "$action/$medium",
+            query = if (titleQuery == null) parameters else parameters + ("query" to titleQuery),
+        ) ?: error("TMDB search request failed")
+        val items = response.results.mapNotNull { result ->
+            mapEntityDiscoverResult(result, type, language, emptyMap(), requireArtwork = false)
+        }
+        return TmdbEntityRailPageResult(items, page < minOf(response.totalPages ?: page, 500))
+    }
+
     private fun mapEntityDiscoverResult(
         result: TmdbDiscoverResult,
         mediaType: TmdbEntityMediaType,
         preferredLanguage: String,
         englishTitlesById: Map<Int, String>,
+        requireArtwork: Boolean = true,
     ): MetaPreview? {
         val title = resolvePersonName(
             localizedName = result.title ?: result.name,
@@ -591,7 +621,7 @@ object TmdbMetadataService {
 
         val poster = buildImageUrl(result.posterPath, "w500")
             ?: buildImageUrl(result.backdropPath, "w780")
-            ?: return null
+        if (requireArtwork && poster == null) return null
         val releaseInfo = when (mediaType) {
             TmdbEntityMediaType.MOVIE -> result.releaseDate?.take(4)
             TmdbEntityMediaType.TV -> result.firstAirDate?.take(4)
@@ -605,6 +635,9 @@ object TmdbMetadataService {
             logo = null,
             description = result.overview?.takeIf { it.isNotBlank() },
             releaseInfo = releaseInfo,
+            rawReleaseDate = result.releaseDate ?: result.firstAirDate,
+            popularity = result.popularity,
+            voteCount = result.voteCount,
         )
     }
 
@@ -2150,6 +2183,16 @@ private data class TmdbNetworkDetailsResponse(
 )
 
 @Serializable
+private data class TmdbWatchRegions(val results: List<TmdbWatchRegion> = emptyList())
+
+@Serializable
+private data class TmdbWatchRegion(
+    @SerialName("iso_3166_1") val code: String,
+    @SerialName("english_name") val englishName: String? = null,
+    @SerialName("native_name") val nativeName: String? = null,
+)
+
+@Serializable
 private data class TmdbDiscoverResponse(
     val page: Int? = null,
     val results: List<TmdbDiscoverResult> = emptyList(),
@@ -2160,6 +2203,7 @@ private data class TmdbDiscoverResponse(
 @Serializable
 internal data class TmdbDiscoverResult(
     val id: Int,
+    val popularity: Double? = null,
     val title: String? = null,
     val name: String? = null,
     @SerialName("original_title") val originalTitle: String? = null,
