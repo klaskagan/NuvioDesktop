@@ -5,6 +5,8 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
@@ -1842,13 +1844,15 @@ internal fun MainAppContent(
                     }
                 }
                 entry<PersonDetailRoute>(
-                    // The entry only crossfades; PersonDetailScreen slides its own content in from the
-                    // right, so the app sidebar drawn by both entries doesn't slide with it.
+                    // The entry only crossfades (on Home hero's pager spring); PersonDetailScreen drifts its
+                    // backdrop and content in with the hero's parallax, so the app sidebar stays still.
                     metadata = if (isDesktop) {
                         NavDisplay.transitionSpec {
-                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
+                            fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
+                                fadeOut(spring(stiffness = Spring.StiffnessMediumLow))
                         } + NavDisplay.popTransitionSpec {
-                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
+                            fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
+                                fadeOut(spring(stiffness = Spring.StiffnessMediumLow))
                         }
                     } else {
                         emptyMap()

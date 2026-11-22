@@ -19,8 +19,8 @@ skill is not in the session catalog, read that file directly.
   typography, icons, selection, focus and dismissal. Do not approximate a shared
   control with generic buttons or text glyphs. Fix ownership/context if a shared
   control is hidden; do not invent a replacement. Verify against the named reference.
-- Desktop redesign rule: every transition is smooth (navigation slides in, states
-  crossfade, lists animate, nothing pops). See "Smooth transitions" in
+- Desktop redesign rule: every transition is smooth, modelled on Home's hero carousel
+  (layered parallax fades for navigation, crossfading states, animated lists, nothing pops). See "Smooth transitions" in
   `.agents/ui-consistency.md`. A redesign replaces the old layout; update tests that
   assert it instead of keeping it.
 - For layout, loading, scrolling, gestures, and date presentation, read

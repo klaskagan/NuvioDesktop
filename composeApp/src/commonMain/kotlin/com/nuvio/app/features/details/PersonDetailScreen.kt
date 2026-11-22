@@ -5,6 +5,8 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.widthIn
@@ -199,19 +201,15 @@ fun PersonDetailScreen(
             .fillMaxSize()
             .then(if (backdrop == null) Modifier.background(MaterialTheme.colorScheme.background) else Modifier),
     ) {
-        if (backdrop != null) ShellBackdrop(backdrop)
-        // Opening a person slides the page in from the right (and back out on return) while the
-        // navigation itself only crossfades, so the app sidebar in both entries stays put.
-        val slide = if (isDesktop && animatedVisibilityScope != null) {
-            with(animatedVisibilityScope) {
-                Modifier.animateEnterExit(
-                    enter = slideInHorizontally(tween(PERSON_SLIDE_MS, easing = FastOutSlowInEasing)) { it / 3 } +
-                        fadeIn(tween(PERSON_SLIDE_MS)),
-                    exit = slideOutHorizontally(tween(PERSON_EXIT_MS, easing = FastOutSlowInEasing)) { it / 3 } +
-                        fadeOut(tween(PERSON_EXIT_MS)),
-                )
+        // Entering mirrors Home's hero carousel: each layer fades in as it drifts in from the right,
+        // the backdrop barely (5.5% of the width) and the content more (18%), on the pager's spring.
+        // The nav entry only crossfades, so the app sidebar both entries draw stays still.
+        if (backdrop != null) {
+            Box(Modifier.fillMaxSize().then(personParallaxEnter(animatedVisibilityScope, PERSON_BACKDROP_PARALLAX))) {
+                ShellBackdrop(backdrop)
             }
-        } else Modifier
+        }
+        val slide = personParallaxEnter(animatedVisibilityScope, PERSON_CONTENT_PARALLAX)
         Box(Modifier.fillMaxSize().then(slide)) {
         RedesignTypography(enabled = isDesktop) {
         AnimatedContent(
@@ -1054,7 +1052,7 @@ private fun PersonDetailSkeleton(
                 DesktopPersonDetailSkeleton(
                     personName = personName,
                     avatarRequest = avatarRequest ?: profilePhoto,
-                    avatarSharedElementModifier = avatarSharedElementModifier,
+                    avatarSharedElementModifier = Modifier,
                     skeletonPosterWidth = skeletonPosterWidth,
                     skeletonPosterHeight = skeletonPosterHeight,
                     skeletonPosterCornerRadius = posterCardStyle.cornerRadiusDp.dp,
@@ -1531,23 +1529,30 @@ private fun PersonRedesignIdentity(person: PersonDetail, creditSummary: String, 
 }
 
 
-internal const val PERSON_SLIDE_MS = 340
-private const val PERSON_EXIT_MS = 240
+/** Same layer drift as Home's hero (HERO_BACKGROUND_PARALLAX / HERO_CONTENT_PARALLAX). */
+private const val PERSON_BACKDROP_PARALLAX = 0.055f
+private const val PERSON_CONTENT_PARALLAX = 0.18f
 
+/** Home's hero pager spring: no bounce, medium-low stiffness. */
+private fun <T> personTransitionSpring() =
+    spring<T>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+
+/**
+ * A layer that fades in while drifting [parallax] × width in from the right as the person page
+ * enters, and drifts back out to the right on return: the hero's alpha-follows-offset parallax.
+ */
 @Composable
-@OptIn(ExperimentalSharedTransitionApi::class)
-private fun personAvatarModifier(
-    avatarTransitionKey: String,
-    sharedTransitionScope: SharedTransitionScope?,
-    animatedVisibilityScope: AnimatedVisibilityScope?,
-): Modifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-    with(sharedTransitionScope) {
-        Modifier.sharedElement(
-            sharedContentState = rememberSharedContentState(key = avatarTransitionKey),
-            animatedVisibilityScope = animatedVisibilityScope,
+private fun personParallaxEnter(animatedVisibilityScope: AnimatedVisibilityScope?, parallax: Float): Modifier {
+    if (!isDesktop || animatedVisibilityScope == null) return Modifier
+    return with(animatedVisibilityScope) {
+        Modifier.animateEnterExit(
+            enter = slideInHorizontally(personTransitionSpring()) { (it * parallax).toInt() } +
+                fadeIn(personTransitionSpring()),
+            exit = slideOutHorizontally(personTransitionSpring()) { (it * parallax).toInt() } +
+                fadeOut(personTransitionSpring()),
         )
     }
-} else Modifier
+}
 
 @Composable
 private fun PersonAvatarImage(person: PersonDetail, fallbackProfilePhoto: String?, avatarTransitionKey: String, modifier: Modifier) {
@@ -1588,7 +1593,8 @@ private fun PersonRedesignHeader(
         Row(verticalAlignment = Alignment.CenterVertically) {
             PersonAvatarImage(
                 person, fallbackProfilePhoto, avatarTransitionKey,
-                personAvatarModifier(avatarTransitionKey, sharedTransitionScope, animatedVisibilityScope).size(150.dp),
+                // No shared-element flight here: the avatar moves with the content layer, like hero text.
+                Modifier.size(150.dp),
             )
             Spacer(Modifier.width(28.dp))
             Box(Modifier.weight(1f)) { PersonRedesignIdentity(person, creditSummary, nameSize = 40.sp) }

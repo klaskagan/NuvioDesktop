@@ -10,11 +10,17 @@ Every visible change animates; nothing swaps, pops, or jumps. The user has repea
 redesign steps that changed the look but left hard cuts (results flashing skeletons on every
 keystroke, the hero vanishing so the search bar jumped up, a header turning dark in one frame,
 Person Details opening with no transition). Apply these to every redesigned screen:
-- **Navigation into a detail screen** slides the page content in from the right, and back out to
-  the right on return. The nav entry itself only crossfades (~220 ms), so the app sidebar that
-  both entries draw stays still. Reference: `PersonDetailScreen` (`animateEnterExit` with
-  `slideInHorizontally`, `PERSON_SLIDE_MS`) and its `entry<PersonDetailRoute>` metadata in
-  `MainAppContent.kt`.
+- **Home's hero carousel is the motion reference.** Each layer's opacity follows its offset as
+  it drifts (`alpha = 1 - |offset|`). Backgrounds drift little (`HERO_BACKGROUND_PARALLAX`, 5.5% of
+  the width) and foreground content drifts more (`HERO_CONTENT_PARALLAX`, 18%), on the pager's
+  no-bounce, medium-low-stiffness spring. Use those values instead of inventing new ones.
+- **Navigation into a detail screen** uses that layered parallax. The nav entry only crossfades
+  (same spring), so the app sidebar both entries draw stays still. Inside the page, the backdrop
+  drifts in 5.5% and the content 18%, mirrored on return. Reference: `personParallaxEnter` in
+  `PersonDetailScreen` and `entry<PersonDetailRoute>` in `MainAppContent.kt`.
+  A whole page sliding a third of the screen, plus the avatar flying over it as a shared element
+  (the first attempt), was rejected as too busy. Don't fly individual elements across pages; let
+  them move with their layer.
 - **State changes crossfade:** loading → content → error (`AnimatedContent` keyed on the state
   class), and a late-arriving section fades in (Person Known For).
 - **Lists move, they don't jump:** give list items `Modifier.animateItem()` (fade plus
