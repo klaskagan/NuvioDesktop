@@ -23,6 +23,9 @@ skill is not in the session catalog, read that file directly.
   (layered parallax fades for navigation, crossfading states, animated lists, nothing pops). See "Smooth transitions" in
   `.agents/ui-consistency.md`. A redesign replaces the old layout; update tests that
   assert it instead of keeping it.
+- When forking or delegating a frontend-design task (visual design, new or
+  reshaped UI) to a subagent or session, tell it to invoke the
+  `frontend-design:frontend-design` skill before designing.
 - For layout, loading, scrolling, gestures, and date presentation, read
   `.agents/ui-consistency.md`. Apply its shared invariants; keep feature-specific
   choices in the feature's documentation.
