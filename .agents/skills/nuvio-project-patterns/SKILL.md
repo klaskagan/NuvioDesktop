@@ -91,6 +91,16 @@ click handler treating a later click as a reselect, while `snapshotFlow` observe
 no state reads. For callbacks that need a changing value without restarting their
 owner, use `rememberUpdatedState` where appropriate.
 
+Profile-scoped repositories must bind in-memory state to the profile it was loaded
+for. `ProfileRepository.selectProfile` changes the active id before each repository's
+`onProfileChanged`, collectors keep syncing in between, and a remote pull can return
+after the user switched back. Storage keyed by the *current* active profile then saves
+one profile's state under the other: Home hero catalogs from another profile (TorBox)
+replaced the user's picks this way. Record the loaded profile, reload when it differs,
+save to that profile explicitly, and drop pulls for a non-active profile.
+`HomeCatalogSettingsRepository` is the reference; `HomeCatalogSettingsProfileSwitchTest`
+replays the switch order.
+
 For multi-step settings, use a single state for mutually exclusive panels such as
 discovery versus Add/Edit. Clear incompatible results and transient errors when
 switching modes. Guard late callbacks against cancellation, a changed selection,

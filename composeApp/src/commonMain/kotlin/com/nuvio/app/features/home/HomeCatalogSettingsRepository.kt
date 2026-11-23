@@ -6,6 +6,7 @@ import com.nuvio.app.features.addons.ManagedAddon
 import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.collection.Collection
 import com.nuvio.app.features.collection.CollectionRepository
+import com.nuvio.app.features.profiles.ProfileRepository
 import com.nuvio.app.features.servers.ServerCatalog
 import com.nuvio.app.features.servers.ServerRepository
 import kotlinx.atomicfu.atomic
@@ -128,6 +129,12 @@ object HomeCatalogSettingsRepository {
     private val snapshotRef = atomic(emptySnapshot)
     private val syncMutex = Mutex()
     private var hasLoaded = false
+    /**
+     * The profile whose settings are in memory. Profile switches change the active profile before
+     * [onProfileChanged] runs, while addon and collection collectors may already be syncing; this
+     * keeps one profile's hero catalogs and order from being saved under another profile.
+     */
+    private var loadedProfileId: Int? = null
     private var lastPersistedPayload: String? = null
     private var definitions: List<HomeCatalogDefinition> = emptyList()
     private var collectionDefinitions: List<CollectionCatalogDefinition> = emptyList()
@@ -148,40 +155,30 @@ object HomeCatalogSettingsRepository {
     private var hideUnreleasedContent = false
 
     fun onProfileChanged() {
-        rowStyles = emptyMap()
-        heroTabSources = emptyMap()
-        hasLoaded = false
-        preferences = emptyMap()
-        appliedCollectionOrder = null
-        seasonalCollectionsEnabled = true
-        heroEnabled = true
-        showCatalogType = true
-        hideUnreleasedContent = false
-        definitions = emptyList()
-        collectionDefinitions = emptyList()
-        snapshotRef.value = emptySnapshot
-        lastPersistedPayload = null
-        lastCatalogSync = null
-        lastCollectionSync = null
-        _uiState.value = HomeCatalogSettingsUiState()
+        resetState()
     }
 
     fun clearLocalState() {
+        resetState()
+    }
+
+    private fun resetState() {
         rowStyles = emptyMap()
         heroTabSources = emptyMap()
         hasLoaded = false
-        definitions = emptyList()
-        collectionDefinitions = emptyList()
-        lastCatalogSync = null
-        lastCollectionSync = null
+        loadedProfileId = null
         preferences = emptyMap()
         appliedCollectionOrder = null
         seasonalCollectionsEnabled = true
         heroEnabled = true
         showCatalogType = true
         hideUnreleasedContent = false
+        definitions = emptyList()
+        collectionDefinitions = emptyList()
         snapshotRef.value = emptySnapshot
         lastPersistedPayload = null
+        lastCatalogSync = null
+        lastCollectionSync = null
         _uiState.value = HomeCatalogSettingsUiState()
     }
 
@@ -423,10 +420,13 @@ object HomeCatalogSettingsRepository {
     }
 
     private fun ensureLoaded() {
-        if (hasLoaded) return
+        val profileId = ProfileRepository.activeProfileId
+        if (hasLoaded && loadedProfileId == profileId) return
+        if (hasLoaded) resetState()
         hasLoaded = true
+        loadedProfileId = profileId
 
-        val payload = HomeCatalogSettingsStorage.loadPayload().orEmpty().trim()
+        val payload = HomeCatalogSettingsStorage.loadPayload(profileId).orEmpty().trim()
         if (payload.isEmpty()) return
 
         val parsedPayload = runCatching {
@@ -581,7 +581,9 @@ object HomeCatalogSettingsRepository {
             ),
         )
         if (payload == lastPersistedPayload) return
-        HomeCatalogSettingsStorage.savePayload(payload)
+        val profileId = loadedProfileId ?: return
+        if (profileId != ProfileRepository.activeProfileId) return
+        HomeCatalogSettingsStorage.savePayload(payload, profileId)
         lastPersistedPayload = payload
     }
 
@@ -681,19 +683,30 @@ object HomeCatalogSettingsRepository {
         )
     }
 
-    fun applyFromRemote(payload: SyncHomeCatalogPayload) {
+    /**
+     * Applies [profileId]'s synced catalog settings. A pull that finishes after the user switched
+     * profiles is dropped, so it cannot overwrite the now-active profile. Hero catalogs are
+     * device-local: a synced catalog this device has not seen only becomes a hero candidate on a
+     * device with no settings yet, so it cannot displace the user's picks once its addon loads.
+     */
+    fun applyFromRemote(
+        payload: SyncHomeCatalogPayload,
+        profileId: Int = ProfileRepository.activeProfileId,
+    ) {
+        if (profileId != ProfileRepository.activeProfileId) return
         ensureLoaded()
         showCatalogType = payload.showCatalogType
         hideUnreleasedContent = payload.hideUnreleasedContent
         if (payload.items.isNotEmpty()) {
             val existingHeroState = preferences.mapValues { it.value.heroSourceEnabled }
+            val newKeysAreHeroCandidates = existingHeroState.isEmpty()
             val remotePreferences = payload.items.associate { item ->
                 val key = item.preferenceKey()
                 key to StoredHomeCatalogPreference(
                     key = key,
                     customTitle = item.customTitle,
                     enabled = item.enabled,
-                    heroSourceEnabled = existingHeroState[key] ?: true,
+                    heroSourceEnabled = existingHeroState[key] ?: newKeysAreHeroCandidates,
                     order = item.order,
                 )
             }

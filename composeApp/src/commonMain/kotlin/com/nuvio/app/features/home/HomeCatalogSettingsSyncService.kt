@@ -103,6 +103,11 @@ object HomeCatalogSettingsSyncService {
                 decodePayloadPreservingLocalDefaults(blob.settingsJson, localPayload)
             }
 
+            if (ProfileRepository.activeProfileId != profileId) {
+                log.i { "pullFromServer — profile changed while pulling; dropping profile $profileId settings" }
+                return
+            }
+
             if (remoteBlob == null) {
                 log.i { "pullFromServer — no remote home catalog settings found; preserving local" }
                 markInitialPullComplete(pullToken)
@@ -117,12 +122,12 @@ object HomeCatalogSettingsSyncService {
 
             if (remotePayload.items.isEmpty()) {
                 log.i { "pullFromServer — remote has empty items, preserving local catalog order" }
-                applyRemotePayload(remotePayload)
+                applyRemotePayload(remotePayload, profileId)
                 markInitialPullComplete(pullToken)
                 return
             }
 
-            applyRemotePayload(remotePayload)
+            applyRemotePayload(remotePayload, profileId)
             log.i { "pullFromServer — applied ${remotePayload.items.size} items from remote" }
             markInitialPullComplete(pullToken)
         }.onFailure { e ->
@@ -183,10 +188,11 @@ object HomeCatalogSettingsSyncService {
 
     private fun applyRemotePayload(
         payload: SyncHomeCatalogPayload,
+        profileId: Int,
     ) {
         isSyncingFromRemote = true
         try {
-            HomeCatalogSettingsRepository.applyFromRemote(payload)
+            HomeCatalogSettingsRepository.applyFromRemote(payload, profileId)
         } finally {
             isSyncingFromRemote = false
         }

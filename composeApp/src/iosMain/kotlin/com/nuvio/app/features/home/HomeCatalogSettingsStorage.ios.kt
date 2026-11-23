@@ -6,10 +6,10 @@ import platform.Foundation.NSUserDefaults
 actual object HomeCatalogSettingsStorage {
     private const val payloadKey = "catalog_settings_payload"
 
-    actual fun loadPayload(): String? =
-        NSUserDefaults.standardUserDefaults.stringForKey(ProfileScopedKey.of(payloadKey))
+    actual fun loadPayload(profileId: Int): String? =
+        NSUserDefaults.standardUserDefaults.stringForKey(ProfileScopedKey.of(payloadKey, profileId))
 
-    actual fun savePayload(payload: String) {
-        NSUserDefaults.standardUserDefaults.setObject(payload, forKey = ProfileScopedKey.of(payloadKey))
+    actual fun savePayload(payload: String, profileId: Int) {
+        NSUserDefaults.standardUserDefaults.setObject(payload, forKey = ProfileScopedKey.of(payloadKey, profileId))
     }
 }
