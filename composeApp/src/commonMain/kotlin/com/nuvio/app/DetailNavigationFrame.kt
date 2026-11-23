@@ -1,11 +1,5 @@
 package com.nuvio.app
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -25,17 +19,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.draw.alpha
 import com.nuvio.app.core.ui.LocalBackdropContentStartInset
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.DesktopMergedTopBar
@@ -48,15 +37,27 @@ import com.nuvio.app.features.settings.NavBarStyle
 import com.nuvio.app.features.settings.ThemeSettingsRepository
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
-import kotlinx.coroutines.delay
 import nuvio.composeapp.generated.resources.Res
-import nuvio.composeapp.generated.resources.compose_nav_home
 import nuvio.composeapp.generated.resources.compose_nav_library
 import nuvio.composeapp.generated.resources.compose_nav_search
 import nuvio.composeapp.generated.resources.compose_nav_settings
 import nuvio.composeapp.generated.resources.sidebar_library
 import nuvio.composeapp.generated.resources.sidebar_search
 import org.jetbrains.compose.resources.stringResource
+
+/**
+ * What a detail page tells the merged top bar drawn over it: whether content has scrolled under
+ * the bar, and its backdrop's colour (for the Tinted background). Pages that don't report keep the
+ * bar as it looks over a page's top.
+ */
+@androidx.compose.runtime.Stable
+internal class DetailTopBarState {
+    var scrolled by mutableStateOf(false)
+    var tint by mutableStateOf<androidx.compose.ui.graphics.Color?>(null)
+}
+
+/** The frame's [DetailTopBarState]; null where no merged top bar is drawn (sidebar layout, mobile). */
+internal val LocalDetailTopBarState = androidx.compose.runtime.compositionLocalOf<DetailTopBarState?> { null }
 
 @Composable
 internal fun DetailNavigationFrame(
@@ -69,35 +70,25 @@ internal fun DetailNavigationFrame(
     frostedSidebar: Boolean = false,
     /** Two frosted sidebars overlap while entries cross; the one leaving hides so their dims don't stack. */
     sidebarHandedOff: Boolean = false,
+    /** False on pages that have their own All / Movies / Shows filter, so the bar doesn't show a second selection. */
+    highlightHomeTab: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val enabled by ThemeSettingsRepository.detailNavigationEnabled.collectAsStateWithLifecycle()
-    if (!isDesktop || !enabled) {
+    if (!isDesktop) {
         content()
         return
     }
-    val hideDelaySeconds by ThemeSettingsRepository.detailNavigationHideDelaySeconds.collectAsStateWithLifecycle()
-    val autoHide by ThemeSettingsRepository.detailNavigationAutoHide.collectAsStateWithLifecycle()
     val layout by ThemeSettingsRepository.desktopNavigationLayout.collectAsStateWithLifecycle()
     val style by ThemeSettingsRepository.navBarStyle.collectAsStateWithLifecycle()
     val glow by ThemeSettingsRepository.navBarGlowEnabled.collectAsStateWithLifecycle()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val screenWidth = maxWidth
         val sidebar = layout == DesktopNavigationLayout.Sidebar && screenWidth >= 768.dp
-        val canAutoHide = autoHide && !sidebar
         val hoverSource = remember { MutableInteractionSource() }
         val hovered by hoverSource.collectIsHoveredAsState()
         var profileStackVisible by remember { mutableStateOf(false) }
         var topProfileOpen by remember { mutableStateOf(false) }
-        var motion by remember(route) { mutableStateOf(0L) }
-        var visible by remember(route) { mutableStateOf(true) }
-        LaunchedEffect(route, motion, topProfileOpen, canAutoHide, hideDelaySeconds) {
-            visible = true
-            if (canAutoHide && !topProfileOpen) {
-                delay(hideDelaySeconds * 1_000L)
-                visible = false
-            }
-        }
+        val topBarState = remember(route) { DetailTopBarState() }
         val expanded = when (style) {
             NavBarStyle.EXPANDED -> true
             NavBarStyle.COMPACT -> profileStackVisible
@@ -108,22 +99,7 @@ internal fun DetailNavigationFrame(
             animationSpec = tween(200),
         )
         val haze = rememberHazeState()
-        val revealOnPointerMotion = if (canAutoHide) {
-            Modifier.pointerInput(route) {
-                awaitPointerEventScope {
-                    var lastPosition: Offset? = null
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        if (event.type == PointerEventType.Move || event.type == PointerEventType.Enter) {
-                            val position = event.changes.firstOrNull()?.position
-                            if (event.type == PointerEventType.Enter || position != lastPosition) motion++
-                            lastPosition = position
-                        }
-                    }
-                }
-            }
-        } else Modifier
-        Box(Modifier.fillMaxSize().then(revealOnPointerMotion)) {
+        Box(Modifier.fillMaxSize()) {
             val sidebarInset = if (sidebar) {
                 if (style == NavBarStyle.EXPANDED) DesktopSidebarExpandedWidth else DesktopSidebarCollapsedWidth
             } else 0.dp
@@ -132,6 +108,7 @@ internal fun DetailNavigationFrame(
             Box(Modifier.fillMaxSize().hazeSource(haze).padding(start = if (frosted) 0.dp else sidebarInset)) {
                 CompositionLocalProvider(
                     LocalBackdropContentStartInset provides if (frosted) sidebarInset else 0.dp,
+                    LocalDetailTopBarState provides topBarState.takeIf { !sidebar },
                     content = content,
                 )
             }
@@ -151,14 +128,8 @@ internal fun DetailNavigationFrame(
                     modifier = Modifier.align(Alignment.CenterStart).alpha(if (frosted && sidebarHandedOff) 0f else 1f),
                 )
             } else {
-                AnimatedVisibility(
-                    visible = visible,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    enter = fadeIn(tween(240, easing = FastOutSlowInEasing)) +
-                        slideInVertically(tween(280, easing = FastOutSlowInEasing)) { -it / 3 },
-                    exit = fadeOut(tween(200, easing = FastOutSlowInEasing)) +
-                        slideOutVertically(tween(240, easing = FastOutSlowInEasing)) { -it / 3 },
-                ) {
+                // Always shown, like the tabs' bar: one bar that looks and behaves the same everywhere.
+                Box(Modifier.align(Alignment.TopCenter)) {
                     val items = listOf(
                         FloatingNavigationItem(
                             selected = selectedTab == AppScreenTab.Search,
@@ -204,7 +175,7 @@ internal fun DetailNavigationFrame(
                     )
                     DesktopMergedTopBar(
                         tabs = rememberHomeNavigationTabs(
-                            homeSelected = selectedTab == AppScreenTab.Home,
+                            homeSelected = highlightHomeTab && selectedTab == AppScreenTab.Home,
                             onOpenHome = { onTabSelected(AppScreenTab.Home) },
                         ),
                         items = items,
@@ -212,7 +183,8 @@ internal fun DetailNavigationFrame(
                         hazeState = haze,
                         navBarStyle = style,
                         profileSwitcherOpen = topProfileOpen,
-                        isDetailScreen = true,
+                        scrolled = topBarState.scrolled,
+                        tint = topBarState.tint,
                     )
                 }
             }

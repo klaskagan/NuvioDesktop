@@ -32,8 +32,6 @@ import com.nuvio.app.core.ui.dismissNuvioBottomSheet
 import com.nuvio.app.core.ui.labelRes
 import com.nuvio.app.isIos
 import kotlinx.coroutines.launch
-import nuvio.composeapp.generated.resources.settings_detail_navigation
-import nuvio.composeapp.generated.resources.settings_detail_navigation_description
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.cd_selected
 import nuvio.composeapp.generated.resources.settings_appearance_amoled_black

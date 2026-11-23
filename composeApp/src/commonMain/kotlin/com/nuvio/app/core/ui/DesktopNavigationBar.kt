@@ -68,7 +68,7 @@ internal fun DesktopNavigationBar(
     val isFrosted = isHovered || profileSwitcherOpen ||
         ((isHomeSelected || isSettingsSelected) && isScrolledAwayFromTop)
     val labelFraction by animateFloatAsState(
-        targetValue = desktopNavigationLabelFraction(navBarStyle, isHomeSelected, isHeroEnabled, isHovered, profileSwitcherOpen, isScrolledAwayFromTop, isDetailScreen),
+        targetValue = desktopNavigationLabelFraction(navBarStyle, isHovered, profileSwitcherOpen),
         animationSpec = tween(320, easing = FastOutSlowInEasing),
         label = "desktop_nav_labels",
     )
@@ -136,22 +136,17 @@ internal fun DesktopNavigationBar(
     }
 }
 
+/**
+ * Whether the desktop bar shows text beside its icons. One rule for every screen (Home, Search,
+ * detail pages): only the Navigation Bar Style setting and the pointer decide, never the screen,
+ * its hero or its scroll position, so the bar looks the same wherever it is.
+ */
 internal fun desktopNavigationLabelFraction(
     style: NavBarStyle,
-    isHomeSelected: Boolean,
-    isHeroEnabled: Boolean,
     isHovered: Boolean,
     profileSwitcherOpen: Boolean,
-    isScrolledAwayFromTop: Boolean,
-    isDetailScreen: Boolean = false,
 ): Float = when (style) {
     NavBarStyle.EXPANDED -> 1f
     NavBarStyle.COMPACT -> 0f
-    else -> when {
-        isHovered || profileSwitcherOpen -> 1f
-        isDetailScreen -> 0f
-        isHomeSelected && isHeroEnabled -> 0f
-        isHomeSelected && isScrolledAwayFromTop -> 0f
-        else -> 1f
-    }
+    else -> if (isHovered || profileSwitcherOpen) 1f else 0f
 }

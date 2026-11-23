@@ -58,7 +58,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nuvio.app.features.settings.NavBarStyle
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
 import org.jetbrains.compose.resources.painterResource
 
 /**
@@ -77,6 +76,9 @@ val LocalHomeTabsHostedInNavigation = staticCompositionLocalOf { false }
 /** The bar's height below the status bar. Screens start their content under it. */
 internal val DesktopMergedTopBarHeight = 56.dp
 
+/** Space tab screens leave between the bar's bottom edge and their first content. */
+internal val DesktopTopBarContentGap = 8.dp
+
 private val BarRowHeight = 44.dp
 private val BarTopGap = 8.dp
 private val IndicatorHeight = 2.dp
@@ -88,8 +90,8 @@ private val MergedTopBarLabelsMinWidth = 900.dp
  * The desktop top-bar layout's one bar: Home's tabs on the left and the other destinations on the
  * right, sharing a single sliding underline. It replaces the floating pill plus a separate tab
  * strip on Home, and it is the same bar on every screen, so a Home tab is one click away from
- * Search or a detail page. It is clear over the top of a page and turns solid once content scrolls
- * beneath it; over detail pages it is frosted.
+ * Search or a detail page. It is always shown, and draws [PinnedBarBackground] like every band
+ * pinned under it: by default clear over the top of a page and solid once content scrolls beneath.
  *
  * [items] are the destinations other than Home. Their labels follow the Navigation Bar Style
  * setting through [desktopNavigationLabelFraction], as the pill's did.
@@ -103,33 +105,21 @@ internal fun DesktopMergedTopBar(
     scrollState: NuvioNavBarScrollState? = null,
     hazeState: HazeState? = null,
     navBarStyle: NavBarStyle = NavBarStyle.ADAPTIVE,
-    isHeroEnabled: Boolean = false,
     profileSwitcherOpen: Boolean = false,
-    isDetailScreen: Boolean = false,
+    /** Content has scrolled under the bar; when null it is read from [scrollState]. */
+    scrolled: Boolean? = null,
+    /** The page backdrop's colour, for the Tinted background. */
+    tint: Color? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val homeSelected = tabs.selectedIndex != null
     val settingsSelected = items.lastOrNull()?.selected == true
-    val scrolled = (scrollState?.totalScrollOffset ?: 0f) > if (settingsSelected) 70f else 35f
+    val contentUnder = scrolled ?: ((scrollState?.totalScrollOffset ?: 0f) > if (settingsSelected) 70f else 35f)
     val showLabels = windowWidth >= MergedTopBarLabelsMinWidth && desktopNavigationLabelFraction(
         style = navBarStyle,
-        isHomeSelected = homeSelected,
-        isHeroEnabled = isHeroEnabled,
         isHovered = hovered,
         profileSwitcherOpen = profileSwitcherOpen,
-        isScrolledAwayFromTop = scrolled,
-        isDetailScreen = isDetailScreen,
     ) > 0.5f
-    val surface by animateColorAsState(
-        targetValue = when {
-            isDetailScreen -> BackdropSurface.stickyHeader
-            scrolled -> BackdropSurface.stickyHeaderOpaque
-            else -> Color.Transparent
-        },
-        animationSpec = tween(220),
-        label = "merged_top_bar_surface",
-    )
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val gutter = desktopPageHorizontalPaddingForWidth(windowWidth.value)
     val density = LocalDensity.current
@@ -156,15 +146,10 @@ internal fun DesktopMergedTopBar(
                 .fillMaxWidth()
                 .nuvioTrackTopBarFocus()
                 .hoverable(interaction)
-                .then(
-                    if (isDetailScreen && hazeState != null) Modifier.hazeEffect(state = hazeState) { blurRadius = 24.dp } else Modifier,
-                )
-                .background(surface)
                 .testTag("desktop_merged_top_bar"),
         ) {
-            if (surface.alpha > 0.5f) {
-                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
-            }
+            // Same surface as every band pinned under the bar (Settings → Layout → Top bar background).
+            PinnedBarBackground(scrolled = contentUnder, hazeState = hazeState, tint = tint)
             Box(
                 Modifier
                     .padding(top = statusBarTop + BarTopGap)

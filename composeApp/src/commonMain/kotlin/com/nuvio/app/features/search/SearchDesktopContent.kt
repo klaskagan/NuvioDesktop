@@ -1,5 +1,8 @@
 package com.nuvio.app.features.search
 
+import androidx.compose.ui.unit.coerceAtLeast
+import com.nuvio.app.core.ui.DesktopTopBarContentGap
+import com.nuvio.app.core.ui.PinnedBarBackground
 import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignTabs
 import com.nuvio.app.core.ui.RedesignTightTracking
@@ -739,7 +742,11 @@ internal fun LazyListScope.searchDesktopList(
     onShelfView: (SearchShelfView?) -> Unit,
     onDiscoverySelect: (SearchDiscovery?) -> Unit,
     onStreamingCountrySettings: () -> Unit,
-    headerColor: Color,
+    /** Results have scrolled under the pinned field band. */
+    headerPinned: Boolean,
+    /** The backdrop's colour for the Tinted surface; [headerPlainBackground] when there is no backdrop. */
+    headerTint: Color?,
+    headerPlainBackground: Color?,
     topPadding: Dp?,
     gutter: Dp,
     recentSearches: List<String>,
@@ -768,7 +775,6 @@ internal fun LazyListScope.searchDesktopList(
     val normalizedQuery = query.trim()
     val isWaiting = normalizedQuery.isNotBlank() && lastRequestedQuery != normalizedQuery
     val showResults = discovery == null && normalizedQuery.isNotBlank() && uiState.hasContent
-    val pinned = headerColor.alpha > 0.05f
     // Every scrolling item is a blur source for the pinned bar, and fades/slides when the layout changes.
     val itemModifier: LazyItemScope.() -> Modifier = {
         Modifier.animateItem(fadeInSpec = tween(220), placementSpec = tween(260, easing = FastOutSlowInEasing), fadeOutSpec = tween(160))
@@ -781,15 +787,19 @@ internal fun LazyListScope.searchDesktopList(
     }
     stickyHeader(key = "search-bar") {
         Box(Modifier.fillMaxWidth()) {
-            Box(
-                Modifier.matchParentSize()
-                    .then(if (pinned) Modifier.hazeEffect(hazeState) { blurRadius = 24.dp } else Modifier)
-                    .background(headerColor)
-                    .nuvioConsumePointerEvents(),
+            Box(Modifier.matchParentSize().nuvioConsumePointerEvents())
+            // The band's surface starts exactly where the top bar ends (the bar draws the same
+            // surface above it). [topPadding] adds DesktopTopBarContentGap below the bar; starting
+            // there left a strip of bare, unblurred posters between the two.
+            PinnedBarBackground(
+                scrolled = headerPinned,
+                hazeState = hazeState,
+                tint = headerTint,
+                plainBackground = headerPlainBackground,
+                // On the idle page the field sits under the hero, not under the bar.
+                restsUnderBar = query.isNotBlank(),
+                modifier = Modifier.padding(top = topPadding?.let { (it - DesktopTopBarContentGap).coerceAtLeast(0.dp) } ?: 0.dp),
             )
-            if (headerColor.alpha > 0.5f) {
-                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
-            }
             Column(Modifier.fillMaxWidth().padding(horizontal = gutter).padding(top = (topPadding ?: 0.dp) + 14.dp, bottom = 14.dp)) {
                 SearchHeroField(
                     query = query,
@@ -810,7 +820,12 @@ internal fun LazyListScope.searchDesktopList(
                     )
                 }
                 if (discovery != null && shelfView == null) {
-                    TagPageControls(scope = scope, onScopeChange = onScopeChange, fallbackCountry = shelves.fallbackCountry)
+                    TagPageControls(
+                        scope = scope,
+                        onScopeChange = onScopeChange,
+                        fallbackCountry = shelves.fallbackCountry,
+                        modifier = Modifier.padding(start = 4.dp, top = 14.dp),
+                    )
                 }
                 if (showResults) {
                     SearchScopeTabs(
@@ -857,6 +872,7 @@ internal fun LazyListScope.searchDesktopList(
             onPosterLongClick = onPosterLongClick,
             horizontalPadding = gutter,
             desktopHeader = true,
+            itemModifier = itemModifier,
         )
         return
     }

@@ -62,7 +62,6 @@ import nuvio.composeapp.generated.resources.compose_settings_page_supporters_con
 import nuvio.composeapp.generated.resources.compose_settings_page_tmdb_enrichment
 import nuvio.composeapp.generated.resources.compose_settings_page_trakt
 import nuvio.composeapp.generated.resources.compose_settings_page_tracking
-import nuvio.composeapp.generated.resources.settings_detail_navigation
 import nuvio.composeapp.generated.resources.settings_paired_tvs
 import nuvio.composeapp.generated.resources.settings_account
 import nuvio.composeapp.generated.resources.*
@@ -173,11 +172,6 @@ internal enum class SettingsPage(
         titleRes = Res.string.settings_appearance_title,
         category = SettingsCategory.Look,
         parentPage = Root,
-    ),
-    DetailNavigation(
-        titleRes = Res.string.settings_detail_navigation,
-        category = SettingsCategory.Look,
-        parentPage = Layout,
     ),
     HoverPreview(
         titleRes = Res.string.compose_settings_page_hover_preview,
@@ -295,7 +289,6 @@ internal fun settingsCategoryForName(name: String): SettingsCategory = when (nam
 
 internal val SettingsPage.icon: ImageVector
     get() = when (this) {
-        SettingsPage.DetailNavigation -> Icons.Default.Dashboard
         SettingsPage.PairedTvs -> Icons.Default.SmartDisplay
         SettingsPage.Go3 -> Icons.Default.SmartDisplay
         SettingsPage.Root -> Icons.Rounded.Settings

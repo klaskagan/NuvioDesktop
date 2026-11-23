@@ -272,15 +272,29 @@ to show what Search's Netflix tag shows, because the two used different catalog 
   but that service's originals, a production company (films); see `StreamingProviderSpec`.
 - When the streaming country has no catalog for a service (TMDB has none for Lithuania on
   several), the region-filtered rails reload once for the United Kingdom
-  (`STREAMING_FALLBACK_REGION`), and a note beside the tabs says which catalog is shown. Top 10
+  (`STREAMING_FALLBACK_REGION`), and a note beside the filter says which catalog is shown. Top 10
   picks the chart for the streaming country, then the UK, then any. "View all" and the slot's
   rows use the region the page ended up with (`StreamingCatalogRegion`). A failed request is
   not an empty catalog and must not trigger the fallback.
-- Esc closes an open in-page panel before it navigates Back (`AppKeyboardShortcuts.overlayEscape`).
+- The tag page's All / Movies / Shows filter is a pill group (`TagScopePills`, inside the shared
+  `TagPageControls`), and "Customize rows" is an icon-only button. Underlined text tabs under
+  the merged top bar read as a second copy of the bar's own For you / Movies / Shows. Search's
+  results tabs with counts (`SearchScopeTabs`) stay text tabs, and the bar selects no Home tab
+  on the service page (`DetailNavigationFrame(highlightHomeTab = false)`).
+- The service page's header is one ~60dp row on Home's margins
+  (`desktopPageHorizontalPaddingForWidth`): back, logo, filter, Customize. It floats over the
+  list right under the merged bar and draws the shared pinned surface (below).
+- Esc is caught at the window (`PlatformEscapeShortcut`) before any `PlatformBackHandler`, so a
+  page state Back should undo first must claim `AppKeyboardShortcuts.overlayEscape` while it is
+  the top route. An open in-page panel and the service page's "View all" grid both do; without
+  it, Esc from the grid went to Home instead of the rows.
+- Session state that outlives a page must not decide where a fresh visit opens: the service
+  page reopened in the grid it was left in. `StreamingProviderSessions.sessionFor(freshVisit)`
+  closes it on a new visit and keeps it when returning from a title.
 
 `StreamingRowLayoutTest` covers the order, the slot, Originals and the fallback;
 `SearchTopTenTest` the chart choice; `StreamingProviderNavigationTest` the folder-to-page
-navigation and the panel.
+navigation and the panel; `StreamingProviderSessionsTest` the fresh-visit grid reset.
 
 The redesign's tokens live in `core/ui/RedesignStyle.kt` (`RedesignColors`, `redesignText`,
 `RedesignTypography`). Person Details (desktop, wide) is the second screen that uses them. It has
@@ -362,6 +376,33 @@ policy. Add only demonstrated reusable lessons; link feature details instead of
 accumulating a history of individual bugs here.
 
 
+## One top bar on every screen
+
+The owner found the desktop bar different on Home, Search and detail pages: labels on Search
+but icons elsewhere, a bar that auto-hid only on detail pages, and four surface colours (clear,
+solid, a 72% grey dim, see-through over Search's results). Keep these together:
+
+- The merged bar (`DesktopMergedTopBar`) is always shown, on the tabs and over detail pages
+  (`DetailNavigationFrame`). There is no auto-hide and no switch to remove it.
+- Its labels follow the Navigation Bar Style setting only (`desktopNavigationLabelFraction`:
+  Expanded labels, Compact icons, Adaptive icons until hovered). Never vary them by screen,
+  hero or scroll position. `DesktopNavigationBarTest`.
+- The bar and every band pinned under it (Search's field band, a service page's header, Home's
+  tabs) draw one surface, `PinnedBarBackground` / `topBarSurfaceColor`, chosen in Settings →
+  Layout → Top bar background (`TopBarBackground`). Never give a pinned band its own colour.
+  Solid is the default: titles read through `stickyHeader` (0.72) and even 0.9–0.96 alpha.
+  `TopBarBackgroundTest`.
+- "Scrolled" means content has moved under the surface. Tabs report it through
+  `LocalNuvioNavBarScrollState` (Search must too; it once reported nothing, so posters ran under a
+  clear bar). Detail pages report it, with their backdrop's tint, through
+  `LocalDetailTopBarState`. Report from a `snapshotFlow`: a `SideEffect` in the page's outer scope
+  never re-ran while the list scrolled, so the service page's bar stayed clear over its rows.
+- A band under the bar starts its surface below the bar, so translucent options don't double.
+- Tinted takes the colour actually behind the bar: the artwork's top strip under the backdrop's
+  40% scrim (`backdropTopTint`), capped so white labels stay readable. The image's dominant colour
+  came out a darker, different hue than the backdrop. Tabs without artwork (Library, Calendar,
+  History, Settings) get no tint; they kept the last artwork's colour. `TopBarBackgroundTest`.
+
 ## Custom detail routes and native navigation
 
 Desktop collection destinations lost their tab controls because their NavDisplay
@@ -371,11 +412,8 @@ the page at its existing position. Only the sidebar reserves content space.
 `MainAppTabNavigationTest` exercises Settings → Collections → editor → Search
 in both desktop layouts. `SeasonalCollectionNavigationTest` covers Home →
 Explore collection and leaving the folder through the shared navigation.
-Only track pointer movement for auto-hiding top bars. Always-visible frames
-have no timer to restart, and synthetic pointer moves during route layout can
-keep full-app UI tests from reaching idle. For auto-hide, ignore repeated Move
-events at the same position so layout cannot restart the timer.
-`DetailNavigationFrameTest` checks both pointer wake and subsequent inactivity.
+The detail frame's bar is always visible (see "One top bar on every screen");
+`DetailNavigationFrameTest` checks it stays after inactivity.
 
 Provider details must reuse the actual desktop detail components, not approximate
 screenshots with generic buttons or typed arrow characters. Use

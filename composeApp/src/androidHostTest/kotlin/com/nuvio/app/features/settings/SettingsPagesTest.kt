@@ -111,7 +111,6 @@ class SettingsPagesTest {
                         onContinueWatchingClick = { opened = "continue" },
                         onPosterCustomizationClick = { opened = "posters" },
                         onHoverPreviewClick = { opened = "hover" },
-                        onDetailNavigationClick = { opened = "navigation" },
                     )
                 }
             }

@@ -1,12 +1,13 @@
 package com.nuvio.app.features.search
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -15,8 +16,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -24,6 +25,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -41,8 +44,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.AppKeyboardShortcuts
+import com.nuvio.app.LocalDetailTopBarState
 import com.nuvio.app.core.ui.BackdropFocusController
-import com.nuvio.app.core.ui.BackdropSurface
+import com.nuvio.app.core.ui.desktopPageHorizontalPaddingForWidth
+import com.nuvio.app.core.ui.PinnedBarBackground
 import com.nuvio.app.core.ui.DesktopMergedTopBarHeight
 import com.nuvio.app.core.ui.LocalBackdropContentStartInset
 import com.nuvio.app.core.ui.LocalBackdropFocusController
@@ -54,7 +60,6 @@ import com.nuvio.app.core.ui.NuvioAsyncImage
 import com.nuvio.app.core.ui.NuvioBackButton
 import com.nuvio.app.core.ui.NuvioScreen
 import com.nuvio.app.core.ui.PlatformBackHandler
-import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignTightTracking
 import com.nuvio.app.core.ui.RedesignTypography
 import com.nuvio.app.core.ui.ShellBackdrop
@@ -69,11 +74,8 @@ import com.nuvio.app.features.collection.StreamingCollection
 import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
 import com.nuvio.app.features.home.MetaPreview
-import com.nuvio.app.features.settings.DesktopNavigationLayout
-import com.nuvio.app.features.settings.ThemeSettingsRepository
 import com.nuvio.app.features.home.components.LoadMoreOnScrollEffect
 import com.nuvio.app.features.watched.WatchedRepository
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
@@ -85,8 +87,14 @@ import dev.chrisbanes.haze.rememberHazeState
 internal object StreamingProviderSessions {
     private val sessions = mutableMapOf<String, SearchDiscoverySession>()
 
-    fun sessionFor(selection: SearchDiscovery): SearchDiscoverySession =
+    /**
+     * [freshVisit] is true when the folder is opened anew (not when a title's page is popped off
+     * it): the loaded rows are kept, but a "View all" grid left open last time is closed, so the
+     * page always opens on its rows.
+     */
+    fun sessionFor(selection: SearchDiscovery, freshVisit: Boolean = false): SearchDiscoverySession =
         sessions.getOrPut(selection.name) { SearchDiscoverySession().also { it.select(selection) } }
+            .also { if (freshVisit) it.view = null }
 
     fun clear() = sessions.clear()
 }
@@ -100,6 +108,8 @@ internal fun StreamingProviderScreen(
     collectionId: String,
     folderId: String,
     title: String,
+    /** False while another page (a title's details) is open on top of this one. */
+    isTopRoute: Boolean = true,
     onBack: () -> Unit,
     onPosterClick: (MetaPreview) -> Unit,
     onPosterLongClick: ((MetaPreview) -> Unit)?,
@@ -107,7 +117,11 @@ internal fun StreamingProviderScreen(
     modifier: Modifier = Modifier,
 ) {
     val selection = remember(collectionId, folderId) { StreamingCollection.provider(collectionId, folderId) } ?: return
-    val session = remember(selection) { StreamingProviderSessions.sessionFor(selection) }
+    // Saved with this back-stack entry: false only on a fresh visit, true when returning from a title.
+    var entered by rememberSaveable(selection.name) { mutableStateOf(false) }
+    val session = remember(selection) {
+        StreamingProviderSessions.sessionFor(selection, freshVisit = !entered).also { entered = true }
+    }
     val collections by CollectionRepository.collections.collectAsStateWithLifecycle()
     val folder = collections.firstOrNull { it.id == collectionId }?.folders?.firstOrNull { it.id == folderId }
     val active = LocalScreenActive.current
@@ -135,8 +149,20 @@ internal fun StreamingProviderScreen(
     var scope by rememberSaveable(selection.name) { mutableStateOf(SearchScope.All) }
     val listState = rememberLazyListState()
     val shelfView = session.view
-    val goBack = { if (session.view != null) session.view = null else onBack() }
+    val closeGrid = {
+        session.view = null
+        listState.requestScrollToItem(0)
+    }
+    val goBack = { if (session.view != null) closeGrid() else onBack() }
     PlatformBackHandler(enabled = shelfView != null, onBack = goBack)
+    // Esc is caught at the window, before back handlers: from the grid it returns to the rows, not Home.
+    if (shelfView != null && isTopRoute) {
+        DisposableEffect(Unit) {
+            val handler: () -> Boolean = { closeGrid(); true }
+            AppKeyboardShortcuts.overlayEscape = handler
+            onDispose { if (AppKeyboardShortcuts.overlayEscape === handler) AppKeyboardShortcuts.overlayEscape = null }
+        }
+    }
 
     CompositionLocalProvider(LocalSearchDiscoverySession provides session) {
         val shelves = rememberSearchDiscoveryShelves(
@@ -180,16 +206,18 @@ internal fun StreamingProviderScreen(
         val headerScrolled by remember(listState) {
             derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
         }
-        val headerColor by animateColorAsState(
-            targetValue = when {
-                backdrop == null -> MaterialTheme.colorScheme.background
-                headerScrolled -> BackdropSurface.stickyHeader
-                else -> Color.Transparent
-            },
-            animationSpec = tween(220),
-            label = "streaming_sticky_header",
-        )
         val hazeState = rememberHazeState()
+        // The merged bar over this page draws the same surface as the header, so it needs to know
+        // when rows are under it and which colour the backdrop has (Tinted).
+        val topBarState = LocalDetailTopBarState.current
+        // Observed, not read in composition: this scope doesn't recompose while the list scrolls.
+        LaunchedEffect(topBarState, backdrop) {
+            if (topBarState == null) return@LaunchedEffect
+            snapshotFlow { headerScrolled to backdrop?.tint }.collect { (scrolled, tint) ->
+                topBarState.scrolled = scrolled
+                topBarState.tint = tint
+            }
+        }
 
         Box(
             modifier.fillMaxSize()
@@ -205,22 +233,21 @@ internal fun StreamingProviderScreen(
                 Modifier.fillMaxSize().navTransitionLayer(NavLayer.Content, NavSide.Above)
                     .padding(start = LocalBackdropContentStartInset.current),
             ) {
-                // Same column as Search: at most ~1240dp of content, never closer than 40dp to the edges.
-                val gutter = maxOf(40.dp, (maxWidth - 1240.dp) / 2)
-                // With the top-bar layout the merged bar overlays detail pages (DetailNavigationFrame),
-                // so the header starts below it, like Search's; the sidebar layout has nothing on top.
-                val navigationEnabled by ThemeSettingsRepository.detailNavigationEnabled.collectAsStateWithLifecycle()
-                val navigationLayout by ThemeSettingsRepository.desktopNavigationLayout.collectAsStateWithLifecycle()
-                val underTopBar = navigationEnabled &&
-                    !(navigationLayout == DesktopNavigationLayout.Sidebar && maxWidth + LocalBackdropContentStartInset.current >= 768.dp)
-                val headerTop = if (underTopBar) {
-                    WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + DesktopMergedTopBarHeight + 8.dp
-                } else 24.dp
+                // One grid with Home and the top bar: the same page inset, not Search's centred column.
+                val gutter = desktopPageHorizontalPaddingForWidth((maxWidth + LocalBackdropContentStartInset.current).value)
                 val contentWidth = maxWidth - gutter * 2
                 val posterCardStyle = rememberPosterCardStyleUiState()
                 val columns = remember(contentWidth, posterCardStyle.widthDp) {
                     searchGridColumns(contentWidth, posterCardStyle.widthDp, landscape = false)
                 }
+                // The merged bar is always shown over this page in the top-bar layout; the header sits
+                // right under it and the two draw one surface. The sidebar layout has nothing on top.
+                val topBarLayout = topBarState != null
+                val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                val headerTop = if (topBarLayout) statusBar + DesktopMergedTopBarHeight else statusBar + 8.dp
+                // Under the bar the header's surface starts below it (no doubled dim); without a bar
+                // it runs from the window's top, so nothing scrolls past bare above it.
+                val surfaceTop = if (topBarLayout) headerTop else 0.dp
                 CompositionLocalProvider(LocalBackdropFocusController provides backdrop) {
                 RedesignTypography(enabled = true) {
                 NuvioScreen(
@@ -230,8 +257,7 @@ internal fun StreamingProviderScreen(
                     modifier = Modifier.fillMaxSize(),
                     drawBackground = backdrop == null,
                 ) {
-                    val pinned = headerColor.alpha > 0.05f
-                    // Rows are blur sources for the pinned header and fade/slide whenever the layout changes.
+                    // Rows are blur sources for the header and fade/slide whenever the layout changes.
                     val itemModifier: LazyItemScope.() -> Modifier = {
                         Modifier.animateItem(
                             fadeInSpec = tween(220),
@@ -239,52 +265,7 @@ internal fun StreamingProviderScreen(
                             fadeOutSpec = tween(160),
                         ).hazeSource(hazeState)
                     }
-                    stickyHeader(key = "streaming-header") {
-                        Box(Modifier.fillMaxWidth()) {
-                            Box(
-                                Modifier.matchParentSize()
-                                    .then(if (pinned) Modifier.hazeEffect(hazeState) { blurRadius = 24.dp } else Modifier)
-                                    .background(headerColor)
-                                    .nuvioConsumePointerEvents(),
-                            )
-                            if (headerColor.alpha > 0.5f) {
-                                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
-                            }
-                            Column(Modifier.fillMaxWidth().padding(horizontal = gutter).padding(top = headerTop, bottom = 6.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    NuvioBackButton(
-                                        onClick = goBack,
-                                        containerColor = Color.Transparent,
-                                        contentColor = MaterialTheme.colorScheme.onSurface,
-                                        buttonSize = 48.dp,
-                                        iconSize = 24.dp,
-                                    )
-                                    Spacer(Modifier.width(10.dp))
-                                    var logoFailed by remember(folder?.titleLogoUrl) { mutableStateOf(false) }
-                                    val logo = folder?.titleLogoUrl?.takeIf { it.isNotBlank() && !logoFailed }
-                                    if (logo != null) {
-                                        NuvioAsyncImage(
-                                            logo, title,
-                                            Modifier.height(52.dp).widthIn(max = 260.dp),
-                                            contentScale = ContentScale.Fit,
-                                            alignment = Alignment.CenterStart,
-                                            onError = { logoFailed = true },
-                                        )
-                                    } else {
-                                        Text(
-                                            title.ifBlank { selection.name },
-                                            style = redesignText(28.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                                if (shelfView == null) {
-                                    TagPageControls(scope = scope, onScopeChange = { scope = it }, fallbackCountry = shelves.fallbackCountry)
-                                }
-                            }
-                        }
-                    }
+                    item(key = "streaming-header-space") { Spacer(Modifier.height(headerTop + StreamingHeaderHeight - 14.dp)) }
                     if (shelfView == null) {
                         streamingProviderPage(
                             selection = selection,
@@ -310,10 +291,7 @@ internal fun StreamingProviderScreen(
                         searchDesktopDiscoveryResults(
                             selection = selection,
                             view = shelfView,
-                            onBack = {
-                                session.view = null
-                                listState.requestScrollToItem(0)
-                            },
+                            onBack = closeGrid,
                             state = discoveryUi,
                             columns = columns,
                             gutter = gutter,
@@ -325,9 +303,69 @@ internal fun StreamingProviderScreen(
                         )
                     }
                 }
+                // The header: back, the service, its filter and Customize rows, in one row, on the same
+                // surface as the bar (Settings → Layout → Top bar background).
+                Box(
+                    Modifier.padding(top = surfaceTop).fillMaxWidth()
+                        .height(headerTop - surfaceTop + StreamingHeaderHeight)
+                        .nuvioConsumePointerEvents(),
+                ) {
+                    PinnedBarBackground(
+                        scrolled = headerScrolled,
+                        hazeState = hazeState,
+                        tint = backdrop?.tint,
+                        plainBackground = MaterialTheme.colorScheme.background.takeIf { backdrop == null },
+                    )
+                    Row(
+                        Modifier.align(Alignment.BottomStart).fillMaxWidth().height(StreamingHeaderHeight)
+                            .padding(horizontal = gutter),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // The 48dp button centres a 24dp glyph; pull it left so the arrow sits on the page edge.
+                        NuvioBackButton(
+                            onClick = goBack,
+                            modifier = Modifier.offset(x = (-12).dp),
+                            containerColor = Color.Transparent,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            buttonSize = 48.dp,
+                            iconSize = 24.dp,
+                        )
+                        var logoFailed by remember(folder?.titleLogoUrl) { mutableStateOf(false) }
+                        val logo = folder?.titleLogoUrl?.takeIf { it.isNotBlank() && !logoFailed }
+                        if (logo != null) {
+                            NuvioAsyncImage(
+                                logo, title,
+                                Modifier.height(36.dp).widthIn(max = 180.dp),
+                                contentScale = ContentScale.Fit,
+                                alignment = Alignment.CenterStart,
+                                onError = { logoFailed = true },
+                            )
+                        } else {
+                            Text(
+                                title.ifBlank { selection.name },
+                                style = redesignText(22.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        // The grid has no tabs; its controls fade out rather than vanish.
+                        AnimatedVisibility(shelfView == null, enter = fadeIn(tween(200)), exit = fadeOut(tween(140))) {
+                            TagScopePills(scope, { scope = it }, Modifier.padding(start = 20.dp))
+                        }
+                        Spacer(Modifier.weight(1f))
+                        AnimatedVisibility(shelfView == null, enter = fadeIn(tween(200)), exit = fadeOut(tween(140))) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TagFallbackNote(shelves.fallbackCountry)
+                                TagRowsCustomizeButton()
+                            }
+                        }
+                    }
+                }
                 }
                 }
             }
         }
     }
 }
+
+private val StreamingHeaderHeight = 60.dp

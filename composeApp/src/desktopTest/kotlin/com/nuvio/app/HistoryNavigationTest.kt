@@ -127,8 +127,6 @@ class HistoryNavigationTest {
         ThemeSettingsRepository.setNavBarStyle(
             if (layout == DesktopNavigationLayout.Sidebar) NavBarStyle.EXPANDED else NavBarStyle.ADAPTIVE,
         )
-        ThemeSettingsRepository.setDetailNavigationEnabled(true)
-        ThemeSettingsRepository.setDetailNavigationAutoHide(false)
         HomeCatalogSettingsRepository.setSeasonalCollectionsEnabled(false)
         PosterCardStyleRepository.ensureLoaded()
         PosterCardStyleRepository.setCalendarLandscapeModeEnabled(false)

@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -98,6 +99,9 @@ import nuvio.composeapp.generated.resources.search_row_top10_movies
 import nuvio.composeapp.generated.resources.search_row_top10_shows
 import nuvio.composeapp.generated.resources.search_rows_customize
 import nuvio.composeapp.generated.resources.search_rows_customize_hint
+import nuvio.composeapp.generated.resources.search_scope_all
+import nuvio.composeapp.generated.resources.search_scope_movies
+import nuvio.composeapp.generated.resources.search_scope_shows
 import nuvio.composeapp.generated.resources.search_shelf_new_movies
 import nuvio.composeapp.generated.resources.search_shelf_new_shows
 import nuvio.composeapp.generated.resources.search_shelf_originals_movies
@@ -369,7 +373,11 @@ internal fun rememberStreamingCollectionRows(
 
 // ---------- Header controls: tabs, fallback note, Customize rows ----------
 
-/** A tag page's header row: All / Movies / Shows, the fallback-catalog note, and Customize rows. */
+/**
+ * A tag page's controls: the All / Movies / Shows filter, the fallback-catalog note, and Customize
+ * rows. The filter is a pill group, not underlined text tabs: under the app's top bar a second row
+ * of "Movies / Shows" text tabs read as navigation and as a duplicate of the bar's own tabs.
+ */
 @Composable
 internal fun TagPageControls(
     scope: SearchScope,
@@ -377,26 +385,73 @@ internal fun TagPageControls(
     fallbackCountry: String?,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-        SearchScopeTabs(selected = scope, counts = null, onSelect = onScopeChange)
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        TagScopePills(scope, onScopeChange)
         Spacer(Modifier.weight(1f))
-        // Shown beside the tabs, so it never moves the rows below when it appears.
-        AnimatedVisibility(fallbackCountry != null, enter = fadeIn(tween(220)), exit = fadeOut(tween(160))) {
-            var shown by remember { mutableStateOf(fallbackCountry) }
-            if (fallbackCountry != null) shown = fallbackCountry
-            Text(
-                stringResource(Res.string.search_catalog_fallback, shown.orEmpty()),
-                style = redesignText(12.sp, color = RedesignColors.textMuted),
-                maxLines = 1,
-                modifier = Modifier.padding(end = 14.dp, bottom = 15.dp).testTag("tag_fallback_catalog"),
-            )
-        }
-        TagRowsCustomizeButton(Modifier.padding(bottom = 8.dp))
+        TagFallbackNote(fallbackCountry)
+        TagRowsCustomizeButton()
     }
 }
 
+/** All / Movies / Shows as one segmented pill; the selected segment's fill crossfades. */
 @Composable
-private fun TagRowsCustomizeButton(modifier: Modifier = Modifier) {
+internal fun TagScopePills(scope: SearchScope, onScopeChange: (SearchScope) -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(999.dp)
+    Row(
+        modifier.clip(shape).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, shape).padding(3.dp)
+            .testTag("tag_scope_pills"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf(
+            SearchScope.All to Res.string.search_scope_all,
+            SearchScope.Movies to Res.string.search_scope_movies,
+            SearchScope.Shows to Res.string.search_scope_shows,
+        ).forEach { (item, label) ->
+            val isSelected = item == scope
+            val interaction = remember { MutableInteractionSource() }
+            val hovered by interaction.collectIsHoveredAsState()
+            val fill by animateColorAsState(
+                when {
+                    isSelected -> RedesignColors.textPrimary
+                    hovered -> Color.White.copy(alpha = 0.08f)
+                    else -> Color.Transparent
+                },
+                tween(160),
+                label = "scope_pill_fill",
+            )
+            val ink by animateColorAsState(if (isSelected) Color(0xFF0E0F12) else RedesignColors.textSecondary, tween(160), label = "scope_pill_ink")
+            Text(
+                stringResource(label),
+                style = redesignText(13.sp, FontWeight.SemiBold, ink),
+                maxLines = 1,
+                modifier = Modifier.clip(shape).background(fill)
+                    .hoverable(interaction)
+                    .semantics { selected = isSelected }
+                    .clickable(interactionSource = interaction, indication = null, role = Role.Tab) { onScopeChange(item) }
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+        }
+    }
+}
+
+/** Shown beside the controls, so it never moves the rows below when it appears. */
+@Composable
+internal fun TagFallbackNote(fallbackCountry: String?) {
+    AnimatedVisibility(fallbackCountry != null, enter = fadeIn(tween(220)), exit = fadeOut(tween(160))) {
+        var shown by remember { mutableStateOf(fallbackCountry) }
+        if (fallbackCountry != null) shown = fallbackCountry
+        Text(
+            stringResource(Res.string.search_catalog_fallback, shown.orEmpty()),
+            style = redesignText(12.sp, color = RedesignColors.textMuted),
+            maxLines = 1,
+            modifier = Modifier.padding(end = 12.dp).testTag("tag_fallback_catalog"),
+        )
+    }
+}
+
+/** A quiet icon button: reordering rows is an occasional setting, not the page's main action. */
+@Composable
+internal fun TagRowsCustomizeButton(modifier: Modifier = Modifier) {
     val layout by remember {
         StreamingRowLayoutRepository.ensureLoaded()
         StreamingRowLayoutRepository.layout
@@ -411,25 +466,23 @@ private fun TagRowsCustomizeButton(modifier: Modifier = Modifier) {
         when {
             open -> RedesignColors.fillStrong
             hovered -> Color.White.copy(alpha = 0.10f)
-            else -> RedesignColors.fill
+            else -> Color.Transparent
         },
         tween(140),
         label = "customize_rows_fill",
     )
+    val ink by animateColorAsState(if (open || hovered) RedesignColors.textPrimary else RedesignColors.textSecondary, tween(140), label = "customize_rows_ink")
     val label = stringResource(Res.string.search_rows_customize)
     Box(modifier) {
-        Row(
-            Modifier.clip(shape).background(fill)
-                .border(1.dp, if (open) RedesignColors.hairlineFocused.copy(alpha = 0.35f) else RedesignColors.hairline, shape)
+        Box(
+            Modifier.size(36.dp).clip(shape).background(fill)
                 .hoverable(interaction)
                 .clickable(interactionSource = interaction, indication = null, role = Role.Button) { panel.targetState = !panel.targetState }
-                .padding(start = 12.dp, end = 14.dp, top = 7.dp, bottom = 7.dp)
+                .semantics { contentDescription = label }
                 .testTag("tag_rows_customize"),
-            verticalAlignment = Alignment.CenterVertically,
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.Tune, contentDescription = null, tint = RedesignColors.textSecondary, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = redesignText(13.sp, FontWeight.Medium), maxLines = 1)
+            Icon(Icons.Rounded.Tune, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))
         }
         if (panel.currentState || panel.targetState) {
             val dismiss = { panel.targetState = false }

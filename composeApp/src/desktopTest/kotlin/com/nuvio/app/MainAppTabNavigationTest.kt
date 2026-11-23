@@ -38,8 +38,6 @@ class MainAppTabNavigationTest {
             System.getProperty("nuvio.test.isolatedHome") == "true")
         ThemeSettingsRepository.ensureLoaded()
         ThemeSettingsRepository.setDesktopNavigationLayout(layout)
-        ThemeSettingsRepository.setDetailNavigationEnabled(true)
-        ThemeSettingsRepository.setDetailNavigationAutoHide(false)
         setContent {
             AppEnvironment {
                 MainAppContent(initialTab = AppScreenTab.Settings, ownsAppRuntime = false, showLaunchOverlay = false)
@@ -52,19 +50,9 @@ class MainAppTabNavigationTest {
         mainClock.advanceTimeBy(500)
         onNodeWithText("New Collection").assertIsDisplayed()
         onNodeWithContentDescription("Search").assertIsDisplayed()
-        val heading = onNodeWithText("Collections")
-        val withNavigation = heading.fetchSemanticsNode().boundsInRoot
-        runOnIdle { ThemeSettingsRepository.setDetailNavigationEnabled(false) }
-        mainClock.advanceTimeBy(500)
-        val withoutNavigation = heading.fetchSemanticsNode().boundsInRoot
-        assertEquals(withoutNavigation.top, withNavigation.top, 1f)
-        if (layout == DesktopNavigationLayout.Sidebar) {
-            assertTrue(withNavigation.left > withoutNavigation.left)
-        } else {
-            assertEquals(withoutNavigation.left, withNavigation.left, 1f)
-        }
-        runOnIdle { ThemeSettingsRepository.setDetailNavigationEnabled(true) }
-        mainClock.advanceTimeBy(500)
+        // The navigation stays on every page: it no longer auto-hides or switches off.
+        mainClock.advanceTimeBy(10_000)
+        onNodeWithContentDescription("Search").assertIsDisplayed()
         val directory = File("build/reports/tab-history").apply { mkdirs() }
         ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(directory, "collections-${layout.name}.png"))
         onNodeWithText("New Collection").performClick()

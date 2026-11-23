@@ -23,6 +23,23 @@ import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.settings_shell_backdrop_ambient
 import nuvio.composeapp.generated.resources.settings_shell_backdrop_mesh
 import nuvio.composeapp.generated.resources.settings_shell_backdrop_solid
+import nuvio.composeapp.generated.resources.settings_top_bar_background_always_solid
+import nuvio.composeapp.generated.resources.settings_top_bar_background_frosted
+import nuvio.composeapp.generated.resources.settings_top_bar_background_solid
+import nuvio.composeapp.generated.resources.settings_top_bar_background_tinted
+import nuvio.composeapp.generated.resources.settings_top_bar_background_translucent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.Dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.graphics.luminance
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.nuvio.app.features.settings.ThemeSettingsRepository
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
 import org.jetbrains.compose.resources.StringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +66,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 @Stable
 class BackdropFocusController {
     var base by mutableStateOf<String?>(null)
+
+    /** The colour behind the top bar on the shown artwork, for [TopBarBackground.Tinted]; null without artwork. */
+    var tint by mutableStateOf<Color?>(null)
 
     val target: String? get() = base
 }
@@ -126,6 +146,16 @@ fun ShellBackdrop(
         if (settledUrl == null || !showArtwork) shown = null else if (loaded != null) shown = loaded
     }
 
+    // The Tinted top bar takes the colour actually behind it: the top strip of the shown artwork.
+    // (The image's dominant colour came out darker and of another hue than the backdrop.)
+    val tintEnabled = ThemeSettingsRepository.topBarBackground.collectAsStateWithLifecycle().value == TopBarBackground.Tinted
+    LaunchedEffect(shown, tintEnabled) {
+        val bitmap = shown
+        controller.tint = if (!tintEnabled || bitmap == null) null else withContext(Dispatchers.Default) {
+            runCatching { backdropTopTint(bitmap) }.getOrNull()
+        }
+    }
+
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         ProfileMeshBackground(
             profileColor = MaterialTheme.colorScheme.primary,
@@ -149,6 +179,138 @@ fun ShellBackdrop(
                 }
             }
         }
+    }
+}
+
+/**
+ * The Tinted top bar's colour for [bitmap]: the average of its top strip (where the bar sits),
+ * under the backdrop's own top scrim (black at 40%), darkened further only if white bar text
+ * would no longer stand out.
+ */
+internal fun backdropTopTint(bitmap: ImageBitmap): Color {
+    val width = bitmap.width
+    val height = (bitmap.height * 0.22f).toInt().coerceAtLeast(1)
+    val pixels = IntArray(width * height)
+    bitmap.readPixels(pixels, startX = 0, startY = 0, width = width, height = height)
+    var r = 0L
+    var g = 0L
+    var b = 0L
+    pixels.forEach { argb ->
+        r += (argb shr 16) and 0xFF
+        g += (argb shr 8) and 0xFF
+        b += argb and 0xFF
+    }
+    val n = pixels.size.coerceAtLeast(1) * 255f
+    return pinnedTintFromAverage(Color(r / n, g / n, b / n))
+}
+
+/** [average] under the backdrop's 40% top scrim, capped so white bar text keeps its contrast. */
+internal fun pinnedTintFromAverage(average: Color): Color {
+    val scrimmed = Color(average.red * 0.6f, average.green * 0.6f, average.blue * 0.6f)
+    val luminance = scrimmed.luminance()
+    val cap = 0.12f
+    if (luminance <= cap) return scrimmed
+    // Scale towards black until the luminance is at the cap, keeping the hue.
+    var lo = 0f
+    var hi = 1f
+    repeat(16) {
+        val mid = (lo + hi) / 2
+        val l = Color(scrimmed.red * mid, scrimmed.green * mid, scrimmed.blue * mid).luminance()
+        if (l > cap) hi = mid else lo = mid
+    }
+    return Color(scrimmed.red * lo, scrimmed.green * lo, scrimmed.blue * lo)
+}
+
+/** The near-black every pinned surface is built from. */
+internal val PinnedBarInk = Color(0xFF0E0F12)
+
+/**
+ * How the desktop top bar, and every band pinned under it (Search's field, a service page's
+ * header, Home's tabs), draw once content scrolls beneath them (Settings → Layout). One choice for
+ * all of them, so the bar and the band under it are always the same surface.
+ */
+enum class TopBarBackground(val labelRes: StringResource) {
+    /** Transparent at a page's top, solid near-black once scrolled. Nothing reads through. */
+    Solid(Res.string.settings_top_bar_background_solid),
+
+    /** Strong blur with a dark tint once scrolled. */
+    Frosted(Res.string.settings_top_bar_background_frosted),
+
+    /** Solid, in the colour of the backdrop artwork behind the bar; Solid where there is none. */
+    Tinted(Res.string.settings_top_bar_background_tinted),
+
+    /** Solid near-black even at a page's top. */
+    AlwaysSolid(Res.string.settings_top_bar_background_always_solid),
+
+    /** Light blur and a 72% dim (Search's original look); titles stay faintly visible. */
+    Translucent(Res.string.settings_top_bar_background_translucent),
+    ;
+
+    companion object {
+        val Default = Solid
+
+        fun fromName(name: String?): TopBarBackground =
+            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: Default
+    }
+}
+
+/**
+ * The colour a pinned surface draws for [option]; [tint] is the backdrop's colour, if any.
+ * [restsUnderBar] is false for a band that starts mid-page (Search's field): Always solid keeps
+ * it clear until it pins, or it would be a solid stripe across the page.
+ */
+internal fun topBarSurfaceColor(
+    option: TopBarBackground,
+    scrolled: Boolean,
+    tint: Color?,
+    restsUnderBar: Boolean = true,
+): Color = when {
+    option == TopBarBackground.AlwaysSolid && (scrolled || restsUnderBar) -> PinnedBarInk
+    !scrolled -> Color.Transparent
+    option == TopBarBackground.Solid -> PinnedBarInk
+    option == TopBarBackground.Frosted -> PinnedBarInk.copy(alpha = 0.82f)
+    option == TopBarBackground.Tinted -> tint ?: PinnedBarInk
+    else -> BackdropSurface.stickyHeader
+}
+
+/** Blur radius under a pinned surface; null when it is opaque or transparent. */
+internal fun topBarSurfaceBlur(option: TopBarBackground, scrolled: Boolean): Dp? = when {
+    !scrolled -> null
+    option == TopBarBackground.Frosted -> 40.dp
+    option == TopBarBackground.Translucent -> 24.dp
+    else -> null
+}
+
+/**
+ * The surface behind the top bar or a band pinned under it, filling its parent. Every pinned
+ * surface draws through this, so they all follow [TopBarBackground] and change together.
+ * [scrolled] means content has moved under the surface. [tint] is the page's backdrop colour.
+ */
+@Composable
+internal fun BoxScope.PinnedBarBackground(
+    scrolled: Boolean,
+    hazeState: HazeState?,
+    tint: Color? = null,
+    /** Pages drawn without a backdrop pass their plain background: the surface is that, always. */
+    plainBackground: Color? = null,
+    /** False for a band that starts mid-page rather than right under the bar (see [topBarSurfaceColor]). */
+    restsUnderBar: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    val option by ThemeSettingsRepository.topBarBackground.collectAsStateWithLifecycle()
+    val color by animateColorAsState(
+        plainBackground ?: topBarSurfaceColor(option, scrolled, tint, restsUnderBar),
+        tween(220),
+        label = "pinned_bar_surface",
+    )
+    val blur = topBarSurfaceBlur(option, scrolled).takeIf { plainBackground == null }
+    Box(
+        modifier.matchParentSize()
+            .then(if (blur != null && hazeState != null) Modifier.hazeEffect(state = hazeState) { blurRadius = blur } else Modifier)
+            .background(color),
+    )
+    if (color.alpha > 0.5f) {
+        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
     }
 }
 

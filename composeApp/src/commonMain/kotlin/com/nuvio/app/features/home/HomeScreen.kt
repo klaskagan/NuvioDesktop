@@ -1,5 +1,7 @@
 package com.nuvio.app.features.home
 
+import com.nuvio.app.features.settings.ThemeSettingsRepository
+import com.nuvio.app.core.ui.topBarSurfaceColor
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -37,7 +39,6 @@ import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.Color
-import com.nuvio.app.core.ui.BackdropSurface
 import com.nuvio.app.core.ui.LocalBackdropFocusController
 import com.nuvio.app.core.ui.LocalHomeTabsHostedInNavigation
 import com.nuvio.app.core.ui.LocalNuvioShelfHeaderStyle
@@ -1029,11 +1030,12 @@ fun HomeScreen(
                 (homeListState.firstVisibleItemIndex == homeTabsIndex && homeListState.firstVisibleItemScrollOffset > 0)
         }
     }
+    // Same surface as the top bar and every other pinned band (Settings → Layout → Top bar background).
+    val topBarBackground by ThemeSettingsRepository.topBarBackground.collectAsStateWithLifecycle()
     val homeTabsColor by animateColorAsState(
         targetValue = when {
-            !homeTabsPinned -> Color.Transparent
-            backdropController == null -> MaterialTheme.colorScheme.background
-            else -> BackdropSurface.stickyHeaderOpaque
+            backdropController == null -> if (homeTabsPinned) MaterialTheme.colorScheme.background else Color.Transparent
+            else -> topBarSurfaceColor(topBarBackground, homeTabsPinned, backdropController.tint)
         },
         animationSpec = tween(220),
         label = "home_tabs_pinned",

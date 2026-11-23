@@ -134,7 +134,7 @@ class DesktopHistoryNavigationHostTest {
         val navigator = NuvioNavigator(NavBackStack<NavKey>(TabsRoute), desktopHistory = history)
         navigator.selectDesktopTab(AppScreenTab.Search)
         navigator.selectDesktopTab(AppScreenTab.Library)
-        navigator.openDesktopSettings("DetailNavigation")
+        navigator.openDesktopSettings("HoverPreview")
         compose.setContent {
             DesktopHistoryNavigationHost(
                 enabled = true,
@@ -150,7 +150,7 @@ class DesktopHistoryNavigationHostTest {
             compose.mainClock.advanceTimeBy(600)
         }
         swipe(-4f)
-        compose.runOnIdle { assertEquals(SettingsPage.Appearance, history.current.settingsPage) }
+        compose.runOnIdle { assertEquals(SettingsPage.Layout, history.current.settingsPage) }
         swipe(-4f)
         compose.runOnIdle { assertEquals(SettingsPage.Root, history.current.settingsPage) }
         swipe(-4f)

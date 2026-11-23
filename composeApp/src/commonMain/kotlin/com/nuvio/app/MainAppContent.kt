@@ -2133,6 +2133,7 @@ internal fun MainAppContent(
                             onAddProfileRequested = onSwitchProfile,
                             frostedSidebar = shellBackdropMode != com.nuvio.app.core.ui.ShellBackdropMode.Solid,
                             sidebarHandedOff = currentRoute is TabsRoute && selectedTab in com.nuvio.app.core.ui.ShellBackdropTabs,
+                            highlightHomeTab = false,
                         ) {
                             StreamingProviderDestination(
                                 route = route,

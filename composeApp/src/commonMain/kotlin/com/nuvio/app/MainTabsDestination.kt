@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import com.nuvio.app.core.ui.BackdropFocusController
 import com.nuvio.app.core.ui.DesktopMergedTopBar
 import com.nuvio.app.core.ui.DesktopMergedTopBarHeight
+import com.nuvio.app.core.ui.DesktopTopBarContentGap
 import com.nuvio.app.core.ui.LocalHomeTabsHostedInNavigation
 import com.nuvio.app.features.home.rememberHomeNavigationTabs
 import com.nuvio.app.core.ui.LocalBackdropFocusController
@@ -123,7 +124,7 @@ internal fun MainTabsDestination(
         val topChromePadding = if (useFloatingTopBar || useDesktopTopBar) {
             val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             if (useDesktopTopBar) {
-                statusBarPadding + DesktopMergedTopBarHeight + 8.dp
+                statusBarPadding + DesktopMergedTopBarHeight + DesktopTopBarContentGap
             } else {
                 max(statusBarPadding + 24.dp, 48.dp) + 64.dp
             }
@@ -383,8 +384,9 @@ internal fun MainTabsDestination(
                         scrollState = navBarScrollState,
                         hazeState = navBarHazeState,
                         navBarStyle = navBarStyleSetting,
-                        isHeroEnabled = homeCatalogSettingsUiState.heroEnabled,
                         profileSwitcherOpen = isTopProfileSwitcherOpen,
+                        // Tabs without artwork (Library, Calendar, History, Settings) must not keep the last one's colour.
+                        tint = shellBackdropController?.tint?.takeIf { shellBackdropVisible },
                     )
                 }
 

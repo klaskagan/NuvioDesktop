@@ -710,9 +710,7 @@ private fun MobileSettingsScreen(
                     onContinueWatchingClick = onContinueWatchingClick,
                     onPosterCustomizationClick = { onPageChange(SettingsPage.PosterCustomization) },
                     onHoverPreviewClick = { onPageChange(SettingsPage.HoverPreview) },
-                    onDetailNavigationClick = { onPageChange(SettingsPage.DetailNavigation) },
                 )
-                SettingsPage.DetailNavigation -> detailNavigationSettingsContent(isTablet = false)
                 SettingsPage.HoverPreview -> hoverPreviewSettingsContent(
                     isTablet = isTabletLayout,
                     uiState = posterCardStyleUiState,
@@ -1168,9 +1166,7 @@ private fun TabletSettingsScreen(
                             onContinueWatchingClick = { openInlinePage(SettingsPage.ContinueWatching) },
                             onPosterCustomizationClick = { openInlinePage(SettingsPage.PosterCustomization) },
                             onHoverPreviewClick = { openInlinePage(SettingsPage.HoverPreview) },
-                            onDetailNavigationClick = { openInlinePage(SettingsPage.DetailNavigation) },
                         )
-                        SettingsPage.DetailNavigation -> detailNavigationSettingsContent(isTablet = true)
                         SettingsPage.HoverPreview -> hoverPreviewSettingsContent(
                             isTablet = true,
                             uiState = posterCardStyleUiState,

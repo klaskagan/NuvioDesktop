@@ -6,7 +6,9 @@ import nuvio.composeapp.generated.resources.settings_page_transition
 
 import com.nuvio.app.core.ui.NavTransitionStyle
 import com.nuvio.app.core.ui.ShellBackdropMode
+import com.nuvio.app.core.ui.TopBarBackground
 import nuvio.composeapp.generated.resources.settings_shell_backdrop
+import nuvio.composeapp.generated.resources.settings_top_bar_background
 
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.getValue
@@ -72,8 +74,6 @@ import nuvio.composeapp.generated.resources.settings_content_discovery_meta_scre
 import nuvio.composeapp.generated.resources.settings_nav_bar_glow_off
 import nuvio.composeapp.generated.resources.settings_nav_bar_glow_on
 import nuvio.composeapp.generated.resources.settings_nav_bar_summary
-import nuvio.composeapp.generated.resources.settings_detail_navigation
-import nuvio.composeapp.generated.resources.settings_detail_navigation_description
 import org.jetbrains.compose.resources.stringResource
 
 internal fun LazyListScope.layoutSettingsContent(
@@ -86,7 +86,6 @@ internal fun LazyListScope.layoutSettingsContent(
     onContinueWatchingClick: () -> Unit,
     onPosterCustomizationClick: () -> Unit,
     onHoverPreviewClick: () -> Unit,
-    onDetailNavigationClick: () -> Unit,
 ) {
     item {
         SettingsSection(
@@ -169,6 +168,11 @@ internal fun LazyListScope.layoutSettingsContent(
             var showDesktopNavigationSheet by remember { mutableStateOf(false) }
             var showPageTransitionSheet by remember { mutableStateOf(false) }
             var showShellBackdropSheet by remember { mutableStateOf(false) }
+            var showTopBarBackgroundSheet by remember { mutableStateOf(false) }
+            val topBarBackground by remember {
+                ThemeSettingsRepository.ensureLoaded()
+                ThemeSettingsRepository.topBarBackground
+            }.collectAsStateWithLifecycle()
             val shellBackdrop by remember {
                 ThemeSettingsRepository.ensureLoaded()
                 ThemeSettingsRepository.shellBackdrop
@@ -202,13 +206,6 @@ internal fun LazyListScope.layoutSettingsContent(
                     }
                     if (isDesktop) {
                         SettingsNavigationRow(
-                            title = stringResource(Res.string.settings_detail_navigation),
-                            description = stringResource(Res.string.settings_detail_navigation_description),
-                            isTablet = isTablet,
-                            onClick = onDetailNavigationClick,
-                        )
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsNavigationRow(
                             title = stringResource(Res.string.settings_page_transition),
                             description = stringResource(pageTransition.labelRes),
                             isTablet = isTablet,
@@ -220,6 +217,13 @@ internal fun LazyListScope.layoutSettingsContent(
                             description = stringResource(shellBackdrop.labelRes),
                             isTablet = isTablet,
                             onClick = { showShellBackdropSheet = true },
+                        )
+                        SettingsGroupDivider(isTablet = isTablet)
+                        SettingsNavigationRow(
+                            title = stringResource(Res.string.settings_top_bar_background),
+                            description = stringResource(topBarBackground.labelRes),
+                            isTablet = isTablet,
+                            onClick = { showTopBarBackgroundSheet = true },
                         )
                         SettingsGroupDivider(isTablet = isTablet)
                         SettingsNavigationRow(
@@ -268,6 +272,19 @@ internal fun LazyListScope.layoutSettingsContent(
                         )
                     }
                 }
+            }
+            if (showTopBarBackgroundSheet) {
+                LayoutChoiceBottomSheet(
+                    title = stringResource(Res.string.settings_top_bar_background),
+                    options = TopBarBackground.entries,
+                    label = { stringResource(it.labelRes) },
+                    selected = topBarBackground,
+                    onSelected = {
+                        ThemeSettingsRepository.setTopBarBackground(it)
+                        showTopBarBackgroundSheet = false
+                    },
+                    onDismiss = { showTopBarBackgroundSheet = false },
+                )
             }
             if (showShellBackdropSheet) {
                 LayoutChoiceBottomSheet(

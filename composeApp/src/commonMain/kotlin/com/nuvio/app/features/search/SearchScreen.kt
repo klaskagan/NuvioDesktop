@@ -421,6 +421,15 @@ fun SearchScreen(
     )
     // Pinned desktop bar blurs the results scrolling beneath it.
     val headerHazeState = rememberHazeState()
+    val headerPlainBackground = MaterialTheme.colorScheme.background.takeIf { backdropController == null }
+    // The top bar turns into its scrolled surface as soon as anything passes under it, as on Home;
+    // Search used to report nothing, so posters ran under a clear bar.
+    val navBarScrollState = com.nuvio.app.core.ui.LocalNuvioNavBarScrollState.current
+    LaunchedEffect(listState, navBarScrollState) {
+        if (navBarScrollState == null) return@LaunchedEffect
+        snapshotFlow { listState.firstVisibleItemIndex * 80f + listState.firstVisibleItemScrollOffset }
+            .collect { navBarScrollState.updateScrollOffset(com.nuvio.app.AppScreenTab.Search, it) }
+    }
     // While a new query is pending, keep the previous results on screen, dimmed, instead of flashing skeletons.
     val searchPending = query.isNotBlank() && discovery == null && (lastRequestedQuery != query.trim() || displayedSearch !== uiState)
     val resultsAlpha by animateFloatAsState(
@@ -538,7 +547,9 @@ fun SearchScreen(
                     listState.requestScrollToItem(0)
                 },
                 onStreamingCountrySettings = onStreamingCountrySettings,
-                headerColor = stickyHeaderColor,
+                headerPinned = headerScrolled,
+                headerTint = backdropController?.tint,
+                headerPlainBackground = headerPlainBackground,
                 topPadding = topChromePadding,
                 gutter = gutter,
                 recentSearches = recentSearches,

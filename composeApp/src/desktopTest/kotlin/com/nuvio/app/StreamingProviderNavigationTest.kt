@@ -67,7 +67,8 @@ class StreamingProviderNavigationTest {
             onAllNodesWithText("Netflix")[1].performScrollTo().performClick()
             waitUntil(timeoutMillis = 15_000) { onAllNodesWithTag("streaming_provider_Netflix").fetchSemanticsNodes().isNotEmpty() }
             assertNull(FolderDetailRepository.uiState.value.folder)
-            onNodeWithText("Movies").assertIsDisplayed()
+            // The page's own filter, beside the top bar's Movies tab (the bar no longer hides).
+            onNodeWithTag("tag_scope_pills").assertIsDisplayed()
             onNodeWithTag("tag_rows_customize").assertIsDisplayed()
             save("service-page")
 

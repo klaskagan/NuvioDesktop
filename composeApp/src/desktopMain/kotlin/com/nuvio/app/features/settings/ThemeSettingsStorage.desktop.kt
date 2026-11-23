@@ -2,8 +2,6 @@ package com.nuvio.app.features.settings
 
 import com.nuvio.app.core.storage.DesktopStorage
 import com.nuvio.app.core.storage.ProfileScopedKey
-import com.nuvio.app.core.sync.decodeSyncInt
-import com.nuvio.app.core.sync.encodeSyncInt
 import com.nuvio.app.core.sync.decodeSyncBoolean
 import com.nuvio.app.core.sync.decodeSyncString
 import com.nuvio.app.core.sync.encodeSyncBoolean
@@ -30,12 +28,10 @@ internal actual object ThemeSettingsStorage {
     private const val desktopNavigationLayoutKey = "desktop_navigation_layout"
     private const val pageTransitionKey = "page_transition"
     private const val shellBackdropKey = "shell_backdrop"
+    private const val topBarBackgroundKey = "top_bar_background"
     private const val selectedAppLanguageKey = "selected_app_language"
     private const val navBarStyleKey = "nav_bar_style"
     private const val navBarGlowEnabledKey = "nav_bar_glow_enabled"
-    private const val detailNavigationEnabledKey = "detail_navigation_enabled"
-    private const val detailNavigationHideDelayKey = "detail_navigation_hide_delay_seconds"
-    private const val detailNavigationAutoHideKey = "detail_navigation_auto_hide"
     private val profileScopedSyncKeys = listOf(
         selectedThemeKey,
         customThemeColorsKey,
@@ -44,11 +40,9 @@ internal actual object ThemeSettingsStorage {
         desktopNavigationLayoutKey,
         pageTransitionKey,
         shellBackdropKey,
+        topBarBackgroundKey,
         navBarStyleKey,
         navBarGlowEnabledKey,
-        detailNavigationEnabledKey,
-        detailNavigationAutoHideKey,
-        detailNavigationHideDelayKey,
     )
     internal val deviceLocale = Locale.getDefault()
     private val store = DesktopStorage.store("nuvio_theme_settings")
@@ -98,8 +92,15 @@ internal actual object ThemeSettingsStorage {
     actual fun loadShellBackdrop(): String? =
         store.getString(ProfileScopedKey.of(shellBackdropKey))
 
+    actual fun loadTopBarBackground(): String? =
+        store.getString(ProfileScopedKey.of(topBarBackgroundKey))
+
     actual fun saveShellBackdrop(modeName: String) {
         store.putString(ProfileScopedKey.of(shellBackdropKey), modeName)
+    }
+
+    actual fun saveTopBarBackground(modeName: String) {
+        store.putString(ProfileScopedKey.of(topBarBackgroundKey), modeName)
     }
 
     actual fun loadSelectedAppLanguage(): String? =
@@ -124,29 +125,8 @@ internal actual object ThemeSettingsStorage {
     actual fun loadNavBarGlowEnabled(): Boolean? =
         store.getBoolean(ProfileScopedKey.of(navBarGlowEnabledKey))
 
-    actual fun loadDetailNavigationEnabled(): Boolean? =
-        store.getBoolean(ProfileScopedKey.of(detailNavigationEnabledKey))
-
-    actual fun loadDetailNavigationAutoHide(): Boolean? =
-        store.getBoolean(ProfileScopedKey.of(detailNavigationAutoHideKey))
-
     actual fun saveNavBarGlowEnabled(enabled: Boolean) {
         store.putBoolean(ProfileScopedKey.of(navBarGlowEnabledKey), enabled)
-    }
-
-    actual fun saveDetailNavigationEnabled(enabled: Boolean) {
-        store.putBoolean(ProfileScopedKey.of(detailNavigationEnabledKey), enabled)
-    }
-
-    actual fun saveDetailNavigationAutoHide(enabled: Boolean) {
-        store.putBoolean(ProfileScopedKey.of(detailNavigationAutoHideKey), enabled)
-    }
-
-    actual fun loadDetailNavigationHideDelaySeconds(): Int? =
-        store.getInt(ProfileScopedKey.of(detailNavigationHideDelayKey))
-
-    actual fun saveDetailNavigationHideDelaySeconds(seconds: Int) {
-        store.putInt(ProfileScopedKey.of(detailNavigationHideDelayKey), seconds)
     }
 
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
@@ -157,11 +137,9 @@ internal actual object ThemeSettingsStorage {
         loadDesktopNavigationLayout()?.let { put(desktopNavigationLayoutKey, encodeSyncString(it)) }
         loadPageTransition()?.let { put(pageTransitionKey, encodeSyncString(it)) }
         loadShellBackdrop()?.let { put(shellBackdropKey, encodeSyncString(it)) }
+        loadTopBarBackground()?.let { put(topBarBackgroundKey, encodeSyncString(it)) }
         loadNavBarStyle()?.let { put(navBarStyleKey, encodeSyncString(it)) }
         loadNavBarGlowEnabled()?.let { put(navBarGlowEnabledKey, encodeSyncBoolean(it)) }
-        loadDetailNavigationEnabled()?.let { put(detailNavigationEnabledKey, encodeSyncBoolean(it)) }
-        loadDetailNavigationAutoHide()?.let { put(detailNavigationAutoHideKey, encodeSyncBoolean(it)) }
-        loadDetailNavigationHideDelaySeconds()?.let { put(detailNavigationHideDelayKey, encodeSyncInt(it)) }
     }
 
     actual fun replaceFromSyncPayload(payload: JsonObject) {
@@ -173,11 +151,9 @@ internal actual object ThemeSettingsStorage {
         payload.decodeSyncString(desktopNavigationLayoutKey)?.let(::saveDesktopNavigationLayout)
         payload.decodeSyncString(pageTransitionKey)?.let(::savePageTransition)
         payload.decodeSyncString(shellBackdropKey)?.let(::saveShellBackdrop)
+        payload.decodeSyncString(topBarBackgroundKey)?.let(::saveTopBarBackground)
         payload.decodeSyncString(navBarStyleKey)?.let(::saveNavBarStyle)
         payload.decodeSyncBoolean(navBarGlowEnabledKey)?.let(::saveNavBarGlowEnabled)
-        payload.decodeSyncBoolean(detailNavigationEnabledKey)?.let(::saveDetailNavigationEnabled)
-        payload.decodeSyncBoolean(detailNavigationAutoHideKey)?.let(::saveDetailNavigationAutoHide)
-        payload.decodeSyncInt(detailNavigationHideDelayKey)?.let(::saveDetailNavigationHideDelaySeconds)
         applySelectedAppLanguage(loadSelectedAppLanguage() ?: AppLanguage.ENGLISH.code)
     }
 }

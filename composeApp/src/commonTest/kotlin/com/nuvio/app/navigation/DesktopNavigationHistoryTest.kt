@@ -113,10 +113,10 @@ class DesktopNavigationHistoryTest {
     }
 
     @Test fun switchingTabsRetainsSettingsPage() {
-        navigator.openDesktopSettings("DetailNavigation")
+        navigator.openDesktopSettings("HoverPreview")
         navigator.selectDesktopTab(AppScreenTab.Library)
         navigator.selectDesktopTab(AppScreenTab.Settings)
-        assertEquals(SettingsPage.DetailNavigation, history.current.settingsPage)
+        assertEquals(SettingsPage.HoverPreview, history.current.settingsPage)
     }
 
     @Test fun playbackCannotBeRestoredByForward() {

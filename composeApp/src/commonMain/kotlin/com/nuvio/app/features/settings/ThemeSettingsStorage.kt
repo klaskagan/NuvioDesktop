@@ -17,23 +17,15 @@ internal expect object ThemeSettingsStorage {
     fun savePageTransition(styleName: String)
     fun loadShellBackdrop(): String?
     fun saveShellBackdrop(modeName: String)
+    fun loadTopBarBackground(): String?
+    fun saveTopBarBackground(modeName: String)
     fun loadSelectedAppLanguage(): String?
     fun saveSelectedAppLanguage(languageCode: String)
     fun applySelectedAppLanguage(languageCode: String)
     fun loadNavBarStyle(): String?
     fun saveNavBarStyle(styleKey: String)
     fun loadNavBarGlowEnabled(): Boolean?
-
-    fun loadDetailNavigationEnabled(): Boolean?
-
-    fun loadDetailNavigationAutoHide(): Boolean?
     fun saveNavBarGlowEnabled(enabled: Boolean)
-
-    fun saveDetailNavigationEnabled(enabled: Boolean)
-
-    fun saveDetailNavigationAutoHide(enabled: Boolean)
-    fun loadDetailNavigationHideDelaySeconds(): Int?
-    fun saveDetailNavigationHideDelaySeconds(seconds: Int)
     fun exportToSyncPayload(): JsonObject
     fun replaceFromSyncPayload(payload: JsonObject)
 }

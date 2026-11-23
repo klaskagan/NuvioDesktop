@@ -157,6 +157,7 @@ internal fun StreamingProviderDestination(
         collectionId = route.collectionId,
         folderId = route.folderId,
         title = route.title,
+        isTopRoute = navController.currentRoute == route,
         onBack = rememberGuardedPopBackStack(navController, route),
         onPosterClick = rememberOpenMeta(navController),
         onPosterLongClick = { onPosterLongClick(PosterActionTarget(preview = it)) },

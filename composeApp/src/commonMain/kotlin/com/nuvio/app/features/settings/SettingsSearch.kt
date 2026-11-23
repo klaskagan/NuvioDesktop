@@ -504,12 +504,6 @@ internal fun settingsSearchEntries(
     )
     if (isDesktop) {
         addPage(
-            page = SettingsPage.DetailNavigation,
-            key = "detail-navigation",
-            title = stringResource(Res.string.settings_detail_navigation),
-            description = stringResource(Res.string.settings_detail_navigation_description),
-        )
-        addPage(
             page = SettingsPage.HoverPreview,
             key = "hover-preview",
             title = hoverPreviewPage,

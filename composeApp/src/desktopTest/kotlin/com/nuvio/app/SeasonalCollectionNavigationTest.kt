@@ -41,8 +41,6 @@ class SeasonalCollectionNavigationTest {
         try {
             ThemeSettingsRepository.ensureLoaded()
             ThemeSettingsRepository.setDesktopNavigationLayout(DesktopNavigationLayout.TopBar)
-            ThemeSettingsRepository.setDetailNavigationEnabled(true)
-            ThemeSettingsRepository.setDetailNavigationAutoHide(false)
             HomeCatalogSettingsRepository.setSeasonalCollectionsEnabled(true)
             val base = "http://127.0.0.1:${server.address.port}"
             val theme = SeasonalTheme.forDate(CurrentDateProvider.todayIsoDate())

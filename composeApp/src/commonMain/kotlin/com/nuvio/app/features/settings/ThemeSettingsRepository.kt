@@ -2,6 +2,7 @@ package com.nuvio.app.features.settings
 
 import com.nuvio.app.core.ui.NavTransitionStyle
 import com.nuvio.app.core.ui.ShellBackdropMode
+import com.nuvio.app.core.ui.TopBarBackground
 
 import com.nuvio.app.core.ui.AppTheme
 import com.nuvio.app.core.ui.CustomThemeColors
@@ -45,6 +46,9 @@ object ThemeSettingsRepository {
     /** Desktop redesign background: blurred artwork, the theme mesh only, or the plain theme colour. */
     private val _shellBackdrop = MutableStateFlow(ShellBackdropMode.Default)
     val shellBackdrop: StateFlow<ShellBackdropMode> = _shellBackdrop.asStateFlow()
+    /** How the desktop top bar and the bands pinned under it draw once content scrolls beneath them. */
+    private val _topBarBackground = MutableStateFlow(TopBarBackground.Default)
+    val topBarBackground: StateFlow<TopBarBackground> = _topBarBackground.asStateFlow()
 
     private val _selectedAppLanguage = MutableStateFlow(AppLanguage.DEVICE)
     val selectedAppLanguage: StateFlow<AppLanguage> = _selectedAppLanguage.asStateFlow()
@@ -54,37 +58,6 @@ object ThemeSettingsRepository {
 
     private val _navBarGlowEnabled = MutableStateFlow(true)
     val navBarGlowEnabled: StateFlow<Boolean> = _navBarGlowEnabled.asStateFlow()
-
-    private val _detailNavigationEnabled = MutableStateFlow(true)
-    val detailNavigationEnabled: StateFlow<Boolean> = _detailNavigationEnabled.asStateFlow()
-
-    fun setDetailNavigationEnabled(enabled: Boolean) {
-        ensureLoaded()
-        if (_detailNavigationEnabled.value == enabled) return
-        _detailNavigationEnabled.value = enabled
-        ThemeSettingsStorage.saveDetailNavigationEnabled(enabled)
-    }
-
-    private val _detailNavigationAutoHide = MutableStateFlow(true)
-    val detailNavigationAutoHide: StateFlow<Boolean> = _detailNavigationAutoHide.asStateFlow()
-
-    fun setDetailNavigationAutoHide(enabled: Boolean) {
-        ensureLoaded()
-        if (_detailNavigationAutoHide.value == enabled) return
-        _detailNavigationAutoHide.value = enabled
-        ThemeSettingsStorage.saveDetailNavigationAutoHide(enabled)
-    }
-
-    private val _detailNavigationHideDelaySeconds = MutableStateFlow(DefaultDetailNavigationHideDelaySeconds)
-    val detailNavigationHideDelaySeconds: StateFlow<Int> = _detailNavigationHideDelaySeconds.asStateFlow()
-
-    fun setDetailNavigationHideDelaySeconds(seconds: Int) {
-        ensureLoaded()
-        val normalized = seconds.coerceIn(MinDetailNavigationHideDelaySeconds, MaxDetailNavigationHideDelaySeconds)
-        if (_detailNavigationHideDelaySeconds.value == normalized) return
-        _detailNavigationHideDelaySeconds.value = normalized
-        ThemeSettingsStorage.saveDetailNavigationHideDelaySeconds(normalized)
-    }
 
     private var hasLoaded = false
     private var observesMembership = false
@@ -110,12 +83,10 @@ object ThemeSettingsRepository {
         _desktopNavigationLayout.value = DesktopNavigationLayout.Default
         _pageTransition.value = NavTransitionStyle.Default
         _shellBackdrop.value = ShellBackdropMode.Default
+        _topBarBackground.value = TopBarBackground.Default
         NativeTabBridge.publishAccentColor(ThemeColors.White.nativeAccentHex)
         NativeTabBridge.publishLiquidGlassEnabled(false)
         _selectedAppLanguage.value = AppLanguage.DEVICE
-        _detailNavigationHideDelaySeconds.value = DefaultDetailNavigationHideDelaySeconds
-        _detailNavigationAutoHide.value = true
-        _detailNavigationEnabled.value = true
         _navBarGlowEnabled.value = true
         _navBarStyle.value = NavBarStyle.ADAPTIVE
     }
@@ -144,14 +115,11 @@ object ThemeSettingsRepository {
         )
         _pageTransition.value = NavTransitionStyle.fromName(ThemeSettingsStorage.loadPageTransition())
         _shellBackdrop.value = ShellBackdropMode.fromName(ThemeSettingsStorage.loadShellBackdrop())
+        _topBarBackground.value = TopBarBackground.fromName(ThemeSettingsStorage.loadTopBarBackground())
         val appLanguage = AppLanguage.fromCode(ThemeSettingsStorage.loadSelectedAppLanguage())
         ThemeSettingsStorage.applySelectedAppLanguage(appLanguage.code)
         _selectedAppLanguage.value = appLanguage
         _navBarGlowEnabled.value = ThemeSettingsStorage.loadNavBarGlowEnabled() ?: true
-        _detailNavigationHideDelaySeconds.value = (ThemeSettingsStorage.loadDetailNavigationHideDelaySeconds()
-            ?: DefaultDetailNavigationHideDelaySeconds).coerceIn(MinDetailNavigationHideDelaySeconds, MaxDetailNavigationHideDelaySeconds)
-        _detailNavigationAutoHide.value = ThemeSettingsStorage.loadDetailNavigationAutoHide() ?: true
-        _detailNavigationEnabled.value = ThemeSettingsStorage.loadDetailNavigationEnabled() ?: true
         _navBarStyle.value = NavBarStyle.fromKey(ThemeSettingsStorage.loadNavBarStyle())
     }
 
@@ -210,6 +178,13 @@ object ThemeSettingsRepository {
         if (_shellBackdrop.value == mode) return
         _shellBackdrop.value = mode
         ThemeSettingsStorage.saveShellBackdrop(mode.name)
+    }
+
+    fun setTopBarBackground(option: TopBarBackground) {
+        ensureLoaded()
+        if (_topBarBackground.value == option) return
+        _topBarBackground.value = option
+        ThemeSettingsStorage.saveTopBarBackground(option.name)
     }
 
     fun setAppLanguage(language: AppLanguage) {

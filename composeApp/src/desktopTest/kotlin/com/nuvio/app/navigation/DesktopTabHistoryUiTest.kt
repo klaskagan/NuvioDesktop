@@ -63,18 +63,18 @@ class DesktopTabHistoryUiTest {
         }
         compose.onNodeWithText("Search").assertExists()
         val searchInstance = instances[AppScreenTab.Search]
-        compose.runOnIdle { navigator.openDesktopSettings("DetailNavigation") }
-        compose.onNodeWithText("Auto-hide detail top bar").assertExists()
+        compose.runOnIdle { navigator.openDesktopSettings("HoverPreview") }
+        compose.onNodeWithText("Enable Hover Preview").assertExists()
         val directory = File("build/reports/tab-history").apply { mkdirs() }
         ImageIO.write(compose.onRoot().captureToImage().toAwtImage(), "png", File(directory, "settings-$width.png"))
         compose.runOnIdle { navigator.selectDesktopTab(AppScreenTab.Library) }
         compose.onNodeWithText("Library").assertExists()
         compose.runOnIdle { navigator.popBackStack() }
-        compose.onNodeWithText("Auto-hide detail top bar").assertExists()
+        compose.onNodeWithText("Enable Hover Preview").assertExists()
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.runOnIdle { assertEquals(SettingsPage.Appearance, history.current.settingsPage) }
+        compose.runOnIdle { assertEquals(SettingsPage.Layout, history.current.settingsPage) }
         compose.runOnIdle { navigator.goForward() }
-        compose.onNodeWithText("Auto-hide detail top bar").assertExists()
+        compose.onNodeWithText("Enable Hover Preview").assertExists()
         compose.runOnIdle {
             navigator.popBackStack()
             navigator.popBackStack()
