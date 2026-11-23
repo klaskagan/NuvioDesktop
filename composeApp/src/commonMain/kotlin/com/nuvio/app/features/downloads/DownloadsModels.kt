@@ -45,6 +45,8 @@ data class DownloadItem(
     val sourceSubtitles: List<StreamSubtitle> = emptyList(),
     val localFileUri: String? = null,
     val fileName: String,
+    /** Folder chosen when the download started (desktop); null is the app's default folder. */
+    val downloadDirectory: String? = null,
     val status: DownloadStatus,
     val downloadedBytes: Long = 0L,
     val totalBytes: Long? = null,

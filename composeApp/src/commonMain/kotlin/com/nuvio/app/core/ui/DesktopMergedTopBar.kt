@@ -1,10 +1,12 @@
 package com.nuvio.app.core.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -128,9 +130,30 @@ internal fun DesktopMergedTopBar(
     val selectedKey = tabs.selectedIndex?.let { "tab:$it" }
         ?: items.firstOrNull { it.selected }?.let { "nav:${it.label}" }
     val target = selectedKey?.let(bounds::get)
-    val indicatorX by animateDpAsState(target?.first ?: 0.dp, tween(280, easing = FastOutSlowInEasing), label = "merged_top_bar_x")
-    val indicatorW by animateDpAsState(target?.second ?: 0.dp, tween(280, easing = FastOutSlowInEasing), label = "merged_top_bar_w")
-    val indicatorAlpha by animateFloatAsState(if (target != null) 1f else 0f, tween(160), label = "merged_top_bar_indicator")
+    // A bar mounted by a new frame (Downloads, Details, Streams) places its underline where it
+    // belongs; only a change of selection within this bar slides it. Animating from x = 0 made the
+    // underline sweep in from the left on every navigation.
+    val indicatorX = remember { Animatable(0.dp, Dp.VectorConverter) }
+    val indicatorW = remember { Animatable(0.dp, Dp.VectorConverter) }
+    val indicatorAlpha = remember { Animatable(0f) }
+    var indicatorPlaced by remember { mutableStateOf(false) }
+    LaunchedEffect(target) {
+        if (target == null) {
+            if (indicatorPlaced) indicatorAlpha.animateTo(0f, tween(160))
+            return@LaunchedEffect
+        }
+        if (!indicatorPlaced) {
+            indicatorX.snapTo(target.first)
+            indicatorW.snapTo(target.second)
+            indicatorAlpha.snapTo(1f)
+            indicatorPlaced = true
+            return@LaunchedEffect
+        }
+        val slide = tween<Dp>(280, easing = FastOutSlowInEasing)
+        launch { indicatorX.animateTo(target.first, slide) }
+        launch { indicatorW.animateTo(target.second, slide) }
+        indicatorAlpha.animateTo(1f, tween(160))
+    }
 
     // Entries sit in two groups, so each is measured against the row that holds the underline.
     var row by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -196,10 +219,11 @@ internal fun DesktopMergedTopBar(
                 Box(
                     Modifier
                         .align(Alignment.TopStart)
-                        .offset(x = indicatorX, y = BarRowHeight)
-                        .width(indicatorW)
+                        .offset(x = indicatorX.value, y = BarRowHeight)
+                        .width(indicatorW.value)
                         .height(IndicatorHeight)
-                        .graphicsLayer { alpha = indicatorAlpha }
+                        .graphicsLayer { alpha = indicatorAlpha.value }
+                        .testTag("desktop_merged_top_bar_indicator")
                         .clip(RoundedCornerShape(2.dp))
                         .background(RedesignColors.textPrimary),
                 )

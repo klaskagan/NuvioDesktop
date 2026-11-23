@@ -1,5 +1,19 @@
 package com.nuvio.app.features.settings
 
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Modifier
+import androidx.compose.runtime.Composable
+import nuvio.composeapp.generated.resources.*
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
+import com.nuvio.app.core.build.AppFeaturePolicy
+import com.nuvio.app.features.downloads.DownloadsFolder
+import com.nuvio.app.features.downloads.rememberDownloadsFolderControls
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -33,6 +47,10 @@ internal fun LazyListScope.playbackSettingsContent(
                         )
                     }
                 }
+                if (DownloadsFolder.isSupported && AppFeaturePolicy.downloadsEnabled) {
+                    Spacer(Modifier.height(18.dp))
+                    PlaybackDownloadFolderSettings(isTablet)
+                }
             }
             SettingsPage.PlaybackPlayer -> PlaybackPlayerSettings(isTablet, settings)
             SettingsPage.PlaybackStreamSelection -> PlaybackStreamSettings(isTablet, settings)
@@ -45,6 +63,32 @@ internal fun LazyListScope.playbackSettingsContent(
             SettingsPage.PlaybackBuffer -> if (!isIos) PlaybackBufferSettings(isTablet, settings)
             SettingsPage.PlaybackP2p -> if (P2pSettingsRepository.isVisible) PlaybackP2pSettings(isTablet)
             else -> Unit
+        }
+    }
+}
+
+/** Desktop: where new downloads are saved (the Downloads page's folder menu sets the same value). */
+@Composable
+private fun PlaybackDownloadFolderSettings(isTablet: Boolean) {
+    val folder = rememberDownloadsFolderControls()
+    SettingsSection(title = stringResource(Res.string.downloads_folder_settings_section), isTablet = isTablet) {
+        SettingsGroup(isTablet = isTablet) {
+            SettingsNavigationRow(
+                title = stringResource(Res.string.downloads_folder_title),
+                description = folder.displayPath,
+                icon = Icons.Outlined.Folder,
+                isTablet = isTablet,
+                trailingContent = if (folder.isCustom) {
+                    {
+                        TextButton(onClick = folder.reset, modifier = Modifier.testTag("settings-download-folder-reset")) {
+                            Text(stringResource(Res.string.downloads_folder_reset))
+                        }
+                    }
+                } else {
+                    null
+                },
+                onClick = folder.change,
+            )
         }
     }
 }

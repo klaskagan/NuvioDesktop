@@ -27,8 +27,13 @@ private val desktopDownloadHttpClient: HttpClient = HttpClient.newBuilder()
     .build()
 
 internal actual object DownloadsPlatformDownloader {
-    private val downloadsDir: File
+    /** The app's own folder, used when no folder was chosen (and by downloads from before the choice). */
+    internal val defaultDownloadsDir: File
         get() = File(DesktopStorage.rootDir.resolve("downloads").also { it.createDirectories() }.toUri())
+
+    /** A download's folder: the one chosen when it started, else the default. */
+    private fun folderFor(directory: String?): File =
+        directory?.let(::File)?.also { it.mkdirs() } ?: defaultDownloadsDir
 
     actual fun restoreItem(item: DownloadItem): DownloadItem =
         if (item.status == DownloadStatus.Downloading) {
@@ -48,8 +53,9 @@ internal actual object DownloadsPlatformDownloader {
         val scope = CoroutineScope(job + Dispatchers.IO)
 
         scope.launch {
-            val destination = File(downloadsDir, request.destinationFileName)
-            val tempFile = File(downloadsDir, "${request.destinationFileName}.part")
+            val folder = folderFor(request.destinationDirectory)
+            val destination = File(folder, request.destinationFileName)
+            val tempFile = File(folder, "${request.destinationFileName}.part")
 
             // Dropped connections are retried in place (resuming from the .part file) with backoff.
             // The retry budget resets whenever an attempt makes progress, so long downloads survive
@@ -100,13 +106,13 @@ internal actual object DownloadsPlatformDownloader {
         return runCatching { file.delete() }.getOrDefault(false)
     }
 
-    actual fun removePartialFile(destinationFileName: String): Boolean {
-        val tempFile = File(downloadsDir, "$destinationFileName.part")
+    actual fun removePartialFile(destinationFileName: String, directory: String?): Boolean {
+        val tempFile = File(folderFor(directory), "$destinationFileName.part")
         if (!tempFile.exists()) return true
         return runCatching { tempFile.delete() }.getOrDefault(false)
     }
 
-    actual fun resolveLocalFileUri(localFileUri: String?, destinationFileName: String): String? {
+    actual fun resolveLocalFileUri(localFileUri: String?, destinationFileName: String, directory: String?): String? {
         localFileUri
             ?.toLocalFileOrNull()
             ?.takeIf { it.exists() }
@@ -115,11 +121,12 @@ internal actual object DownloadsPlatformDownloader {
         val fileName = destinationFileName.trim().takeIf { it.isNotBlank() }
             ?: localFileUri?.toLocalFileOrNull()?.name?.takeIf { it.isNotBlank() }
             ?: return null
-        return File(downloadsDir, fileName).takeIf { it.exists() }?.toURI()?.toString()
+        return File(folderFor(directory), fileName).takeIf { it.exists() }?.toURI()?.toString()
     }
 
     actual fun openDownloadsDirectory(): Boolean {
-        val directory = downloadsDir
+        // The folder new downloads go to.
+        val directory = folderFor(DownloadsFolder.customPath.value)
         val desktop = runCatching { Desktop.getDesktop() }.getOrNull()
 
         if (desktop != null && Desktop.isDesktopSupported() && desktop.isSupported(Desktop.Action.OPEN)) {

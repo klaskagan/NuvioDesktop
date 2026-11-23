@@ -129,6 +129,11 @@ Person Details opening with no transition). Apply these to every redesigned scre
   titles as landscape cards, and a show's episodes in place (Esc returns). Actions are a frosted ⋯
   menu (`RedesignOverflowButton`), not the mobile bottom sheet. Empty and error tiles everywhere use
   `RedesignMessageTile` (core/ui). `DownloadsDesktopUiTest` covers the lists, the show view and the menu.
+  The kicker carries counts only; repeating "Downloads" above the "Downloads" title read as a
+  duplicate. The folder button is a menu (Open / Change folder… / Use default), mirrored in
+  Settings → Playback → Downloads (`DownloadsFolder`, desktop only). A new folder applies to new
+  downloads; each `DownloadItem` keeps `downloadDirectory`, so earlier and paused downloads stay
+  where they started. `DownloadsFolderTest`.
 - **Desktop context actions open on right-click and on mouse press-and-hold.** Compose's
   `combinedClickable(onLongClick)` ignores a mouse hold on desktop, so a "press and hold" promise
   needs `mousePressAndHoldAt` (core/ui `SecondaryClick`, after the clickable so the hold swallows the
@@ -449,6 +454,10 @@ solid, a 72% grey dim, see-through over Search's results). Keep these together:
 - Its labels follow the Navigation Bar Style setting only (`desktopNavigationLabelFraction`:
   Expanded labels, Compact icons, Adaptive icons until hovered). Never vary them by screen,
   hero or scroll position. `DesktopNavigationBarTest`.
+- A newly mounted bar places its underline under the selection without animating; only a change
+  within one bar slides it. Downloads, Details and Streams each mount their own bar in
+  `DetailNavigationFrame`, and an underline animated from x = 0 swept in from the left on every
+  navigation. `TopBarIndicatorTest`.
 - The bar and every band pinned under it (Search's field band, a service page's header, Home's
   tabs) draw one surface, `PinnedBarBackground` / `topBarSurfaceColor`, chosen in Settings →
   Layout → Top bar background (`TopBarBackground`). Never give a pinned band its own colour.

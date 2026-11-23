@@ -723,6 +723,15 @@
     <string name="downloads_empty_message">Long-press a stream and choose Download file to watch it offline.</string>
     <string name="downloads_empty_title">No downloads yet</string>
     <string name="downloads_open_directory">Open downloads folder</string>
+    <string name="downloads_folder_change">Change folder…</string>
+    <string name="downloads_folder_use_default">Use default folder</string>
+    <string name="downloads_folder_changed">New downloads will be saved there</string>
+    <string name="downloads_folder_not_writable">Can't save to that folder. Choose another one.</string>
+    <string name="downloads_folder_saving_to">Saving to %1$s</string>
+    <string name="downloads_folder_menu">Download folder</string>
+    <string name="downloads_folder_title">Download folder</string>
+    <string name="downloads_folder_settings_section">Downloads</string>
+    <string name="downloads_folder_reset">Reset</string>
     <string name="downloads_open_directory_failed">Couldn&apos;t open downloads folder</string>
     <string name="downloads_pause_all">Pause all</string>
     <string name="downloads_resume_all">Resume all</string>

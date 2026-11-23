@@ -94,6 +94,7 @@ object DownloadsRepository {
         val resolvedUri = DownloadsPlatformDownloader.resolveLocalFileUri(
             localFileUri = item.localFileUri,
             destinationFileName = item.fileName,
+            directory = item.downloadDirectory,
         ) ?: return null
 
         if (resolvedUri != item.localFileUri) {
@@ -152,7 +153,7 @@ object DownloadsRepository {
             replacedExisting = true
             activeHandles.remove(existing.id)?.cancel()
             DownloadsPlatformDownloader.removeFile(playableLocalFileUri(existing) ?: existing.localFileUri)
-            DownloadsPlatformDownloader.removePartialFile(existing.fileName)
+            DownloadsPlatformDownloader.removePartialFile(existing.fileName, existing.downloadDirectory)
             currentItems.removeAll { it.id == existing.id }
         }
 
@@ -202,6 +203,7 @@ object DownloadsRepository {
             errorMessage = null,
             createdAtEpochMs = now,
             updatedAtEpochMs = now,
+            downloadDirectory = DownloadsFolder.customPath.value,
         )
 
         currentItems.add(0, item)
@@ -284,7 +286,7 @@ object DownloadsRepository {
 
         activeHandles.remove(downloadId)?.cancel()
         DownloadsPlatformDownloader.removeFile(playableLocalFileUri(item) ?: item.localFileUri)
-        DownloadsPlatformDownloader.removePartialFile(item.fileName)
+        DownloadsPlatformDownloader.removePartialFile(item.fileName, item.downloadDirectory)
 
         publish(_uiState.value.items.filterNot { it.id == downloadId })
         persist()
@@ -450,6 +452,7 @@ object DownloadsRepository {
         val resolvedUri = DownloadsPlatformDownloader.resolveLocalFileUri(
             localFileUri = item.localFileUri,
             destinationFileName = item.fileName,
+            directory = item.downloadDirectory,
         ) ?: return item
         return if (resolvedUri != item.localFileUri) {
             item.copy(localFileUri = resolvedUri)
@@ -463,6 +466,7 @@ object DownloadsRepository {
             DownloadsPlatformDownloader.resolveLocalFileUri(
                 localFileUri = localFileUri,
                 destinationFileName = fileName,
+                directory = downloadDirectory,
             ) != null
 }
 

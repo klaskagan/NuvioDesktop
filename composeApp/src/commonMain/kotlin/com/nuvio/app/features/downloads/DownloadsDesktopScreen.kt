@@ -293,15 +293,17 @@ private fun DownloadsHeader(
     } else {
         val titles = items.distinctBy { it.parentMetaId }.size
         title = label
-        kicker = if (items.isEmpty()) label else listOf(
-            label,
+        // The title already says Downloads; the kicker carries only the counts (none when empty).
+        kicker = if (items.isEmpty()) "" else listOf(
             pluralStringResource(Res.plurals.downloads_titles, titles, titles),
             formatBytes(items.sumOf { it.sizeOnDiskBytes }),
         ).joinToString(" · ")
         val downloading = items.count { it.status == DownloadStatus.Downloading }
         val paused = items.count { it.status == DownloadStatus.Paused }
         val failed = items.count { it.status == DownloadStatus.Failed }
+        val folder = rememberDownloadsFolderControls()
         subtitle = listOfNotNull(
+            stringResource(Res.string.downloads_folder_saving_to, folder.displayPath).takeIf { DownloadsFolder.isSupported },
             pluralStringResource(Res.plurals.downloads_downloading_count, downloading, downloading).takeIf { downloading > 0 },
             pluralStringResource(Res.plurals.downloads_paused_count, paused, paused).takeIf { paused > 0 },
             pluralStringResource(Res.plurals.downloads_failed_count, failed, failed).takeIf { failed > 0 },
@@ -343,12 +345,22 @@ private fun DownloadsHeader(
                     modifier = Modifier.testTag("downloads-transfer-all"),
                 )
             }
-            RedesignIconButton(
-                contentDescription = stringResource(Res.string.downloads_open_directory),
-                onClick = onOpenFolder,
-                vector = Icons.Outlined.Folder,
-                modifier = Modifier.testTag("downloads-open-folder"),
-            )
+            if (DownloadsFolder.isSupported) {
+                // Open the folder, or choose where new downloads go.
+                RedesignOverflowButton(
+                    contentDescription = stringResource(Res.string.downloads_folder_menu),
+                    actions = downloadsFolderActions(rememberDownloadsFolderControls(), onOpenFolder),
+                    vector = Icons.Outlined.Folder,
+                    modifier = Modifier.testTag("downloads-folder"),
+                )
+            } else {
+                RedesignIconButton(
+                    contentDescription = stringResource(Res.string.downloads_open_directory),
+                    onClick = onOpenFolder,
+                    vector = Icons.Outlined.Folder,
+                    modifier = Modifier.testTag("downloads-open-folder"),
+                )
+            }
         }
     }
 }

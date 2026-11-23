@@ -45,6 +45,23 @@ class DownloadsDesktopUiTest {
         snapshot("downloads-menu")
         onNodeWithTag("downloads-action-details").performClick()
         runOnIdle { assertEquals("active-1", details()) }
+
+        // The folder menu: open or change the folder; "Use default" only once one was chosen.
+        onNodeWithText("Saving to", substring = true).assertIsDisplayed()
+        onNodeWithTag("downloads-folder").performClick()
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("downloads-folder-change").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("downloads-folder-open").assertExists()
+        onNodeWithTag("downloads-folder-reset").assertDoesNotExist()
+        snapshot("downloads-folder-menu")
+        val chosen = java.nio.file.Files.createTempDirectory("nuvio-dl").toFile()
+        DownloadsFolder.picker = { chosen }
+        onNodeWithTag("downloads-folder-change").performClick()
+        waitUntil(timeoutMillis = 3_000) { DownloadsFolder.customPath.value == chosen.absolutePath }
+        onNodeWithText(chosen.name, substring = true).assertIsDisplayed()
+        onNodeWithTag("downloads-folder").performClick()
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("downloads-folder-reset").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("downloads-folder-reset").performClick()
+        waitUntil(timeoutMillis = 3_000) { DownloadsFolder.customPath.value == null }
     }
 
     @Test
@@ -74,6 +91,7 @@ class DownloadsDesktopUiTest {
                 block({ played }, { details })
             } finally {
                 AppKeyboardShortcuts.overlayEscape = null
+                DownloadsFolder.reset()
             }
         }
 
