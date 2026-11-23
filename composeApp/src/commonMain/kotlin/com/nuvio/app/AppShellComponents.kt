@@ -200,6 +200,8 @@ internal data class AppTabActions(
     val onDownloadsClick: () -> Unit = {},
     val onContinueWatchingClick: ((ContinueWatchingItem) -> Unit)? = null,
     val onContinueWatchingLongPress: ((ContinueWatchingItem) -> Unit)? = null,
+    /** Opens a resume item's Details page (Home board's (i) and the options sheet). */
+    val onContinueWatchingDetails: ((ContinueWatchingItem) -> Unit)? = null,
     val onSwitchProfile: (() -> Unit)? = null,
     val onDesktopSettingsPageChange: ((String) -> Unit)? = null,
     val onDesktopSettingsCategoryChange: ((String) -> Unit)? = null,
@@ -281,6 +283,7 @@ internal fun AppTabHost(
                         onCatalogPosterLongClick = actions.onHomePosterLongClick,
                         onContinueWatchingClick = actions.onContinueWatchingClick,
                         onContinueWatchingLongPress = actions.onContinueWatchingLongPress,
+                        onContinueWatchingDetails = actions.onContinueWatchingDetails,
                         continueWatchingDisintegrationRequest = state.continueWatchingDisintegrationRequest,
                         onFolderClick = actions.onFolderClick,
                         onFirstCatalogRendered = actions.onInitialHomeContentRendered,

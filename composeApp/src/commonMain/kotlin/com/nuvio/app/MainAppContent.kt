@@ -1426,6 +1426,16 @@ internal fun MainAppContent(
             WatchingActions.markContinueWatchingWatched(item)
         }
 
+        val onContinueWatchingDetails: (ContinueWatchingItem) -> Unit = { item ->
+            navController.navigate(
+                DetailRoute(
+                    type = item.parentMetaType,
+                    id = item.parentMetaId,
+                    title = item.title,
+                ),
+            )
+        }
+
         val onContinueWatchingLongPress: (ContinueWatchingItem) -> Unit = { item ->
             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
             val zoomAnchor = PosterZoomAnchorHolder.consume()
@@ -1799,6 +1809,7 @@ internal fun MainAppContent(
                                 onDownloadsClick = { navController.navigate(DownloadsRoute(downloadsTitle)) },
                                 onContinueWatchingClick = onContinueWatchingClick,
                                 onContinueWatchingLongPress = onContinueWatchingLongPress,
+                                onContinueWatchingDetails = onContinueWatchingDetails,
                                 onSwitchProfile = onSwitchProfile,
                                 onDesktopSettingsPageChange = if (desktopHistory != null) {
                                     { page -> navController.openDesktopSettings(page) }
@@ -2480,15 +2491,7 @@ internal fun MainAppContent(
                 showDetailsOption = selectedContinueWatchingForActions?.isCloudLibraryContinueWatchingItem() != true,
                 onDismiss = { selectedContinueWatchingForActions = null },
                 onOpenDetails = {
-                    selectedContinueWatchingForActions?.let { item ->
-                        navController.navigate(
-                            DetailRoute(
-                                type = item.parentMetaType,
-                                id = item.parentMetaId,
-                                title = item.title,
-                            ),
-                        )
-                    }
+                    selectedContinueWatchingForActions?.let(onContinueWatchingDetails)
                 },
                 onStartFromBeginning = selectedContinueWatchingForActions
                     ?.takeIf { !it.isNextUp && canPlayContinueWatching(it) }

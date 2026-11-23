@@ -165,6 +165,7 @@ fun HomeScreen(
     onCatalogPosterLongClick: ((String, MetaPreview) -> Unit)? = null,
     onContinueWatchingClick: ((ContinueWatchingItem) -> Unit)? = null,
     onContinueWatchingLongPress: ((ContinueWatchingItem) -> Unit)? = null,
+    onContinueWatchingDetails: ((ContinueWatchingItem) -> Unit)? = null,
     continueWatchingDisintegrationRequest: DisintegrationRequest<String>? = null,
     onFolderClick: ((collectionId: String, folderId: String) -> Unit)? = null,
     onFirstCatalogRendered: (() -> Unit)? = null,
@@ -1229,6 +1230,10 @@ fun HomeScreen(
                             resumeItems = boardResumeItems,
                             onResumeClick = onContinueWatchingClick,
                             onResumeLongPress = onContinueWatchingLongPress,
+                            // Cloud files have no Details page, so their tile shows no (i).
+                            onResumeDetails = onContinueWatchingDetails?.takeIf {
+                                boardResumeItems.firstOrNull()?.isCloudLibraryContinueWatchingItem() != true
+                            },
                             modifier = Modifier.padding(horizontal = homeSectionPadding).padding(top = 4.dp, bottom = 18.dp),
                             featured = featured,
                         )

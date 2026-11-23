@@ -601,3 +601,12 @@ query and scroll state but lost the chip and loaded pages. Reuse the shared
 near-end page loader (`LoadMoreOnScrollEffect`) with the retained cursor and a bounded run of pages that
 add no cards. `SearchDiscoveryUiTest` unmounts and remounts the browse content
 and checks its selected filter and results.
+
+## Right click on desktop cards
+
+- Clickable desktop cards, including redesign tiles with their own hover look (the Home board's
+  `boardClickable`), go through `posterCardClickable` (`hoverScaleEnabled = false` when the tile
+  draws its own hover), never a bare `combinedClickable`. That is what gives right click and
+  press-and-hold the shared zoomed options menu (`NuvioPosterZoomActionOverlay`); without its anchor
+  the app falls back to the plain bottom sheet. Trigger: board Continue Watching cards ignored right
+  click, then opened the bottom sheet instead of the zoomed menu. Check: `HomeBoardResumeTileTest`.
