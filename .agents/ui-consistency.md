@@ -91,6 +91,20 @@ Person Details opening with no transition). Apply these to every redesigned scre
   For you pool by type is not enough: with two movie catalogs picked it leaves Shows with a movie
   hero. Load hero metadata for all pools together (`HomeHeroMetaStore.load` prunes to what it is
   given). Regression: `HomeTabsTest`.
+- **Filters under the merged top bar are pills, not text tabs.** Calendar and History use
+  `RedesignPillGroup` / `RedesignPillButton` / `RedesignIconButton` (`core/ui/RedesignControls.kt`);
+  reuse them for other redesigned filters (the streaming tag page's `TagScopePills` predates them).
+  A control whose label can change (a title that also opens a picker) gets a fixed measured width
+  so view or month changes never shift the controls after it; `CalendarScreenUiTest`'s
+  "Control shifted" assertions are the regression check.
+- **Backdrop contrast adapts to the artwork.** A fixed scrim tuned for dark banners let bright
+  art (Calendar over The Simpsons) wash out the bar's idle labels and muted page kickers. Every
+  `ShellBackdrop` artwork layer now adds a dim from its top-weighted luminance
+  (`backdropDimFor(artworkLuminance(...))`, none for dark art) and a fixed top chrome band, so
+  `RedesignColors.textMuted` keeps ≥3:1 contrast. Fix contrast in the backdrop, not by restyling
+  labels. Regression: `ShellBackdropContrastTest`.
+- **Calendar is a backdrop tab** (`ShellBackdropTabs`): it steers the shell backdrop from the next
+  release while active and draws no opaque page of its own when a controller is present.
 - **Frosted sidebars come in pairs.** A page with its own backdrop in a separate nav entry (Person)
   passes `frostedSidebar` to `DetailNavigationFrame` and insets its content, not its backdrop, by
   `LocalBackdropContentStartInset`. While two such entries cross, the one leaving hides its sidebar

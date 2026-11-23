@@ -100,7 +100,7 @@ class CalendarScreenUiTest {
         onNodeWithTag("calendar-date-$tomorrow").performClick()
         onNodeWithTag("calendar-selected-day").assertIsDisplayed()
         onNodeWithText("No releases on this day.").assertExists()
-        onNodeWithText(CalendarPlatform.monthLabel(tomorrow) + " ▾").performClick()
+        onNodeWithText(CalendarPlatform.monthLabel(tomorrow)).performClick()
         onNodeWithTag("calendar-date-picker").assertExists()
         onNodeWithTag("calendar-picker-$today").performClick()
         onNodeWithTag("calendar-date-picker").assertDoesNotExist()
@@ -130,7 +130,7 @@ class CalendarScreenUiTest {
         setContent { CompositionLocalProvider(LocalHistoryGesturePhaseEvents provides phases) { AppEnvironment { CalendarScreen(repository = repo) } } }
         onNodeWithTag("calendar-view-Month").performClick()
         val today = LocalDate.now().toString()
-        val heading = CalendarPlatform.monthLabel(today) + " ▾"
+        val heading = CalendarPlatform.monthLabel(today)
         onNodeWithText(heading).assertExists()
         val grid = onNodeWithTag("calendar-month-grid")
         val date = calendarMonthRange(today, CalendarPlatform.firstWeekday()).dates[10]
@@ -146,7 +146,7 @@ class CalendarScreenUiTest {
         onNodeWithText(heading).assertExists()
         grid.performTouchInput { up() }
         waitForIdle()
-        onNodeWithText(CalendarPlatform.monthLabel(calendarMoveMonth(today, 1)) + " ▾").assertExists()
+        onNodeWithText(CalendarPlatform.monthLabel(calendarMoveMonth(today, 1))).assertExists()
         grid.performTouchInput { swipeRight() }
         waitForIdle()
         onNodeWithText(heading).assertExists()
@@ -164,11 +164,11 @@ class CalendarScreenUiTest {
         onNodeWithText(heading).assertExists()
         runOnIdle { phases.tryEmit(HistoryGesturePhase.Ended) }
         waitForIdle()
-        onNodeWithText(CalendarPlatform.monthLabel(calendarMoveMonth(today, 1)) + " ▾").assertExists()
+        onNodeWithText(CalendarPlatform.monthLabel(calendarMoveMonth(today, 1))).assertExists()
         runOnIdle { phases.tryEmit(HistoryGesturePhase.Momentum) }
         grid.performMouseInput { scroll(30f, ScrollWheel.Horizontal) }
         waitForIdle()
-        onNodeWithText(CalendarPlatform.monthLabel(calendarMoveMonth(today, 1)) + " ▾").assertExists()
+        onNodeWithText(CalendarPlatform.monthLabel(calendarMoveMonth(today, 1))).assertExists()
 
     }
 
@@ -255,7 +255,7 @@ class CalendarScreenUiTest {
         assertEquals(after, requests.size)
         onNodeWithTag("calendar-today").assertDoesNotExist()
         val browsed = calendarDatePlusDays(calendarWeekStart(LocalDate.now().toString(), CalendarPlatform.firstWeekday()), 28)
-        onNodeWithText(CalendarPlatform.monthLabel(browsed) + " ▾").assertExists()
+        onNodeWithText(CalendarPlatform.monthLabel(browsed)).assertExists()
         onNodeWithTag("calendar-view-Month").performClick()
         onNodeWithTag("calendar-date-$browsed").assertIsSelected()
         onNodeWithTag("calendar-view-Day").performClick()
@@ -379,14 +379,15 @@ class CalendarScreenUiTest {
         val original = index.getInt(ProfileRepository)
         try {
             PosterCardStyleRepository.setCatalogLandscapeModeEnabled(true)
-            PosterCardStyleRepository.setCalendarLandscapeModeEnabled(true)
+            PosterCardStyleRepository.setCalendarLandscapeModeEnabled(false)
             index.setInt(ProfileRepository, 999)
             PosterCardStyleRepository.onProfileChanged()
-            assertFalse(PosterCardStyleRepository.uiState.value.calendarLandscapeModeEnabled)
-            PosterCardStyleRepository.setCalendarLandscapeModeEnabled(false)
+            // A profile without a saved choice opens Calendar with landscape stills (redesign default).
+            assertTrue(PosterCardStyleRepository.uiState.value.calendarLandscapeModeEnabled)
+            PosterCardStyleRepository.setCalendarLandscapeModeEnabled(true)
             index.setInt(ProfileRepository, original)
             PosterCardStyleRepository.onProfileChanged()
-            assertTrue(PosterCardStyleRepository.uiState.value.calendarLandscapeModeEnabled)
+            assertFalse(PosterCardStyleRepository.uiState.value.calendarLandscapeModeEnabled)
             assertTrue(PosterCardStyleRepository.uiState.value.catalogLandscapeModeEnabled)
             PosterCardStyleRepository.setCalendarLandscapeModeEnabled(false)
             PosterCardStyleRepository.onProfileChanged()
