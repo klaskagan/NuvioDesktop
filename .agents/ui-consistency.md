@@ -290,7 +290,7 @@ to show what Search's Netflix tag shows, because the two used different catalog 
   picks the chart for the streaming country, then the UK, then any. "View all" and the slot's
   rows use the region the page ended up with (`StreamingCatalogRegion`). A failed request is
   not an empty catalog and must not trigger the fallback.
-- The tag page's All / Movies / Shows filter is a pill group (`TagScopePills`, inside the shared
+- The tag page's All / Movies / Shows filter is a pill group (`TagScopePills` on the shared `RedesignPillGroup`, inside the shared
   `TagPageControls`), and "Customize rows" is an icon-only button. Underlined text tabs under
   the merged top bar read as a second copy of the bar's own For you / Movies / Shows. Search's
   results tabs with counts (`SearchScopeTabs`) stay text tabs, and the bar selects no Home tab

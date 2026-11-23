@@ -71,6 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.AppKeyboardShortcuts
 import com.nuvio.app.core.ui.NuvioViewAllPillSize
 import com.nuvio.app.core.ui.RedesignColors
+import com.nuvio.app.core.ui.RedesignPillGroup
 import com.nuvio.app.core.ui.redesignText
 import com.nuvio.app.features.addons.ManagedAddon
 import com.nuvio.app.features.collection.CollectionFolder
@@ -393,45 +394,24 @@ internal fun TagPageControls(
     }
 }
 
-/** All / Movies / Shows as one segmented pill; the selected segment's fill crossfades. */
+/** All / Movies / Shows on the redesign's shared pill group (as Calendar's toolbar uses). */
 @Composable
 internal fun TagScopePills(scope: SearchScope, onScopeChange: (SearchScope) -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(999.dp)
-    Row(
-        modifier.clip(shape).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, shape).padding(3.dp)
-            .testTag("tag_scope_pills"),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        listOf(
-            SearchScope.All to Res.string.search_scope_all,
-            SearchScope.Movies to Res.string.search_scope_movies,
-            SearchScope.Shows to Res.string.search_scope_shows,
-        ).forEach { (item, label) ->
-            val isSelected = item == scope
-            val interaction = remember { MutableInteractionSource() }
-            val hovered by interaction.collectIsHoveredAsState()
-            val fill by animateColorAsState(
-                when {
-                    isSelected -> RedesignColors.textPrimary
-                    hovered -> Color.White.copy(alpha = 0.08f)
-                    else -> Color.Transparent
+    RedesignPillGroup(
+        options = listOf(SearchScope.All, SearchScope.Movies, SearchScope.Shows),
+        selected = scope,
+        label = {
+            stringResource(
+                when (it) {
+                    SearchScope.Movies -> Res.string.search_scope_movies
+                    SearchScope.Shows -> Res.string.search_scope_shows
+                    else -> Res.string.search_scope_all
                 },
-                tween(160),
-                label = "scope_pill_fill",
             )
-            val ink by animateColorAsState(if (isSelected) Color(0xFF0E0F12) else RedesignColors.textSecondary, tween(160), label = "scope_pill_ink")
-            Text(
-                stringResource(label),
-                style = redesignText(13.sp, FontWeight.SemiBold, ink),
-                maxLines = 1,
-                modifier = Modifier.clip(shape).background(fill)
-                    .hoverable(interaction)
-                    .semantics { selected = isSelected }
-                    .clickable(interactionSource = interaction, indication = null, role = Role.Tab) { onScopeChange(item) }
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-            )
-        }
-    }
+        },
+        onSelect = onScopeChange,
+        modifier = modifier.testTag("tag_scope_pills"),
+    )
 }
 
 /** Shown beside the controls, so it never moves the rows below when it appears. */
