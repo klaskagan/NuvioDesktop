@@ -119,6 +119,19 @@ Person Details opening with no transition). Apply these to every redesigned scre
   Pickers are `RedesignMenuButton` (frosted popup that claims `overlayEscape` while open); don't use
   `NuvioDropdownChip` on redesigned screens. `LibraryDesktopUiTest` covers header positions across
   panes and loading, in-place lists and Esc order, the Sort menu, the Cloud panel and server Retry.
+  Cloud filters by what an item holds (All / Movies / Shows / Other, read from release names in
+  `CloudLibraryPresentation.kt`, `CloudLibraryPresentationTest`), not by the provider's transport
+  type; rows show files, size, provider and when it was added (`addedAtEpochMs` from TorBox
+  `created_at` and Premiumize file dates), and the header says when the list was refreshed.
+- **Downloads is redesigned on desktop** (`DownloadsDesktopScreen.kt`, mobile keeps `DownloadsScreen`):
+  its route sits in `DetailNavigationFrame` with its own backdrop like a service page, Library's
+  header shape with Pause all and the folder button, active transfers as one frosted list, finished
+  titles as landscape cards, and a show's episodes in place (Esc returns). Actions are a frosted ⋯
+  menu (`RedesignOverflowButton`), not the mobile bottom sheet. Empty and error tiles everywhere use
+  `RedesignMessageTile` (core/ui). `DownloadsDesktopUiTest` covers the lists, the show view and the menu.
+- **Desktop stream actions open on right-click and on press-and-hold.** `StreamCard` used to ignore
+  long-press on desktop while Downloads told people to long-press a stream to download; a held press
+  now opens the same actions menu at the card's centre.
 - **Frosted sidebars come in pairs.** A page with its own backdrop in a separate nav entry (Person)
   passes `frostedSidebar` to `DetailNavigationFrame` and insets its content, not its backdrop, by
   `LocalBackdropContentStartInset`. While two such entries cross, the one leaving hides its sidebar

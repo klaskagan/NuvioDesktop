@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.unit.IntOffset
@@ -376,6 +377,84 @@ private fun <T> RedesignMenuPanel(
         }
     }
 }
+
+/** One row of a [RedesignOverflowButton] menu. */
+internal class RedesignAction(
+    val label: String,
+    val icon: ImageVector,
+    val destructive: Boolean = false,
+    val tag: String? = null,
+    val onClick: () -> Unit,
+)
+
+/**
+ * Round ⋯ button that opens a frosted actions menu under it, end-aligned (a card's Play / Pause /
+ * Details / Delete). Esc closes the menu first.
+ */
+@Composable
+internal fun RedesignOverflowButton(
+    contentDescription: String,
+    actions: List<RedesignAction>,
+    modifier: Modifier = Modifier,
+    size: Dp = PillHeight,
+    vector: ImageVector = Icons.Rounded.MoreHoriz,
+) {
+    val menu = remember { MutableTransitionState(false) }
+    Box(modifier) {
+        RedesignIconButton(contentDescription, { menu.targetState = !menu.targetState }, size = size, active = menu.targetState) { tint ->
+            Icon(vector, contentDescription = null, tint = tint, modifier = Modifier.size(if (size < PillHeight) 18.dp else 20.dp))
+        }
+        if (menu.currentState || menu.targetState) {
+            val dismiss = { menu.targetState = false }
+            DisposableEffect(Unit) {
+                val handler: () -> Boolean = { dismiss(); true }
+                AppKeyboardShortcuts.overlayEscape = handler
+                onDispose { if (AppKeyboardShortcuts.overlayEscape === handler) AppKeyboardShortcuts.overlayEscape = null }
+            }
+            val offsetY = with(LocalDensity.current) { (size + 6.dp).roundToPx() }
+            val origin = TransformOrigin(1f, 0f)
+            Popup(alignment = Alignment.TopEnd, offset = IntOffset(0, offsetY), onDismissRequest = dismiss, properties = PopupProperties(focusable = true)) {
+                AnimatedVisibility(
+                    visibleState = menu,
+                    enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = origin),
+                    exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = origin),
+                ) {
+                    val shape = RoundedCornerShape(16.dp)
+                    Column(
+                        Modifier.widthIn(min = 200.dp, max = 300.dp).clip(shape).background(RedesignMenuSurface)
+                            .border(1.dp, RedesignColors.hairline, shape).padding(6.dp),
+                    ) {
+                        actions.forEach { action ->
+                            val interaction = remember { MutableInteractionSource() }
+                            val hovered by interaction.collectIsHoveredAsState()
+                            val fill by animateColorAsState(if (hovered) Color.White.copy(alpha = 0.08f) else Color.Transparent, tween(140), label = "action_row_fill")
+                            val ink = when {
+                                action.destructive -> RedesignDanger
+                                hovered -> RedesignColors.textPrimary
+                                else -> RedesignColors.textSecondary
+                            }
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(fill)
+                                    .hoverable(interaction)
+                                    .clickable(interactionSource = interaction, indication = null, role = Role.Button) { dismiss(); action.onClick() }
+                                    .then(action.tag?.let { Modifier.testTag(it) } ?: Modifier)
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(action.icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))
+                                Text(action.label, style = redesignText(13.sp, FontWeight.Medium, ink), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Destructive action ink on the redesign's dark surfaces. */
+internal val RedesignDanger = Color(0xFFFF8A80)
 
 /** Opaque enough that menu rows stay legible over posters (no blur source under a popup). */
 private val RedesignMenuSurface = Color(0xFF1C1E22).copy(alpha = 0.97f)

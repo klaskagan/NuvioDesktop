@@ -1,5 +1,6 @@
 package com.nuvio.app.features.library
 
+import com.nuvio.app.core.ui.RedesignMessageTile
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -100,7 +101,7 @@ internal class LibraryDesktopModel(
     val posterPattern: String,
     val cloud: CloudLibraryUiState,
     val cloudProviderId: String?,
-    val cloudType: CloudLibraryItemType?,
+    val cloudKind: CloudMediaKind?,
     val cloudQuery: String,
     val cloudItemKey: String?,
     val serverShelves: List<LibraryServerShelf>?,
@@ -134,13 +135,16 @@ internal class LibraryDesktopActions(
     val onDisintegrated: (String) -> Unit,
     val onDownloadsClick: (() -> Unit)?,
     val cloudSelectProvider: (String?) -> Unit,
-    val cloudSelectType: (CloudLibraryItemType?) -> Unit,
+    val cloudSelectKind: (CloudMediaKind?) -> Unit,
     val cloudQueryChange: (String) -> Unit,
     val cloudSelectItem: (CloudLibraryItem) -> Unit,
     val cloudPlayFile: (CloudLibraryItem, CloudLibraryFile) -> Unit,
     val cloudCloseItem: () -> Unit,
     val cloudRefresh: () -> Unit,
     val onConnectCloudClick: (() -> Unit)?,
+    val onPlayClick: ((LibraryItem) -> Unit)? = null,
+    val onConnectTrackingClick: (() -> Unit)? = null,
+    val onBrowseHomeClick: (() -> Unit)? = null,
     val onCatalogClick: ((HomeCatalogSection) -> Unit)?,
     val onPreviewClick: ((MetaPreview) -> Unit)?,
     val onPreviewLongClick: ((MetaPreview) -> Unit)?,
@@ -358,8 +362,13 @@ private fun libraryKicker(model: LibraryDesktopModel): String {
         LibraryDesktopPane.Cloud -> {
             val label = stringResource(Res.string.library_source_cloud)
             val count = model.cloud.items.size
+            val providers = model.cloud.providers.size
             if (!model.cloud.isLoaded || !model.cloud.hasConnectedProvider) label
-            else "$label · ${pluralStringResource(Res.plurals.library_cloud_item_count, count, count)}"
+            else listOf(
+                label,
+                pluralStringResource(Res.plurals.library_cloud_item_count, count, count),
+                pluralStringResource(Res.plurals.library_provider_count, providers, providers),
+            ).joinToString(" · ")
         }
         LibraryDesktopPane.Servers -> {
             val label = stringResource(Res.string.library_source_servers)
@@ -381,7 +390,12 @@ private fun librarySubtitle(model: LibraryDesktopModel): String? = when (model.p
         val shown = projection.entries.size
         if (shown == total) null else stringResource(Res.string.library_grid_showing, shown, total)
     }
-    LibraryDesktopPane.Cloud -> model.cloud.providers.takeIf { it.isNotEmpty() }?.joinToString(", ") { it.providerName }
+    LibraryDesktopPane.Cloud -> model.cloud.providers.takeIf { it.isNotEmpty() }?.let { providers ->
+        val names = providers.map { it.providerName }
+        val joined = if (names.size == 1) names.single()
+        else stringResource(Res.string.library_names_and, names.dropLast(1).joinToString(", "), names.last())
+        listOfNotNull(joined, model.cloud.refreshedAtEpochMs?.let { refreshedAgo(it) }).joinToString(" · ")
+    }
     LibraryDesktopPane.Servers -> model.serverShelves.orEmpty().map { it.ref.connection.name }.distinct()
         .takeIf { it.isNotEmpty() }?.joinToString(", ")
 }
@@ -430,7 +444,7 @@ internal fun LibraryLoadProblem(model: LibraryDesktopModel, actions: LibraryDesk
             onRetry = actions.retry,
         )
     } else {
-        LibraryMessageTile(
+        RedesignMessageTile(tag = "library-message", 
             title = stringResource(
                 when (model.uiState.sourceMode) {
                     LibrarySourceMode.LOCAL -> Res.string.library_load_failed
@@ -448,9 +462,9 @@ internal fun LibraryLoadProblem(model: LibraryDesktopModel, actions: LibraryDesk
 }
 
 @Composable
-internal fun LibraryEmptyLibrary(model: LibraryDesktopModel, gutter: Dp) {
+internal fun LibraryEmptyLibrary(model: LibraryDesktopModel, actions: LibraryDesktopActions, gutter: Dp) {
     val mode = model.uiState.sourceMode
-    LibraryMessageTile(
+    RedesignMessageTile(tag = "library-message", 
         title = stringResource(
             when (mode) {
                 LibrarySourceMode.LOCAL -> Res.string.library_empty_title
@@ -469,6 +483,11 @@ internal fun LibraryEmptyLibrary(model: LibraryDesktopModel, gutter: Dp) {
         ),
         modifier = Modifier.padding(horizontal = gutter),
         bookmark = true,
+        actionLabel = stringResource(Res.string.library_empty_browse),
+        onAction = actions.onBrowseHomeClick,
+        // Saved on this device only: offer to bring lists from a tracking account.
+        secondaryLabel = stringResource(Res.string.library_empty_connect).takeIf { mode == LibrarySourceMode.LOCAL },
+        onSecondary = actions.onConnectTrackingClick.takeIf { mode == LibrarySourceMode.LOCAL },
     )
 }
 

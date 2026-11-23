@@ -443,6 +443,7 @@ internal fun MainAppContent(
     val metaScreenSettingsTitle = stringResource(Res.string.compose_settings_page_meta_screen)
     val continueWatchingSettingsTitle = stringResource(Res.string.compose_settings_page_continue_watching)
     val debridSettingsTitle = stringResource(Res.string.compose_settings_page_debrid)
+    val integrationsSettingsTitle = stringResource(Res.string.compose_settings_page_integrations)
     val streamingCountryPageTitle = stringResource(Res.string.compose_settings_page_content_discovery)
     val downloadsTitle = stringResource(Res.string.compose_settings_root_downloads_title)
     val addonsSettingsTitle = stringResource(Res.string.compose_settings_page_addons)
@@ -1598,6 +1599,27 @@ internal fun MainAppContent(
                 val shellBackdropMode by remember {
                     com.nuvio.app.features.settings.ThemeSettingsRepository.shellBackdrop
                 }.collectAsStateWithLifecycle()
+                // Downloads on desktop: the shared bar and a frosted sidebar over its own backdrop, with
+                // the nav-layer scope so its background and content animate like Person's.
+                @Composable
+                fun DownloadsFrame(route: Any, content: @Composable () -> Unit) {
+                    CompositionLocalProvider(
+                        com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current,
+                        com.nuvio.app.core.ui.LocalNavTransitionStyle provides pageTransitionStyle,
+                        com.nuvio.app.core.ui.LocalShellBackdropMode provides shellBackdropMode,
+                    ) {
+                        DetailNavigationFrame(
+                            route = route,
+                            selectedTab = selectedTab,
+                            onTabSelected = ::selectDetailNavigationTab,
+                            onProfileSelected = selectNavigationProfile,
+                            onAddProfileRequested = onSwitchProfile,
+                            frostedSidebar = shellBackdropMode != com.nuvio.app.core.ui.ShellBackdropMode.Solid,
+                            sidebarHandedOff = currentRoute is TabsRoute && selectedTab in com.nuvio.app.core.ui.ShellBackdropTabs,
+                            content = content,
+                        )
+                    }
+                }
                 NavDisplay(
                     backStack = navBackStack,
                     modifier = Modifier
@@ -1754,6 +1776,26 @@ internal fun MainAppContent(
                                         activateTab(AppScreenTab.Settings)
                                     }
                                 },
+                                onLibraryPlay = { item ->
+                                    if (item.type == "movie") {
+                                        onPlay(
+                                            item.type, item.id, item.id, item.type, item.name, item.logo, item.poster, item.banner,
+                                            null, null, null, null, item.description, null,
+                                        )
+                                    } else {
+                                        navController.navigate(DetailRoute(type = item.type, id = item.id, title = item.name))
+                                    }
+                                },
+                                onConnectTrackingClick = {
+                                    if (useNativeNavigation && !isTabletLayout) {
+                                        activateTab(AppScreenTab.Settings)
+                                        navController.navigate(SettingsPageRoute(pageName = "Integrations", title = integrationsSettingsTitle))
+                                    } else {
+                                        requestedSettingsPageName = "Integrations"
+                                        activateTab(AppScreenTab.Settings)
+                                    }
+                                },
+                                onBrowseHomeClick = { activateTab(AppScreenTab.Home) },
                                 onDownloadsClick = { navController.navigate(DownloadsRoute(downloadsTitle)) },
                                 onContinueWatchingClick = onContinueWatchingClick,
                                 onContinueWatchingLongPress = onContinueWatchingLongPress,
@@ -2034,19 +2076,24 @@ internal fun MainAppContent(
                     )
                 }
                 entry<DownloadsRoute> { route ->
-                    DownloadsDestination(
-                        route = route,
-                        navController = navController,
-                        useNativeNavigation = useNativeNavigation,
-                        onOpenDownload = ::openDownloadedItem,
-                    )
+                    // Desktop: under the merged top bar on its own ambient backdrop, like a service page.
+                    DownloadsFrame(route) {
+                        DownloadsDestination(
+                            route = route,
+                            navController = navController,
+                            useNativeNavigation = useNativeNavigation,
+                            onOpenDownload = ::openDownloadedItem,
+                        )
+                    }
                 }
                 entry<DownloadShowRoute> { route ->
-                    DownloadShowDestination(
-                        route = route,
-                        navController = navController,
-                        onOpenDownload = ::openDownloadedItem,
-                    )
+                    DownloadsFrame(route) {
+                        DownloadShowDestination(
+                            route = route,
+                            navController = navController,
+                            onOpenDownload = ::openDownloadedItem,
+                        )
+                    }
                 }
                 entry<AddonsSettingsRoute> { route ->
                     SettingsDestination(route, navController) { onBack ->

@@ -31,6 +31,8 @@ data class CloudLibraryItem(
     val sizeBytes: Long? = null,
     val progressFraction: Float? = null,
     val files: List<CloudLibraryFile> = emptyList(),
+    /** When the item was added to the provider's cloud, when the provider reports it. */
+    val addedAtEpochMs: Long? = null,
 ) {
     val stableKey: String
         get() = "$providerId:${type.name}:$id"
@@ -101,6 +103,8 @@ data class CloudLibraryUiState(
     val isEnabled: Boolean = true,
     val isRefreshing: Boolean = false,
     val providers: List<CloudLibraryProviderState> = emptyList(),
+    /** When the providers were last listed (for "refreshed just now"). */
+    val refreshedAtEpochMs: Long? = null,
 ) {
     val items: List<CloudLibraryItem>
         get() = providers.flatMap { it.items }

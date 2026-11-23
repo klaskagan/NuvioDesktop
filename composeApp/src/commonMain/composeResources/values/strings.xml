@@ -3079,4 +3079,57 @@
         <item quantity="one">%1$d library</item>
         <item quantity="other">%1$d libraries</item>
     </plurals>
+    <string name="library_cloud_kind_movies">Movies</string>
+    <string name="library_cloud_kind_shows">Shows</string>
+    <string name="library_cloud_kind_other">Other</string>
+    <string name="library_cloud_kind_movie">Movie</string>
+    <string name="library_cloud_kind_show">Show</string>
+    <string name="library_cloud_kind_item">Item</string>
+    <string name="library_cloud_search_placeholder">Filter by title or file name</string>
+    <string name="library_cloud_added">added %1$s</string>
+    <string name="library_names_and">%1$s and %2$s</string>
+    <string name="library_ago_today">today</string>
+    <string name="library_ago_yesterday">yesterday</string>
+    <string name="library_refreshed_just_now">refreshed just now</string>
+    <string name="library_refreshed_minutes">refreshed %1$d min ago</string>
+    <string name="library_refreshed_hours">refreshed %1$d h ago</string>
+    <string name="library_refreshed_ago">refreshed %1$s</string>
+    <plurals name="library_ago_days">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
+    </plurals>
+    <plurals name="library_ago_weeks">
+        <item quantity="one">%1$d week ago</item>
+        <item quantity="other">%1$d weeks ago</item>
+    </plurals>
+    <plurals name="library_ago_months">
+        <item quantity="one">%1$d month ago</item>
+        <item quantity="other">%1$d months ago</item>
+    </plurals>
+    <plurals name="library_file_count">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <plurals name="library_provider_count">
+        <item quantity="one">%1$d provider</item>
+        <item quantity="other">%1$d providers</item>
+    </plurals>
+    <string name="downloads_desktop_empty_message">Right-click a stream, or press and hold it, then choose Download file to watch it offline.</string>
+    <string name="downloads_kind_movie">Movie</string>
+    <string name="downloads_kind_show">Show</string>
+    <plurals name="downloads_downloading_count">
+        <item quantity="one">%1$d downloading</item>
+        <item quantity="other">%1$d downloading</item>
+    </plurals>
+    <plurals name="downloads_paused_count">
+        <item quantity="one">%1$d paused</item>
+        <item quantity="other">%1$d paused</item>
+    </plurals>
+    <plurals name="downloads_failed_count">
+        <item quantity="one">%1$d failed</item>
+        <item quantity="other">%1$d failed</item>
+    </plurals>
+    <string name="library_empty_browse">Browse Home</string>
+    <string name="library_empty_connect">Connect an account</string>
+    <string name="library_board_episodes">Episodes</string>
 </resources>

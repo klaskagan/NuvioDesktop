@@ -1,5 +1,6 @@
 package com.nuvio.app.features.library
 
+import com.nuvio.app.core.ui.RedesignMessageTile
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -36,7 +37,7 @@ internal data class LibraryServerShelf(
 )
 
 internal suspend fun loadServerShelves(): List<LibraryServerShelf> = coroutineScope {
-    ServerCatalog.libraries().map { ref ->
+    (ServerCatalog.resumeLibraries() + ServerCatalog.libraries()).map { ref ->
         async {
             try {
                 LibraryServerShelf(ref, section = ServerCatalog.librarySection(ref, SERVER_SHELF_LIMIT))
@@ -82,7 +83,7 @@ internal fun LazyListScope.serverLibraryContent(
                         onPosterLongClick = onPosterLongClick,
                     )
                 }
-            } else if (shelf.failure != null) {
+            } else if (shelf.failure != null && !ServerCatalog.isResume(shelf.ref)) {
                 item(key = "server-shelf-error:${shelf.ref.connection.id}:${shelf.ref.library.id}") {
                     HomeEmptyStateCard(
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -117,7 +118,7 @@ internal fun LazyListScope.libraryDesktopServerContent(
         }
 
         shelves.isEmpty() -> item(key = "server-empty") {
-            LibraryMessageTile(
+            RedesignMessageTile(tag = "library-message", 
                 title = stringResource(Res.string.library_servers_empty_title),
                 message = stringResource(Res.string.library_servers_empty_message),
                 modifier = libraryDesktopItemModifier().padding(horizontal = gutter),
@@ -141,9 +142,9 @@ internal fun LazyListScope.libraryDesktopServerContent(
                         leadCard = true,
                     )
                 }
-            } else if (shelf.failure != null) {
+            } else if (shelf.failure != null && !ServerCatalog.isResume(shelf.ref)) {
                 item(key = "server-shelf-error:${shelf.ref.connection.id}:${shelf.ref.library.id}") {
-                    LibraryMessageTile(
+                    RedesignMessageTile(tag = "library-message", 
                         title = stringResource(Res.string.library_server_load_failed, shelf.ref.title),
                         message = stringResource(shelf.failure.message()),
                         actionLabel = stringResource(Res.string.action_retry),

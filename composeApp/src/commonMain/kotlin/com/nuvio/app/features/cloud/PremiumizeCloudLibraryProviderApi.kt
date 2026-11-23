@@ -83,6 +83,8 @@ internal fun premiumizeCloudItemsFromFiles(
                 status = "Ready",
                 sizeBytes = size,
                 files = cloudFiles,
+                // Premiumize dates files (seconds); a folder was added with its newest file.
+                addedAtEpochMs = group.mapNotNull { it.createdAtSeconds }.maxOrNull()?.times(1000L),
             )
         }
         .sortedBy { it.name.lowercase() }
@@ -93,6 +95,7 @@ private data class PremiumizeMappedCloudFile(
     val itemId: String,
     val itemName: String,
     val file: CloudLibraryFile,
+    val createdAtSeconds: Long? = null,
 )
 
 private fun PremiumizeCloudFileDto.toPremiumizeCloudFile(): PremiumizeMappedCloudFile? {
@@ -128,6 +131,7 @@ private fun PremiumizeCloudFileDto.toPremiumizeCloudFile(): PremiumizeMappedClou
             playable = playable,
             playbackUrl = link?.takeIf { playable && it.isNotBlank() },
         ),
+        createdAtSeconds = createdAt,
     )
 }
 

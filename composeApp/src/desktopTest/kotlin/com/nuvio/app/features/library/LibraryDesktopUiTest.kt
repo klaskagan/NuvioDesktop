@@ -143,6 +143,23 @@ class LibraryDesktopUiTest {
     }
 
     @Test
+    fun leadTilePlaysTheLatestSave() = libraryTest { harness ->
+        onNodeWithTag("library-board-play").performClick()
+        // The latest save in the fixtures is index 11 ("Anatomy of a Fall", a movie).
+        runOnIdle { assertEquals("tt11", harness.leadPlayed) }
+    }
+
+    @Test
+    fun emptyLibraryOffersHomeAndConnect() = libraryTest { harness ->
+        harness.emptySource = LibrarySourceMode.LOCAL
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("library-message").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("library-message-secondary").assertIsDisplayed()
+        snapshot("saved-empty")
+        onNodeWithTag("library-message-action").performClick()
+        runOnIdle { assertEquals(1, harness.browsedHome) }
+    }
+
+    @Test
     fun failedServerKeepsARetryTile() = libraryTest { harness ->
         onNodeWithTag("library-source-Servers").performClick()
         waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("library-message-action").fetchSemanticsNodes().isNotEmpty() }
@@ -163,6 +180,9 @@ class LibraryDesktopUiTest {
         var cloudItem by mutableStateOf<String?>(null)
         var played: String? = null
         var serverRetries by mutableIntStateOf(0)
+        var leadPlayed: String? = null
+        var browsedHome = 0
+        var emptySource by mutableStateOf<LibrarySourceMode?>(null)
     }
 
     private fun libraryTest(block: ComposeUiTest.(Harness) -> Unit) = runDesktopComposeUiTest(width = 1440, height = 960) {
@@ -180,10 +200,11 @@ class LibraryDesktopUiTest {
     @Composable
     private fun LibraryHarness(h: Harness) {
         val sections = librarySections()
+        val empty = h.emptySource
         val ui = LibraryUiState(
-            sourceMode = LibrarySourceMode.TRAKT,
-            items = sections.flatMap { it.items }.distinctBy { it.id },
-            sections = if (h.loaded) sections else emptyList(),
+            sourceMode = empty ?: LibrarySourceMode.TRAKT,
+            items = if (empty != null) emptyList() else sections.flatMap { it.items }.distinctBy { it.id },
+            sections = if (h.loaded && empty == null) sections else emptyList(),
             isLoaded = h.loaded,
         )
         val listOpened = h.opened != null && h.layout == LibraryLayoutMode.HORIZONTAL
@@ -218,7 +239,7 @@ class LibraryDesktopUiTest {
                 posterPattern = "",
                 cloud = cloudState(),
                 cloudProviderId = null,
-                cloudType = null,
+                cloudKind = null,
                 cloudQuery = "",
                 cloudItemKey = h.cloudItem,
                 serverShelves = serverShelves(),
@@ -245,7 +266,7 @@ class LibraryDesktopUiTest {
                 onDisintegrated = {},
                 onDownloadsClick = {},
                 cloudSelectProvider = {},
-                cloudSelectType = {},
+                cloudSelectKind = {},
                 cloudQueryChange = {},
                 cloudSelectItem = { item ->
                     if (item.playableFiles.size == 1) h.played = item.playableFiles.first().stableKey
@@ -259,6 +280,9 @@ class LibraryDesktopUiTest {
                 onPreviewClick = {},
                 onPreviewLongClick = {},
                 serversRetry = { h.serverRetries++ },
+                onPlayClick = { h.leadPlayed = it.id },
+                onConnectTrackingClick = {},
+                onBrowseHomeClick = { h.browsedHome++ },
             ),
             shelvesState = rememberLazyListState(),
             topChromePadding = null,

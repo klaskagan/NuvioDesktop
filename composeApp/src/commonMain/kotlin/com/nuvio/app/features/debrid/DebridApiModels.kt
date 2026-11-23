@@ -58,6 +58,7 @@ internal data class TorboxCloudItemDto(
     val size: Long? = null,
     @SerialName("total_size") val totalSize: Long? = null,
     val files: List<TorboxCloudFileDto>? = null,
+    @SerialName("created_at") val createdAt: String? = null,
 )
 
 @Serializable

@@ -1,5 +1,6 @@
 package com.nuvio.app.features.library
 
+import com.nuvio.app.core.ui.RedesignMessageTile
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -30,6 +31,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Tv
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
+import org.jetbrains.compose.resources.pluralStringResource
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -71,8 +78,8 @@ import org.jetbrains.compose.resources.stringResource
 /** The Cloud pane's filtered view of the loaded items (filtering is local, as on mobile). */
 internal class LibraryCloudView(
     val state: Kind,
-    val availableTypes: List<CloudLibraryItemType>,
-    val selectedType: CloudLibraryItemType?,
+    val selectedKind: CloudMediaKind?,
+    val kinds: Map<String, CloudMediaKind>,
     val items: List<CloudLibraryItem>,
     val failedProviders: List<CloudLibraryProviderState>,
     val hasActiveFilter: Boolean,
@@ -85,19 +92,20 @@ internal class LibraryCloudView(
 
 @Composable
 internal fun rememberCloudView(model: LibraryDesktopModel): LibraryCloudView = remember(
-    model.cloud, model.cloudProviderId, model.cloudType, model.cloudQuery, model.cloudItemKey,
+    model.cloud, model.cloudProviderId, model.cloudKind, model.cloudQuery, model.cloudItemKey,
 ) {
     val ui = model.cloud
-    val kind = when {
+    val state = when {
         !ui.isLoaded -> LibraryCloudView.Kind.Loading
         !ui.isEnabled -> LibraryCloudView.Kind.Disabled
         !ui.hasConnectedProvider -> LibraryCloudView.Kind.NotConnected
         else -> LibraryCloudView.Kind.Ready
     }
     val providerItems = ui.items.filter { model.cloudProviderId == null || it.providerId == model.cloudProviderId }
-    val types = providerItems.map { it.type }.distinct().sortedBy { it.ordinal }
-    val type = model.cloudType?.takeIf { it in types }
-    val typed = providerItems.filter { type == null || it.type == type }
+    // Providers report transport (torrent, usenet…); what people pick by is what the item holds.
+    val kinds = ui.items.associate { it.stableKey to it.mediaKind() }
+    val kind = model.cloudKind
+    val typed = providerItems.filter { kind == null || kinds[it.stableKey] == kind }
     val query = model.cloudQuery.trim()
     // The useful identifier is often in a file name, not the title.
     val filtered = if (query.isEmpty()) typed else typed.filter { item ->
@@ -107,12 +115,12 @@ internal fun rememberCloudView(model: LibraryDesktopModel): LibraryCloudView = r
         .filter { model.cloudProviderId == null || it.providerId == model.cloudProviderId }
         .filter { !it.errorMessage.isNullOrBlank() && it.items.isEmpty() }
     LibraryCloudView(
-        state = kind,
-        availableTypes = types,
-        selectedType = type,
+        state = state,
+        selectedKind = kind,
+        kinds = kinds,
         items = filtered,
         failedProviders = failed,
-        hasActiveFilter = model.cloudProviderId != null || type != null || query.isNotEmpty(),
+        hasActiveFilter = model.cloudProviderId != null || kind != null || query.isNotEmpty(),
         selectedItem = filtered.firstOrNull { it.stableKey == model.cloudItemKey && it.playableFiles.size > 1 },
     )
 }
@@ -146,16 +154,14 @@ internal fun LibraryCloudToolbar(
                     optionTag = { "library-cloud-provider-${it ?: "all"}" },
                 )
             }
-            if (view.availableTypes.size > 1) {
-                val typeAll = stringResource(Res.string.cloud_library_type_all)
-                RedesignPillGroup(
-                    options = listOf<CloudLibraryItemType?>(null) + view.availableTypes,
-                    selected = view.selectedType,
-                    label = { type -> type?.let { cloudLibraryTypeLabel(it) } ?: typeAll },
-                    onSelect = actions.cloudSelectType,
-                    optionTag = { "library-cloud-type-${it?.name ?: "all"}" },
-                )
-            }
+            // Always all four, so the search field never moves.
+            RedesignPillGroup(
+                options = listOf<CloudMediaKind?>(null) + CloudMediaKind.entries,
+                selected = view.selectedKind,
+                label = { cloudMediaKindLabel(it) },
+                onSelect = actions.cloudSelectKind,
+                optionTag = { "library-cloud-kind-${it?.name ?: "all"}" },
+            )
         }
         LibraryCloudSearchField(model.cloudQuery, actions.cloudQueryChange, Modifier.weight(1f))
     }
@@ -174,7 +180,7 @@ private fun LibraryCloudSearchField(query: String, onQueryChange: (String) -> Un
         Spacer(Modifier.width(8.dp))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (query.isEmpty()) {
-                Text(stringResource(Res.string.cloud_library_search_label), style = redesignText(13.sp, color = RedesignColors.textMuted), maxLines = 1)
+                Text(stringResource(Res.string.library_cloud_search_placeholder), style = redesignText(13.sp, color = RedesignColors.textMuted), maxLines = 1)
             }
             BasicTextField(
                 value = query,
@@ -203,7 +209,7 @@ internal fun LazyListScope.libraryCloudItems(
     when (view.state) {
         LibraryCloudView.Kind.Loading -> libraryCloudPlaceholders()
         LibraryCloudView.Kind.Disabled -> item(key = "cloud-disabled") {
-            LibraryMessageTile(
+            RedesignMessageTile(tag = "library-message", 
                 title = stringResource(Res.string.cloud_library_disabled_title),
                 message = stringResource(Res.string.cloud_library_disabled_message),
                 actionLabel = stringResource(Res.string.cloud_library_disabled_action),
@@ -213,7 +219,7 @@ internal fun LazyListScope.libraryCloudItems(
             )
         }
         LibraryCloudView.Kind.NotConnected -> item(key = "cloud-connect") {
-            LibraryMessageTile(
+            RedesignMessageTile(tag = "library-message", 
                 title = stringResource(Res.string.cloud_library_connect_title),
                 message = stringResource(Res.string.cloud_library_connect_message),
                 actionLabel = stringResource(Res.string.cloud_library_connect_action),
@@ -225,7 +231,7 @@ internal fun LazyListScope.libraryCloudItems(
         LibraryCloudView.Kind.Ready -> {
             view.failedProviders.forEach { provider ->
                 item(key = "cloud-error-${provider.providerId}") {
-                    LibraryMessageTile(
+                    RedesignMessageTile(tag = "library-message", 
                         title = stringResource(Res.string.cloud_library_load_failed, provider.providerName),
                         message = provider.errorMessage.orEmpty(),
                         actionLabel = stringResource(Res.string.action_retry),
@@ -237,7 +243,7 @@ internal fun LazyListScope.libraryCloudItems(
             when {
                 model.cloud.isRefreshing && view.items.isEmpty() -> libraryCloudPlaceholders()
                 view.items.isEmpty() && view.failedProviders.isEmpty() -> item(key = "cloud-empty") {
-                    LibraryMessageTile(
+                    RedesignMessageTile(tag = "library-message", 
                         title = stringResource(if (view.hasActiveFilter) Res.string.cloud_library_no_matches_title else Res.string.cloud_library_empty_title),
                         message = stringResource(if (view.hasActiveFilter) Res.string.cloud_library_no_matches_message else Res.string.cloud_library_empty_message),
                         actionLabel = if (view.hasActiveFilter) null else stringResource(Res.string.action_retry),
@@ -251,6 +257,7 @@ internal fun LazyListScope.libraryCloudItems(
                         val item = view.items[index]
                         LibraryCloudRow(
                             item = item,
+                            kind = view.kinds[item.stableKey] ?: CloudMediaKind.Other,
                             selected = item.stableKey == model.cloudItemKey,
                             shape = cloudRowShape(index, last),
                             divider = index > 0,
@@ -296,6 +303,7 @@ private fun LazyListScope.libraryCloudPlaceholders() {
 @Composable
 private fun LibraryCloudRow(
     item: CloudLibraryItem,
+    kind: CloudMediaKind,
     selected: Boolean,
     shape: Shape,
     divider: Boolean,
@@ -328,7 +336,11 @@ private fun LibraryCloudRow(
         ) {
             Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(RedesignColors.fill), contentAlignment = Alignment.Center) {
                 Icon(
-                    if (playable > 1) Icons.Rounded.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
+                    when (kind) {
+                        CloudMediaKind.Movie -> Icons.Outlined.Movie
+                        CloudMediaKind.Show -> Icons.Outlined.Tv
+                        CloudMediaKind.Other -> if (playable > 1) Icons.Outlined.Folder else Icons.AutoMirrored.Outlined.InsertDriveFile
+                    },
                     contentDescription = null,
                     tint = RedesignColors.textSecondary,
                     modifier = Modifier.size(20.dp),
@@ -337,7 +349,7 @@ private fun LibraryCloudRow(
             Column(Modifier.weight(1f)) {
                 Text(item.name, style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "${cloudLibrarySubtitle(item)} · ${cloudLibraryStatusLine(item)}",
+                    cloudRowMeta(item),
                     style = redesignText(12.sp, color = RedesignColors.textMuted),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -377,59 +389,72 @@ internal fun LibraryCloudFilePanel(
     actions: LibraryDesktopActions,
     modifier: Modifier,
 ) {
+    val files = remember(item) { item.playableFiles.sortedBy(::cloudFileSortKey) }
     Column(
         modifier.clip(RedesignTileShape).background(RedesignColors.fill)
             .border(1.dp, RedesignColors.hairline, RedesignTileShape)
-            .padding(16.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 10.dp)
             .testTag("library-cloud-panel"),
     ) {
         Row(verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 RedesignKicker(
                     listOfNotNull(
-                        cloudLibraryTypeLabel(item.type),
-                        stringResource(Res.string.cloud_library_playable_file_count, item.playableFiles.size),
+                        cloudMediaKindSingular(item.mediaKind()),
+                        pluralStringResource(Res.plurals.library_file_count, files.size, files.size),
                         item.sizeBytes?.let(::formatCloudBytes),
                     ).joinToString(" · "),
                 )
                 Text(
-                    item.name,
-                    style = redesignText(18.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking),
+                    cloudDisplayTitle(item.name),
+                    style = redesignText(20.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 6.dp),
                 )
-                Text(item.providerName, style = redesignText(12.sp, color = RedesignColors.textMuted), modifier = Modifier.padding(top = 3.dp))
+                Text(
+                    listOfNotNull(
+                        item.providerName,
+                        item.addedAtEpochMs?.let { stringResource(Res.string.library_cloud_added, relativeAgo(it)) },
+                    ).joinToString(" · "),
+                    style = redesignText(13.sp, color = RedesignColors.textSecondary),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
             RedesignIconButton(
                 contentDescription = stringResource(Res.string.action_close),
                 onClick = actions.cloudCloseItem,
                 vector = Icons.Rounded.Close,
-                size = 30.dp,
+                size = 32.dp,
                 modifier = Modifier.testTag("library-cloud-panel-close"),
             )
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
         Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-            if (item.playableFiles.isEmpty()) {
+            if (files.isEmpty()) {
                 Text(stringResource(Res.string.cloud_library_no_files_message), style = redesignText(13.sp, color = RedesignColors.textSecondary))
             }
-            item.playableFiles.forEach { file ->
+            files.forEach { file ->
                 val interaction = remember { MutableInteractionSource() }
                 val hovered by interaction.collectIsHoveredAsState()
                 val fill by animateColorAsState(if (hovered) Color.White.copy(alpha = 0.08f) else Color.Transparent, tween(140), label = "cloud_file_fill")
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(fill)
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(fill)
                         .hoverable(interaction)
                         .clickable(interactionSource = interaction, indication = null, role = Role.Button) { actions.cloudPlayFile(item, file) }
-                        .padding(horizontal = 10.dp, vertical = 9.dp)
+                        .padding(horizontal = 10.dp, vertical = 10.dp)
                         .testTag("library-cloud-file-${file.stableKey}"),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(Res.string.cloud_library_play_file), tint = if (hovered) RedesignColors.textPrimary else RedesignColors.textSecondary, modifier = Modifier.size(18.dp))
-                    Text(file.name, style = redesignText(13.sp, FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    file.sizeBytes?.let { Text(formatCloudBytes(it), style = redesignText(12.sp, color = RedesignColors.textMuted)) }
+                    Icon(
+                        Icons.Outlined.PlayArrow,
+                        contentDescription = stringResource(Res.string.cloud_library_play_file),
+                        tint = if (hovered) RedesignColors.textPrimary else RedesignColors.textSecondary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(cloudFileLabel(file), style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    file.sizeBytes?.let { Text(formatCloudBytes(it), style = redesignText(13.sp, color = RedesignColors.textMuted)) }
                 }
             }
         }

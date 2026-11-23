@@ -1,5 +1,6 @@
 package com.nuvio.app.features.library
 
+import com.nuvio.app.core.ui.RedesignMessageTile
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.BookmarkAdd
 import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -117,7 +119,7 @@ internal fun LibraryShelvesPane(
                 Box(libraryDesktopItemModifier()) { LibraryLoadProblem(model, actions, gutter) }
             }
             ui.sections.isEmpty() -> item(key = "library-empty") {
-                Box(libraryDesktopItemModifier()) { LibraryEmptyLibrary(model, gutter) }
+                Box(libraryDesktopItemModifier()) { LibraryEmptyLibrary(model, actions, gutter) }
             }
             else -> {
                 if (lead != null) {
@@ -222,13 +224,30 @@ private fun LibraryBoard(
                     localizedLibrarySectionTitle(lead.section.type, lead.section.displayTitle),
                 Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = 16.dp, end = 64.dp),
             )
-            actions.onPosterLongClick?.let { open ->
-                RedesignIconButton(
-                    contentDescription = stringResource(Res.string.library_board_actions),
-                    onClick = { open(lead.item, lead.section) },
-                    vector = Icons.Rounded.MoreHoriz,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).testTag("library-board-actions"),
-                )
+            Row(
+                Modifier.align(Alignment.TopEnd).padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                actions.onPlayClick?.let { play ->
+                    // A movie plays; a show opens Details, which knows the next episode.
+                    val movie = lead.item.type == "movie"
+                    RedesignPillButton(
+                        label = stringResource(if (movie) Res.string.action_play else Res.string.library_board_episodes),
+                        onClick = { play(lead.item) },
+                        primary = true,
+                        leading = if (movie) Icons.Rounded.PlayArrow else null,
+                        modifier = Modifier.testTag("library-board-play"),
+                    )
+                }
+                actions.onPosterLongClick?.let { open ->
+                    RedesignIconButton(
+                        contentDescription = stringResource(Res.string.library_board_actions),
+                        onClick = { open(lead.item, lead.section) },
+                        vector = Icons.Rounded.MoreHoriz,
+                        modifier = Modifier.testTag("library-board-actions"),
+                    )
+                }
             }
         }
         LibraryListsTile(sections, actions.openList, Modifier.weight(1f).fillMaxSize())
@@ -353,10 +372,10 @@ internal fun LibraryGridPane(
                     Box(libraryDesktopItemModifier()) { LibraryLoadProblem(model, actions, gutter) }
                 }
                 ui.sections.isEmpty() -> item(key = "library-empty") {
-                    Box(libraryDesktopItemModifier()) { LibraryEmptyLibrary(model, gutter) }
+                    Box(libraryDesktopItemModifier()) { LibraryEmptyLibrary(model, actions, gutter) }
                 }
                 projection.entries.isEmpty() -> item(key = "library-grid-no-matches") {
-                    LibraryMessageTile(
+                    RedesignMessageTile(tag = "library-message", 
                         title = stringResource(Res.string.library_grid_no_matches_title),
                         message = stringResource(Res.string.library_grid_no_matches_message),
                         modifier = libraryDesktopItemModifier().padding(horizontal = gutter),
@@ -497,76 +516,3 @@ private fun LibraryGridControls(
     }
 }
 
-// ─── Shared message tile ────────────────────────────────────────────────────────────────────
-
-/** Frosted empty / error state: icon, title, one line, optional pill action. */
-@Composable
-internal fun LibraryMessageTile(
-    title: String,
-    message: String,
-    modifier: Modifier = Modifier,
-    actionLabel: String? = null,
-    onAction: (() -> Unit)? = null,
-    icon: ImageVector? = null,
-    bookmark: Boolean = false,
-    compact: Boolean = false,
-) {
-    if (compact) {
-        // One row in a shelf's place (a server that failed): icon, text, action on the right.
-        Row(
-            modifier.fillMaxWidth().clip(RedesignTileShape).background(RedesignColors.fill)
-                .border(1.dp, RedesignColors.hairline, RedesignTileShape)
-                .padding(horizontal = 18.dp, vertical = 16.dp)
-                .testTag("library-message"),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            if (icon != null) {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(RedesignColors.fill), contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = null, tint = RedesignColors.textSecondary, modifier = Modifier.size(20.dp))
-                }
-            }
-            Column(Modifier.weight(1f)) {
-                Text(title, style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (message.isNotBlank()) {
-                    Text(message, style = redesignText(12.sp, color = RedesignColors.textMuted), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
-                }
-            }
-            if (actionLabel != null && onAction != null) {
-                RedesignPillButton(actionLabel, onAction, modifier = Modifier.testTag("library-message-action"))
-            }
-        }
-        return
-    }
-    Column(
-        modifier.fillMaxWidth().clip(RedesignTileShape).background(RedesignColors.fill)
-            .border(1.dp, RedesignColors.hairline, RedesignTileShape)
-            .padding(horizontal = 28.dp, vertical = 36.dp)
-            .testTag("library-message"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        val glyph = icon ?: if (bookmark) Icons.Rounded.BookmarkAdd else null
-        if (glyph != null) {
-            Box(
-                Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(RedesignColors.fill),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(glyph, contentDescription = null, tint = RedesignColors.textSecondary, modifier = Modifier.size(26.dp))
-            }
-            Spacer(Modifier.height(14.dp))
-        }
-        Text(title, style = redesignText(20.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking), textAlign = TextAlign.Center)
-        if (message.isNotBlank()) {
-            Text(
-                message,
-                style = redesignText(14.sp, color = RedesignColors.textSecondary, lineHeight = 21.sp),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-        if (actionLabel != null && onAction != null) {
-            Spacer(Modifier.height(18.dp))
-            RedesignPillButton(actionLabel, onAction, primary = true, modifier = Modifier.testTag("library-message-action"))
-        }
-    }
-}

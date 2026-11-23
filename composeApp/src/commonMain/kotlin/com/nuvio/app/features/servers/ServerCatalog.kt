@@ -94,6 +94,20 @@ internal object ServerCatalog {
         )
     }
 
+    /**
+     * Each connection's "Continue on server" row as a library ref (Library's server shelves list it
+     * first). The page loader reads it from the provider's resume items.
+     */
+    fun resumeLibraries(): List<ServerLibraryRef> {
+        val rowName = runBlocking { getString(Res.string.servers_resume_row) }
+        return ServerRepository.enabledConnections().filter { connection ->
+            connection.selectedLibraries.isNotEmpty() &&
+                ServerRepository.provider(connection)?.supports(ServerCapability.USER_STATE_READ) == true
+        }.map { connection -> ServerLibraryRef(connection, ServerLibrary(RESUME_ID, rowName, ServerMediaKind.MIXED)) }
+    }
+
+    fun isResume(ref: ServerLibraryRef): Boolean = ref.library.id == RESUME_ID
+
     private fun resumeDefinitions(): List<HomeCatalogDefinition> {
         val connections = ServerRepository.enabledConnections().filter { connection ->
             connection.selectedLibraries.isNotEmpty() &&

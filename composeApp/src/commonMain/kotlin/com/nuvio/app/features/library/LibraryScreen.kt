@@ -115,6 +115,9 @@ fun LibraryScreen(
     onSectionViewAllClick: ((LibrarySection, LibrarySortOption) -> Unit)? = null,
     onCloudFilePlay: ((CloudLibraryItem, CloudLibraryFile) -> Unit)? = null,
     onConnectCloudClick: (() -> Unit)? = null,
+    onPlayClick: ((LibraryItem) -> Unit)? = null,
+    onConnectTrackingClick: (() -> Unit)? = null,
+    onBrowseHomeClick: (() -> Unit)? = null,
     onCatalogClick: ((HomeCatalogSection) -> Unit)? = null,
     onPreviewClick: ((MetaPreview) -> Unit)? = null,
     onPreviewLongClick: ((MetaPreview) -> Unit)? = null,
@@ -165,6 +168,8 @@ fun LibraryScreen(
     var selectedProviderId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedTypeName by rememberSaveable { mutableStateOf<String?>(null) }
     var cloudSearchQuery by rememberSaveable { mutableStateOf("") }
+    // Desktop Cloud filters by what an item holds (movie, show), not by transport.
+    var cloudKindName by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedType = remember(selectedTypeName) {
         selectedTypeName?.let { runCatching { CloudLibraryItemType.valueOf(it) }.getOrNull() }
     }
@@ -357,7 +362,7 @@ fun LibraryScreen(
                 posterPattern = effectivePosterPattern,
                 cloud = cloudUiState,
                 cloudProviderId = selectedProviderId,
-                cloudType = selectedType,
+                cloudKind = cloudKindName?.let { name -> CloudMediaKind.entries.firstOrNull { it.name == name } },
                 cloudQuery = cloudSearchQuery,
                 cloudItemKey = selectedCloudItemKey,
                 serverShelves = serverShelves,
@@ -401,8 +406,8 @@ fun LibraryScreen(
                     selectedTypeName = null
                     selectedCloudItemKey = null
                 },
-                cloudSelectType = {
-                    selectedTypeName = it?.name
+                cloudSelectKind = {
+                    cloudKindName = it?.name
                     selectedCloudItemKey = null
                 },
                 cloudQueryChange = {
@@ -420,6 +425,9 @@ fun LibraryScreen(
                 cloudCloseItem = { selectedCloudItemKey = null },
                 cloudRefresh = { CloudLibraryRepository.refresh() },
                 onConnectCloudClick = onConnectCloudClick,
+                onPlayClick = onPlayClick,
+                onConnectTrackingClick = onConnectTrackingClick,
+                onBrowseHomeClick = onBrowseHomeClick,
                 onCatalogClick = onCatalogClick,
                 onPreviewClick = onPreviewClick,
                 onPreviewLongClick = onPreviewLongClick,
