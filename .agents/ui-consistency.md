@@ -91,8 +91,8 @@ Person Details opening with no transition). Apply these to every redesigned scre
   For you pool by type is not enough: with two movie catalogs picked it leaves Shows with a movie
   hero. Load hero metadata for all pools together (`HomeHeroMetaStore.load` prunes to what it is
   given). Regression: `HomeTabsTest`.
-- **Filters under the merged top bar are pills, not text tabs.** Calendar and History use
-  `RedesignPillGroup` / `RedesignPillButton` / `RedesignIconButton` (`core/ui/RedesignControls.kt`);
+- **Filters under the merged top bar are pills, not text tabs.** Calendar, History and Library use
+  `RedesignPillGroup` / `RedesignPillButton` / `RedesignIconButton` / `RedesignMenuButton` (`core/ui/RedesignControls.kt`);
   reuse them for other redesigned filters (the streaming tag page's `TagScopePills` predates them).
   A control whose label can change (a title that also opens a picker) gets a fixed measured width
   so view or month changes never shift the controls after it; `CalendarScreenUiTest`'s
@@ -105,6 +105,20 @@ Person Details opening with no transition). Apply these to every redesigned scre
   labels. Regression: `ShellBackdropContrastTest`.
 - **Calendar is a backdrop tab** (`ShellBackdropTabs`): it steers the shell backdrop from the next
   release while active and draws no opaque page of its own when a controller is present.
+- **Library is a backdrop tab too** (desktop only, `LibraryDesktopScreen.kt`; mobile keeps
+  `LibraryScreen`'s old layout). It uses Calendar's header shape: `RedesignPageLead` (kicker, 34sp
+  title, subtitle, shared with Calendar's `RedesignKicker`) with Saved / Cloud / Servers pills and
+  icon buttons in reserved slots. The layout toggle's slot holds Refresh on Cloud, and the Manage
+  lists slot exists only where the source can manage lists (`libraryListManagementAvailable`), so
+  no control moves between panes or states and other sources show no gap. Panes (shelves, grid,
+  Cloud, Servers) crossfade below the fixed header. One stable title steers the backdrop per pane:
+  the latest save (`librarySpotlight`), the grid's first title, a server's first title; Cloud uses
+  the mesh. A list opened from the board's Your lists or a shelf's View all opens in place in the
+  grid (transient `openedListKey`, the layout setting is unchanged), and Esc or Back returns to the
+  shelves at the same offset. A multi-file Cloud item opens a 352dp side panel; Esc closes it first.
+  Pickers are `RedesignMenuButton` (frosted popup that claims `overlayEscape` while open); don't use
+  `NuvioDropdownChip` on redesigned screens. `LibraryDesktopUiTest` covers header positions across
+  panes and loading, in-place lists and Esc order, the Sort menu, the Cloud panel and server Retry.
 - **Frosted sidebars come in pairs.** A page with its own backdrop in a separate nav entry (Person)
   passes `frostedSidebar` to `DetailNavigationFrame` and insets its content, not its backdrop, by
   `LocalBackdropContentStartInset`. While two such entries cross, the one leaving hides its sidebar
@@ -414,8 +428,8 @@ solid, a 72% grey dim, see-through over Search's results). Keep these together:
 - A band under the bar starts its surface below the bar, so translucent options don't double.
 - Tinted takes the colour actually behind the bar: the artwork's top strip under the backdrop's
   40% scrim (`backdropTopTint`), capped so white labels stay readable. The image's dominant colour
-  came out a darker, different hue than the backdrop. Tabs without artwork (Library, Calendar,
-  History, Settings) get no tint; they kept the last artwork's colour. `TopBarBackgroundTest`.
+  came out a darker, different hue than the backdrop. Tabs off the backdrop (History,
+  Settings) get no tint; they kept the last artwork's colour. `TopBarBackgroundTest`.
 
 ## Custom detail routes and native navigation
 

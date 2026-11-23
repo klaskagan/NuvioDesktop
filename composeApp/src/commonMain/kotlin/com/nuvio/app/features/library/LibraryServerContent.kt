@@ -1,6 +1,10 @@
 package com.nuvio.app.features.library
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -86,6 +90,67 @@ internal fun LazyListScope.serverLibraryContent(
                         message = stringResource(shelf.failure.message()),
                         actionLabel = stringResource(Res.string.action_retry),
                         onActionClick = onRetry,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Desktop server shelves: Home-style rows (lead card, editorial header) with the server's name as
+ * the eyebrow over its library. A server that fails stays in place as a frosted tile with Retry.
+ */
+internal fun LazyListScope.libraryDesktopServerContent(
+    shelves: List<LibraryServerShelf>?,
+    gutter: Dp,
+    watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String>,
+    onCatalogClick: ((HomeCatalogSection) -> Unit)?,
+    onPosterClick: ((MetaPreview) -> Unit)?,
+    onPosterLongClick: ((MetaPreview) -> Unit)?,
+    onRetry: () -> Unit,
+) {
+    when {
+        shelves == null -> items(3, key = { "server-placeholder:$it" }) {
+            HomeSkeletonRow(libraryDesktopItemModifier().padding(top = 18.dp), horizontalPadding = gutter)
+        }
+
+        shelves.isEmpty() -> item(key = "server-empty") {
+            LibraryMessageTile(
+                title = stringResource(Res.string.library_servers_empty_title),
+                message = stringResource(Res.string.library_servers_empty_message),
+                modifier = libraryDesktopItemModifier().padding(horizontal = gutter),
+            )
+        }
+
+        else -> shelves.forEach { shelf ->
+            val section = shelf.section
+            if (section != null && section.items.isNotEmpty()) {
+                item(key = "server-shelf:${section.key}") {
+                    HomeCatalogRowSection(
+                        section = section.copy(title = shelf.ref.library.name),
+                        modifier = libraryDesktopItemModifier().padding(top = 18.dp),
+                        watchedKeys = watchedKeys,
+                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                        sectionPadding = gutter,
+                        onViewAllClick = onCatalogClick?.takeIf { section.hasMore }?.let { open -> { open(section) } },
+                        onPosterClick = onPosterClick,
+                        onPosterLongClick = onPosterLongClick,
+                        eyebrow = shelf.ref.connection.name,
+                        leadCard = true,
+                    )
+                }
+            } else if (shelf.failure != null) {
+                item(key = "server-shelf-error:${shelf.ref.connection.id}:${shelf.ref.library.id}") {
+                    LibraryMessageTile(
+                        title = stringResource(Res.string.library_server_load_failed, shelf.ref.title),
+                        message = stringResource(shelf.failure.message()),
+                        actionLabel = stringResource(Res.string.action_retry),
+                        onAction = onRetry,
+                        icon = Icons.Rounded.CloudOff,
+                        compact = true,
+                        modifier = libraryDesktopItemModifier().padding(top = 18.dp).padding(horizontal = gutter),
                     )
                 }
             }

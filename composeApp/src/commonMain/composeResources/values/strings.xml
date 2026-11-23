@@ -3050,4 +3050,33 @@
     <string name="search_chip_new">New releases</string>
     <string name="settings_controller_navigation">Controller and arrow-key navigation</string>
     <string name="settings_controller_navigation_description">Use a gamepad or arrow keys to move between items.</string>
+    <!-- Library desktop redesign -->
+    <string name="library_source_label_local">On this device</string>
+    <string name="library_source_label_trakt">Trakt</string>
+    <string name="library_source_label_simkl">Simkl</string>
+    <string name="library_source_label_mdblist">MDBList</string>
+    <string name="library_lists_and_more">%1$s and %2$d more</string>
+    <string name="library_grid_showing">%1$d of %2$d titles</string>
+    <string name="library_board_recent">Recently saved</string>
+    <string name="library_board_lists">Your lists</string>
+    <string name="library_board_actions">More actions</string>
+    <string name="library_lists_more">More</string>
+    <string name="library_grid_no_matches_title">No titles match these filters</string>
+    <string name="library_grid_no_matches_message">Try another genre or year, or clear a filter.</string>
+    <plurals name="library_title_count">
+        <item quantity="one">%1$d title</item>
+        <item quantity="other">%1$d titles</item>
+    </plurals>
+    <plurals name="library_list_count">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
+    <plurals name="library_cloud_item_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <plurals name="library_server_library_count">
+        <item quantity="one">%1$d library</item>
+        <item quantity="other">%1$d libraries</item>
+    </plurals>
 </resources>

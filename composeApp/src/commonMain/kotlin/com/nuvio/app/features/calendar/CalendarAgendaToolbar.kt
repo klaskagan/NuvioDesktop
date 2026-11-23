@@ -37,6 +37,7 @@ import com.nuvio.app.core.ui.NuvioDropdownOption
 import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignIconButton
 import com.nuvio.app.core.ui.RedesignPillButton
+import com.nuvio.app.core.ui.RedesignKicker
 import com.nuvio.app.core.ui.RedesignPillGroup
 import com.nuvio.app.core.ui.RedesignTightTracking
 import com.nuvio.app.core.ui.redesignText
@@ -189,12 +190,7 @@ private fun AgendaLead(
     }
     Column(modifier) {
         if (kicker != null) {
-            Text(
-                kicker.uppercase(),
-                style = redesignText(11.sp, FontWeight.Medium, RedesignColors.textMuted, letterSpacing = 0.1.em),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            RedesignKicker(kicker)
             Spacer(Modifier.height(4.dp))
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

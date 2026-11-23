@@ -244,7 +244,7 @@ internal fun LazyItemScope.libraryContentTransitionModifier(): Modifier =
     )
 
 @Composable
-private fun librarySortOptionLabel(option: LibrarySortOption): String =
+internal fun librarySortOptionLabel(option: LibrarySortOption): String =
     when (option) {
         LibrarySortOption.DEFAULT -> stringResource(Res.string.library_sort_provider_order)
         LibrarySortOption.ADDED_DESC -> stringResource(Res.string.library_sort_added_desc)
@@ -311,7 +311,7 @@ private fun LibraryFilterRow(
 }
 
 @Composable
-private fun libraryWatchedFilterLabel(filter: LibraryWatchedFilter): String =
+internal fun libraryWatchedFilterLabel(filter: LibraryWatchedFilter): String =
     when (filter) {
         LibraryWatchedFilter.ALL -> stringResource(Res.string.library_watched_filter_all)
         LibraryWatchedFilter.WATCHED -> stringResource(Res.string.library_watched_filter_watched)
