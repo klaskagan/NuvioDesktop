@@ -182,6 +182,10 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   Do not flash an empty message or a zero count while replacement data is pending.
   Keep successful content/artwork visible during same-account refresh; account or
   profile changes must still clear private content and invalidate stale responses.
+- Totals over paged data (a month's watch count, a week's stats) appear only once
+  paging covers the whole period; until then show the label alone or "–", never a
+  partial number. History's header kicker and Board tiles are the reference
+  (`coveredFrom` in `HistoryScreen.kt`).
 - Retry must restart the failed request. Setting an error screen back to Loading
   leaves it there when the request effect is keyed only by an unchanged ID.
   Use the retry counter in `PersonDetailScreen` as the reference.
@@ -197,6 +201,11 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   and `NuvioPosterCard`'s placeholder are the references. Check: Search "simpsons"
   with btttr custom posters on (The Simpsons Quiz Show).
 - Preserve the visible item's stable key and pixel offset when prepending data.
+- Anchor on the item being read, not just the first visible one. LazyColumn holds its first
+  visible item, often a sliver of the previous row; when that row's data loads and it grows, the
+  row being read is pushed down. Calendar Week re-anchors on the row crossing a quarter of the
+  viewport during composition (`KeepReadingWeekAnchor`), skipping a still-unmeasured request;
+  `weekKeepsTheWeekBeingReadWhenEarlierWeeksLoad` catches a repeat.
   Do not reveal earlier items by rebuilding the list at index zero. If an index is
   necessary, derive it from the actual rendered list, including synthetic headers.
   Reserve the key of an optional initial shelf before its request completes.
@@ -441,8 +450,8 @@ solid, a 72% grey dim, see-through over Search's results). Keep these together:
 - A band under the bar starts its surface below the bar, so translucent options don't double.
 - Tinted takes the colour actually behind the bar: the artwork's top strip under the backdrop's
   40% scrim (`backdropTopTint`), capped so white labels stay readable. The image's dominant colour
-  came out a darker, different hue than the backdrop. Tabs off the backdrop (History,
-  Settings) get no tint; they kept the last artwork's colour. `TopBarBackgroundTest`.
+  came out a darker, different hue than the backdrop. Tabs off the backdrop (Settings)
+  get no tint; they kept the last artwork's colour. `TopBarBackgroundTest`.
 
 ## Custom detail routes and native navigation
 

@@ -79,8 +79,8 @@ internal fun CalendarScreen(
     val filter = CalendarFilter.valueOf(filterName)
     val firstWeekday = remember(region) { CalendarPlatform.firstWeekday() }
 
-    var rangeStart by rememberSaveable { mutableStateOf(calendarWeekStart(initialDate ?: today, firstWeekday)) }
-    var rangeDays by rememberSaveable { mutableIntStateOf(28) }
+    var rangeStart by rememberSaveable { mutableStateOf(calendarRevealStart(initialDate ?: today, firstWeekday)) }
+    var rangeDays by rememberSaveable { mutableIntStateOf(CalendarRevealRangeDays) }
     var revision by remember { mutableIntStateOf(0) }
     var loadedRange by remember { mutableStateOf<CalendarRange?>(null) }
     var picker by remember { mutableStateOf(false) }
@@ -103,8 +103,8 @@ internal fun CalendarScreen(
         selected = date
         prependAnchor = null
         prependReady = false
-        rangeStart = calendarWeekStart(date, firstWeekday)
-        rangeDays = 28
+        rangeStart = calendarRevealStart(date, firstWeekday)
+        rangeDays = CalendarRevealRangeDays
         pendingReveal = true
         revealRequest++
     }
@@ -123,7 +123,7 @@ internal fun CalendarScreen(
             }
             rangeStart = calendarDatePlusDays(rangeStart, -14)
             rangeDays = (rangeDays + 14).coerceAtMost(84)
-        } else if (rangeDays < 84) rangeDays += 14
+        } else if (rangeDays < 84) rangeDays = (rangeDays + 14).coerceAtMost(84)
         else rangeStart = calendarDatePlusDays(rangeStart, 14)
         if (view == CalendarView.Day && groups.isEmpty()) {
             selected = if (earlier) rangeStart else calendarDatePlusDays(rangeStart, rangeDays - 14)
@@ -268,6 +268,10 @@ internal fun CalendarScreen(
                             }
                         }
                         val listState = if (shownView == CalendarView.Day) dayState else weekState
+                        if (shownView == CalendarView.Week) {
+                            KeepReadingWeekAnchor(weekState, groups to dates, dates.chunked(7).map { it.first() },
+                                enabled = view == CalendarView.Week && !pendingReveal)
+                        }
                         val pageModifier = if (shownView == CalendarView.Week) Modifier.then(if (totalWidth > maxWidth) Modifier.excludeFromHistoryGestures() else Modifier).horizontalScroll(weekHorizontalState).width(totalWidth) else Modifier.fillMaxWidth()
                         LazyColumn(state = listState, modifier = pageModifier.fillMaxHeight().testTag("calendar-agenda"), verticalArrangement = Arrangement.spacedBy(if (shownView == CalendarView.Week) 28.dp else 12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
                             if (shownView == CalendarView.Day) {
@@ -490,6 +494,29 @@ internal fun calendarToday() = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(
         Text(kicker.uppercase(), style = redesignText(11.sp, FontWeight.Medium, if (today) RedesignColors.textSecondary else RedesignColors.textMuted, letterSpacing = 0.1.em),
             modifier = Modifier.padding(bottom = 5.dp), maxLines = 1)
     }
+}
+
+/**
+ * Keeps the week being read in place when releases arrive and rows above it change height.
+ * LazyColumn otherwise holds the first visible item, which is often the previous week peeking in
+ * at the top; once that week's cards load it grows and pushes the week being read down. Composition
+ * runs before the new measure, so layoutInfo still describes the old frame and the request lands in
+ * the same frame as the new rows.
+ */
+@Composable
+private fun KeepReadingWeekAnchor(state: LazyListState, content: Any, weekKeys: List<String>, enabled: Boolean) {
+    val last = remember { arrayOfNulls<Any>(1) }
+    val previous = last[0]
+    last[0] = content
+    if (!enabled || previous == null || previous == content) return
+    val info = state.layoutInfo
+    // A pending position request (a reveal) has not been measured yet; layoutInfo is stale then.
+    if (info.visibleItemsInfo.firstOrNull()?.let { it.index == state.firstVisibleItemIndex && -it.offset == state.firstVisibleItemScrollOffset } != true) return
+    // The reading line sits a quarter down the viewport, so a sliver of the previous week is ignored.
+    val line = info.viewportStartOffset + (info.viewportEndOffset - info.viewportStartOffset) / 4
+    val item = info.visibleItemsInfo.firstOrNull { it.offset + it.size > line } ?: return
+    val index = (item.key as? String)?.let(weekKeys::indexOf)?.takeIf { it >= 0 } ?: return
+    state.requestScrollToItem(index, info.viewportStartOffset - item.offset)
 }
 
 private val WeekColumnGap = 12.dp

@@ -3028,6 +3028,20 @@
     </plurals>
     <string name="history_remove">Remove from history</string>
     <string name="history_remove_failed">Could not remove this watch. Try again from the card menu.</string>
+    <string name="history_last_watched">Last watched</string>
+    <string name="history_most_watched">Most watched this week</string>
+    <plurals name="history_stat_episodes">
+        <item quantity="one">episode</item>
+        <item quantity="other">episodes</item>
+    </plurals>
+    <plurals name="history_stat_movies">
+        <item quantity="one">movie</item>
+        <item quantity="other">movies</item>
+    </plurals>
+    <plurals name="history_stat_days">
+        <item quantity="one">day active</item>
+        <item quantity="other">days active</item>
+    </plurals>
     <string name="search_clear_history">Clear all recent searches</string>
     <string name="search_clear_history_message">Remove the recent searches for this profile?</string>
     <string name="search_cancel">Cancel</string>

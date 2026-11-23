@@ -90,7 +90,7 @@ and `RedesignTypography`.
   (Week range or Day label). The title button has a fixed width measured for the widest
   month; the subtitle yields space and ellipsizes, so no view or month change moves a control.
 - Controls are `RedesignPillGroup` (Day/Week/Month, All/Shows/Movies), `RedesignPillButton`
-  (Today, History's month) and `RedesignIconButton` (arrows, orientation) from
+  (Today; History's mobile month pill) and `RedesignIconButton` (arrows, orientation) from
   `core/ui/RedesignControls.kt`. Underlined text tabs under the merged top bar read as a second
   copy of the bar. Hidden arrow slots expose no semantics.
 - Week: seven frosted tiles of equal height (`CalendarWeekColumns` draws the tiles behind the
@@ -117,7 +117,13 @@ and `RedesignTypography`.
   column. Narrow Week grids scroll horizontally as a whole.
 - Day/Week load bounded adjacent ranges through scrolling, with no load buttons.
   Keep earlier loaded Day dates available. Preserve the visible key and pixel
-  offset on prepend. Empty Day browsing still advances the date used by the
+  offset on prepend. A revealed Day/Week range starts one lead week before the
+  revealed date's week (`calendarRevealStart`), so the revealed day or week is
+  never the list's top edge: on the first weekday the first scroll up used to
+  hit the edge and stall on a fetch (`dayScrollsBackwardSmoothlyAndPrependingKeepsAnchor`
+  checks Week and Day). Week keeps the week being read in place when releases
+  arrive and rows above it resize (`weekKeepsTheWeekBeingReadWhenEarlierWeeksLoad`).
+  Empty Day browsing still advances the date used by the
   toolbar and view switching. Reveal a selected date only after its data and
   actual rendered list are ready, using deferred list positioning.
 - Month reserves six rows via `calendarMonthGridRange` (42 slots), independently
@@ -172,6 +178,28 @@ match used by Continue Watching. History does not use series artwork for
 episode cards. `HistoryNavigationTest` exercises the real navigation and checks
 the caption, independent orientation persistence, scroll-edge pagination and a busy day wrapping within the viewport
 alongside the Calendar UI tests.
+
+### History redesign (desktop, Nov 2026)
+
+Picked from three in-app mockups (Day tiles, Timeline rail, Board): **Board**. Mobile keeps the
+agenda above. Code: `features/history/HistoryScreen.kt` and `HistoryDesktopContent.kt`.
+
+- History is in `ShellBackdropTabs`. While active it steers the backdrop with the newest watch on
+  the day in view (movie landscape, else the episode still, else the poster).
+- Header: Calendar's toolbar with a title (`HISTORY · N WATCHES` kicker, month title opening the
+  picker, the day in view as subtitle). The month count appears only once paging has reached the
+  month's first day, so it never shows a partial count.
+- Board (`history-board`): a Last watched tile on the title's TMDB backdrop beside a 352 dp column
+  with This week (episodes, movies, days active) and Most watched this week. Both count only loaded
+  events and show "–" until paging covers the last seven days. Below `HomeBoardSideColumnMinWidth`
+  the board stacks.
+- Each day is one frosted tile drawn across its LazyColumn items (`historyDayTile`); today's tile is
+  brighter. Cards share the row's spare width so rows end flush with the tile.
+- Loading shows the board's empty tiles and two `history-skeleton` tiles at the real card size. A
+  refetch (filter change) keeps the previous days on screen at 45% opacity and inert until the new
+  timeline answers. Items use `animateItem()`.
+- `HistoryNavigationTest` checks the board precedes the first day tile; `HistoryBoardStatsTest`
+  covers the seven-day window and the most-watched pick.
 
 History and Calendar reuse `agendaScrollLoading` for wheel and nested-scroll edge
 requests. It reads current callbacks and loading state, throttles edge requests,

@@ -385,7 +385,7 @@ internal fun MainTabsDestination(
                         hazeState = navBarHazeState,
                         navBarStyle = navBarStyleSetting,
                         profileSwitcherOpen = isTopProfileSwitcherOpen,
-                        // Tabs off the backdrop (History, Settings) must not keep the last artwork's colour.
+                        // Tabs off the backdrop (Settings) must not keep the last artwork's colour.
                         tint = shellBackdropController?.tint?.takeIf { shellBackdropVisible },
                     )
                 }
