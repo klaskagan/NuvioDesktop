@@ -166,6 +166,12 @@ class HistoryNavigationTest {
             onNodeWithContentDescription("History").performClick()
             onNodeWithTag("history-screen").assertIsDisplayed()
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Fixture movie").fetchSemanticsNodes().isNotEmpty() }
+            // Desktop redesign: the board leads the page and the first day tile follows below it.
+            val board = onNodeWithTag("history-board").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            onNodeWithTag("history-board-latest").assertIsDisplayed()
+            onNodeWithTag("history-board-week").assertIsDisplayed()
+            val firstDay = historyLocalDate(watch)!!
+            assertTrue(onNodeWithTag("history-day-heading-$firstDay").fetchSemanticsNode().boundsInRoot.top >= board.bottom)
             runOnIdle { PosterCardStyleRepository.setCalendarLandscapeModeEnabled(true) }
             val poster = onNodeWithTag("history-card-event-1")
             val portraitBounds = poster.fetchSemanticsNode().boundsInRoot
