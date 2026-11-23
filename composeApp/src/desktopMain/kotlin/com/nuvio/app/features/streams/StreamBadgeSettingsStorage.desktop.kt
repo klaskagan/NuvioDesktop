@@ -18,6 +18,7 @@ internal actual object StreamBadgeSettingsStorage {
     private const val playerBadgeSourceKey = "player_badge_source"
     private const val streamBackgroundModeKey = "stream_background_mode"
     private const val streamBadgePlacementKey = "stream_badge_placement"
+    private const val sheetLanguageKey = "stream_sheet_language"
     private const val legacyDebridStreamBadgeRulesKey = "debrid_stream_badge_rules"
     private val syncKeys = listOf(streamBadgeRulesKey, showFileSizeBadgesKey, showInPlayerKey, playerBadgeSourceKey, streamBadgePlacementKey, streamBackgroundModeKey)
     private val store = DesktopStorage.store("nuvio_stream_badge_settings")
@@ -36,6 +37,8 @@ internal actual object StreamBadgeSettingsStorage {
     actual fun loadStreamBackgroundMode(): String? = loadString(streamBackgroundModeKey)
     actual fun saveStreamBackgroundMode(mode: String) = saveString(streamBackgroundModeKey, mode)
     actual fun loadStreamBadgePlacement(): String? = loadString(streamBadgePlacementKey)
+    actual fun loadSheetLanguage(): String? = loadString(sheetLanguageKey)
+    actual fun saveSheetLanguage(language: String) { saveString(sheetLanguageKey, language) }
     actual fun saveStreamBadgePlacement(placement: String) = saveString(streamBadgePlacementKey, placement)
 
     actual fun loadLegacyDebridStreamBadgeRules(): String? =

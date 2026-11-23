@@ -24,6 +24,8 @@ data class StreamBadgeSettingsUiState(
     val playerBadgeSource: String = "",
     val badgePlacement: StreamBadgePlacement = StreamBadgePlacement.BOTTOM,
     val backgroundMode: StreamBackgroundMode = StreamBackgroundMode.Normal,
+    /** The Sources sheet's remembered language filter (upper-case code), or null for all languages. */
+    val sheetLanguage: String? = null,
 )
 
 enum class StreamBackgroundMode {
@@ -54,6 +56,7 @@ object StreamBadgeSettingsRepository {
     private var playerBadgeSource = ""
     private var badgePlacement = StreamBadgePlacement.BOTTOM
     private var backgroundMode = StreamBackgroundMode.Normal
+    private var sheetLanguage: String? = null
 
     fun ensureLoaded() {
         if (hasLoaded) return
@@ -73,6 +76,7 @@ object StreamBadgeSettingsRepository {
         playerBadgeSource = ""
         badgePlacement = StreamBadgePlacement.BOTTOM
         backgroundMode = StreamBackgroundMode.Normal
+        sheetLanguage = null
         _uiState.value = StreamBadgeSettingsUiState()
     }
 
@@ -217,6 +221,7 @@ object StreamBadgeSettingsRepository {
                 }
             }
             ?: StreamBadgePlacement.BOTTOM
+        sheetLanguage = StreamBadgeSettingsStorage.loadSheetLanguage()?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }
         if (legacyRules != null) {
             saveStreamBadgeRules()
             StreamBadgeSettingsStorage.clearLegacyDebridStreamBadgeRules()
@@ -233,7 +238,18 @@ object StreamBadgeSettingsRepository {
             playerBadgeSource = playerBadgeSource,
             badgePlacement = badgePlacement,
             backgroundMode = backgroundMode,
+            sheetLanguage = sheetLanguage,
         )
+    }
+
+    /** Remembers the Sources sheet's language filter for this profile; null clears it. */
+    fun setSheetLanguage(language: String?) {
+        ensureLoaded()
+        val normalized = language?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }
+        if (sheetLanguage == normalized) return
+        sheetLanguage = normalized
+        StreamBadgeSettingsStorage.saveSheetLanguage(normalized.orEmpty())
+        publish()
     }
 
     private fun saveStreamBadgeRules() {

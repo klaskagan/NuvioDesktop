@@ -17,6 +17,9 @@ internal expect object StreamBadgeSettingsStorage {
     fun saveStreamBackgroundMode(mode: String)
     fun loadStreamBadgePlacement(): String?
     fun saveStreamBadgePlacement(placement: String)
+    /** The Sources sheet's language filter, an upper-case code; blank for none. Device-local. */
+    fun loadSheetLanguage(): String?
+    fun saveSheetLanguage(language: String)
     fun loadLegacyDebridStreamBadgeRules(): String?
     fun clearLegacyDebridStreamBadgeRules()
     fun exportToSyncPayload(): JsonObject

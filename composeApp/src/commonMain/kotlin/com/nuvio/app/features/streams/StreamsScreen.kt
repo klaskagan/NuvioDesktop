@@ -263,9 +263,35 @@ fun StreamsScreen(
             .background(MaterialTheme.colorScheme.background),
     ) {
         val isTabletLayout = maxWidth >= 768.dp
+        // Desktop redesign: wide windows show the Sources sheet (Best match beside the decoded list).
+        val useSheet = isDesktop && maxWidth >= StreamsSheetMinWidth
 
-        if (isTabletLayout) {
+        if (useSheet) {
+            StreamsSheetLayout(
+                isEpisode = isEpisode,
+                title = title,
+                background = background,
+                poster = poster,
+                episodeThumbnail = episodeThumbnail,
+                seasonNumber = seasonNumber,
+                episodeNumber = episodeNumber,
+                episodeTitle = episodeTitle,
+                uiState = uiState,
+                debridEnabled = debridSettings.canResolvePlayableLinks,
+                resumePositionMs = effectiveResumePositionMs,
+                resumeProgressFraction = effectiveResumeProgressFraction,
+                onStreamSelected = { stream, positionMs, progressFraction ->
+                    onStreamSelected(stream, positionMs, progressFraction)
+                },
+                onStreamSecondaryClick = { stream, position ->
+                    streamActionsTarget = StreamActionsTarget(stream = stream, anchorInRoot = position)
+                },
+                onRefresh = reloadStreams,
+                onBack = onBack,
+            )
+        } else if (isTabletLayout) {
             TabletStreamsLayout(
+                modifier = Modifier.padding(start = com.nuvio.app.core.ui.LocalBackdropContentStartInset.current),
                 isEpisode = isEpisode,
                 title = title,
                 logo = logo,
@@ -321,9 +347,11 @@ fun StreamsScreen(
             )
         }
 
-        Row(
+        // The sheet carries its own Back control.
+        if (!useSheet) Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
+                .padding(start = com.nuvio.app.core.ui.LocalBackdropContentStartInset.current)
                 .padding(LocalVerticalBarPadding.current)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
                 .padding(
@@ -1472,7 +1500,7 @@ private fun Long.toPlaybackClock(): String {
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun LoadingStateBlock(
+internal fun LoadingStateBlock(
     findingStreamsText: String,
     modifier: Modifier = Modifier,
 ) {
@@ -1495,7 +1523,7 @@ private fun LoadingStateBlock(
 }
 
 @Composable
-private fun EmptyStateBlock(
+internal fun EmptyStateBlock(
     reason: StreamsEmptyStateReason?,
     modifier: Modifier = Modifier,
 ) {

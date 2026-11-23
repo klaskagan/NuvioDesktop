@@ -18,6 +18,7 @@ actual object StreamBadgeSettingsStorage {
     private const val playerBadgeSourceKey = "player_badge_source"
     private const val streamBackgroundModeKey = "stream_background_mode"
     private const val streamBadgePlacementKey = "stream_badge_placement"
+    private const val sheetLanguageKey = "stream_sheet_language"
     private const val legacyDebridStreamBadgeRulesKey = "debrid_stream_badge_rules"
     private val syncKeys = listOf(streamBadgeRulesKey, showFileSizeBadgesKey, showInPlayerKey, playerBadgeSourceKey, streamBadgePlacementKey, streamBackgroundModeKey)
 
@@ -52,6 +53,8 @@ actual object StreamBadgeSettingsStorage {
     }
 
     actual fun loadStreamBadgePlacement(): String? = loadString(streamBadgePlacementKey)
+    actual fun loadSheetLanguage(): String? = loadString(sheetLanguageKey)
+    actual fun saveSheetLanguage(language: String) { saveString(sheetLanguageKey, language) }
 
     actual fun loadStreamBackgroundMode(): String? = loadString(streamBackgroundModeKey)
 

@@ -413,7 +413,10 @@ internal fun StreamDestination(
         episode = launch.episodeNumber,
         manualSelection = launch.manualSelection,
     )
-    val showLoadingScreen = autoPlayNavigationStarted || resolvingDebridStream || resolvingYouTubeStream || preparingServerStream || streamsUiState.shouldShowAutoPlayLoading(
+    // A source picked in Quick pick on the Details page: open it without showing the sheet first.
+    val preselectedStream = remember(route.launchId) { com.nuvio.app.features.streams.StreamPreselection.take(launch.videoId) }
+    var preselectedOpened by rememberSaveable(route.launchId) { mutableStateOf(false) }
+    val showLoadingScreen = (preselectedStream != null && !preselectedOpened) || autoPlayNavigationStarted || resolvingDebridStream || resolvingYouTubeStream || preparingServerStream || streamsUiState.shouldShowAutoPlayLoading(
         expectedRequestToken = expectedStreamsRequestToken,
         settings = playerSettings,
         manualSelection = launch.manualSelection,
@@ -602,6 +605,8 @@ internal fun StreamDestination(
         forceExternal: Boolean,
         forceInternal: Boolean,
         saveForReuse: Boolean = true,
+        // True for a Quick pick hand-off: the player replaces this route, so closing it returns to Details.
+        replaceStreamRoute: Boolean = false,
     ) {
         if (stream.needsServerPreparation) {
             if (preparingServerStream) return
@@ -622,6 +627,7 @@ internal fun StreamDestination(
                     resolvedResumeProgressFraction = resolvedResumeProgressFraction.takeIf { serverResumeMs == null },
                     forceExternal = false,
                     forceInternal = true,
+                    replaceStreamRoute = replaceStreamRoute,
                 )
             }
             return
@@ -643,6 +649,7 @@ internal fun StreamDestination(
                         resolvedResumeProgressFraction = resolvedResumeProgressFraction,
                         forceExternal = forceExternal,
                         forceInternal = forceInternal,
+                        replaceStreamRoute = replaceStreamRoute,
                     )
                     else -> {
                         resolved.toastMessage()?.let { NuvioToastController.show(it) }
@@ -690,6 +697,7 @@ internal fun StreamDestination(
                     forceInternal = forceInternal,
                     // The resolved URL expires after a few hours, so it isn't kept for reuse.
                     saveForReuse = false,
+                    replaceStreamRoute = replaceStreamRoute,
                 )
             }
             return
@@ -771,17 +779,36 @@ internal fun StreamDestination(
             return
         }
 
+        if (replaceStreamRoute) autoPlayNavigationStarted = true
         val launchId = PlayerLaunchStore.put(playerLaunch)
         StreamsRepository.cancelLoading()
         navController.navigate(
             PlayerRoute(launchId = launchId, title = playerLaunch.title)
-        )
+        ) {
+            if (replaceStreamRoute) {
+                popUpTo<StreamRoute> { inclusive = true }
+            }
+        }
     }
 
     LaunchedEffect(reuseNavigated) {
         if (reuseNavigated) {
             StreamsRepository.setOverlayVisible(false)
         }
+    }
+
+    LaunchedEffect(preselectedStream) {
+        val picked = preselectedStream ?: return@LaunchedEffect
+        if (preselectedOpened) return@LaunchedEffect
+        preselectedOpened = true
+        openSelectedStream(
+            stream = picked,
+            resolvedResumePositionMs = launch.resumePositionMs?.takeIf { it > 0L },
+            resolvedResumeProgressFraction = launch.resumeProgressFraction,
+            forceExternal = false,
+            forceInternal = false,
+            replaceStreamRoute = true,
+        )
     }
 
     val partyState by PartyRepository.state.collectAsStateWithLifecycle()

@@ -109,6 +109,46 @@ Person Details opening with no transition). Apply these to every redesigned scre
   passes `frostedSidebar` to `DetailNavigationFrame` and insets its content, not its backdrop, by
   `LocalBackdropContentStartInset`. While two such entries cross, the one leaving hides its sidebar
   (`sidebarHandedOff`); two overlapping dims would darken the strip for the length of the transition.
+- **Desktop Details is a board** (`DetailBoard.kt`, `DetailBoardLayout.kt`; windows ≥ `DetailBoardMinWidth`):
+  the title tile with the shared Back control and actions, a column of personal tiles (Up next, Your
+  progress; Collection and Tonight for films; Watch it your way), then section tabs that pin with
+  Back, the logo and the primary button. It draws its own `ShellBackdrop` from the title's artwork
+  behind loading, error and content, so the route provides `LocalShellBackdropMode` and a frosted
+  sidebar like Person. Its list starts below the merged bar (the bar reports `scrolled` only for its
+  surface), which is what lets a `stickyHeader` pin right under the bar.
+  - Sections are not laid out by the board. Every layout renders them through
+    `configuredMetaSectionItems` from one `DetailSectionArgs`; a tab is an entry in
+    `DetailBoardTab` listing the section keys it owns, and Settings → Detail Page still decides order
+    and visibility (`detailBoardTabs`). Add a section or a tab there, not in `MetaDetailsScreen`.
+  - A tab shorter than the window gets a filler (`detailBoardFillPx`) so the pinned row stays pinned
+    when it is selected. Without it the row dropped back down the page on every switch.
+  - The audience cards moved to the Your stats tab, and the progress card became a tile; both hide
+    with the Episodes section. `SeriesAudienceDetailsUiTest` and `DetailBoardModelTest` cover this.
+- **Desktop stream selection is Quick pick plus the Sources sheet** (windows ≥ `StreamsSheetMinWidth`).
+  The sheet (`StreamsSheetLayout.kt`) replaces the two-pane list: the title, resume line and a Best
+  match card on the left; every source on the right, grouped by resolution, each row showing decoded
+  labels over the addon's own release name. Quick pick (`StreamQuickPick.kt`, hosted by the board as
+  `DetailQuickPickOverlay`) offers Best match, Faster start and On your server, and opens the sheet.
+  - Rows come from `streamRowInfo` (`StreamSheetModel.kt`), which reuses `DebridStreamMetadata.facts`.
+    Don't add a second release-name parser; extend that one, or the small fallbacks beside it for
+    tokens glued to a neighbour ("DDP5.1", "H.265").
+  - With autoplay on, Play still starts playback and "Choose source" opens Quick pick. With autoplay
+    off, Play opens Quick pick. A downloaded copy always plays directly.
+  - Quick pick loads the same request as the sheet (`manualSelection = true`), so the sheet opens on
+    its results. A picked source travels through `StreamPreselection` and the stream route opens it
+    behind its loading screen; showing the sheet first read as a flash.
+  - Whether a source starts now comes from the addon's own marker as much as from the app's cache
+    check: `[TB+]` is Instant, `[TB download]` is "Needs download" (`quickQualityAvailability`). The
+    first sheet showed both as "Direct link" because each carries a URL, so sources that still had
+    to download looked ready. A download-only source never counts as starting now.
+  - Row line one is labels, status, language chips, then voice-over and subtitle tags from the
+    addon's description (`streamAudioTags`); line two is the file name. Languages come from the
+    addon's flag line when it has one. A voice-over kind without a stated language stays bare:
+    never guess its language. Video and audio details are text labels, not the imported logo badges.
+  - Preferred languages (the sheet's remembered language filter, then Settings → Playback's audio
+    languages) rank ahead of resolution among sources that start now, in Best match, Quick pick and
+    the Quality sort. The filter is stored per profile, device-local (`stream_sheet_language`).
+  - `StreamSheetModelTest` and `StreamsSheetUiTest` cover labels, grouping, filters, picks and the sheet.
 
 Regression check: open the screen, navigate to and back from a detail page, type and refine a
 query, switch tabs, and scroll one step. There should be no frame where content pops, jumps, or

@@ -1854,12 +1854,19 @@ internal fun MainAppContent(
                     }
                 }
                 entry<DetailRoute> { route ->
+                    // The desktop Details board draws the ambient backdrop, so it follows the Background
+                    // setting and gets the frosted sidebar the other backdrop pages have.
+                    CompositionLocalProvider(
+                        com.nuvio.app.core.ui.LocalShellBackdropMode provides shellBackdropMode,
+                    ) {
                     DetailNavigationFrame(
                         route = route,
                         selectedTab = selectedTab,
                         onTabSelected = ::selectDetailNavigationTab,
                         onProfileSelected = selectNavigationProfile,
                         onAddProfileRequested = onSwitchProfile,
+                        frostedSidebar = shellBackdropMode != com.nuvio.app.core.ui.ShellBackdropMode.Solid,
+                        sidebarHandedOff = currentRoute is TabsRoute && selectedTab in com.nuvio.app.core.ui.ShellBackdropTabs,
                     ) {
                         DetailsDestination(
                             route = route,
@@ -1869,6 +1876,7 @@ internal fun MainAppContent(
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = LocalNavAnimatedContentScope.current,
                         )
+                    }
                     }
                 }
                 entry<PersonDetailRoute>(
@@ -1928,12 +1936,17 @@ internal fun MainAppContent(
                         emptyMap()
                     },
                 ) { route ->
+                    // The desktop Sources sheet draws the ambient backdrop, like the Details board it opens from.
+                    CompositionLocalProvider(
+                        com.nuvio.app.core.ui.LocalShellBackdropMode provides shellBackdropMode,
+                    ) {
                     DetailNavigationFrame(
                         route = route,
                         selectedTab = selectedTab,
                         onTabSelected = ::selectDetailNavigationTab,
                         onProfileSelected = selectNavigationProfile,
                         onAddProfileRequested = onSwitchProfile,
+                        frostedSidebar = shellBackdropMode != com.nuvio.app.core.ui.ShellBackdropMode.Solid,
                     ) {
                         StreamDestination(
                             route = route,
@@ -1945,6 +1958,7 @@ internal fun MainAppContent(
                             openExternalPlayback = ::openExternalPlayback,
                             openExternalStreamUrl = ::openExternalStreamUrl,
                         )
+                    }
                     }
                 }
                 entry<PlayerRoute>(
