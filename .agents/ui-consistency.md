@@ -513,6 +513,10 @@ solid, a 72% grey dim, see-through over Search's results). Keep these together:
   Calendar, History) reports 0: nothing passes under the bar, and Library's reported pane scroll
   once turned the bar solid over a fixed header. Report from a `snapshotFlow`: a `SideEffect` in the page's outer scope
   never re-ran while the list scrolled, so the service page's bar stayed clear over its rows.
+- A detail page's floating controls start below the bar (`DesktopMergedTopBarHeight`). Person's back
+  button sat at 32 dp, half inside the bar's hit area, so most clicks on it did nothing; Person also
+  never reported, so the career timeline ran through a clear bar's labels
+  (`PersonTopBarScrollReport`).
 - A band under the bar starts its surface below the bar, so translucent options don't double.
 - Tinted takes the colour actually behind the bar: the artwork's top strip under the backdrop's
   40% scrim (`backdropTopTint`), capped so white labels stay readable. The image's dominant colour
@@ -625,6 +629,19 @@ transformed bounds give the return target. Cards that scale outside
 `posterCardClickable` (`NuvioPosterCard`'s column) must share the source via
 `rememberPosterLiftSource`. `hoverScaledCardReturnsWithoutShift` and
 `cardLeftDuringMenuReturnsUnscaled` cover both pointer paths.
+
+## Esc closes the innermost open layer
+
+The desktop AWT Esc dispatcher (`DesktopKeyboardShortcutHost`) runs before Compose back
+handlers, so a layer that only registers `PlatformBackHandler` never sees Esc: the page under it
+navigates Back instead. The shared card menu ran History's Back (to the previous tab) while it
+stayed open, and Esc on a Settings bottom sheet disposed the screen under the still-rendering
+sheet and crashed the app ("RootNodeOwner is already disposed"). Every open layer (menus, panels,
+card overlays, sheets, in-place lists) claims Esc with `OverlayEscapeHandler` (`AppKeyboardShortcuts`);
+claims stack, so closing a card menu over Library's open list hands Esc back to the list.
+`NuvioPosterZoomActionOverlay` and `NuvioModalBottomSheet` claim it themselves. Checks:
+`AppKeyboardShortcutsTest`, and `HistoryNavigationTest` presses the registered Esc with the
+menu open and asserts History stays.
 
 ## Desktop Search keyboard shortcuts
 

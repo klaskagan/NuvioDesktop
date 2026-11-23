@@ -65,6 +65,7 @@ internal fun PersonExpandedContent(
 ) {
     val today = LocalDate.parse(CurrentDateProvider.todayIsoDate())
     val grid = rememberLazyGridState()
+    PersonTopBarScrollReport { grid.firstVisibleItemIndex > 0 || grid.firstVisibleItemScrollOffset > 0 }
     var query by rememberSaveable(person.tmdbId, section, stateSaver = creditQuerySaver) {
         mutableStateOf(PersonCreditQuery())
     }

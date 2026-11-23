@@ -44,7 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nuvio.app.AppKeyboardShortcuts
+import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.LocalDetailTopBarState
 import com.nuvio.app.core.ui.BackdropFocusController
 import com.nuvio.app.core.ui.desktopPageHorizontalPaddingForWidth
@@ -156,13 +156,7 @@ internal fun StreamingProviderScreen(
     val goBack = { if (session.view != null) closeGrid() else onBack() }
     PlatformBackHandler(enabled = shelfView != null, onBack = goBack)
     // Esc is caught at the window, before back handlers: from the grid it returns to the rows, not Home.
-    if (shelfView != null && isTopRoute) {
-        DisposableEffect(Unit) {
-            val handler: () -> Boolean = { closeGrid(); true }
-            AppKeyboardShortcuts.overlayEscape = handler
-            onDispose { if (AppKeyboardShortcuts.overlayEscape === handler) AppKeyboardShortcuts.overlayEscape = null }
-        }
-    }
+    OverlayEscapeHandler(enabled = shelfView != null && isTopRoute) { closeGrid() }
 
     CompositionLocalProvider(LocalSearchDiscoverySession provides session) {
         val shelves = rememberSearchDiscoveryShelves(

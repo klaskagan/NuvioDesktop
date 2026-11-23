@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.nuvio.app.isWindows
+import kotlinx.coroutines.launch
 
 private val SheetShape = RoundedCornerShape(NuvioTokens.Space.s28)
 
@@ -48,6 +49,13 @@ fun NuvioModalBottomSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     com.nuvio.app.navigation.BlockDesktopHistoryGestures()
+    // Desktop Esc reaches the window-level Back before the sheet's own key handling. Navigating Back
+    // disposed the screen under a still-rendering sheet ("RootNodeOwner is already disposed"), so the
+    // sheet claims Esc and only dismisses itself.
+    val escapeScope = androidx.compose.runtime.rememberCoroutineScope()
+    com.nuvio.app.OverlayEscapeHandler {
+        escapeScope.launch { dismissNuvioBottomSheet(sheetState = sheetState, onDismiss = onDismissRequest) }
+    }
     if (usesNativeNuvioBottomSheet) {
         NuvioNativeModalBottomSheet(
             onDismissRequest = onDismissRequest,

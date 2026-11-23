@@ -1,5 +1,6 @@
 package com.nuvio.app.features.library.sync
 
+import com.nuvio.app.core.ui.displayRatingText
 import com.nuvio.app.core.network.SupabaseProvider
 import com.nuvio.app.core.sync.putSyncOriginClientId
 import com.nuvio.app.features.home.PosterShape
@@ -157,7 +158,7 @@ internal fun LibrarySyncFields.toLibraryItem(): LibraryItem =
         logo = logo,
         description = description,
         releaseInfo = releaseInfo,
-        imdbRating = imdbRating?.toString(),
+        imdbRating = displayRatingText(imdbRating?.toString()),
         genres = genres,
         posterShape = posterShape.toPosterShape(),
         addonBaseUrl = addonBaseUrl,

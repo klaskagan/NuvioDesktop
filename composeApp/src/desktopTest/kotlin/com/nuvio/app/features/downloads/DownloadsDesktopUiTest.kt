@@ -90,7 +90,7 @@ class DownloadsDesktopUiTest {
             try {
                 block({ played }, { details })
             } finally {
-                AppKeyboardShortcuts.overlayEscape = null
+                AppKeyboardShortcuts.clearOverlayEscapes()
                 DownloadsFolder.reset()
             }
         }

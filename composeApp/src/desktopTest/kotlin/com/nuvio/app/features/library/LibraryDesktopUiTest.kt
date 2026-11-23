@@ -251,7 +251,7 @@ class LibraryDesktopUiTest {
         try {
             block(harness)
         } finally {
-            AppKeyboardShortcuts.overlayEscape = null
+            AppKeyboardShortcuts.clearOverlayEscapes()
         }
     }
 

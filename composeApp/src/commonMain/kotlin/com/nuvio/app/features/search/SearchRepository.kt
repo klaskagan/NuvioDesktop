@@ -186,8 +186,8 @@ object SearchRepository {
                 serverSearches.map { ref ->
                     suspend {
                         ServerCatalog.searchSection(ref, normalizedQuery).also { section ->
-                            require(section.items.isNotEmpty()) {
-                                getString(Res.string.search_error_no_results_for_catalog, section.title)
+                            if (section.items.isEmpty()) {
+                                throw SearchCatalogEmptyException(getString(Res.string.search_error_no_results_for_catalog, section.title))
                             }
                         }
                     }
@@ -342,7 +342,7 @@ object SearchRepository {
                     filmography = filmography,
                     franchise = franchise,
                     completedProviders = completedResults.size,
-                    failedProviders = completedResults.count { it.error != null },
+                    failedProviders = countFailedSearchProviders(completedResults.map { it.error }),
                     firstFailure = completedResults.firstNotNullOfOrNull { result ->
                         result.error?.let { it.serverMessage() ?: it.message }
                     },
@@ -732,8 +732,8 @@ object SearchRepository {
             it.patternForScreen(com.nuvio.app.core.poster.CustomPosterScreen.SEARCH)
         }
         val items = page.items.withCustomPosterUrls(posterPattern)
-        require(items.isNotEmpty()) {
-            getString(Res.string.search_error_no_results_for_catalog, catalogName)
+        if (items.isEmpty()) {
+            throw SearchCatalogEmptyException(getString(Res.string.search_error_no_results_for_catalog, catalogName))
         }
 
         return HomeCatalogSection(
@@ -918,6 +918,16 @@ private const val FILMOGRAPHY_RESULT_INDEX = -2
 private const val FRANCHISE_RESULT_INDEX = -3
 private const val FIRST_PUBLISH_RESULT_INDEX = -4
 private const val SEARCH_FIRST_PUBLISH_MS = 2_000L
+
+/**
+ * A catalog answered but had nothing for the query. That is "no results", not a failed request:
+ * counting it as a failure turned every empty search into "Search failed" with a Retry button.
+ */
+internal class SearchCatalogEmptyException(message: String) : IllegalArgumentException(message)
+
+/** Providers whose search really failed; an empty answer is not a failure. */
+internal fun countFailedSearchProviders(errors: List<Throwable?>): Int =
+    errors.count { it != null && it !is SearchCatalogEmptyException }
 
 private data class IndexedSearchResult(
     val index: Int,

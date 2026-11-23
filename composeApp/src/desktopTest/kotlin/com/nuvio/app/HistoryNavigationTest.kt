@@ -1,5 +1,6 @@
 package com.nuvio.app
 
+import com.nuvio.app.core.ui.DesktopEscapeShortcut
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
@@ -214,6 +215,16 @@ class HistoryNavigationTest {
             ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(report, "${layout.name}-actions.png"))
             // A click where navigation sits must dismiss the full-window scrim, not navigate.
             onRoot().performMouseInput { click(homeBounds.center) }
+            onNodeWithText("Go to details").assertDoesNotExist()
+            onNodeWithTag("history-screen").assertIsDisplayed()
+            // Esc (the window-level shortcut) closes only the menu. It used to run Back underneath,
+            // leaving History for the previous tab while the menu was still open.
+            onNodeWithTag("history-card-event-1").performMouseInput { click(button = MouseButton.Secondary) }
+            onNodeWithText("Go to details").assertIsDisplayed()
+            mainClock.advanceTimeBy(1_500)
+            runOnIdle { checkNotNull(DesktopEscapeShortcut.onBack).invoke() }
+            mainClock.advanceTimeBy(1_500)
+            waitForIdle()
             onNodeWithText("Go to details").assertDoesNotExist()
             onNodeWithTag("history-screen").assertIsDisplayed()
             onNode(hasAnyAncestor(hasTestTag("history-card-event-1")) and hasClickAction(), useUnmergedTree = true).performClick()

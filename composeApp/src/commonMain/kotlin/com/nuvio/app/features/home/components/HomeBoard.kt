@@ -1,5 +1,6 @@
 package com.nuvio.app.features.home.components
 
+import com.nuvio.app.core.ui.displayRatingText
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -407,7 +408,7 @@ internal fun HomeRowLeadCard(
             val meta = listOfNotNull(
                 item.genres.firstOrNull(),
                 item.releaseInfo?.takeIf { it.isNotBlank() },
-                item.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" },
+                displayRatingText(item.imdbRating)?.let { "★ $it" },
             ).joinToString("  ·  ")
             if (meta.isNotBlank()) {
                 Text(

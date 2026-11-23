@@ -71,6 +71,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import com.nuvio.app.core.ui.DesktopMergedTopBarHeight
+import com.nuvio.app.LocalDetailTopBarState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -209,6 +214,13 @@ fun PersonDetailScreen(
     }
     val backdropArt = (uiState as? PersonDetailUiState.Success)?.personDetail?.let(::personBackdropArt)
     LaunchedEffect(backdrop, backdropArt) { backdrop?.base = backdropArt }
+    // The merged top bar draws over this page: it takes the backdrop's colour (Tinted), and the
+    // overview/expanded lists report when content is under it (PersonTopBarScrollReport).
+    val topBarState = LocalDetailTopBarState.current
+    LaunchedEffect(topBarState, backdrop) {
+        if (topBarState == null || backdrop == null) return@LaunchedEffect
+        snapshotFlow { backdrop.tint }.collect { topBarState.tint = it }
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -283,7 +295,7 @@ fun PersonDetailScreen(
                             .windowInsetsPadding(WindowInsets.statusBars)
                             .padding(
                                 start = desktopPageHorizontalPaddingForWidth(maxWidth.value),
-                                top = 32.dp,
+                                top = personBackButtonTop(),
                             )
                             .align(Alignment.TopStart),
                         containerColor = Color.Transparent,
@@ -387,7 +399,7 @@ private fun PersonDetailContent(
                                     { _ ->
                                         PersonCompactHeader(
                                             person, initialProfilePhoto, avatarTransitionKey,
-                                            Modifier.padding(top = PERSON_REDESIGN_TOP_INSET).testTag("actor_header_compact"),
+                                            Modifier.padding(top = personRedesignTopInset()).testTag("actor_header_compact"),
                                         )
                                     }
                                 }
@@ -420,7 +432,7 @@ private fun PersonDetailContent(
                                 {
                                     PersonRedesignHeader(
                                         person, initialProfilePhoto, avatarTransitionKey, sharedTransitionScope, animatedVisibilityScope,
-                                        Modifier.padding(horizontal = padding).padding(top = PERSON_REDESIGN_TOP_INSET, bottom = PERSON_HEADER_BOTTOM)
+                                        Modifier.padding(horizontal = padding).padding(top = personRedesignTopInset(), bottom = PERSON_HEADER_BOTTOM)
                                             .testTag("actor_preview_wide"),
                                     )
                                 }
@@ -435,8 +447,31 @@ private fun PersonDetailContent(
 
 private val PERSON_DETAIL_WIDE_LAYOUT_MIN_WIDTH = 900.dp
 private val PERSON_DETAIL_WIDE_SIDEBAR_WIDTH = 392.dp
-/** Clears the 48dp desktop back button (top 32dp) before the redesigned header starts. */
-private val PERSON_REDESIGN_TOP_INSET = 96.dp
+/**
+ * Where the desktop back button sits. Under the merged top bar it starts below the bar: at 32dp
+ * its upper half was inside the bar's hit area, so most clicks on the arrow did nothing.
+ */
+@Composable
+private fun personBackButtonTop(): Dp =
+    if (LocalDetailTopBarState.current != null) DesktopMergedTopBarHeight + 12.dp else 32.dp
+
+/** Clears the 48dp desktop back button before the redesigned header (and its skeleton) starts. */
+@Composable
+private fun personRedesignTopInset(): Dp = personBackButtonTop() + 64.dp
+
+/**
+ * Tells the merged top bar when this page's content is under it, so the bar draws its surface.
+ * Without it the bar stayed clear and the timeline's titles ran through its labels.
+ */
+@Composable
+internal fun PersonTopBarScrollReport(isScrolled: () -> Boolean) {
+    val topBarState = LocalDetailTopBarState.current ?: return
+    val current by rememberUpdatedState(isScrolled)
+    LaunchedEffect(topBarState) {
+        snapshotFlow { current() }.collect { topBarState.scrolled = it }
+    }
+    DisposableEffect(topBarState) { onDispose { topBarState.scrolled = false } }
+}
 /** Wide-layout page padding (PersonDetailContent's `padding` when wide) and header bottom gap. */
 private val PERSON_WIDE_PADDING = 40.dp
 private val PERSON_HEADER_BOTTOM = 28.dp
@@ -474,6 +509,7 @@ private fun PersonOverview(
     val timeline = remember(career, careerTab, today) {
         careerTab?.let { personActingTimeline(career.getValue(it), today).values.flatten() }.orEmpty()
     }
+    PersonTopBarScrollReport { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0 }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = list,
@@ -1623,7 +1659,7 @@ private fun DesktopPersonDetailSkeleton(
                     }
                 }
             },
-            modifier = Modifier.padding(horizontal = PERSON_WIDE_PADDING).padding(top = PERSON_REDESIGN_TOP_INSET, bottom = PERSON_HEADER_BOTTOM),
+            modifier = Modifier.padding(horizontal = PERSON_WIDE_PADDING).padding(top = personRedesignTopInset(), bottom = PERSON_HEADER_BOTTOM),
         )
         PersonRailPlaceholder(stringResource(Res.string.person_known_for_shelf), PERSON_WIDE_PADDING)
         PersonRailPlaceholder(stringResource(PersonSubview.Movies.titleResource), PERSON_WIDE_PADDING, Modifier.padding(top = 24.dp))

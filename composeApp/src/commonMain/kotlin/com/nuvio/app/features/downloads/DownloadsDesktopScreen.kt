@@ -76,7 +76,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nuvio.app.AppKeyboardShortcuts
+import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.LocalDetailTopBarState
 import com.nuvio.app.core.ui.BackdropFocusController
 import com.nuvio.app.core.ui.DesktopMergedTopBarHeight
@@ -162,13 +162,7 @@ internal fun DownloadsDesktopScreen(
     val inPlaceShow = showId != null && onBackFromShow == null
     PlatformBackHandler(enabled = inPlaceShow, onBack = closeShow)
     val screenActive = LocalScreenActive.current
-    if (inPlaceShow && screenActive) {
-        DisposableEffect(Unit) {
-            val handler: () -> Boolean = { closeShow(); true }
-            AppKeyboardShortcuts.overlayEscape = handler
-            onDispose { if (AppKeyboardShortcuts.overlayEscape === handler) AppKeyboardShortcuts.overlayEscape = null }
-        }
-    }
+    OverlayEscapeHandler(enabled = inPlaceShow && screenActive) { closeShow() }
 
     val actionsFor: @Composable (DownloadItem) -> List<RedesignAction> = { item ->
         downloadActions(item, watchStatusOf(item), onOpenDownload, onOpenDetails) { deleteItemId = it.id }

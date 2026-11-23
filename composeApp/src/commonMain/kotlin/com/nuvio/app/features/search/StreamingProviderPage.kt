@@ -68,7 +68,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nuvio.app.AppKeyboardShortcuts
+import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.core.ui.NuvioViewAllPillSize
 import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignPillGroup
@@ -467,11 +467,7 @@ internal fun TagRowsCustomizeButton(modifier: Modifier = Modifier) {
         if (panel.currentState || panel.targetState) {
             val dismiss = { panel.targetState = false }
             // Esc closes the panel instead of going Back; it stays claimed until the panel is gone.
-            DisposableEffect(Unit) {
-                val handler: () -> Boolean = { dismiss(); true }
-                AppKeyboardShortcuts.overlayEscape = handler
-                onDispose { if (AppKeyboardShortcuts.overlayEscape === handler) AppKeyboardShortcuts.overlayEscape = null }
-            }
+            OverlayEscapeHandler { dismiss() }
             val offsetY = with(LocalDensity.current) { 42.dp.roundToPx() }
             Popup(
                 alignment = Alignment.TopEnd,

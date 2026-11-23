@@ -1,6 +1,7 @@
 package com.nuvio.app.core.ui
 
 import androidx.compose.animation.core.Animatable
+import com.nuvio.app.OverlayEscapeHandler
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -262,6 +263,9 @@ fun NuvioPosterZoomActionOverlay(
     PlatformBackHandler(enabled = true) {
         close()
     }
+    // Desktop Esc is dispatched at the window before back handlers; without this claim it navigated
+    // the page under the menu Back (History → previous tab) instead of closing the menu.
+    OverlayEscapeHandler { close() }
 
     BoxWithConstraints(
         modifier = modifier

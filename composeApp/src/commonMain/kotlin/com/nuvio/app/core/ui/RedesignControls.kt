@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.nuvio.app.AppKeyboardShortcuts
+import com.nuvio.app.OverlayEscapeHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -298,11 +299,7 @@ internal fun <T> RedesignMenuButton(
         )
         if (menu.currentState || menu.targetState) {
             val dismiss = { menu.targetState = false }
-            DisposableEffect(Unit) {
-                val handler: () -> Boolean = { dismiss(); true }
-                AppKeyboardShortcuts.overlayEscape = handler
-                onDispose { if (AppKeyboardShortcuts.overlayEscape === handler) AppKeyboardShortcuts.overlayEscape = null }
-            }
+            OverlayEscapeHandler { dismiss() }
             val offsetY = with(LocalDensity.current) { (PillHeight + 6.dp).roundToPx() }
             val origin = TransformOrigin(if (alignEnd) 1f else 0f, 0f)
             Popup(
@@ -435,11 +432,7 @@ private fun RedesignActionMenuPopup(
 ) {
     if (!(menu.currentState || menu.targetState) || actions.isEmpty()) return
     val dismiss = { menu.targetState = false }
-    DisposableEffect(Unit) {
-        val handler: () -> Boolean = { dismiss(); true }
-        AppKeyboardShortcuts.overlayEscape = handler
-        onDispose { if (AppKeyboardShortcuts.overlayEscape === handler) AppKeyboardShortcuts.overlayEscape = null }
-    }
+    OverlayEscapeHandler { dismiss() }
     Popup(alignment = alignment, offset = offset, onDismissRequest = dismiss, properties = PopupProperties(focusable = true)) {
         AnimatedVisibility(
             visibleState = menu,

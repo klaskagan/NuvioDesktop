@@ -51,7 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.nuvio.app.AppKeyboardShortcuts
+import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.core.network.NetworkCondition
 import com.nuvio.app.AppScreenTab
 import com.nuvio.app.core.ui.LocalBackdropFocusController
@@ -211,13 +211,7 @@ internal fun LibraryDesktopScreen(
         else -> null
     }
     PlatformBackHandler(enabled = screenActive && escapeTarget != null, onBack = { escapeTarget?.invoke() })
-    if (screenActive && escapeTarget != null) {
-        DisposableEffect(escapeTarget) {
-            val handler: () -> Boolean = { escapeTarget(); true }
-            AppKeyboardShortcuts.overlayEscape = handler
-            onDispose { if (AppKeyboardShortcuts.overlayEscape === handler) AppKeyboardShortcuts.overlayEscape = null }
-        }
-    }
+    OverlayEscapeHandler(enabled = screenActive && escapeTarget != null) { escapeTarget?.invoke() }
 
     RedesignTypography(enabled = true) {
         BoxWithConstraints(

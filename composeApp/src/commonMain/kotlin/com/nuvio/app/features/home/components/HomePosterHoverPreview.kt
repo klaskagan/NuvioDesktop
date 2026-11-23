@@ -1,5 +1,6 @@
 package com.nuvio.app.features.home.components
 
+import com.nuvio.app.core.ui.displayRatingText
 import com.nuvio.app.core.ui.NuvioDesktopAnimation
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -563,10 +564,7 @@ private fun MetaPreview.previewMetadataLine(): String =
             ?.let(::formatReleaseDateForDisplay)
             ?.takeIf { it.isNotBlank() }
             ?.let(::add)
-        imdbRating
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?.let { add("IMDb $it") }
+        displayRatingText(imdbRating)?.let { add("IMDb $it") }
     }.joinToString(" • ")
 
 private class HomePosterPreviewPositionProvider(

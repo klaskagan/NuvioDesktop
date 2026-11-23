@@ -165,6 +165,26 @@ class SearchResultMergingTest {
     }
 
     @Test
+    fun `catalogs answering with nothing show no results, not a failure`() {
+        // Every catalog came back empty: this read "Search failed" with a Retry button.
+        val errors = listOf(SearchCatalogEmptyException("No search results returned for Movies."), SearchCatalogEmptyException("Series"))
+        val state = resolveSearchUiState(
+            query = "zzqxvbn",
+            sections = emptyList(),
+            people = emptyList(),
+            completedProviders = errors.size,
+            failedProviders = countFailedSearchProviders(errors),
+            firstFailure = errors.first().message,
+            isFinished = true,
+            hasPendingAddonManifests = false,
+        )
+
+        assertEquals(SearchEmptyStateReason.NoResults, state.emptyStateReason)
+        assertEquals(null, state.errorMessage)
+        assertEquals(1, countFailedSearchProviders(errors + IllegalStateException("Timed out")))
+    }
+
+    @Test
     fun `filtered out results without people show empty state`() {
         val state = resolveSearchUiState(
             query = "brad pitt",
