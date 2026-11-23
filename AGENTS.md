@@ -115,6 +115,13 @@ credentials with helper resources.
 After the user approves the result, commit the approved changes and push them
 to `origin/develop`.
 
+Don't keep dead worktrees or branches. Once a task branch is merged into its
+target (verify with `git merge-base --is-ancestor <branch> <target>`), stop your
+own review app, then from the main checkout run `git worktree remove <path>` and
+`git branch -d <branch>` (plus the remote branch if you pushed one). Never remove
+a worktree or branch another session is still using, or one with unmerged or
+uncommitted work.
+
 Keep shared UI/state in commonMain and platform integrations in their existing
 platform source sets. Follow the touched feature's localization and state patterns.
 Use focused tests for changed behavior; avoid tests that only mirror cosmetic code.
