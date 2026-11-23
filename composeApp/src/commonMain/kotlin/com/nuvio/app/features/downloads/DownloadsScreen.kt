@@ -1,5 +1,6 @@
 package com.nuvio.app.features.downloads
 
+import com.nuvio.app.isDesktop
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,6 +75,10 @@ fun DownloadsScreen(
     onNavigateToShow: ((showId: String, title: String) -> Unit)? = null,
     onBackFromShow: (() -> Unit)? = null,
 ) {
+    if (isDesktop) {
+        DownloadsDesktopScreen(onBack, onOpenDownload, onOpenDetails, initialShowId, onBackFromShow)
+        return
+    }
     val uiState by remember {
         DownloadsRepository.ensureLoaded()
         DownloadsRepository.uiState
@@ -422,7 +427,7 @@ private fun DownloadsEmptyState(
 }
 
 @Composable
-private fun DeleteDownloadDialog(
+internal fun DeleteDownloadDialog(
     item: DownloadItem,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
@@ -445,7 +450,7 @@ private fun DeleteDownloadDialog(
     )
 }
 
-private sealed interface DownloadedEntry {
+internal sealed interface DownloadedEntry {
     val key: String
     val addedAtEpochMs: Long
 
@@ -463,7 +468,7 @@ private sealed interface DownloadedEntry {
     }
 }
 
-private fun List<DownloadItem>.downloadedEntries(): List<DownloadedEntry> {
+internal fun List<DownloadItem>.downloadedEntries(): List<DownloadedEntry> {
     val completed = filter { it.status == DownloadStatus.Completed }
     val downloadingByShow = filter { it.isEpisode && it.status != DownloadStatus.Completed }
         .groupingBy { it.parentMetaId }
@@ -483,7 +488,7 @@ private fun List<DownloadItem>.downloadedEntries(): List<DownloadedEntry> {
     return (movies + shows).sortedByDescending { it.addedAtEpochMs }
 }
 
-private fun DownloadItem.toggleTransfer() {
+internal fun DownloadItem.toggleTransfer() {
     when (status) {
         DownloadStatus.Downloading -> DownloadsRepository.pauseDownload(id)
         DownloadStatus.Paused -> DownloadsRepository.resumeDownload(id)

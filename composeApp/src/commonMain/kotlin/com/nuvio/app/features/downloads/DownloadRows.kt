@@ -320,7 +320,7 @@ private fun StatusText(
 }
 
 @Composable
-private fun activeStatusText(item: DownloadItem, speedBytesPerSecond: Long?): String {
+internal fun activeStatusText(item: DownloadItem, speedBytesPerSecond: Long?): String {
     val total = item.totalBytes?.takeIf { it > 0L }
     val transferred = if (total != null) {
         "${formatBytes(item.downloadedBytes)} / ${formatBytes(total)}"
@@ -348,7 +348,7 @@ private fun activeStatusText(item: DownloadItem, speedBytesPerSecond: Long?): St
 }
 
 @Composable
-private fun watchStatusText(status: DownloadWatchStatus): String? = when {
+internal fun watchStatusText(status: DownloadWatchStatus): String? = when {
     status.isWatched -> stringResource(Res.string.episodes_cd_watched)
     status.remainingMs > 0L -> formatTimeLeft(status.remainingMs)
     status.progress > 0f -> stringResource(

@@ -121,6 +121,7 @@ internal fun TorboxCloudItemDto.toCloudLibraryItem(
         sizeBytes = size ?: totalSize ?: filesSize,
         progressFraction = listOfNotNull(progress, downloadProgress).firstOrNull()?.toProgressFraction(),
         files = mappedFiles,
+        addedAtEpochMs = createdAt?.let(::parseCloudTimestamp),
     )
 }
 
@@ -240,3 +241,7 @@ private val playableVideoExtensions = setOf(
     "webm",
     "wmv",
 )
+
+/** ISO-8601 instant (TorBox `created_at`, e.g. "2026-11-21T10:15:30Z"); null when it doesn't parse. */
+internal fun parseCloudTimestamp(value: String): Long? =
+    runCatching { kotlin.time.Instant.parse(value.trim()).toEpochMilliseconds() }.getOrNull()

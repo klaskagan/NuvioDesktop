@@ -27,7 +27,7 @@ import org.junit.Test
  */
 @OptIn(ExperimentalTestApi::class)
 class ShellBackdropUiTest {
-    @Test fun backdropRunsUnderTheSidebarOnSearchOnly() = runDesktopComposeUiTest(width = 1200, height = 900) {
+    @Test fun backdropRunsUnderTheSidebarOnBackdropTabsOnly() = runDesktopComposeUiTest(width = 1200, height = 900) {
         assumeTrue("Full app tests require isolated profile storage; use scripts/desktop-ui-tests.init.gradle",
             System.getProperty("nuvio.test.isolatedHome") == "true")
         ThemeSettingsRepository.ensureLoaded()
@@ -51,6 +51,10 @@ class ShellBackdropUiTest {
         mainClock.advanceTimeBy(600)
         val library = capture("library")
 
+        onNodeWithContentDescription("Settings").performClick()
+        mainClock.advanceTimeBy(600)
+        val settings = capture("settings")
+
         onNodeWithContentDescription("Search").performClick()
         mainClock.advanceTimeBy(600)
         runOnIdle { ThemeSettingsRepository.setShellBackdrop(ShellBackdropMode.Solid) }
@@ -63,7 +67,8 @@ class ShellBackdropUiTest {
         val y = 860
         val solid = searchSolid.getRGB(x, y)
         assertNotEquals(solid, searchAmbient.getRGB(x, y), "Search's backdrop should show through the frosted sidebar")
-        assertEquals(solid, library.getRGB(x, y), "Tabs outside ShellBackdropTabs keep the solid sidebar")
+        assertNotEquals(solid, library.getRGB(x, y), "Library is a backdrop tab: its backdrop shows through the sidebar")
+        assertEquals(solid, settings.getRGB(x, y), "Tabs outside ShellBackdropTabs keep the solid sidebar")
     }
 
     private fun SkikoComposeUiTest.capture(name: String): BufferedImage {

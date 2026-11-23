@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.nuvio.app.core.ui.nuvioFocusBorder
+import com.nuvio.app.core.ui.mousePressAndHoldAt
 import com.nuvio.app.core.ui.secondaryClickAt
 import com.nuvio.app.core.ui.nuvioDesktopDragScroll
 import com.nuvio.app.core.ui.SkeletonBlock
@@ -131,6 +132,15 @@ internal fun StreamCard(
                 onLongClick = if (isDesktop) null else onLongClick,
             )
             .secondaryClickAt(
+                if (isDesktop && enabled && onSecondaryClick != null) {
+                    { localPosition -> onSecondaryClick(cardPositionInRoot + localPosition) }
+                } else {
+                    null
+                },
+            )
+            // Desktop: press and hold opens the same actions menu as a right-click (Downloads tells
+            // people so), at the pointer. combinedClickable ignores mouse long-presses.
+            .mousePressAndHoldAt(
                 if (isDesktop && enabled && onSecondaryClick != null) {
                     { localPosition -> onSecondaryClick(cardPositionInRoot + localPosition) }
                 } else {

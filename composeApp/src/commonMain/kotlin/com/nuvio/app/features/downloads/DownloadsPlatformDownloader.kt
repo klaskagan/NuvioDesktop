@@ -6,6 +6,7 @@ internal data class DownloadPlatformRequest(
     val sourceUrl: String get() = item.sourceUrl
     val sourceHeaders: Map<String, String> get() = item.sourceHeaders
     val destinationFileName: String get() = item.fileName
+    val destinationDirectory: String? get() = item.downloadDirectory
 }
 
 internal interface DownloadsTaskHandle {
@@ -25,9 +26,9 @@ internal expect object DownloadsPlatformDownloader {
 
     fun removeFile(localFileUri: String?): Boolean
 
-    fun removePartialFile(destinationFileName: String): Boolean
+    fun removePartialFile(destinationFileName: String, directory: String?): Boolean
 
-    fun resolveLocalFileUri(localFileUri: String?, destinationFileName: String): String?
+    fun resolveLocalFileUri(localFileUri: String?, destinationFileName: String, directory: String?): String?
 
     fun openDownloadsDirectory(): Boolean
 }

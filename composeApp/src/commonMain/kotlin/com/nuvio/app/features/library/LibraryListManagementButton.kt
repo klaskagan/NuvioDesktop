@@ -1,5 +1,9 @@
 package com.nuvio.app.features.library
 
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import com.nuvio.app.core.ui.RedesignIconButton
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.Icon
@@ -21,8 +25,20 @@ import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.library_create_list
 import org.jetbrains.compose.resources.stringResource
 
+/** Whether the active library source can create and edit lists (the header reserves its slot). */
 @Composable
-internal fun LibraryListManagementButton() {
+internal fun libraryListManagementAvailable(): Boolean {
+    val profile by ProfileRepository.state.collectAsStateWithLifecycle()
+    val connections by TrackingProviderRegistry.connectedProviderIds.collectAsStateWithLifecycle()
+    val library by LibraryRepository.uiState.collectAsStateWithLifecycle()
+    return remember(profile, connections, library) {
+        LibraryRepository.listManagementContext()
+            ?.source?.providerId?.let(TrackingProviderRegistry::libraryProvider)?.listManager != null
+    }
+}
+
+@Composable
+internal fun LibraryListManagementButton(frosted: Boolean = false) {
     val profile by ProfileRepository.state.collectAsStateWithLifecycle()
     val connections by TrackingProviderRegistry.connectedProviderIds.collectAsStateWithLifecycle()
     val library by LibraryRepository.uiState.collectAsStateWithLifecycle()
@@ -34,12 +50,21 @@ internal fun LibraryListManagementButton() {
     if (context == null) return
     val provider = context.source.providerId?.let(TrackingProviderRegistry::libraryProvider) ?: return
     val manager = provider.listManager ?: return
-    IconButton(onClick = controller::create) {
-        Icon(
-            imageVector = Icons.Rounded.Add,
+    if (frosted) {
+        RedesignIconButton(
             contentDescription = stringResource(Res.string.library_create_list),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            onClick = controller::create,
+            vector = Icons.Rounded.Add,
+            modifier = Modifier.testTag("library-create-list"),
         )
+    } else {
+        IconButton(onClick = controller::create) {
+            Icon(
+                imageVector = Icons.Rounded.Add,
+                contentDescription = stringResource(Res.string.library_create_list),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
     state?.let { dialog ->
         LibraryListManagementDialog(

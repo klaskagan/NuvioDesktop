@@ -1,6 +1,30 @@
 package com.nuvio.app.core.ui
 
+import kotlin.math.roundToInt
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import com.nuvio.app.AppKeyboardShortcuts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -140,16 +164,34 @@ internal fun RedesignIconButton(
     painter: Painter? = null,
     size: Dp = PillHeight,
 ) {
+    RedesignIconButton(contentDescription, onClick, modifier, size) { tint ->
+        when {
+            vector != null -> Icon(vector, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+            painter != null -> Icon(painter, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+/** [RedesignIconButton] with custom content (an animated icon); [content] gets the eased tint. */
+@Composable
+internal fun RedesignIconButton(
+    contentDescription: String,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    size: Dp = PillHeight,
+    active: Boolean = false,
+    content: @Composable (tint: Color) -> Unit,
+) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val enabled = onClick != null
     val fill by animateColorAsState(
-        if (hovered && enabled) RedesignColors.fillStrong else RedesignColors.fill,
+        if ((hovered || active) && enabled) RedesignColors.fillStrong else RedesignColors.fill,
         tween(PillMotionMillis),
         label = "icon_button_fill",
     )
     val tint by animateColorAsState(
-        if (hovered && enabled) RedesignColors.textPrimary else RedesignColors.textSecondary,
+        if ((hovered || active) && enabled) RedesignColors.textPrimary else RedesignColors.textSecondary,
         tween(PillMotionMillis),
         label = "icon_button_tint",
     )
@@ -162,36 +204,285 @@ internal fun RedesignIconButton(
             .then(if (enabled) Modifier.semantics { this.contentDescription = contentDescription } else Modifier),
         contentAlignment = Alignment.Center,
     ) {
-        when {
-            vector != null -> Icon(vector, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
-            painter != null -> Icon(painter, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
-        }
+        content(tint)
     }
 }
 
-/** Text pill button (Today) in the same track style. */
+/**
+ * Text pill button (Today) in the same track style. [prefix] is a muted lead-in ("Genre"); an
+ * [active] pill (a filter that is set) reads brighter, with a stronger edge.
+ */
 @Composable
 internal fun RedesignPillButton(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     trailing: ImageVector? = null,
+    prefix: String? = null,
+    active: Boolean = false,
+    primary: Boolean = false,
+    leading: ImageVector? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val fill by animateColorAsState(if (hovered) RedesignColors.fillStrong else RedesignColors.fill, tween(PillMotionMillis), label = "pill_button_fill")
+    val fill by animateColorAsState(
+        when {
+            primary -> if (hovered) Color.White else RedesignColors.textPrimary
+            active -> if (hovered) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.14f)
+            hovered -> RedesignColors.fillStrong
+            else -> RedesignColors.fill
+        },
+        tween(PillMotionMillis),
+        label = "pill_button_fill",
+    )
+    val edge by animateColorAsState(
+        when {
+            primary -> Color.Transparent
+            active -> Color.White.copy(alpha = 0.30f)
+            else -> RedesignColors.hairline
+        },
+        tween(PillMotionMillis),
+        label = "pill_button_edge",
+    )
+    val ink = if (primary) RedesignOnLight else RedesignColors.textPrimary
+    val iconInk = if (primary) RedesignOnLight else RedesignColors.textSecondary
     Row(
         modifier.height(PillHeight).clip(CircleShape).background(fill)
-            .border(1.dp, RedesignColors.hairline, CircleShape)
+            .border(1.dp, edge, CircleShape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 16.dp),
+            .padding(start = if (leading != null) 14.dp else 16.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = redesignText(13.sp, FontWeight.SemiBold), maxLines = 1)
-        if (trailing != null) Icon(trailing, contentDescription = null, tint = RedesignColors.textSecondary, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+        if (leading != null) Icon(leading, contentDescription = null, tint = iconInk, modifier = Modifier.padding(end = 6.dp).size(18.dp))
+        if (prefix != null) {
+            Text(prefix, style = redesignText(13.sp, FontWeight.Medium, if (active) RedesignColors.textSecondary else RedesignColors.textMuted), maxLines = 1)
+            Box(Modifier.width(6.dp))
+        }
+        Text(label, style = redesignText(13.sp, FontWeight.SemiBold, ink), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (trailing != null) Icon(trailing, contentDescription = null, tint = iconInk, modifier = Modifier.padding(start = 4.dp).size(18.dp))
     }
 }
+
+/** One row of a [RedesignMenu]. */
+internal data class RedesignMenuOption<T>(val value: T, val label: String, val count: Int? = null)
+
+/**
+ * A pill that opens a frosted menu of [options] under it (Sort, Genre, More lists). Esc closes the
+ * menu, not the page: it claims [AppKeyboardShortcuts.overlayEscape] while open. [onClear] shows a
+ * clear button inside an [active] pill instead of the chevron.
+ */
+@Composable
+internal fun <T> RedesignMenuButton(
+    label: String,
+    options: List<RedesignMenuOption<T>>,
+    selected: T?,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    prefix: String? = null,
+    active: Boolean = false,
+    onClear: (() -> Unit)? = null,
+    alignEnd: Boolean = false,
+    tag: String? = null,
+) {
+    val menu = remember { MutableTransitionState(false) }
+    val clear = onClear?.takeIf { active }
+    Box(modifier) {
+        RedesignPillButton(
+            label = label,
+            onClick = { if (clear != null) clear() else menu.targetState = !menu.targetState },
+            modifier = (tag?.let { Modifier.testTag(it) } ?: Modifier),
+            trailing = if (clear != null) Icons.Rounded.Close else Icons.Rounded.KeyboardArrowDown,
+            prefix = prefix,
+            active = active || menu.targetState,
+        )
+        if (menu.currentState || menu.targetState) {
+            val dismiss = { menu.targetState = false }
+            DisposableEffect(Unit) {
+                val handler: () -> Boolean = { dismiss(); true }
+                AppKeyboardShortcuts.overlayEscape = handler
+                onDispose { if (AppKeyboardShortcuts.overlayEscape === handler) AppKeyboardShortcuts.overlayEscape = null }
+            }
+            val offsetY = with(LocalDensity.current) { (PillHeight + 6.dp).roundToPx() }
+            val origin = TransformOrigin(if (alignEnd) 1f else 0f, 0f)
+            Popup(
+                alignment = if (alignEnd) Alignment.TopEnd else Alignment.TopStart,
+                offset = IntOffset(0, offsetY),
+                onDismissRequest = dismiss,
+                properties = PopupProperties(focusable = true),
+            ) {
+                AnimatedVisibility(
+                    visibleState = menu,
+                    enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = origin),
+                    exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = origin),
+                ) {
+                    RedesignMenuPanel(options, selected, onSelect = { onSelect(it); dismiss() }, tag = tag)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun <T> RedesignMenuPanel(
+    options: List<RedesignMenuOption<T>>,
+    selected: T?,
+    onSelect: (T) -> Unit,
+    tag: String?,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        Modifier.widthIn(min = 200.dp, max = 320.dp).heightIn(max = 380.dp)
+            .clip(shape).background(RedesignMenuSurface).border(1.dp, RedesignColors.hairline, shape)
+            .verticalScroll(rememberScrollState()).padding(6.dp)
+            .then(tag?.let { Modifier.testTag("$it-menu") } ?: Modifier),
+    ) {
+        options.forEach { option ->
+            val isSelected = option.value == selected
+            val interaction = remember { MutableInteractionSource() }
+            val hovered by interaction.collectIsHoveredAsState()
+            val fill by animateColorAsState(
+                when {
+                    isSelected -> Color.White.copy(alpha = 0.10f)
+                    hovered -> Color.White.copy(alpha = 0.06f)
+                    else -> Color.Transparent
+                },
+                tween(140),
+                label = "menu_row_fill",
+            )
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(fill)
+                    .hoverable(interaction)
+                    .clickable(interactionSource = interaction, indication = null, role = Role.Button) { onSelect(option.value) }
+                    .semantics { this.selected = isSelected }
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    option.label,
+                    style = redesignText(13.sp, if (isSelected) FontWeight.SemiBold else FontWeight.Medium, if (isSelected || hovered) RedesignColors.textPrimary else RedesignColors.textSecondary),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                option.count?.let {
+                    Text(it.toString(), style = redesignText(12.sp, FontWeight.Medium, RedesignColors.textMuted), modifier = Modifier.padding(start = 8.dp))
+                }
+                Box(Modifier.weight(1f).height(1.dp))
+                Icon(
+                    Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = RedesignColors.textPrimary,
+                    modifier = Modifier.padding(start = 10.dp).size(16.dp).graphicsLayer { alpha = if (isSelected) 1f else 0f },
+                )
+            }
+        }
+    }
+}
+
+/** One row of a [RedesignOverflowButton] menu. */
+internal class RedesignAction(
+    val label: String,
+    val icon: ImageVector,
+    val destructive: Boolean = false,
+    val tag: String? = null,
+    val onClick: () -> Unit,
+)
+
+/**
+ * Round ⋯ button that opens a frosted actions menu under it, end-aligned (a card's Play / Pause /
+ * Details / Delete). Esc closes the menu first.
+ */
+@Composable
+internal fun RedesignOverflowButton(
+    contentDescription: String,
+    actions: List<RedesignAction>,
+    modifier: Modifier = Modifier,
+    size: Dp = PillHeight,
+    vector: ImageVector = Icons.Rounded.MoreHoriz,
+    // Hoisted so the surface that owns the button can open the same menu on right-click / hold.
+    menu: MutableTransitionState<Boolean> = remember { MutableTransitionState(false) },
+) {
+    Box(modifier) {
+        RedesignIconButton(contentDescription, { menu.targetState = !menu.targetState }, size = size, active = menu.targetState) { tint ->
+            Icon(vector, contentDescription = null, tint = tint, modifier = Modifier.size(if (size < PillHeight) 18.dp else 20.dp))
+        }
+        val offsetY = with(LocalDensity.current) { (size + 6.dp).roundToPx() }
+        RedesignActionMenuPopup(menu, actions, Alignment.TopEnd, IntOffset(0, offsetY), TransformOrigin(1f, 0f))
+    }
+}
+
+/**
+ * The same frosted actions menu at a pointer position inside the caller's box (a row's right-click
+ * or press-and-hold). Open it with [redesignContextMenuTrigger] on that box.
+ */
+@Composable
+internal fun RedesignContextMenu(menu: MutableTransitionState<Boolean>, actions: List<RedesignAction>, anchor: Offset) {
+    RedesignActionMenuPopup(menu, actions, Alignment.TopStart, IntOffset(anchor.x.roundToInt(), anchor.y.roundToInt()), TransformOrigin(0f, 0f))
+}
+
+/** Desktop right-click and mouse press-and-hold; place after the surface's clickable. */
+internal fun Modifier.redesignContextMenuTrigger(onOpen: ((Offset) -> Unit)?): Modifier =
+    secondaryClickAt(onOpen).mousePressAndHoldAt(onOpen)
+
+@Composable
+private fun RedesignActionMenuPopup(
+    menu: MutableTransitionState<Boolean>,
+    actions: List<RedesignAction>,
+    alignment: Alignment,
+    offset: IntOffset,
+    origin: TransformOrigin,
+) {
+    if (!(menu.currentState || menu.targetState) || actions.isEmpty()) return
+    val dismiss = { menu.targetState = false }
+    DisposableEffect(Unit) {
+        val handler: () -> Boolean = { dismiss(); true }
+        AppKeyboardShortcuts.overlayEscape = handler
+        onDispose { if (AppKeyboardShortcuts.overlayEscape === handler) AppKeyboardShortcuts.overlayEscape = null }
+    }
+    Popup(alignment = alignment, offset = offset, onDismissRequest = dismiss, properties = PopupProperties(focusable = true)) {
+        AnimatedVisibility(
+            visibleState = menu,
+            enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = origin),
+            exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = origin),
+        ) {
+            val shape = RoundedCornerShape(16.dp)
+            Column(
+                Modifier.widthIn(min = 200.dp, max = 300.dp).clip(shape).background(RedesignMenuSurface)
+                    .border(1.dp, RedesignColors.hairline, shape).padding(6.dp),
+            ) {
+                actions.forEach { action ->
+                    val interaction = remember { MutableInteractionSource() }
+                    val hovered by interaction.collectIsHoveredAsState()
+                    val fill by animateColorAsState(if (hovered) Color.White.copy(alpha = 0.08f) else Color.Transparent, tween(140), label = "action_row_fill")
+                    val ink = when {
+                        action.destructive -> RedesignDanger
+                        hovered -> RedesignColors.textPrimary
+                        else -> RedesignColors.textSecondary
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(fill)
+                            .hoverable(interaction)
+                            .clickable(interactionSource = interaction, indication = null, role = Role.Button) { dismiss(); action.onClick() }
+                            .then(action.tag?.let { Modifier.testTag(it) } ?: Modifier)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(action.icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))
+                        Text(action.label, style = redesignText(13.sp, FontWeight.Medium, ink), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Destructive action ink on the redesign's dark surfaces. */
+internal val RedesignDanger = Color(0xFFFF8A80)
+
+/** Opaque enough that menu rows stay legible over posters (no blur source under a popup). */
+private val RedesignMenuSurface = Color(0xFF1C1E22).copy(alpha = 0.97f)
 
 /** Frosted board tile shape shared with Home's board. */
 internal val RedesignTileShape = RoundedCornerShape(18.dp)

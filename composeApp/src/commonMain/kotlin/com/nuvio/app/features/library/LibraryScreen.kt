@@ -115,6 +115,9 @@ fun LibraryScreen(
     onSectionViewAllClick: ((LibrarySection, LibrarySortOption) -> Unit)? = null,
     onCloudFilePlay: ((CloudLibraryItem, CloudLibraryFile) -> Unit)? = null,
     onConnectCloudClick: (() -> Unit)? = null,
+    onPlayClick: ((LibraryItem) -> Unit)? = null,
+    onConnectTrackingClick: (() -> Unit)? = null,
+    onBrowseHomeClick: (() -> Unit)? = null,
     onCatalogClick: ((HomeCatalogSection) -> Unit)? = null,
     onPreviewClick: ((MetaPreview) -> Unit)? = null,
     onPreviewLongClick: ((MetaPreview) -> Unit)? = null,
@@ -165,6 +168,8 @@ fun LibraryScreen(
     var selectedProviderId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedTypeName by rememberSaveable { mutableStateOf<String?>(null) }
     var cloudSearchQuery by rememberSaveable { mutableStateOf("") }
+    // Desktop Cloud filters by what an item holds (movie, show), not by transport.
+    var cloudKindName by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedType = remember(selectedTypeName) {
         selectedTypeName?.let { runCatching { CloudLibraryItemType.valueOf(it) }.getOrNull() }
     }
@@ -175,6 +180,16 @@ fun LibraryScreen(
     val libraryWatchedFilter = remember(libraryWatchedFilterName) {
         runCatching { LibraryWatchedFilter.valueOf(libraryWatchedFilterName) }.getOrDefault(LibraryWatchedFilter.ALL)
     }
+    // Desktop: a list opened in place from the shelves (Your lists / View all). Transient: the
+    // layout setting stays Shelves, and Esc or Back returns to them.
+    var openedListKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var openedType by rememberSaveable { mutableStateOf<String?>(null) }
+    val listOpened = isDesktop && openedListKey != null && sourceMode == LibraryViewMode.Saved &&
+        displaySettings.layoutMode == LibraryLayoutMode.HORIZONTAL
+    val gridActive = sourceMode == LibraryViewMode.Saved &&
+        (displaySettings.layoutMode == LibraryLayoutMode.VERTICAL || listOpened)
+    val gridSectionKey = if (listOpened) openedListKey else displaySettings.selectedSectionKey
+    val gridType = if (listOpened) openedType else displaySettings.selectedType
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -216,13 +231,16 @@ fun LibraryScreen(
         displaySettings,
         sourceMode,
         providerOrders,
+        gridActive,
+        gridSectionKey,
+        gridType,
     ) {
-        if (sourceMode == LibraryViewMode.Saved && displaySettings.layoutMode == LibraryLayoutMode.VERTICAL) {
+        if (gridActive) {
             buildLibraryVerticalProjection(
                 sections = uiState.sections,
                 sourceMode = uiState.sourceMode,
-                selectedSectionKey = displaySettings.selectedSectionKey,
-                selectedType = displaySettings.selectedType,
+                selectedSectionKey = gridSectionKey,
+                selectedType = gridType,
                 sortOption = visibleSortOption,
                 providerOrders = providerOrders.ranks,
                 selectedGenre = libraryGenre,
@@ -282,7 +300,8 @@ fun LibraryScreen(
     }
 
     ScreenActivityEffect(scrollToTopRequests) { screenActive ->
-        if (!screenActive) return@ScreenActivityEffect
+        // The desktop screen scrolls whichever pane is showing.
+        if (!screenActive || isDesktop) return@ScreenActivityEffect
         scrollToTopRequests.collect {
             listState.animateScrollToItem(0)
         }
@@ -315,6 +334,106 @@ fun LibraryScreen(
     } else {
         disintegration.reset()
         emptyList()
+    }
+
+    if (isDesktop) {
+        val openList: (LibrarySection) -> Unit = { section ->
+            openedListKey = section.type
+            // Local lists are the media types; open that type. Remote lists start on All.
+            openedType = section.type.takeIf { !uiState.sourceMode.isRemoteTrackingSource }
+        }
+        val closeList: () -> Unit = {
+            openedListKey = null
+            openedType = null
+        }
+        LibraryDesktopScreen(
+            model = LibraryDesktopModel(
+                viewMode = sourceMode,
+                showServers = hasServers,
+                uiState = uiState,
+                layoutMode = displaySettings.layoutMode,
+                sortOption = visibleSortOption,
+                displaySections = librarySectionsDisplay,
+                projection = verticalProjection,
+                openedListKey = openedListKey.takeIf { listOpened },
+                watchedFilter = libraryWatchedFilter,
+                watchedKeys = watchedUiState.watchedKeys,
+                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                posterPattern = effectivePosterPattern,
+                cloud = cloudUiState,
+                cloudProviderId = selectedProviderId,
+                cloudKind = cloudKindName?.let { name -> CloudMediaKind.entries.firstOrNull { it.name == name } },
+                cloudQuery = cloudSearchQuery,
+                cloudItemKey = selectedCloudItemKey,
+                serverShelves = serverShelves,
+                networkCondition = networkStatusUiState.condition,
+                offline = networkStatusUiState.isOfflineLike,
+            ),
+            actions = LibraryDesktopActions(
+                selectViewMode = { mode ->
+                    sourceModeName = mode.name
+                    closeList()
+                },
+                toggleLayout = {
+                    libraryLayoutToggle(listOpened, displaySettings.layoutMode)
+                        ?.let(LibraryDisplaySettingsRepository::setLayoutMode)
+                        ?: closeList()
+                },
+                openList = openList,
+                closeList = closeList,
+                selectSection = { key ->
+                    if (listOpened) openedListKey = key else LibraryDisplaySettingsRepository.setSelectedSection(key)
+                },
+                selectType = { type ->
+                    if (listOpened) openedType = type else LibraryDisplaySettingsRepository.setSelectedType(type)
+                },
+                selectGenre = { libraryGenre = it },
+                selectYear = { libraryYear = it },
+                selectWatched = { libraryWatchedFilterName = it.name },
+                selectSort = LibraryDisplaySettingsRepository::setSortOption,
+                retry = retryLibraryLoad,
+                onPosterClick = onPosterClick,
+                onPosterLongClick = onPosterLongClick,
+                onDisintegrated = disintegration::onExited,
+                onDownloadsClick = onDownloadsClick,
+                cloudSelectProvider = {
+                    selectedProviderId = it
+                    selectedTypeName = null
+                    selectedCloudItemKey = null
+                },
+                cloudSelectKind = {
+                    cloudKindName = it?.name
+                    selectedCloudItemKey = null
+                },
+                cloudQueryChange = {
+                    cloudSearchQuery = it
+                    selectedCloudItemKey = null
+                },
+                cloudSelectItem = { item ->
+                    val files = item.playableFiles
+                    when {
+                        files.size == 1 -> onCloudFilePlay?.invoke(item, files.first())
+                        files.size > 1 -> selectedCloudItemKey = item.stableKey.takeIf { it != selectedCloudItemKey }
+                    }
+                },
+                cloudPlayFile = { item, file -> onCloudFilePlay?.invoke(item, file) },
+                cloudCloseItem = { selectedCloudItemKey = null },
+                cloudRefresh = { CloudLibraryRepository.refresh() },
+                onConnectCloudClick = onConnectCloudClick,
+                onPlayClick = onPlayClick,
+                onConnectTrackingClick = onConnectTrackingClick,
+                onBrowseHomeClick = onBrowseHomeClick,
+                onCatalogClick = onCatalogClick,
+                onPreviewClick = onPreviewClick,
+                onPreviewLongClick = onPreviewLongClick,
+                serversRetry = { serverShelvesRequest++ },
+            ),
+            shelvesState = listState,
+            topChromePadding = topChromePadding,
+            scrollToTopRequests = scrollToTopRequests,
+            modifier = modifier,
+        )
+        return
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -1135,7 +1254,7 @@ private fun CloudLibraryFileRow(
 }
 
 @Composable
-private fun cloudLibrarySubtitle(item: CloudLibraryItem): String {
+internal fun cloudLibrarySubtitle(item: CloudLibraryItem): String {
     val fileLine = when (val playableCount = item.playableFiles.size) {
         0 -> stringResource(Res.string.cloud_library_no_playable_files)
         1 -> item.playableFiles.first().name
@@ -1145,7 +1264,7 @@ private fun cloudLibrarySubtitle(item: CloudLibraryItem): String {
 }
 
 @Composable
-private fun cloudLibraryStatusLine(item: CloudLibraryItem): String {
+internal fun cloudLibraryStatusLine(item: CloudLibraryItem): String {
     val fallback = if (item.playableFiles.isEmpty()) {
         stringResource(Res.string.cloud_library_no_playable_files)
     } else {
@@ -1159,7 +1278,7 @@ private fun cloudLibraryStatusLine(item: CloudLibraryItem): String {
 }
 
 @Composable
-private fun cloudLibraryTypeLabel(type: CloudLibraryItemType): String =
+internal fun cloudLibraryTypeLabel(type: CloudLibraryItemType): String =
     when (type) {
         CloudLibraryItemType.Torrent -> stringResource(Res.string.cloud_library_type_torrents)
         CloudLibraryItemType.Usenet -> stringResource(Res.string.cloud_library_type_usenet)
@@ -1167,7 +1286,7 @@ private fun cloudLibraryTypeLabel(type: CloudLibraryItemType): String =
         CloudLibraryItemType.File -> stringResource(Res.string.cloud_library_type_files)
     }
 
-private fun formatCloudBytes(bytes: Long): String {
+internal fun formatCloudBytes(bytes: Long): String {
     if (bytes <= 0L) return "0 ${localizedByteUnit("B")}"
     val kib = 1024.0
     val mib = kib * 1024.0
@@ -1253,7 +1372,7 @@ private fun CloudLibrarySkeletonRow(
     }
 }
 
-private enum class LibraryViewMode {
+internal enum class LibraryViewMode {
     Saved,
     Cloud,
     Servers,
@@ -1320,16 +1439,16 @@ private fun LazyListScope.librarySections(
     }
 }
 
-private const val LIBRARY_SECTION_PREVIEW_LIMIT = 18
+internal const val LIBRARY_SECTION_PREVIEW_LIMIT = 18
 
-private data class LibraryDisplayEntry(
+internal data class LibraryDisplayEntry(
     val globalKey: String,
     val item: LibraryItem,
     val section: LibrarySection?,
     val exiting: Boolean,
 )
 
-private data class LibraryDisplaySection(
+internal data class LibraryDisplaySection(
     val source: LibrarySection?,
     val type: String,
     val displayTitle: String,

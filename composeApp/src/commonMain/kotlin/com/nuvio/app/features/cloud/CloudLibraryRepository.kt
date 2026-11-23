@@ -58,6 +58,7 @@ internal class CloudLibraryStore(
             isLoaded = true,
             isRefreshing = false,
             providers = providerStates,
+            refreshedAtEpochMs = kotlin.time.Clock.System.now().toEpochMilliseconds(),
         )
     }
 

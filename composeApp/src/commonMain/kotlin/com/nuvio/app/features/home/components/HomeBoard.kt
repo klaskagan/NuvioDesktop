@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -66,12 +67,20 @@ import com.nuvio.app.core.ui.NuvioAsyncImage
 import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignTightTracking
 import com.nuvio.app.core.ui.redesignText
+import com.nuvio.app.core.ui.posterCardClickable
+import com.nuvio.app.core.ui.secondaryClick
+import com.nuvio.app.core.ui.PosterZoomAnchor
+import com.nuvio.app.core.ui.PosterZoomAnchorHolder
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.watchprogress.ContinueWatchingItem
 import com.nuvio.app.features.watchprogress.continueWatchingItemKey
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.action_resume
 import nuvio.composeapp.generated.resources.compose_settings_page_continue_watching
+import nuvio.composeapp.generated.resources.cw_action_go_to_details
 import nuvio.composeapp.generated.resources.home_board_up_next
 import org.jetbrains.compose.resources.stringResource
 
@@ -105,6 +114,7 @@ internal fun HomeBoard(
     onResumeClick: ((ContinueWatchingItem) -> Unit)?,
     onResumeLongPress: ((ContinueWatchingItem) -> Unit)?,
     modifier: Modifier = Modifier,
+    onResumeDetails: ((ContinueWatchingItem) -> Unit)? = null,
     featured: @Composable () -> Unit,
 ) {
     Row(modifier.fillMaxWidth().height(height).testTag("home_board")) {
@@ -129,6 +139,7 @@ internal fun HomeBoard(
                     item = shown,
                     onClick = onResumeClick,
                     onLongPress = onResumeLongPress,
+                    onDetails = onResumeDetails,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
                 if (upNext.isNotEmpty()) {
@@ -153,12 +164,16 @@ private fun Modifier.boardClickable(
     interaction: MutableInteractionSource,
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
-): Modifier = if (onClick == null) this else hoverable(interaction).combinedClickable(
-    interactionSource = interaction,
-    indication = null,
-    role = Role.Button,
-    onLongClick = onLongClick,
+    zoomImageUrl: String? = null,
+    zoomCornerRadius: Dp = 18.dp,
+): Modifier = if (onClick == null) this else hoverable(interaction).posterCardClickable(
+    // The shared poster click: right-click and press-and-hold lift this card into the same
+    // zoomed options menu the Continue Watching row opens. The board keeps its own hover look.
     onClick = onClick,
+    onLongClick = onLongClick,
+    zoomImageUrl = zoomImageUrl,
+    zoomCornerRadius = zoomCornerRadius,
+    hoverScaleEnabled = false,
 )
 
 @Composable
@@ -167,13 +182,14 @@ private fun HomeResumeTile(
     onClick: ((ContinueWatchingItem) -> Unit)?,
     onLongPress: ((ContinueWatchingItem) -> Unit)?,
     modifier: Modifier = Modifier,
+    onDetails: ((ContinueWatchingItem) -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val border by animateColorAsState(if (hovered) RedesignColors.hairlineFocused else RedesignColors.hairline, tween(180), label = "resume_border")
     Box(
         modifier.clip(BoardTileShape).background(RedesignColors.fill).border(1.dp, border, BoardTileShape)
-            .boardClickable(interaction, onClick?.let { { it(item) } }, onLongPress?.let { { it(item) } })
+            .boardClickable(interaction, onClick?.let { { it(item) } }, onLongPress?.let { { it(item) } }, item.boardArtwork())
             .testTag("home_board_resume"),
     ) {
         NuvioAsyncImage(
@@ -183,14 +199,24 @@ private fun HomeResumeTile(
             contentScale = ContentScale.Crop,
         )
         Box(Modifier.fillMaxSize().background(tileScrim))
+        if (onDetails != null) {
+            Box(Modifier.align(Alignment.TopStart).padding(12.dp)) {
+                HomeResumeDetailsButton(onClick = { onDetails(item) })
+            }
+        }
         Row(
-            Modifier.align(Alignment.TopEnd).padding(12.dp).clip(CircleShape)
-                .background(RedesignColors.textPrimary).padding(start = 8.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
+            Modifier.align(Alignment.TopEnd).padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color(0xFF0B0C0E), modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(2.dp))
-            Text(stringResource(Res.string.action_resume), style = redesignText(12.5.sp, FontWeight.Bold, Color(0xFF0B0C0E)))
+            Row(
+                Modifier.height(ResumeControlHeight).clip(CircleShape)
+                    .background(RedesignColors.textPrimary).padding(start = 8.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color(0xFF0B0C0E), modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(2.dp))
+                Text(stringResource(Res.string.action_resume), style = redesignText(12.5.sp, FontWeight.Bold, Color(0xFF0B0C0E)))
+            }
         }
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(16.dp)) {
             Text(
@@ -222,6 +248,29 @@ private fun HomeResumeTile(
     }
 }
 
+private val ResumeControlHeight = 26.dp
+private val UpNextThumbRadius = 7.dp
+
+/** The Resume tile's small (i): opens the title's Details while the tile itself resumes. */
+@Composable
+private fun HomeResumeDetailsButton(onClick: () -> Unit) {
+    // Styled like the Resume pill beside it: white fill, dark icon.
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        Modifier.size(ResumeControlHeight).clip(CircleShape).background(RedesignColors.textPrimary)
+            .combinedClickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
+            .testTag("home_board_resume_details"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Outlined.Info,
+            contentDescription = stringResource(Res.string.cw_action_go_to_details),
+            tint = Color(0xFF0B0C0E),
+            modifier = Modifier.size(16.dp),
+        )
+    }
+}
+
 @Composable
 private fun HomeUpNextCard(
     items: List<ContinueWatchingItem>,
@@ -243,16 +292,37 @@ private fun HomeUpNextCard(
                 val interaction = remember { MutableInteractionSource() }
                 val hovered by interaction.collectIsHoveredAsState()
                 val fill by animateColorAsState(if (hovered) RedesignColors.fill else Color.Transparent, tween(160), label = "up_next_row")
+                // The options menu zooms the row's 16:9 still, not the thin row itself.
+                var thumbBounds by remember { mutableStateOf<Rect?>(null) }
+                val artwork = item.boardArtwork()
+                val openOptions = onLongPress?.let { longPress ->
+                    {
+                        thumbBounds?.let { bounds ->
+                            PosterZoomAnchorHolder.stash(PosterZoomAnchor(bounds, artwork, UpNextThumbRadius))
+                        }
+                        longPress(item)
+                    }
+                }
                 Row(
                     Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(fill)
-                        .boardClickable(interaction, onClick?.let { { it(item) } }, onLongPress?.let { { it(item) } })
+                        .then(
+                            if (onClick == null) Modifier else Modifier.hoverable(interaction).combinedClickable(
+                                interactionSource = interaction,
+                                indication = null,
+                                role = Role.Button,
+                                onLongClick = openOptions,
+                                onClick = { onClick(item) },
+                            ).secondaryClick(openOptions),
+                        )
                         .padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     NuvioAsyncImage(
-                        model = item.boardArtwork(),
+                        model = artwork,
                         contentDescription = null,
-                        modifier = Modifier.width(64.dp).height(36.dp).clip(RoundedCornerShape(7.dp)).background(RedesignColors.fill),
+                        modifier = Modifier.width(64.dp).height(36.dp)
+                            .onGloballyPositioned { thumbBounds = it.boundsInRoot() }
+                            .clip(RoundedCornerShape(UpNextThumbRadius)).background(RedesignColors.fill),
                         contentScale = ContentScale.Crop,
                     )
                     Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
@@ -293,7 +363,7 @@ internal fun HomeRowLeadCard(
     val border by animateColorAsState(if (hovered) RedesignColors.hairlineFocused else RedesignColors.hairline, tween(180), label = "lead_border")
     Box(
         modifier.width(width).height(height).clip(shape).background(RedesignColors.fill).border(1.dp, border, shape)
-            .boardClickable(interaction, onClick, onLongClick).testTag("home_row_lead"),
+            .boardClickable(interaction, onClick, onLongClick, item.banner ?: item.landscapePoster ?: item.poster, 14.dp).testTag("home_row_lead"),
     ) {
         val supplied = item.banner ?: item.landscapePoster
         val lookup = rememberLandscapeMediaArtwork(item.id, item.type, enabled = supplied.isNullOrBlank() && isTitleArtworkMedia(item.type))

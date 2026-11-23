@@ -4,3 +4,5 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 
 internal actual fun Modifier.secondaryClickAt(onClick: ((Offset) -> Unit)?): Modifier = this
+
+internal actual fun Modifier.mousePressAndHoldAt(onHold: ((Offset) -> Unit)?): Modifier = this

@@ -723,6 +723,15 @@
     <string name="downloads_empty_message">Long-press a stream and choose Download file to watch it offline.</string>
     <string name="downloads_empty_title">No downloads yet</string>
     <string name="downloads_open_directory">Open downloads folder</string>
+    <string name="downloads_folder_change">Change folder…</string>
+    <string name="downloads_folder_use_default">Use default folder</string>
+    <string name="downloads_folder_changed">New downloads will be saved there</string>
+    <string name="downloads_folder_not_writable">Can't save to that folder. Choose another one.</string>
+    <string name="downloads_folder_saving_to">Saving to %1$s</string>
+    <string name="downloads_folder_menu">Download folder</string>
+    <string name="downloads_folder_title">Download folder</string>
+    <string name="downloads_folder_settings_section">Downloads</string>
+    <string name="downloads_folder_reset">Reset</string>
     <string name="downloads_open_directory_failed">Couldn&apos;t open downloads folder</string>
     <string name="downloads_pause_all">Pause all</string>
     <string name="downloads_resume_all">Resume all</string>
@@ -3119,4 +3128,88 @@
     <string name="search_chip_new">New releases</string>
     <string name="settings_controller_navigation">Controller and arrow-key navigation</string>
     <string name="settings_controller_navigation_description">Use a gamepad or arrow keys to move between items.</string>
+    <!-- Library desktop redesign -->
+    <string name="library_source_label_local">On this device</string>
+    <string name="library_source_label_trakt">Trakt</string>
+    <string name="library_source_label_simkl">Simkl</string>
+    <string name="library_source_label_mdblist">MDBList</string>
+    <string name="library_lists_and_more">%1$s and %2$d more</string>
+    <string name="library_grid_showing">%1$d of %2$d titles</string>
+    <string name="library_board_recent">Recently saved</string>
+    <string name="library_board_lists">Your lists</string>
+    <string name="library_board_actions">More actions</string>
+    <string name="library_lists_more">More</string>
+    <string name="library_grid_no_matches_title">No titles match these filters</string>
+    <string name="library_grid_no_matches_message">Try another genre or year, or clear a filter.</string>
+    <plurals name="library_title_count">
+        <item quantity="one">%1$d title</item>
+        <item quantity="other">%1$d titles</item>
+    </plurals>
+    <plurals name="library_list_count">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
+    <plurals name="library_cloud_item_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <plurals name="library_server_library_count">
+        <item quantity="one">%1$d library</item>
+        <item quantity="other">%1$d libraries</item>
+    </plurals>
+    <string name="library_cloud_kind_movies">Movies</string>
+    <string name="library_cloud_kind_shows">Shows</string>
+    <string name="library_cloud_kind_other">Other</string>
+    <string name="library_cloud_kind_movie">Movie</string>
+    <string name="library_cloud_kind_show">Show</string>
+    <string name="library_cloud_kind_item">Item</string>
+    <string name="library_cloud_search_placeholder">Filter by title or file name</string>
+    <string name="library_cloud_added">added %1$s</string>
+    <string name="library_cloud_show_files">Show files</string>
+    <string name="library_cloud_link_failed">Couldn't get a link for this file.</string>
+    <string name="library_names_and">%1$s and %2$s</string>
+    <string name="library_ago_today">today</string>
+    <string name="library_ago_yesterday">yesterday</string>
+    <string name="library_refreshed_just_now">refreshed just now</string>
+    <string name="library_refreshed_minutes">refreshed %1$d min ago</string>
+    <string name="library_refreshed_hours">refreshed %1$d h ago</string>
+    <string name="library_refreshed_ago">refreshed %1$s</string>
+    <plurals name="library_ago_days">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
+    </plurals>
+    <plurals name="library_ago_weeks">
+        <item quantity="one">%1$d week ago</item>
+        <item quantity="other">%1$d weeks ago</item>
+    </plurals>
+    <plurals name="library_ago_months">
+        <item quantity="one">%1$d month ago</item>
+        <item quantity="other">%1$d months ago</item>
+    </plurals>
+    <plurals name="library_file_count">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <plurals name="library_provider_count">
+        <item quantity="one">%1$d provider</item>
+        <item quantity="other">%1$d providers</item>
+    </plurals>
+    <string name="downloads_desktop_empty_message">Open a title and right-click Play to list its streams. Then right-click a stream, or press and hold it, and choose Download file.</string>
+    <string name="downloads_kind_movie">Movie</string>
+    <string name="downloads_kind_show">Show</string>
+    <plurals name="downloads_downloading_count">
+        <item quantity="one">%1$d downloading</item>
+        <item quantity="other">%1$d downloading</item>
+    </plurals>
+    <plurals name="downloads_paused_count">
+        <item quantity="one">%1$d paused</item>
+        <item quantity="other">%1$d paused</item>
+    </plurals>
+    <plurals name="downloads_failed_count">
+        <item quantity="one">%1$d failed</item>
+        <item quantity="other">%1$d failed</item>
+    </plurals>
+    <string name="library_empty_browse">Browse Home</string>
+    <string name="library_empty_connect">Connect an account</string>
+    <string name="library_board_episodes">Episodes</string>
 </resources>

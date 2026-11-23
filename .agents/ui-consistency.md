@@ -91,8 +91,8 @@ Person Details opening with no transition). Apply these to every redesigned scre
   For you pool by type is not enough: with two movie catalogs picked it leaves Shows with a movie
   hero. Load hero metadata for all pools together (`HomeHeroMetaStore.load` prunes to what it is
   given). Regression: `HomeTabsTest`.
-- **Filters under the merged top bar are pills, not text tabs.** Calendar and History use
-  `RedesignPillGroup` / `RedesignPillButton` / `RedesignIconButton` (`core/ui/RedesignControls.kt`);
+- **Filters under the merged top bar are pills, not text tabs.** Calendar, History and Library use
+  `RedesignPillGroup` / `RedesignPillButton` / `RedesignIconButton` / `RedesignMenuButton` (`core/ui/RedesignControls.kt`);
   reuse them for other redesigned filters (the streaming tag page's `TagScopePills` predates them).
   A control whose label can change (a title that also opens a picker) gets a fixed measured width
   so view or month changes never shift the controls after it; `CalendarScreenUiTest`'s
@@ -105,6 +105,47 @@ Person Details opening with no transition). Apply these to every redesigned scre
   labels. Regression: `ShellBackdropContrastTest`.
 - **Calendar is a backdrop tab** (`ShellBackdropTabs`): it steers the shell backdrop from the next
   release while active and draws no opaque page of its own when a controller is present.
+- **Library is a backdrop tab too** (desktop only, `LibraryDesktopScreen.kt`; mobile keeps
+  `LibraryScreen`'s old layout). It uses Calendar's header shape: `RedesignPageLead` (kicker, 34sp
+  title, subtitle, shared with Calendar's `RedesignKicker`) with Saved / Cloud / Servers pills and
+  icon buttons in reserved slots. The layout toggle's slot holds Refresh on Cloud, and the Manage
+  lists slot exists only where the source can manage lists (`libraryListManagementAvailable`), so
+  no control moves between panes or states and other sources show no gap. Panes (shelves, grid,
+  Cloud, Servers) crossfade below the fixed header. One stable title steers the backdrop per pane:
+  the latest save (`librarySpotlight`), the grid's first title, a server's first title; Cloud uses
+  the mesh. A list opened from the board's Your lists or a shelf's View all opens in place in the
+  grid (transient `openedListKey`, the layout setting is unchanged), and Esc or Back returns to the
+  shelves at the same offset. A multi-file Cloud item opens a 352dp side panel; Esc closes it first.
+  Pickers are `RedesignMenuButton` (frosted popup that claims `overlayEscape` while open); don't use
+  `NuvioDropdownChip` on redesigned screens. `LibraryDesktopUiTest` covers header positions across
+  panes and loading, in-place lists and Esc order, the Sort menu, the Cloud panel and server Retry.
+  Cloud filters by what an item holds (All / Movies / Shows / Other, read from release names in
+  `CloudLibraryPresentation.kt`, `CloudLibraryPresentationTest`), not by the provider's transport
+  type; rows show files, size, provider and when it was added (`addedAtEpochMs` from TorBox
+  `created_at` and Premiumize file dates), and the header says when the list was refreshed.
+  A list opened from the shelves is a grid: the layout button then offers the shelves and goes back
+  to them, leaving the layout setting alone (`libraryLayoutToggle`, shared with the test harness so
+  the test runs the real decision). It used to switch the setting to grid, which only hid Back.
+- **Downloads is redesigned on desktop** (`DownloadsDesktopScreen.kt`, mobile keeps `DownloadsScreen`):
+  its route sits in `DetailNavigationFrame` with its own backdrop like a service page, Library's
+  header shape with Pause all and the folder button, active transfers as one frosted list, finished
+  titles as landscape cards, and a show's episodes in place (Esc returns). Actions are a frosted ⋯
+  menu (`RedesignOverflowButton`), not the mobile bottom sheet. Empty and error tiles everywhere use
+  `RedesignMessageTile` (core/ui). `DownloadsDesktopUiTest` covers the lists, the show view and the menu.
+  The kicker carries counts only; repeating "Downloads" above the "Downloads" title read as a
+  duplicate. The folder button is a menu (Open / Change folder… / Use default), mirrored in
+  Settings → Playback → Downloads (`DownloadsFolder`, desktop only). A new folder applies to new
+  downloads; each `DownloadItem` keeps `downloadDirectory`, so earlier and paused downloads stay
+  where they started. `DownloadsFolderTest`.
+- **Desktop context actions open on right-click and on mouse press-and-hold.** Compose's
+  `combinedClickable(onLongClick)` ignores a mouse hold on desktop, so a "press and hold" promise
+  needs `mousePressAndHoldAt` (core/ui `SecondaryClick`, after the clickable so the hold swallows the
+  click); `redesignContextMenuTrigger` pairs it with right-click. Stream cards, Downloads rows and
+  cards, and Cloud rows / panel files use it; Cloud rows show `RedesignContextMenu` (the ⋯ menu's
+  popup, at the pointer): Play, Download file, Copy link, or Show files for a pack. The first fix
+  only swapped `onLongClick` and was never pressed in a test; `StreamCardActionsUiTest` and
+  `LibraryDesktopUiTest.cloudRowsOpenTheirActionsOnRightClickAndHold` hold with the mouse. In tests,
+  press at the node's centre: its top-left corner is outside a rounded clip and never hits.
 - **Frosted sidebars come in pairs.** A page with its own backdrop in a separate nav entry (Person)
   passes `frostedSidebar` to `DetailNavigationFrame` and insets its content, not its backdrop, by
   `LocalBackdropContentStartInset`. While two such entries cross, the one leaving hides its sidebar
@@ -259,6 +300,12 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   nested shelves independently scrollable and reset transient gesture work on
   disposal. `CalendarMonthPager.kt` and the shared history gesture helpers are
   references; thresholds and directions remain interaction-specific.
+- A list scrolling inside a tile (Library's Your lists, the Cloud files panel) keeps its wheel and
+  trackpad scroll: `Modifier.containedScroll()` before its scroller. Compose otherwise hands the
+  leftover at its end to the page, which then scrolls under the pointer. A nested-scroll connection
+  alone isn't enough on desktop: a wheel the list can't use bubbles to the page as a raw pointer
+  event, so the modifier consumes that too. Assert the page's scroll range, not a child's bounds.
+  `LibraryDesktopUiTest.yourListsKeepsItsScrollFromThePage`.
 
 ## Styling, meaning, and settings
 
@@ -450,6 +497,10 @@ solid, a 72% grey dim, see-through over Search's results). Keep these together:
 - Its labels follow the Navigation Bar Style setting only (`desktopNavigationLabelFraction`:
   Expanded labels, Compact icons, Adaptive icons until hovered). Never vary them by screen,
   hero or scroll position. `DesktopNavigationBarTest`.
+- A newly mounted bar places its underline under the selection without animating; only a change
+  within one bar slides it. Downloads, Details and Streams each mount their own bar in
+  `DetailNavigationFrame`, and an underline animated from x = 0 swept in from the left on every
+  navigation. `TopBarIndicatorTest`.
 - The bar and every band pinned under it (Search's field band, a service page's header, Home's
   tabs) draw one surface, `PinnedBarBackground` / `topBarSurfaceColor`, chosen in Settings →
   Layout → Top bar background (`TopBarBackground`). Never give a pinned band its own colour.
@@ -458,13 +509,15 @@ solid, a 72% grey dim, see-through over Search's results). Keep these together:
 - "Scrolled" means content has moved under the surface. Tabs report it through
   `LocalNuvioNavBarScrollState` (Search must too; it once reported nothing, so posters ran under a
   clear bar). Detail pages report it, with their backdrop's tint, through
-  `LocalDetailTopBarState`. Report from a `snapshotFlow`: a `SideEffect` in the page's outer scope
+  `LocalDetailTopBarState`. A tab whose header stays pinned outside its scrolling panes (Library,
+  Calendar, History) reports 0: nothing passes under the bar, and Library's reported pane scroll
+  once turned the bar solid over a fixed header. Report from a `snapshotFlow`: a `SideEffect` in the page's outer scope
   never re-ran while the list scrolled, so the service page's bar stayed clear over its rows.
 - A band under the bar starts its surface below the bar, so translucent options don't double.
 - Tinted takes the colour actually behind the bar: the artwork's top strip under the backdrop's
   40% scrim (`backdropTopTint`), capped so white labels stay readable. The image's dominant colour
-  came out a darker, different hue than the backdrop. Tabs without artwork (Library, Calendar,
-  History, Settings) get no tint; they kept the last artwork's colour. `TopBarBackgroundTest`.
+  came out a darker, different hue than the backdrop. Tabs off the backdrop (Settings)
+  get no tint; they kept the last artwork's colour. `TopBarBackgroundTest`.
 
 ## Custom detail routes and native navigation
 
@@ -588,3 +641,12 @@ query and scroll state but lost the chip and loaded pages. Reuse the shared
 near-end page loader (`LoadMoreOnScrollEffect`) with the retained cursor and a bounded run of pages that
 add no cards. `SearchDiscoveryUiTest` unmounts and remounts the browse content
 and checks its selected filter and results.
+
+## Right click on desktop cards
+
+- Clickable desktop cards, including redesign tiles with their own hover look (the Home board's
+  `boardClickable`), go through `posterCardClickable` (`hoverScaleEnabled = false` when the tile
+  draws its own hover), never a bare `combinedClickable`. That is what gives right click and
+  press-and-hold the shared zoomed options menu (`NuvioPosterZoomActionOverlay`); without its anchor
+  the app falls back to the plain bottom sheet. Trigger: board Continue Watching cards ignored right
+  click, then opened the bottom sheet instead of the zoomed menu. Check: `HomeBoardResumeTileTest`.

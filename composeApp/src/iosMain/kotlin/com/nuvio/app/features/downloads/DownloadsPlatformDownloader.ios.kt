@@ -165,13 +165,13 @@ internal actual object DownloadsPlatformDownloader {
         return removePathIfExists("${downloadsDirectoryPath()}/$fileName")
     }
 
-    actual fun removePartialFile(destinationFileName: String): Boolean {
+    actual fun removePartialFile(destinationFileName: String, directory: String?): Boolean {
         val destinationPath = "${downloadsDirectoryPath()}/$destinationFileName"
         DownloadSubtitleStorage(NSURL.fileURLWithPath(destinationPath).absoluteString!!).remove()
         return removePathIfExists("$destinationPath.part")
     }
 
-    actual fun resolveLocalFileUri(localFileUri: String?, destinationFileName: String): String? {
+    actual fun resolveLocalFileUri(localFileUri: String?, destinationFileName: String, directory: String?): String? {
         localFileUri?.toLocalPath()
             ?.takeIf { NSFileManager.defaultManager.fileExistsAtPath(it) }
             ?.let { path ->

@@ -75,13 +75,13 @@ internal actual object DownloadsPlatformDownloader {
         return runCatching { file.delete() }.getOrDefault(false)
     }
 
-    actual fun removePartialFile(destinationFileName: String): Boolean {
+    actual fun removePartialFile(destinationFileName: String, directory: String?): Boolean {
         val scheduler = downloadScheduler ?: return false
         scheduler.remove(destinationFileName)
         return true
     }
 
-    actual fun resolveLocalFileUri(localFileUri: String?, destinationFileName: String): String? {
+    actual fun resolveLocalFileUri(localFileUri: String?, destinationFileName: String, directory: String?): String? {
         localFileUri
             ?.toLocalFileOrNull()
             ?.takeIf { it.exists() }
