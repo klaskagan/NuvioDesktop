@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toPixelMap
+import kotlin.math.pow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import coil3.SingletonImageLoader
@@ -125,6 +127,32 @@ internal fun Modifier.featherArtwork(
 }
 
 internal expect fun prepareArtworkBackdrop(image: coil3.Image): ImageBitmap
+
+/**
+ * Mean relative luminance (0–1) of a backdrop bitmap, with the top 40% (where the top bar and page
+ * headers sit) counted twice. Backdrops are ~128 px, so a full pass is cheap.
+ */
+internal fun artworkLuminance(image: ImageBitmap): Float {
+    if (image.width <= 0 || image.height <= 0) return 0f
+    val pixels = image.toPixelMap()
+    val chromeRows = (image.height * 0.4f).toInt()
+    var total = 0.0
+    var weight = 0.0
+    for (y in 0 until image.height) {
+        val w = if (y < chromeRows) 2.0 else 1.0
+        for (x in 0 until image.width) {
+            total += w * relativeLuminance(pixels[x, y])
+            weight += w
+        }
+    }
+    return (total / weight).toFloat()
+}
+
+/** WCAG relative luminance of an sRGB colour (alpha ignored). */
+internal fun relativeLuminance(color: androidx.compose.ui.graphics.Color): Double {
+    fun channel(c: Float): Double = if (c <= 0.03928f) c / 12.92 else ((c + 0.055) / 1.055).pow(2.4)
+    return 0.2126 * channel(color.red) + 0.7152 * channel(color.green) + 0.0722 * channel(color.blue)
+}
 
 internal fun blurBackdropPixels(pixels: IntArray, width: Int, height: Int) {
     require(width > 0 && height > 0 && pixels.size == width * height)

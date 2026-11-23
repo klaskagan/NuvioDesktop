@@ -7,6 +7,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -80,7 +82,7 @@ val LocalShellBackdropMode = compositionLocalOf { ShellBackdropMode.Default }
  * Tabs whose screens are drawn for the shell backdrop. Other tabs keep the plain theme
  * background until they are redesigned; the shell fades the backdrop out for them.
  */
-internal val ShellBackdropTabs = setOf(AppScreenTab.Home, AppScreenTab.Search)
+internal val ShellBackdropTabs = setOf(AppScreenTab.Home, AppScreenTab.Search, AppScreenTab.Calendar)
 
 /**
  * Start inset a backdrop screen applies to its content (not its backdrop) when the frame around
@@ -98,6 +100,22 @@ private val artworkScrim = Brush.verticalGradient(
     0.5f to Color.Black.copy(alpha = 0.55f),
     1f to Color.Black.copy(alpha = 0.74f),
 )
+
+/** Darker band behind the top bar and page header, whatever the artwork. */
+private val chromeBand = Brush.verticalGradient(
+    0f to Color.Black.copy(alpha = 0.35f),
+    1f to Color.Transparent,
+)
+internal val BackdropChromeBandHeight = 220.dp
+
+/**
+ * Extra uniform dim for bright artwork, from its [artworkLuminance]: none at or below 0.25 (dark,
+ * cinematic art looks exactly as before), rising linearly to [BackdropMaxBrightDim] at 0.7.
+ */
+internal fun backdropDimFor(luminance: Float): Float =
+    ((luminance - 0.25f) / 0.45f).coerceIn(0f, 1f) * BackdropMaxBrightDim
+
+internal const val BackdropMaxBrightDim = 0.35f
 
 /**
  * Ambient screen background: a theme-tinted mesh, with a blurred copy of the focused title's
@@ -146,6 +164,11 @@ fun ShellBackdrop(
                         modifier = Modifier.fillMaxSize(),
                     )
                     Box(Modifier.fillMaxSize().background(artworkScrim))
+                    // Bright art gets more dim, so muted chrome labels stay readable over it. Each
+                    // crossfading layer carries its own dim, so a title change never flashes.
+                    val dim = remember(bitmap) { backdropDimFor(artworkLuminance(bitmap)) }
+                    if (dim > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
+                    Box(Modifier.fillMaxWidth().height(BackdropChromeBandHeight).background(chromeBand))
                 }
             }
         }

@@ -3,6 +3,16 @@ package com.nuvio.app.features.calendar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.text.font.FontWeight
+import com.nuvio.app.isDesktop
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -175,10 +185,39 @@ internal fun CalendarScreen(
         }
     }
     val style = calendarAgendaPosterStyle(globalStyle)
+    // Desktop redesign: Calendar sits on the shell's ambient backdrop, steered by the next release
+    // in the visible range. Visited tabs stay composed, so only the active screen may steer it.
+    val backdropController = LocalBackdropFocusController.current.takeIf { isDesktop }
+    val focusCards = when (view) {
+        CalendarView.Month -> groups[selected].orEmpty().ifEmpty { cards }
+        else -> cards
+    }
+    val backdropArt = (focusCards.firstOrNull { it.localDate >= today } ?: focusCards.firstOrNull())
+        ?.let { it.media.landscape ?: it.episodes.firstOrNull()?.screenshot ?: it.media.poster }
+    ScreenActivityEffect(backdropController, backdropArt) { active ->
+        if (active) backdropController?.base = backdropArt
+    }
+    val headerCount = when (view) {
+        CalendarView.Day -> groups[selected].orEmpty().size
+        CalendarView.Week -> calendarWeekStart(selected, firstWeekday).let { start -> cards.count { it.localDate >= start && it.localDate < calendarDatePlusDays(start, 7) } }
+        CalendarView.Month -> cards.count { it.localDate.startsWith(selected.take(7)) }
+    }
+    val screenTitle = stringResource(Res.string.calendar_screen_title)
+    val kicker = if (rangeLoading) screenTitle else "$screenTitle · ${pluralStringResource(Res.plurals.calendar_release_count, headerCount, headerCount)}"
+    val subtitle = when (view) {
+        CalendarView.Month -> null
+        CalendarView.Day -> CalendarPlatform.dayLabel(selected)
+        // The list's own week headings say This week / Next week; the header gives the range.
+        CalendarView.Week -> calendarWeekStart(selected, firstWeekday).let { start -> calendarWeekRangeLabel(start, calendarDatePlusDays(start, 6)) }
+    }
     CompositionLocalProvider(LocalPosterCardStyleOverride provides style, LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-            .padding(top = ((topChromePadding ?: 16.dp) - 20.dp).coerceAtLeast(8.dp))
-            .padding(horizontal = 24.dp).testTag("calendar-screen")) {
+      RedesignTypography(enabled = isDesktop) {
+        BoxWithConstraints(Modifier.fillMaxSize()
+            .then(if (backdropController == null) Modifier.background(MaterialTheme.colorScheme.background) else Modifier)) {
+        val gutter = desktopPageHorizontalPaddingForWidth(maxWidth.value)
+        Column(Modifier.fillMaxSize()
+            .padding(top = ((topChromePadding ?: 16.dp) - 4.dp).coerceAtLeast(8.dp))
+            .padding(horizontal = gutter).testTag("calendar-screen")) {
             CalendarAgendaToolbar(selected, filter, globalStyle.calendarLandscapeModeEnabled, rangeLoading,
                 openPicker = { pickerDate = selected; picker = true },
                 goToday = { reveal(today) },
@@ -194,6 +233,9 @@ internal fun CalendarScreen(
                         pendingReveal = true
                     }
                 },
+                title = CalendarPlatform.monthLabel(selected),
+                subtitle = subtitle,
+                kicker = kicker,
             )
             if (state.problem == CalendarProblem.NETWORK || state.problem == CalendarProblem.AUTHENTICATION) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -203,14 +245,17 @@ internal fun CalendarScreen(
             }
             val shape = if (style.catalogLandscapeModeEnabled) PosterShape.Landscape else PosterShape.Poster
             val dates = range.dates
-            if (view == CalendarView.Month) {
+            Spacer(Modifier.height(12.dp))
+            // Views crossfade instead of swapping in one frame.
+            Crossfade(targetState = view, animationSpec = tween(260), modifier = Modifier.weight(1f), label = "calendar_view") { shownView ->
+            if (shownView == CalendarView.Month) {
                 CalendarMonthBody(selected, today, groups, { selected = it }, shape, onPosterClick, firstWeekday, rangeLoading) { move(it) }
             } else {
-                    BoxWithConstraints(Modifier.weight(1f)
+                    BoxWithConstraints(Modifier.fillMaxSize()
                         .agendaScrollLoading(viewState, enabled = view != CalendarView.Month, loading = state.loading,
                             onEarlier = { extend(true) }, onLater = { extend(false) })
                         .nestedScroll(scrollLoader)) {
-                        val columnWidth = (maxWidth / 7).coerceAtLeast(if (shape == PosterShape.Landscape) 190.dp else 142.dp)
+                        val columnWidth = (maxWidth / 7).coerceAtLeast(if (shape == PosterShape.Landscape) 152.dp else 132.dp)
                         val totalWidth = columnWidth * 7
                         val anchoredHeading = Modifier.width(maxWidth).offset { IntOffset(weekHorizontalState.value, 0) }
                         val density = LocalDensity.current
@@ -222,17 +267,18 @@ internal fun CalendarScreen(
                                 weekHorizontalState.scrollTo(target)
                             }
                         }
-                        val pageModifier = if (view == CalendarView.Week) Modifier.then(if (totalWidth > maxWidth) Modifier.excludeFromHistoryGestures() else Modifier).horizontalScroll(weekHorizontalState).width(totalWidth) else Modifier.fillMaxWidth()
-                        LazyColumn(state = viewState, modifier = pageModifier.fillMaxHeight().testTag("calendar-agenda"), verticalArrangement = Arrangement.spacedBy(20.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-                            if (view == CalendarView.Day) {
+                        val listState = if (shownView == CalendarView.Day) dayState else weekState
+                        val pageModifier = if (shownView == CalendarView.Week) Modifier.then(if (totalWidth > maxWidth) Modifier.excludeFromHistoryGestures() else Modifier).horizontalScroll(weekHorizontalState).width(totalWidth) else Modifier.fillMaxWidth()
+                        LazyColumn(state = listState, modifier = pageModifier.fillMaxHeight().testTag("calendar-agenda"), verticalArrangement = Arrangement.spacedBy(if (shownView == CalendarView.Week) 28.dp else 12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+                            if (shownView == CalendarView.Day) {
                                 if (groups.isEmpty()) item(key = "empty") {
                                     Column(Modifier.fillParentMaxHeight()) {
-                                        if (!rangeLoading) Text(stringResource(Res.string.calendar_range_empty), Modifier.padding(vertical = 24.dp))
+                                        if (!rangeLoading) Text(stringResource(Res.string.calendar_range_empty), Modifier.padding(vertical = 24.dp), style = redesignText(15.sp, color = RedesignColors.textSecondary))
                                     }
                                 }
                                 else {
                                     items(groups.keys.toList(), key = { it }) { date ->
-                                        Column {
+                                        Column(Modifier.animateItem()) {
                                             DaySectionHeading(date, groups[date].orEmpty().size, date == today)
                                             CalendarShelf(groups[date].orEmpty(), onPosterClick)
                                         }
@@ -241,31 +287,36 @@ internal fun CalendarScreen(
                             } else {
                                 items(dates.chunked(7), key = { it.first() }) { week ->
                                     val members = week.flatMap { groups[it].orEmpty() }
-                                    Column {
-                                        Row(anchoredHeading.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Column(Modifier.animateItem()) {
+                                        Row(anchoredHeading.padding(bottom = 12.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                             Text(when (calendarRelativeWeek(week.first(), today, firstWeekday)) {
                                                 0 -> stringResource(Res.string.calendar_this_week)
                                                 1 -> stringResource(Res.string.calendar_next_week)
                                                 else -> calendarWeekRangeLabel(week.first(), week.last())
-                                            }, style = MaterialTheme.typography.titleMedium)
-                                            ReleaseCount(members.size)
+                                            }, style = redesignText(20.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking))
+                                            if (!rangeLoading || members.isNotEmpty()) ReleaseCount(members.size, Modifier.padding(bottom = 3.dp))
                                         }
-                                            Row {
-                                                week.forEach { date ->
-                                                    Column(Modifier.width(columnWidth).padding(horizontal = 6.dp).testTag("calendar-day-$date"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                                        DayNumber(date, date == today, date == selected) { selected = date }
-                                                        groups[date].orEmpty().forEach { card -> key(card.key) { CalendarMediaCard(card, Modifier.fillMaxWidth(), onPosterClick = onPosterClick) } }
-                                                        if (groups[date].isNullOrEmpty()) Spacer(Modifier.height(64.dp))
+                                        CalendarWeekColumns(week, today, columnWidth) { index, date ->
+                                            Column(Modifier.fillMaxWidth().testTag("calendar-day-$date"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                                DayNumber(date, date == today, date == selected) { selected = date }
+                                                groups[date].orEmpty().forEach { card -> key(card.key) { CalendarMediaCard(card, Modifier.fillMaxWidth(), onPosterClick = onPosterClick) } }
+                                                if (groups[date].isNullOrEmpty()) {
+                                                    Box(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 4.dp)) {
+                                                        if (!rangeLoading) Text(stringResource(Res.string.calendar_week_day_empty), style = redesignText(12.5.sp, color = RedesignColors.textMuted))
                                                     }
                                                 }
                                             }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
             }
+            }
         }
+        }
+      }
         if (picker) CalendarAgendaDatePicker(pickerDate, today, firstWeekday, dismiss = { picker = false }) {
             reveal(it)
             picker = false
@@ -276,9 +327,14 @@ internal fun CalendarScreen(
 internal fun calendarAgendaPosterStyle(style: PosterCardStyleUiState, landscape: Boolean = style.calendarLandscapeModeEnabled) = style.copy(
     catalogLandscapeModeEnabled = landscape,
     hideLabelsEnabled = false,
-    cornerRadiusDp = if (landscape) style.cornerRadiusDp.coerceAtMost(8) else style.cornerRadiusDp,
+    cornerRadiusDp = if (landscape) style.cornerRadiusDp.coerceAtMost(12) else style.cornerRadiusDp,
 )
 
+/**
+ * Date picker shared by Calendar and History, in the redesign's frosted style: month header with
+ * round arrows, weekday kickers, a six-row grid whose month slides with the direction of travel,
+ * the chosen date as a light pill, today as a ring, and a Today shortcut. Esc/outside dismiss.
+ */
 @Composable
 internal fun CalendarAgendaDatePicker(
     initialDate: String,
@@ -289,45 +345,112 @@ internal fun CalendarAgendaDatePicker(
     select: (String) -> Unit,
 ) {
     var pickerDate by remember(initialDate) { mutableStateOf(initialDate) }
-    AlertDialog(onDismissRequest = dismiss, text = {
-        Column(Modifier.testTag("$tagPrefix-date-picker")) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { pickerDate = calendarMoveMonth(pickerDate, -1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(Res.string.calendar_previous)) }
-                Text(CalendarPlatform.monthLabel(pickerDate), Modifier.weight(1f))
-                IconButton(onClick = { pickerDate = calendarMoveMonth(pickerDate, 1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(Res.string.calendar_next)) }
-            }
-            val pickerDates = calendarMonthRange(pickerDate, firstWeekday).dates
-            WeekdayHeader(pickerDates.take(7))
-            pickerDates.chunked(7).forEach { week -> Row { week.forEach { date ->
-                Box(Modifier.weight(1f).height(40.dp).testTag("$tagPrefix-picker-$date").clickable { select(date) }, contentAlignment = Alignment.Center) {
-                    Text(date.takeLast(2).toInt().toString(), textAlign = TextAlign.Center,
-                        color = if (date == today) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(32.dp).background(if (date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0f), CircleShape).wrapContentSize())
+    var direction by remember { mutableIntStateOf(0) }
+    fun step(delta: Int) { direction = delta; pickerDate = calendarMoveMonth(pickerDate, delta) }
+    val shown = remember { androidx.compose.animation.core.MutableTransitionState(false).apply { targetState = true } }
+    androidx.compose.ui.window.Dialog(onDismissRequest = dismiss) {
+        RedesignTypography(enabled = isDesktop) {
+            androidx.compose.animation.AnimatedVisibility(
+                visibleState = shown,
+                enter = androidx.compose.animation.fadeIn(tween(180)) + androidx.compose.animation.scaleIn(tween(220), initialScale = 0.96f),
+            ) {
+                val panelShape = RoundedCornerShape(22.dp)
+                Column(
+                    Modifier.width(372.dp).clip(panelShape).background(Color(0xFF15171B).copy(alpha = 0.97f))
+                        .border(1.dp, RedesignColors.hairline, panelShape).padding(horizontal = 18.dp, vertical = 18.dp)
+                        .testTag("$tagPrefix-date-picker"),
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.animation.AnimatedContent(
+                            targetState = pickerDate.take(7),
+                            transitionSpec = { androidx.compose.animation.fadeIn(tween(200)) togetherWith androidx.compose.animation.fadeOut(tween(140)) },
+                            modifier = Modifier.weight(1f),
+                            label = "picker_month_title",
+                        ) { month ->
+                            val date = "$month-01"
+                            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(CalendarPlatform.dateLabel(date, "MMMM"), style = redesignText(20.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking))
+                                Text(CalendarPlatform.dateLabel(date, "yyyy"), style = redesignText(20.sp, color = RedesignColors.textMuted, letterSpacing = RedesignTightTracking))
+                            }
+                        }
+                        RedesignIconButton(stringResource(Res.string.calendar_previous), { step(-1) }, vector = Icons.AutoMirrored.Filled.KeyboardArrowLeft, size = 32.dp)
+                        Spacer(Modifier.width(8.dp))
+                        RedesignIconButton(stringResource(Res.string.calendar_next), { step(1) }, vector = Icons.AutoMirrored.Filled.KeyboardArrowRight, size = 32.dp)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    val pickerDates = calendarMonthRange(pickerDate, firstWeekday).dates
+                    Row(Modifier.fillMaxWidth()) {
+                        pickerDates.take(7).forEach {
+                            Text(CalendarPlatform.weekdayLabel(it).uppercase(), Modifier.weight(1f), textAlign = TextAlign.Center,
+                                style = redesignText(11.sp, FontWeight.Medium, RedesignColors.textMuted, letterSpacing = 0.1.em), maxLines = 1)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.animation.AnimatedContent(
+                        targetState = pickerDate.take(7),
+                        transitionSpec = {
+                            val sign = if (direction >= 0) 1 else -1
+                            (androidx.compose.animation.slideInHorizontally(tween(240)) { sign * it / 6 } + androidx.compose.animation.fadeIn(tween(240))) togetherWith
+                                (androidx.compose.animation.slideOutHorizontally(tween(240)) { -sign * it / 6 } + androidx.compose.animation.fadeOut(tween(160)))
+                        },
+                        label = "picker_month_grid",
+                    ) { month ->
+                        val dates = calendarMonthGridRange("$month-01", firstWeekday).dates
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            dates.chunked(7).forEach { week ->
+                                Row(Modifier.fillMaxWidth()) {
+                                    week.forEach { date ->
+                                        PickerDay(date, inMonth = date.startsWith(month), isToday = date == today, isSelected = date == initialDate,
+                                            tag = "$tagPrefix-picker-$date", modifier = Modifier.weight(1f)) { select(date) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        RedesignPillButton(stringResource(Res.string.calendar_today), { select(today) }, Modifier.testTag("$tagPrefix-picker-today"))
+                    }
                 }
-            } } }
+            }
         }
-    }, confirmButton = {})
+    }
+}
+
+@Composable
+private fun PickerDay(date: String, inMonth: Boolean, isToday: Boolean, isSelected: Boolean, tag: String, modifier: Modifier, onClick: () -> Unit) {
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val fill by androidx.compose.animation.animateColorAsState(
+        when { isSelected -> RedesignColors.textPrimary; hovered -> RedesignColors.fillStrong; else -> Color.Transparent }, tween(160), label = "picker_day_fill",
+    )
+    val ring = if (isToday && !isSelected) RedesignColors.hairlineFocused else Color.Transparent
+    Box(modifier.height(42.dp).testTag(tag).hoverable(interaction).clickable(interaction, indication = null, onClick = onClick), contentAlignment = Alignment.Center) {
+        Text(date.takeLast(2).toInt().toString(), textAlign = TextAlign.Center,
+            style = redesignText(14.sp, if (isSelected || isToday) FontWeight.Bold else FontWeight.Medium, when {
+                isSelected -> RedesignOnLight
+                !inMonth -> RedesignColors.textMuted.copy(alpha = 0.55f)
+                else -> RedesignColors.textPrimary
+            }),
+            modifier = Modifier.size(36.dp).clip(CircleShape).background(fill).border(1.dp, ring, CircleShape).wrapContentSize())
+    }
 }
 
 internal fun calendarToday() = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(EpisodeReleaseDatePlatform.nowEpochMs())!!
-@Composable private fun ReleaseCount(count: Int) {
-    Text(pluralStringResource(Res.plurals.calendar_release_count, count, count), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.nuvio.colors.textMuted)
+@Composable private fun ReleaseCount(count: Int, modifier: Modifier = Modifier) {
+    Text(pluralStringResource(Res.plurals.calendar_release_count, count, count), modifier = modifier, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.nuvio.colors.textMuted)
 }
+
+/** Day agenda heading (shared with History): day number, weekday over month, a Today pill, the count. */
 @Composable internal fun DaySectionHeading(date: String, count: Int, today: Boolean, watchHistory: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp).testTag("calendar-day-heading-$date"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.background(if (today) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0f), RoundedCornerShape(16.dp))
-            .padding(end = if (today) 12.dp else 0.dp).then(if (today) Modifier.testTag("calendar-today") else Modifier),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(date.takeLast(2).toInt().toString(), style = MaterialTheme.typography.headlineMedium,
-                color = if (today) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.nuvio.colors.textPrimary,
-                modifier = Modifier.size(56.dp).background(if (today) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).wrapContentSize())
-            Column {
-                Text(CalendarPlatform.dateLabel(date, "EEEE"), style = MaterialTheme.typography.titleMedium,
-                    color = if (today) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.nuvio.colors.textPrimary)
-                Text(CalendarPlatform.dateLabel(date, "MMMM"), style = MaterialTheme.typography.labelSmall,
-                    color = if (today) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .7f) else MaterialTheme.nuvio.colors.textMuted)
-            }
+    Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp).testTag("calendar-day-heading-$date"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(date.takeLast(2).toInt().toString(), style = redesignText(30.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking),
+            modifier = Modifier.widthIn(min = 40.dp))
+        Column {
+            Text(CalendarPlatform.dateLabel(date, "EEEE"), style = redesignText(16.sp, FontWeight.SemiBold))
+            Text(CalendarPlatform.dateLabel(date, "MMMM"), style = redesignText(12.sp, color = RedesignColors.textMuted))
         }
+        if (today) TodayPill(Modifier.testTag("calendar-today"))
         Spacer(Modifier.weight(1f))
         if (watchHistory) Text(
             pluralStringResource(Res.plurals.history_watch_count, count, count),
@@ -336,18 +459,91 @@ internal fun calendarToday() = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(
         ) else ReleaseCount(count)
     }
 }
+
+@Composable private fun TodayPill(modifier: Modifier = Modifier) {
+    Text(stringResource(Res.string.calendar_today), style = redesignText(11.5.sp, FontWeight.Bold, RedesignOnLight),
+        modifier = modifier.clip(CircleShape).background(RedesignColors.textPrimary).padding(horizontal = 9.dp, vertical = 3.dp))
+}
+
 @Composable private fun DateHeading(date: String, count: Int?) {
     Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(CalendarPlatform.dayLabel(date), style = MaterialTheme.typography.titleMedium)
+        Text(CalendarPlatform.dayLabel(date), style = redesignText(17.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking))
         if (count != null) ReleaseCount(count)
     }
 }
 @Composable private fun WeekdayHeader(dates: List<String>) { Row(Modifier.fillMaxWidth()) { dates.forEach { Text(CalendarPlatform.weekdayLabel(it), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium) } } }
+
+/** Week column heading: large day number with a weekday kicker ("TODAY · MON" on the current date). */
 @Composable private fun DayNumber(date: String, today: Boolean, selected: Boolean, onClick: () -> Unit) {
-    Text("${CalendarPlatform.weekdayLabel(date)} ${date.takeLast(2).toInt()}", style = MaterialTheme.typography.titleSmall,
-        color = if (today) MaterialTheme.colorScheme.onPrimaryContainer else if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.testTag(if (today) "calendar-today" else "calendar-day-label-$date").clickable(onClick = onClick)
-            .background(if (today) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0f), RoundedCornerShape(8.dp)).padding(8.dp))
+    val weekday = CalendarPlatform.weekdayLabel(date)
+    val kicker = if (today) "${stringResource(Res.string.calendar_today)} · $weekday" else weekday
+    val color by androidx.compose.animation.animateColorAsState(
+        if (today || selected) RedesignColors.textPrimary else RedesignColors.textSecondary, tween(180), label = "week_day_number",
+    )
+    Row(
+        Modifier.testTag(if (today) "calendar-today" else "calendar-day-label-$date")
+            .clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(date.takeLast(2).toInt().toString(), style = redesignText(26.sp, FontWeight.Bold, color, letterSpacing = RedesignTightTracking))
+        Text(kicker.uppercase(), style = redesignText(11.sp, FontWeight.Medium, if (today) RedesignColors.textSecondary else RedesignColors.textMuted, letterSpacing = 0.1.em),
+            modifier = Modifier.padding(bottom = 5.dp), maxLines = 1)
+    }
+}
+
+private val WeekColumnGap = 12.dp
+private val WeekColumnPadding = 10.dp
+
+/**
+ * Seven frosted day tiles of equal height. The tiles are drawn behind the measured columns, so
+ * every day matches the tallest one without intrinsic measurement of the artwork cards.
+ */
+@Composable
+private fun CalendarWeekColumns(
+    week: List<String>,
+    today: String,
+    columnWidth: Dp,
+    content: @Composable (Int, String) -> Unit,
+) {
+    val todayIndex = week.indexOf(today)
+    val density = LocalDensity.current
+    Layout(
+        content = { week.forEachIndexed { index, date -> Box { content(index, date) } } },
+        modifier = Modifier.drawBehind {
+            val radius = with(density) { 18.dp.toPx() }
+            val half = with(density) { (WeekColumnGap / 2).toPx() }
+            val stroke = with(density) { 1.dp.toPx() }
+            val column = with(density) { columnWidth.toPx() }
+            week.indices.forEach { index ->
+                val current = index == todayIndex
+                val left = index * column + half
+                val tileSize = androidx.compose.ui.geometry.Size(column - half * 2, size.height)
+                drawRoundRect(
+                    color = if (current) RedesignColors.fillStrong else Color.White.copy(alpha = 0.05f),
+                    topLeft = Offset(left, 0f), size = tileSize,
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius),
+                )
+                drawRoundRect(
+                    color = if (current) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f),
+                    topLeft = Offset(left + stroke / 2, stroke / 2),
+                    size = androidx.compose.ui.geometry.Size(tileSize.width - stroke, tileSize.height - stroke),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
+                )
+            }
+        },
+    ) { measurables, constraints ->
+        val column = columnWidth.roundToPx()
+        val inset = (WeekColumnGap / 2 + WeekColumnPadding).roundToPx()
+        val childWidth = (column - inset * 2).coerceAtLeast(0)
+        val placeables = measurables.map { it.measure(Constraints.fixedWidth(childWidth)) }
+        val vertical = WeekColumnPadding.roundToPx()
+        val height = maxOf((placeables.maxOfOrNull { it.height } ?: 0) + vertical * 2, 160.dp.roundToPx())
+        layout(column * week.size, height) {
+            placeables.forEachIndexed { index, placeable -> placeable.place(index * column + inset, vertical) }
+        }
+    }
 }
 
 @Composable
@@ -420,60 +616,159 @@ internal fun CalendarAgendaMediaCard(
         onClick = onClick, onLongClick = onLongClick)
 }
 
-/** The grid and selected shelf share the viewport instead of sharing a vertical scroller. */
+/**
+ * Month: the six-row grid in a frosted tile. On wide panes the selected day's releases sit in a
+ * side column (Home board's 352 dp column); narrower panes keep them in a shelf below the grid.
+ */
 @Composable private fun CalendarMonthBody(selected: String, today: String, groups: Map<String, List<CalendarCard>>, select: (String) -> Unit, shape: PosterShape, onPosterClick: ((MetaPreview) -> Unit)?, firstWeekday: Int, loading: Boolean, move: (Int) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth().fillMaxHeight()) {
-        val available = maxHeight
-        val weekCount = 6
-        val shelfHeight = (available * .46f).coerceIn(220.dp, 340.dp).coerceAtMost(available * .6f)
-        val cellHeight = ((available - shelfHeight - 26.dp - 6.dp * (weekCount - 1)) / weekCount).coerceAtLeast(40.dp)
-        val gridWidth = (cellHeight * 1.75f * 7 + 24.dp).coerceAtMost(maxWidth).coerceAtLeast(maxWidth.coerceAtMost(644.dp))
-        val artHeight = (shelfHeight - 112.dp).coerceAtLeast(36.dp)
-        val cardWidth = if (shape == PosterShape.Landscape) artHeight * 1.77f else artHeight * (2f / 3f)
-        Column(Modifier.fillMaxSize()) {
-            CalendarMonthPager(selected, firstWeekday, Modifier.weight(1f).width(gridWidth).align(Alignment.CenterHorizontally), move) { pageDates, interactive, pageMonth ->
-                Column(Modifier.fillMaxSize().then(if (interactive) Modifier else Modifier.clearAndSetSemantics {})) {
-                    WeekdayHeader(pageDates.take(7))
-                    Spacer(Modifier.height(6.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            pageDates.chunked(7).forEach { week ->
-                                    MonthWeek(week, pageMonth, selected, today, groups, if (interactive) select else { _ -> }, shape, Modifier.weight(1f))
-                            }
-                        }
-                }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val sideColumn = maxWidth >= HomeBoardSideColumnMinWidth
+        if (sideColumn) {
+            Row(Modifier.fillMaxSize().padding(bottom = 24.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                MonthGridTile(selected, today, groups, select, shape, firstWeekday, move, Modifier.weight(1f).fillMaxHeight())
+                CalendarSelectedDayColumn(selected, groups, loading, onPosterClick, Modifier.width(CalendarSideColumnWidth).fillMaxHeight())
             }
-            Column(Modifier.fillMaxWidth().height(shelfHeight).testTag("calendar-selected-day")) {
-                val selectedCards = groups[selected].orEmpty()
-                DateHeading(selected, selectedCards.size.takeIf { selectedCards.isNotEmpty() || !loading })
-                if (selectedCards.isNotEmpty()) CalendarShelf(selectedCards, onPosterClick, cardWidth)
-                else if (!loading) Text(stringResource(Res.string.calendar_day_empty), Modifier.padding(vertical = 12.dp))
+        } else {
+            val available = maxHeight
+            val weekCount = 6
+            val shelfHeight = (available * .46f).coerceIn(220.dp, 340.dp).coerceAtMost(available * .6f)
+            val cellHeight = ((available - shelfHeight - 26.dp - 6.dp * (weekCount - 1)) / weekCount).coerceAtLeast(40.dp)
+            val gridWidth = (cellHeight * 1.75f * 7 + 24.dp).coerceAtMost(maxWidth).coerceAtLeast(maxWidth.coerceAtMost(644.dp))
+            val artHeight = (shelfHeight - 112.dp).coerceAtLeast(36.dp)
+            val cardWidth = if (shape == PosterShape.Landscape) artHeight * 1.77f else artHeight * (2f / 3f)
+            Column(Modifier.fillMaxSize()) {
+                MonthGridTile(selected, today, groups, select, shape, firstWeekday, move, Modifier.weight(1f).width(gridWidth).align(Alignment.CenterHorizontally))
+                Column(Modifier.fillMaxWidth().height(shelfHeight).testTag("calendar-selected-day")) {
+                    val selectedCards = groups[selected].orEmpty()
+                    DateHeading(selected, selectedCards.size.takeIf { selectedCards.isNotEmpty() || !loading })
+                    if (selectedCards.isNotEmpty()) CalendarShelf(selectedCards, onPosterClick, cardWidth)
+                    else if (!loading) Text(stringResource(Res.string.calendar_day_empty), Modifier.padding(vertical = 12.dp), style = redesignText(14.sp, color = RedesignColors.textSecondary))
+                }
             }
         }
     }
 }
 
+private val CalendarSideColumnWidth = 352.dp
+
+@Composable private fun MonthGridTile(selected: String, today: String, groups: Map<String, List<CalendarCard>>, select: (String) -> Unit, shape: PosterShape, firstWeekday: Int, move: (Int) -> Unit, modifier: Modifier) {
+    Box(modifier.clip(RedesignTileShape).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, RedesignTileShape).padding(12.dp)) {
+        CalendarMonthPager(selected, firstWeekday, Modifier.fillMaxSize(), move) { pageDates, interactive, pageMonth ->
+            Column(Modifier.fillMaxSize().then(if (interactive) Modifier else Modifier.clearAndSetSemantics {})) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    pageDates.take(7).forEach {
+                        Text(CalendarPlatform.weekdayLabel(it).uppercase(), Modifier.weight(1f).padding(start = 8.dp),
+                            style = redesignText(11.sp, FontWeight.Medium, RedesignColors.textMuted, letterSpacing = 0.1.em), maxLines = 1)
+                    }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    pageDates.chunked(7).forEach { week ->
+                        MonthWeek(week, pageMonth, selected, today, groups, if (interactive) select else { _ -> }, shape, Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun CalendarSelectedDayColumn(selected: String, groups: Map<String, List<CalendarCard>>, loading: Boolean, onPosterClick: ((MetaPreview) -> Unit)?, modifier: Modifier) {
+    Column(modifier.clip(RedesignTileShape).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, RedesignTileShape)
+        .padding(horizontal = 10.dp, vertical = 16.dp).testTag("calendar-selected-day")) {
+        val selectedCards = groups[selected].orEmpty()
+        Column(Modifier.padding(horizontal = 8.dp)) {
+            Text(CalendarPlatform.dateLabel(selected, "EEEE").uppercase(), style = redesignText(11.sp, FontWeight.Medium, RedesignColors.textMuted, letterSpacing = 0.1.em))
+            Spacer(Modifier.height(4.dp))
+            Text(CalendarPlatform.dateLabel(selected, "d MMMM"), style = redesignText(22.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking), maxLines = 1)
+            Box(Modifier.height(18.dp)) {
+                if (selectedCards.isNotEmpty() || !loading) ReleaseCount(selectedCards.size, Modifier.padding(top = 2.dp))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        // Changing the selected date crossfades the list instead of swapping it in one frame.
+        Crossfade(targetState = selected, animationSpec = tween(220), modifier = Modifier.weight(1f), label = "calendar_selected_day") { date ->
+            val dayCards = groups[date].orEmpty()
+            if (dayCards.isEmpty()) {
+                Box(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+                    if (!loading) Text(stringResource(Res.string.calendar_day_empty), style = redesignText(14.sp, color = RedesignColors.textSecondary))
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    items(dayCards, key = { it.key }) { card ->
+                        CalendarSideRow(card, onPosterClick, Modifier.animateItem())
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun CalendarSideRow(card: CalendarCard, onPosterClick: ((MetaPreview) -> Unit)?, modifier: Modifier = Modifier) {
+    val style = rememberPosterCardStyleUiState()
+    val item = card.toPreview()
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val fill by androidx.compose.animation.animateColorAsState(if (hovered) RedesignColors.fill else Color.Transparent, tween(160), label = "calendar_side_row")
+    val time = card.releaseEpochMs?.let { start ->
+        formatLocalTime(start) + (card.lastReleaseEpochMs?.takeIf { it != start }?.let { "–${formatLocalTime(it)}" } ?: "")
+    }
+    val tag = when {
+        card.premiere -> stringResource(Res.string.calendar_premiere)
+        card.finale -> stringResource(Res.string.calendar_finale)
+        else -> null
+    }
+    Row(
+        modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(fill)
+            .hoverable(interaction)
+            .then(if (onPosterClick != null) Modifier.clickable(interactionSource = interaction, indication = null) { onPosterClick(item) } else Modifier)
+            .padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CompositionLocalProvider(LocalPosterCardStyleOverride provides style.copy(catalogLandscapeModeEnabled = true, cornerRadiusDp = 10)) {
+            CalendarMediaCard(card, Modifier.width(120.dp), compact = true, onPosterClick = onPosterClick)
+        }
+        Column(Modifier.weight(1f)) {
+            Text(card.media.title, style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val episodeTitle = card.episodes.singleOrNull()?.title
+            val detail = listOfNotNull(card.episodeLabel ?: calendarMovieLabel(card.media.year), episodeTitle).joinToString("  ")
+            if (detail.isNotBlank()) Text(detail, style = redesignText(12.sp, color = RedesignColors.textMuted), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (time != null || tag != null) Text(listOfNotNull(time, tag).joinToString(" · "), style = redesignText(12.sp, color = RedesignColors.textSecondary), modifier = Modifier.padding(top = 4.dp), maxLines = 1)
+        }
+    }
+}
 
 @Composable private fun MonthWeek(dates: List<String>, month: String, selected: String, today: String, groups: Map<String, List<CalendarCard>>, select: (String) -> Unit, shape: PosterShape, modifier: Modifier) {
     val style = rememberPosterCardStyleUiState()
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    val cellShape = RoundedCornerShape(12.dp)
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         dates.forEach { date ->
             if (!date.startsWith(month)) { Spacer(Modifier.weight(1f).fillMaxHeight()); return@forEach }
+            val isSelected = date == selected
+            val hasReleases = !groups[date].isNullOrEmpty()
+            val background by androidx.compose.animation.animateColorAsState(
+                when { isSelected -> RedesignColors.fillStrong; hasReleases -> Color.White.copy(alpha = 0.04f); else -> Color.Transparent },
+                tween(180), label = "calendar_cell",
+            )
+            val border by androidx.compose.animation.animateColorAsState(
+                if (isSelected) Color.White.copy(alpha = 0.45f) else Color.Transparent, tween(180), label = "calendar_cell_border",
+            )
             Column(Modifier.weight(1f).fillMaxHeight()
-                .border(1.dp, if (date == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
-                .background(if (date == selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .3f) else MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
-                .clip(RoundedCornerShape(8.dp)).clickable { select(date) }.padding(5.dp).testTag("calendar-date-$date").semantics { contentDescription = CalendarPlatform.dayLabel(date); this.selected = date == selected }) {
-                Text(if (date.endsWith("-01")) "1 ${CalendarPlatform.shortMonthLabel(date)}" else date.takeLast(2).toInt().toString(), style = MaterialTheme.typography.labelMedium, color = if (date == today) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.background(if (date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0f), CircleShape).padding(horizontal = 4.dp))
+                .clip(cellShape).background(background, cellShape).border(1.dp, border, cellShape)
+                .clickable { select(date) }.padding(6.dp).testTag("calendar-date-$date").semantics { contentDescription = CalendarPlatform.dayLabel(date); this.selected = isSelected }) {
+                val isToday = date == today
+                Text(if (date.endsWith("-01")) "1 ${CalendarPlatform.shortMonthLabel(date)}" else date.takeLast(2).toInt().toString(),
+                    style = redesignText(13.sp, FontWeight.SemiBold, if (isToday) RedesignOnLight else if (isSelected) RedesignColors.textPrimary else RedesignColors.textSecondary),
+                    modifier = Modifier.clip(CircleShape).background(if (isToday) RedesignColors.textPrimary else Color.Transparent).padding(horizontal = 7.dp, vertical = 1.dp))
                 val thumbnails = groups[date].orEmpty().take(3)
                 val extra = groups[date].orEmpty().size - thumbnails.size
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                     val ratio = if (shape == PosterShape.Landscape) 1.77f else 2f / 3f
                     val countWidth = if (extra > 0) 24.dp else 0.dp
                     val width = ((maxWidth - countWidth - 6.dp) / 3).coerceAtLeast(1.dp).coerceAtMost(maxHeight.coerceAtLeast(1.dp) * ratio)
-                    CompositionLocalProvider(LocalPosterCardStyleOverride provides style.copy(cornerRadiusDp = 4)) {
-                        Row(Modifier.align(Alignment.BottomStart), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom) {
+                    CompositionLocalProvider(LocalPosterCardStyleOverride provides style.copy(cornerRadiusDp = 5)) {
+                        Row(Modifier.align(Alignment.BottomStart), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
                             thumbnails.forEach { card -> CalendarMediaCard(card, Modifier.width(width), compact = true, onPosterClick = { select(date) }) }
-                            if (extra > 0) Text("+$extra", style = MaterialTheme.typography.labelSmall)
+                            if (extra > 0) Text("+$extra", style = redesignText(11.sp, FontWeight.SemiBold, RedesignColors.textSecondary))
                         }
                     }
                 }

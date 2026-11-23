@@ -123,6 +123,28 @@ is not completion; verify actions and destinations, and state API limitations.
 
 ## Verify the changed experience
 
+**New worktrees have no `local.properties`.** It is gitignored, so a fresh
+`.claude/worktrees/<name>` checkout fails every Gradle build at
+`:composeApp:generateRuntimeConfigs` ("property 'localPropertiesFile' specifies file
+… local.properties which doesn't exist"). Copy it from the main checkout or a sibling
+worktree before the first build — `cp ../<other-worktree>/local.properties .` (or
+`cp ../../../local.properties .` from the repository root) — and confirm
+`git check-ignore -q local.properties`. Never commit it or print its contents; it holds
+API endpoints and keys. A `grep`-filtered compile that prints nothing may have failed at
+this task, so check for `BUILD SUCCESSFUL`.
+
+`NUVIO_IOS_DISTRIBUTION=full` also needs the locally built Nuvio Engine Apple
+XCFramework, which worktrees lack ("Build the local Nuvio Engine Apple XCFramework
+before compiling iOS Full"). When it is missing, compile the default distribution
+(`./gradlew :composeApp:compileKotlinIosSimulatorArm64`) and report the full variant as
+unverified.
+
+When another agent's MainKt is running, background computer use (`app_*`) resolves
+`net.java.openjdk.java` to whichever process it finds first, which may be the other
+agent's window; do not click there. Find your own window id from your process's PID
+(CoreGraphics `CGWindowListCopyWindowInfo`) and capture it read-only with
+`screencapture -x -o -l<windowId> out.png`.
+
 Run the smallest meaningful behavioral checks plus compilation appropriate to the
 changed source sets. For visual changes, compare the actual UI with the chosen
 reference: corners, padding, alignment, typography, icons, focus, selected rows,

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
@@ -91,11 +92,13 @@ internal fun CalendarMonthPager(
             }
         }) {
         val neighbor = if (offset < 0f) 1 else -1
-        if (offset != 0f) Box(Modifier.fillMaxSize().layout { measurable, constraints ->
+        // Like Home's hero carousel, each page's opacity follows its offset as it drifts.
+        val progress = if (width > 0) (abs(offset) / width).coerceIn(0f, 1f) else 0f
+        if (offset != 0f) Box(Modifier.fillMaxSize().graphicsLayer { alpha = progress }.layout { measurable, constraints ->
             val placeable = measurable.measure(constraints)
             layout(placeable.width, placeable.height) { placeable.placeRelative((offset + neighbor * width).roundToInt(), 0) }
         }) { content(calendarMonthGridRange(calendarMoveMonth(selected, neighbor), firstWeekday).dates, false, calendarMoveMonth(selected, neighbor).take(7)) }
-        Box(Modifier.fillMaxSize().layout { measurable, constraints ->
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = 1f - progress }.layout { measurable, constraints ->
             val placeable = measurable.measure(constraints)
             layout(placeable.width, placeable.height) { placeable.placeRelative(offset.roundToInt(), 0) }
         }) { content(calendarMonthGridRange(selected, firstWeekday).dates, true, selected.take(7)) }

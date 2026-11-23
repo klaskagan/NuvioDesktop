@@ -2763,6 +2763,7 @@
     <string name="calendar_landscape_posters">Landscape Posters</string>
     <string name="calendar_range_empty">No releases in this date range.</string>
     <string name="calendar_day_empty">No releases on this day.</string>
+    <string name="calendar_week_day_empty">No releases</string>
     <plurals name="calendar_release_count">
         <item quantity="one">%1$d release</item>
         <item quantity="other">%1$d releases</item>

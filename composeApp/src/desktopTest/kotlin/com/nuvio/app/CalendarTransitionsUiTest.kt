@@ -146,14 +146,14 @@ class CalendarTransitionsUiTest {
         grid.performTouchInput { up() }
         repeat(8) { mainClock.advanceTimeBy(40); frame() }
         mainClock.autoAdvance = true; waitForIdle()
-        onNodeWithText(CalendarPlatform.monthLabel("2027-02-16") + " ▾").assertExists()
+        onNodeWithText(CalendarPlatform.monthLabel("2027-02-16")).assertExists()
         grid.performTouchInput { down(center); moveTo(center.copy(x = center.x - width * .18f), delayMillis = 120) }
         frame()
         mainClock.autoAdvance = false
         grid.performTouchInput { up() }
         repeat(8) { mainClock.advanceTimeBy(40); frame() }
         mainClock.autoAdvance = true; ready(); waitForIdle()
-        onNodeWithText(CalendarPlatform.monthLabel("2027-03-16") + " ▾").assertExists()
+        onNodeWithText(CalendarPlatform.monthLabel("2027-03-16")).assertExists()
         assertEquals(cellSize, onNodeWithTag("calendar-date-2027-03-16").fetchSemanticsNode().size)
         frame()
     }

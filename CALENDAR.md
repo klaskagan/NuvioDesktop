@@ -3,9 +3,11 @@
 Desktop navigation exposes Calendar independently of the Home catalog. Week is
 initially selected; Day omits empty dates, and Month shows a selected date's media
 below its grid. All dates use the device timezone and regional week boundaries.
-Calendar's orientation icon defaults to portrait and is stored as
-`calendarLandscapeModeEnabled` in the existing profile-scoped, synced poster style
-payload. `catalogLandscapeModeEnabled` continues to control Home.
+Calendar's orientation icon defaults to landscape stills for profiles without a saved
+choice (redesign, Nov 2026) and is stored as `calendarLandscapeModeEnabled` in the
+existing profile-scoped, synced poster style payload. The payload encodes defaults, so
+profiles that saved any poster style before keep their stored (portrait) value until
+toggled. `catalogLandscapeModeEnabled` continues to control Home.
 
 ## Reusable contracts
 
@@ -76,6 +78,33 @@ The resulting review application is
 installed application. Mobile navigation does not expose Calendar. Android/iOS
 platform date-label contracts are supplied, but this feature is validated on desktop.
 
+## Desktop redesign (Nov 2026)
+
+Calendar is on the redesign shell: it joins `ShellBackdropTabs` and steers the ambient
+backdrop (only while active) with the next release in the visible range, or the selected
+Month day's first release. Content uses Home's margins (`desktopPageHorizontalPaddingForWidth`)
+and `RedesignTypography`.
+
+- Header: `CALENDAR · N RELEASES` kicker (count for the selected day/week/month, shown only
+  once the range has loaded), the month title that opens the date picker, and a subtitle
+  (Week range or Day label). The title button has a fixed width measured for the widest
+  month; the subtitle yields space and ellipsizes, so no view or month change moves a control.
+- Controls are `RedesignPillGroup` (Day/Week/Month, All/Shows/Movies), `RedesignPillButton`
+  (Today, History's month) and `RedesignIconButton` (arrows, orientation) from
+  `core/ui/RedesignControls.kt`. Underlined text tabs under the merged top bar read as a second
+  copy of the bar. Hidden arrow slots expose no semantics.
+- Week: seven frosted tiles of equal height (`CalendarWeekColumns` draws the tiles behind the
+  measured columns, avoiding intrinsic measurement of artwork cards); today's tile is brighter
+  with a `TODAY · MON` label. Empty days say "No releases" only after loading.
+- Month: the grid is one frosted tile; on panes at least `HomeBoardSideColumnMinWidth` wide the
+  selected day's releases move into a 352 dp side column (`calendar-selected-day`), otherwise
+  they stay in the shelf below. Month pages fade with their drag offset like Home's hero.
+- View changes crossfade; week and day items use `animateItem()`.
+- The date picker (`CalendarAgendaDatePicker`, shared with History) is a frosted 372 dp panel,
+  not a Material `AlertDialog`: month title with muted year, round arrows, a fixed 42-slot grid
+  that slides in the direction of travel, the chosen date as a light pill, today as a ring,
+  muted out-of-month days and a Today shortcut (`<prefix>-picker-today`).
+
 ## UI behavior contract
 
 - The single-row toolbar keeps the month/year picker, Today, view/filter controls,
@@ -95,7 +124,7 @@ platform date-label contracts are supplied, but this feature is validated on des
   of the minimal fetch range. Hide dates and borders outside the selected month.
   Cells, grid width, and the full-width selected-day shelf retain their dimensions
   across month changes; available viewport resizing can recalculate them. Keep
-  the selected-day shelf visible below the grid and its horizontal scroll separate
+  the selected-day column (wide) or shelf (narrow) visible beside or below the grid and its horizontal scroll separate
   from month swipes. Bound thumbnail width by both cell width and available height.
 - The month grid follows the drag. Finger-up past 8% of its width, capped at
   80 dp, commits one neighboring month; short/cancelled gestures restore the
