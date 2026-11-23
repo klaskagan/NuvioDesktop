@@ -65,7 +65,8 @@ class CalendarScreenUiTest {
         waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("S1 · E5–6").fetchSemanticsNodes().isNotEmpty() }
         onNodeWithTag("calendar-view-Week").assertIsSelected()
         onNodeWithText("This week").assertExists()
-        onNodeWithTag("calendar-agenda").performScrollToIndex(1)
+        // Index 0 is the lead week before this week.
+        onNodeWithTag("calendar-agenda").performScrollToIndex(2)
         onNodeWithText("Next week").assertExists()
         onNodeWithText("Today").performClick()
         waitForIdle()
@@ -278,18 +279,32 @@ class CalendarScreenUiTest {
             })
         })
         setContent { AppEnvironment { CalendarScreen(repository = repo) } }
-        onNodeWithTag("calendar-view-Day").performClick()
         val today = LocalDate.now().toString()
+        // Week opens with a lead week above today's, so the first scroll up moves on every weekday
+        // (on the first weekday, today's week used to be the list's top edge).
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("Release $today").fetchSemanticsNodes().isNotEmpty() }
+        waitForIdle()
+        val weekBefore = onNodeWithTag("calendar-day-$today").fetchSemanticsNode().boundsInRoot.top
+        val weekCalls = calls.size
+        onNodeWithTag("calendar-agenda").performMouseInput { enter(center); scroll(-1f, ScrollWheel.Vertical) }
+        waitForIdle()
+        val weekMoved = onNodeWithTag("calendar-day-$today").fetchSemanticsNode().boundsInRoot.top - weekBefore
+        assertTrue(weekMoved > 0 && weekMoved < 150, "Expected Week to scroll from today's week; moved=$weekMoved")
+        assertEquals(weekCalls, calls.size)
+        // Scrolling selected the lead week; return to today before opening Day.
+        onNodeWithText("Today").performClick()
+        waitForIdle()
+        onNodeWithTag("calendar-view-Day").performClick()
         waitUntil(timeoutMillis = 15_000) { onAllNodesWithTag("calendar-day-heading-$today").fetchSemanticsNodes().isNotEmpty() }
         waitForIdle()
         onNodeWithText("Today · " + CalendarPlatform.dayLabel(today)).assertDoesNotExist()
         onNodeWithText(com.nuvio.app.core.format.formatReleaseDateForDisplay(today)).assertDoesNotExist()
         val before = onNodeWithTag("calendar-day-heading-$today").fetchSemanticsNode().boundsInRoot.top
-        onNodeWithTag("calendar-agenda").performMouseInput { enter(center); scroll(-1f, ScrollWheel.Vertical) }
+        onNodeWithTag("calendar-agenda").performMouseInput { moveTo(center); scroll(-1f, ScrollWheel.Vertical) }
         waitForIdle()
         val moved = onNodeWithTag("calendar-day-heading-$today").fetchSemanticsNode().boundsInRoot.top - before
         assertTrue(moved > 0 && moved < 150, "Expected continuous scrolling; moved=$moved")
-        val start = calendarWeekStart(today, CalendarPlatform.firstWeekday())
+        val start = calendarRevealStart(today, CalendarPlatform.firstWeekday())
         onNodeWithTag("calendar-agenda").performScrollToIndex(0)
         val anchor = onNodeWithTag("calendar-day-heading-$start").fetchSemanticsNode().boundsInRoot.top
         val count = calls.size
@@ -306,6 +321,45 @@ class CalendarScreenUiTest {
         PosterCardStyleRepository.setCalendarLandscapeModeEnabled(false)
     }
 
+    @Test fun weekKeepsTheWeekBeingReadWhenEarlierWeeksLoad() = runDesktopComposeUiTest(width = 1200, height = 800) {
+        assumeTrue(System.getProperty("nuvio.test.isolatedHome") == "true")
+        val today = LocalDate.now().toString()
+        val reading = calendarRevealStart(today, CalendarPlatform.firstWeekday())
+        val previous = calendarDatePlusDays(reading, -7)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val held = java.util.concurrent.atomic.AtomicBoolean(false)
+        val repo = CalendarRepository({ "week-anchor-fixture" }, { shows, start, days ->
+            // The UTC request window starts up to a day early; only the prepended weeks are held.
+            if (start < calendarDatePlusDays(reading, -2)) { held.set(true); gate.await() }
+            // Two releases per day, so a loaded week is much taller than an empty loading one.
+            CalendarBatch(movies = if (shows) emptyList() else (0 until days).flatMap { offset ->
+                val date = calendarDatePlusDays(start, offset)
+                listOf(1, 2).map { CalendarMovie(CalendarMedia("week-$date-$it", "movie", "Release $date $it", 2026), date) }
+            })
+        })
+        setContent { AppEnvironment { CalendarScreen(repository = repo) } }
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("Release $today 1").fetchSemanticsNodes().isNotEmpty() }
+        waitForIdle()
+        // At the top edge: prepend two empty weeks while their releases are held back.
+        onNodeWithTag("calendar-agenda").performScrollToIndex(0)
+        onNodeWithTag("calendar-agenda").performMouseInput { enter(center); scroll(-1f, ScrollWheel.Vertical) }
+        waitUntil(timeoutMillis = 15_000) { held.get() }
+        waitForIdle()
+        // Let the previous week peek in above the week being read.
+        val agenda = onNodeWithTag("calendar-agenda").fetchSemanticsNode().boundsInRoot
+        onNodeWithTag("calendar-agenda").performMouseInput { scroll(-.5f, ScrollWheel.Vertical) }
+        waitForIdle()
+        onNodeWithTag("calendar-day-$previous").assertExists()
+        val top = onNodeWithTag("calendar-day-$reading").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(top > agenda.top && top < agenda.top + agenda.height / 4, "Expected the previous week to peek in; top=$top agenda=$agenda")
+        gate.complete(Unit)
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("Release $previous 1").fetchSemanticsNodes().isNotEmpty() }
+        waitForIdle()
+        val after = onNodeWithTag("calendar-day-$reading").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(kotlin.math.abs(after - top) <= 1f, "Expected the week being read to stay put; before=$top after=$after")
+        save("week-load-anchor")
+    }
+
     @Test fun filterReselectKeepsDateWhenTodayHasNoReleases() = runDesktopComposeUiTest(width = 1200, height = 800) {
         assumeTrue(System.getProperty("nuvio.test.isolatedHome") == "true")
         val today = LocalDate.now().toString()
@@ -317,7 +371,7 @@ class CalendarScreenUiTest {
         setContent { AppEnvironment { CalendarScreen(repository = repo) } }
         onNodeWithTag("calendar-view-Day").performClick()
         val target = calendarDatePlusDays(today, 3)
-        val start = calendarWeekStart(today, CalendarPlatform.firstWeekday())
+        val start = calendarRevealStart(today, CalendarPlatform.firstWeekday())
         waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("Release " + calendarDatePlusDays(today, 1)).fetchSemanticsNodes().isNotEmpty() }
         val index = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.parse(start), LocalDate.parse(target)).toInt() - 1
         onNodeWithTag("calendar-agenda").performScrollToIndex(index)

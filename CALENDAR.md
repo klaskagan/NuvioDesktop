@@ -117,7 +117,13 @@ and `RedesignTypography`.
   column. Narrow Week grids scroll horizontally as a whole.
 - Day/Week load bounded adjacent ranges through scrolling, with no load buttons.
   Keep earlier loaded Day dates available. Preserve the visible key and pixel
-  offset on prepend. Empty Day browsing still advances the date used by the
+  offset on prepend. A revealed Day/Week range starts one lead week before the
+  revealed date's week (`calendarRevealStart`), so the revealed day or week is
+  never the list's top edge: on the first weekday the first scroll up used to
+  hit the edge and stall on a fetch (`dayScrollsBackwardSmoothlyAndPrependingKeepsAnchor`
+  checks Week and Day). Week keeps the week being read in place when releases
+  arrive and rows above it resize (`weekKeepsTheWeekBeingReadWhenEarlierWeeksLoad`).
+  Empty Day browsing still advances the date used by the
   toolbar and view switching. Reveal a selected date only after its data and
   actual rendered list are ready, using deferred list positioning.
 - Month reserves six rows via `calendarMonthGridRange` (42 slots), independently

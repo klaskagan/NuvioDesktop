@@ -170,6 +170,11 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   and `NuvioPosterCard`'s placeholder are the references. Check: Search "simpsons"
   with btttr custom posters on (The Simpsons Quiz Show).
 - Preserve the visible item's stable key and pixel offset when prepending data.
+- Anchor on the item being read, not just the first visible one. LazyColumn holds its first
+  visible item, often a sliver of the previous row; when that row's data loads and it grows, the
+  row being read is pushed down. Calendar Week re-anchors on the row crossing a quarter of the
+  viewport during composition (`KeepReadingWeekAnchor`), skipping a still-unmeasured request;
+  `weekKeepsTheWeekBeingReadWhenEarlierWeeksLoad` catches a repeat.
   Do not reveal earlier items by rebuilding the list at index zero. If an index is
   necessary, derive it from the actual rendered list, including synthetic headers.
   Reserve the key of an optional initial shelf before its request completes.

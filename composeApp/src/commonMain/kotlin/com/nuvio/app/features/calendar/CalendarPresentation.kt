@@ -13,6 +13,15 @@ internal fun calendarWeekStart(date: String, firstWeekday: Int): String {
     val weekday = ((isoEpochDay(date) + 3) % 7 + 7).toInt() % 7 // Monday = 0
     return calendarDatePlusDays(date, -((weekday - firstWeekday + 7) % 7))
 }
+/**
+ * Day/Week ranges open one week before the revealed date's week, so the revealed day or week is
+ * never the list's first item: the first scroll up moves through loaded dates instead of hitting
+ * the edge and waiting for an earlier fetch (on the first weekday that was every reveal of today).
+ */
+internal const val CalendarRevealLeadDays = 7
+internal const val CalendarRevealRangeDays = 28 + CalendarRevealLeadDays
+internal fun calendarRevealStart(date: String, firstWeekday: Int): String =
+    calendarDatePlusDays(calendarWeekStart(date, firstWeekday), -CalendarRevealLeadDays)
 internal fun calendarMonthLength(year: Int, month: Int): Int = when (month) {
     2 -> if (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) 29 else 28
     4, 6, 9, 11 -> 30
