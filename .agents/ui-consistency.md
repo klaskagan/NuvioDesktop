@@ -155,6 +155,10 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   Do not flash an empty message or a zero count while replacement data is pending.
   Keep successful content/artwork visible during same-account refresh; account or
   profile changes must still clear private content and invalidate stale responses.
+- Totals over paged data (a month's watch count, a week's stats) appear only once
+  paging covers the whole period; until then show the label alone or "–", never a
+  partial number. History's header kicker and Board tiles are the reference
+  (`coveredFrom` in `HistoryScreen.kt`).
 - Retry must restart the failed request. Setting an error screen back to Loading
   leaves it there when the request effect is keyed only by an unchanged ID.
   Use the retry counter in `PersonDetailScreen` as the reference.

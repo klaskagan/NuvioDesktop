@@ -31,6 +31,14 @@ import com.nuvio.app.features.tracking.TrackingHistorySource
 import com.nuvio.app.features.tracking.TrackingMediaKind
 import com.nuvio.app.features.tracking.TrackingMediaReference
 import com.nuvio.app.features.watchprogress.findWatchProgressEpisode
+import com.nuvio.app.isDesktop
+import com.nuvio.app.features.home.components.HomeBoardSideColumnMinWidth
+import com.nuvio.app.features.trakt.calendarDatePlusDays
+import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import org.jetbrains.compose.resources.pluralStringResource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
@@ -87,7 +95,7 @@ private fun HistoryAgenda(
         }
     }
 
-    val groups = remember(timeline.events, filter) {
+    val liveGroups = remember(timeline.events, filter) {
         timeline.events.filter { event ->
             when (filter) {
                 CalendarFilter.All -> true
@@ -96,20 +104,42 @@ private fun HistoryAgenda(
             }
         }.groupBy { historyLocalDate(it) ?: today }
     }
+    // A refetch (filter change, profile return) keeps the last loaded days on screen, dimmed and
+    // inert, until the new timeline answers, instead of flashing an empty page.
+    var retained by remember { mutableStateOf<Map<String, List<TrackingHistoryEvent>>>(emptyMap()) }
+    LaunchedEffect(timeline.loaded, liveGroups) { if (timeline.loaded) retained = liveGroups }
+    val stale = isDesktop && !timeline.loaded && retained.isNotEmpty()
+    val groups = if (stale) retained else liveGroups
+    val listAlpha by animateFloatAsState(if (stale) 0.45f else 1f, tween(220), label = "history_stale")
     val style = calendarAgendaPosterStyle(globalStyle, globalStyle.historyLandscapeModeEnabled)
+    // Desktop redesign: History sits on the shell's ambient backdrop (steered by the newest watch in
+    // view) with Home's margins, a board of the latest watch and the week, then one frosted tile
+    // per day. Mobile keeps the original agenda.
+    val redesign = isDesktop
+    val backdropController = LocalBackdropFocusController.current.takeIf { isDesktop }
     CompositionLocalProvider(
         LocalPosterCardStyleOverride provides style,
         LocalContentColor provides MaterialTheme.colorScheme.onBackground,
     ) {
+      RedesignTypography(enabled = isDesktop) {
+       BoxWithConstraints(
+            Modifier.fillMaxSize()
+                .then(if (backdropController == null) Modifier.background(MaterialTheme.colorScheme.background) else Modifier),
+       ) {
+        val gutter = if (isDesktop) desktopPageHorizontalPaddingForWidth(maxWidth.value) else 24.dp
+        val topPadding = if (isDesktop) ((topChromePadding ?: 16.dp) - 4.dp).coerceAtLeast(8.dp)
+            else ((topChromePadding ?: 16.dp) - 20.dp).coerceAtLeast(8.dp)
         BoxWithConstraints(
-            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-                .padding(top = ((topChromePadding ?: 16.dp) - 20.dp).coerceAtLeast(8.dp))
-                .padding(horizontal = 24.dp).testTag("history-screen"),
+            Modifier.fillMaxSize().padding(top = topPadding).padding(horizontal = gutter).testTag("history-screen"),
         ) {
             val landscape = style.catalogLandscapeModeEnabled
-            val cardWidth = minOf(maxWidth, if (landscape) 224.dp else 142.dp)
-            val widthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
-            val columns = artworkFixedGridColumns(widthPx, 0.dp, cardWidth)
+            val minCardWidth = minOf(maxWidth, if (landscape) 224.dp else 142.dp)
+            val gridWidth = (maxWidth - if (redesign) HistoryTilePadding * 2 else 0.dp).coerceAtLeast(minCardWidth)
+            val widthPx = with(LocalDensity.current) { gridWidth.roundToPx() }
+            val columns = artworkFixedGridColumns(widthPx, 0.dp, minCardWidth)
+            // Desktop rows fill the tile: the cards share the spare width instead of leaving a gap.
+            val cardWidth = if (redesign) ((gridWidth - HistoryCardSpacing * (columns - 1)) / columns).coerceAtLeast(minCardWidth) else minCardWidth
+            val wideBoard = maxWidth >= HomeBoardSideColumnMinWidth
             val rowsByDate = remember(groups, columns) { groups.mapValues { (_, events) -> events.chunked(columns) } }
             val cardRows = remember(rowsByDate, unknownTitle, metadata.toMap()) {
                 rowsByDate.mapValues { (_, rows) ->
@@ -151,14 +181,16 @@ private fun HistoryAgenda(
                         }
                     }
             }
-            val dayIndices = remember(rowsByDate) {
-                rowsByDate.values.runningFold(0) { index, rows -> index + 1 + rows.size }.dropLast(1)
+            // Desktop leads with the board item; each day is one heading item plus its rows.
+            val leadItems = if (redesign) 1 else 0
+            val dayIndices = remember(rowsByDate, leadItems) {
+                rowsByDate.values.runningFold(leadItems) { index, rows -> index + 1 + rows.size }.dropLast(1)
             }
             val dates = groups.keys.toList()
             val visibleDate by remember {
                 derivedStateOf { list.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString()?.substringBefore(':') }
             }
-            val selected = seekDate ?: visibleDate?.takeIf { it in groups } ?: today
+            val selected = seekDate ?: visibleDate?.takeIf { it in groups } ?: dates.firstOrNull() ?: today
 
             fun scrollToDate(date: String) {
                 val index = dates.indexOfFirst { it <= date }.takeIf { it >= 0 } ?: dates.lastIndex
@@ -179,6 +211,19 @@ private fun HistoryAgenda(
                     seekDate = null
                 }
             }
+
+            // The newest watch on the day in view steers the shell backdrop, only while active.
+            val focusEvent = groups[selected]?.firstOrNull() ?: timeline.events.firstOrNull()
+            val backdropArt = focusEvent?.let { it.landscapeArtwork ?: it.episodeScreenshot ?: it.media.posterUrl }
+            ScreenActivityEffect(backdropController, backdropArt) { isActive ->
+                if (isActive) backdropController?.base = backdropArt
+            }
+            val oldestLoaded = timeline.events.lastOrNull()?.let(::historyLocalDate)
+            fun coveredFrom(date: String) = timeline.loaded && (timeline.nextCursor == null || oldestLoaded != null && oldestLoaded < date)
+            val month = selected.take(7)
+            val monthCount = groups.filterKeys { it.startsWith(month) }.values.sumOf { it.size }
+            val screenTitle = stringResource(Res.string.history_title)
+            val kicker = if (coveredFrom("$month-01")) "$screenTitle · ${pluralStringResource(Res.plurals.history_watch_count, monthCount, monthCount)}" else screenTitle
 
             Column(Modifier.fillMaxSize()) {
                 CalendarAgendaToolbar(
@@ -203,6 +248,9 @@ private fun HistoryAgenda(
                         PosterCardStyleRepository.setHistoryLandscapeModeEnabled(!globalStyle.historyLandscapeModeEnabled)
                     },
                     tagPrefix = "history",
+                    title = if (redesign) CalendarPlatform.monthLabel(selected) else null,
+                    subtitle = if (redesign && selected in groups) CalendarPlatform.dayLabel(selected) else null,
+                    kicker = if (redesign) kicker else null,
                 )
                 if (timeline.removalFailed) Text(stringResource(Res.string.history_remove_failed), Modifier.padding(vertical = 8.dp))
                 if (timeline.failed) Row(verticalAlignment = Alignment.CenterVertically) {
@@ -211,43 +259,82 @@ private fun HistoryAgenda(
                         Text(stringResource(Res.string.history_retry))
                     }
                 }
-                    LazyColumn(
-                        state = list,
-                        modifier = Modifier.fillMaxWidth().weight(1f).testTag("history-agenda")
-                            .agendaScrollLoading(
-                                list,
-                                enabled = active && timeline.loaded && !timeline.failed && seekDate == null && timeline.nextCursor != null,
-                                loading = timeline.loading,
-                                onLater = {
-                                    timeline.nextCursor?.let { cursor -> request = { timeline.load(cursor) } }
-                                },
-                            ),
-                        contentPadding = PaddingValues(bottom = 24.dp),
-                    ) {
-                        if (groups.isEmpty() && timeline.loaded && !timeline.loading) item {
-                            Text(stringResource(Res.string.history_empty), Modifier.padding(vertical = 24.dp))
+                if (redesign) Spacer(Modifier.height(12.dp))
+                val openCard = onPosterClick.takeUnless { stale }
+                val onActions: ((HistoryCard) -> Unit)? = if (timeline.removing || stale) null else { card ->
+                    actionAnchor = PosterZoomAnchorHolder.consume()
+                    actionCard = card
+                }
+                LazyColumn(
+                    state = list,
+                    modifier = Modifier.fillMaxWidth().weight(1f).testTag("history-agenda")
+                        .graphicsLayer { alpha = listAlpha }
+                        .agendaScrollLoading(
+                            list,
+                            enabled = active && timeline.loaded && !timeline.failed && seekDate == null && timeline.nextCursor != null,
+                            loading = timeline.loading,
+                            onLater = {
+                                timeline.nextCursor?.let { cursor -> request = { timeline.load(cursor) } }
+                            },
+                        ),
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                ) {
+                    if (redesign) item(key = "board") {
+                        val newest = cardRows.values.firstOrNull()?.firstOrNull()?.firstOrNull()
+                        val covered = !stale && coveredFrom(calendarDatePlusDays(today, -6))
+                        HistoryBoard(
+                            latest = newest,
+                            latestDate = newest?.let { historyLocalDate(it.event) },
+                            today = today,
+                            stats = if (covered) historyWeekStats(groups.values.flatten(), today) else null,
+                            topShow = if (covered) historyTopShow(groups.values.flatten(), today) else null,
+                            wide = wideBoard,
+                            onOpen = openCard?.let { open -> { card -> card.detail?.let(open) } },
+                            modifier = Modifier.padding(bottom = 10.dp).animateItem(),
+                        )
+                    }
+                    if (redesign && groups.isEmpty() && !timeline.loaded && !timeline.failed) item(key = "skeleton") {
+                        Column(Modifier.animateItem(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            repeat(2) { HistoryDayTileSkeleton(columns, cardWidth, landscape, Modifier.padding(top = 14.dp)) }
                         }
-                        cardRows.forEach { (date, rows) ->
+                    }
+                    if (groups.isEmpty() && timeline.loaded && !timeline.loading) item(key = "empty") {
+                        Text(
+                            stringResource(Res.string.history_empty),
+                            Modifier.padding(vertical = 24.dp).animateItem(),
+                            style = if (redesign) redesignText(15.sp, color = RedesignColors.textSecondary) else LocalTextStyle.current,
+                        )
+                    }
+                    cardRows.forEach { (date, rows) ->
+                        val count = groups.getValue(date).size
+                        val isToday = date == today
+                        if (!redesign) {
+                            item(key = date) { DaySectionHeading(date, count, isToday, watchHistory = true) }
+                            itemsIndexed(rows, key = { _, row -> historyRowKey(date, row.first().event.id) }) { index, row ->
+                                HistoryMediaRow(row, cardWidth, if (index == rows.lastIndex) 28.dp else 8.dp, openCard, onActions)
+                            }
+                        } else {
                             item(key = date) {
-                                DaySectionHeading(date, groups.getValue(date).size, date == today, watchHistory = true)
+                                Box(Modifier.animateItem().padding(top = 14.dp).historyDayTile(isFirst = true, isLast = false, highlighted = isToday)) {
+                                    HistoryTileHeading(date, count, isToday)
+                                }
                             }
                             itemsIndexed(rows, key = { _, row -> historyRowKey(date, row.first().event.id) }) { index, row ->
+                                val last = index == rows.lastIndex
+                                Box(Modifier.animateItem().historyDayTile(isFirst = false, isLast = last, highlighted = isToday)) {
                                     HistoryMediaRow(
-                                        cards = row,
-                                        cardWidth = cardWidth,
-                                        bottomPadding = if (index == rows.lastIndex) 28.dp else 8.dp,
-                                        onPosterClick = onPosterClick,
-                                        onActions = if (timeline.removing) null else { card ->
-                                            actionAnchor = PosterZoomAnchorHolder.consume()
-                                            actionCard = card
-                                        },
+                                        row, cardWidth, if (last) 16.dp else 4.dp, openCard, onActions,
+                                        Modifier.padding(horizontal = HistoryTilePadding),
                                     )
+                                }
                             }
                         }
-
                     }
+                }
             }
         }
+       }
+      }
         actionCard?.takeIf { active }?.let { card ->
             PosterZoomOverlayPortal { haze ->
             NuvioPosterZoomActionOverlay(
@@ -293,10 +380,11 @@ private fun HistoryMediaRow(
     bottomPadding: Dp,
     onPosterClick: ((MetaPreview) -> Unit)?,
     onActions: ((HistoryCard) -> Unit)?,
+    modifier: Modifier = Modifier,
 ) {
     val landscape = rememberPosterCardStyleUiState().catalogLandscapeModeEnabled
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = bottomPadding),
+        modifier = modifier.fillMaxWidth().padding(top = 8.dp, bottom = bottomPadding),
         horizontalArrangement = Arrangement.spacedBy(HistoryCardSpacing),
     ) {
         cards.forEach { card ->
@@ -347,7 +435,7 @@ private fun TrackingHistoryEvent.toHistoryCard(
     return HistoryCard(this, preview, detail, episode?.title?.takeIf(String::isNotBlank) ?: video?.title)
 }
 
-private data class HistoryCard(
+internal data class HistoryCard(
     val event: TrackingHistoryEvent,
     val preview: MetaPreview,
     val detail: MetaPreview?,

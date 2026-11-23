@@ -102,7 +102,7 @@ val LocalShellBackdropMode = compositionLocalOf { ShellBackdropMode.Default }
  * Tabs whose screens are drawn for the shell backdrop. Other tabs keep the plain theme
  * background until they are redesigned; the shell fades the backdrop out for them.
  */
-internal val ShellBackdropTabs = setOf(AppScreenTab.Home, AppScreenTab.Search, AppScreenTab.Calendar)
+internal val ShellBackdropTabs = setOf(AppScreenTab.Home, AppScreenTab.Search, AppScreenTab.Calendar, AppScreenTab.History)
 
 /**
  * Start inset a backdrop screen applies to its content (not its backdrop) when the frame around
