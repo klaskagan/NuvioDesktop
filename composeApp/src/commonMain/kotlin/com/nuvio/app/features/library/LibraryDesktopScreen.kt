@@ -46,7 +46,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -193,12 +192,11 @@ internal fun LibraryDesktopScreen(
         if (active) backdrop?.base = backdropArt
     }
 
-    // The merged top bar turns solid once content has moved under it.
+    // Library's header is pinned under the merged bar and every pane scrolls below it, so nothing
+    // ever moves under the bar: it keeps its resting surface (Calendar and History don't report
+    // either). Reporting the pane's scroll turned the bar solid over a fixed header.
     val navBarScrollState = LocalNuvioNavBarScrollState.current
-    LaunchedEffect(paneState, navBarScrollState) {
-        snapshotFlow { paneState.firstVisibleItemIndex * 80f + paneState.firstVisibleItemScrollOffset }
-            .collect { navBarScrollState?.updateScrollOffset(AppScreenTab.Library, it) }
-    }
+    LaunchedEffect(navBarScrollState) { navBarScrollState?.updateScrollOffset(AppScreenTab.Library, 0f) }
     ScreenActivityEffect(scrollToTopRequests, paneState) { active ->
         if (!active) return@ScreenActivityEffect
         scrollToTopRequests.collect { paneState.animateScrollToItem(0) }

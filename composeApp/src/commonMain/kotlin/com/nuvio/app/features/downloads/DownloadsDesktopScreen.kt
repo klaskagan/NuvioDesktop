@@ -10,6 +10,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -93,6 +94,8 @@ import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignIconButton
 import com.nuvio.app.core.ui.RedesignMessageTile
 import com.nuvio.app.core.ui.RedesignOverflowButton
+import com.nuvio.app.core.ui.mousePressAndHoldAt
+import com.nuvio.app.core.ui.secondaryClick
 import com.nuvio.app.core.ui.RedesignPageLead
 import com.nuvio.app.core.ui.RedesignPillButton
 import com.nuvio.app.core.ui.RedesignTightTracking
@@ -536,7 +539,10 @@ private fun downloadActions(
         DownloadStatus.Paused -> add(RedesignAction(stringResource(Res.string.action_resume), Icons.Rounded.Download, tag = "downloads-action-resume") { item.toggleTransfer() })
         DownloadStatus.Failed -> add(RedesignAction(stringResource(Res.string.action_retry), Icons.Rounded.Refresh, tag = "downloads-action-retry") { item.toggleTransfer() })
     }
-    add(RedesignAction(stringResource(Res.string.cw_action_go_to_details), Icons.Rounded.Info, tag = "downloads-action-details") { onOpenDetails(item) })
+    // Cloud files have no details page.
+    if (item.parentMetaType != com.nuvio.app.features.cloud.CloudLibraryContentType) {
+        add(RedesignAction(stringResource(Res.string.cw_action_go_to_details), Icons.Rounded.Info, tag = "downloads-action-details") { onOpenDetails(item) })
+    }
     add(RedesignAction(stringResource(Res.string.action_delete), Icons.Rounded.DeleteOutline, destructive = true, tag = "downloads-action-delete") { onDelete(item) })
 }
 
@@ -581,7 +587,13 @@ private fun DownloadListRow(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val fill by animateColorAsState(if (hovered) RedesignColors.fillStrong else RedesignColors.fill, tween(160), label = "download_row_fill")
-    Column(modifier.fillMaxWidth().clip(shape).background(fill).hoverable(interaction).testTag("downloads-row-${item.id}")) {
+    val menu = remember { MutableTransitionState(false) }
+    Column(
+        modifier.fillMaxWidth().clip(shape).background(fill).hoverable(interaction)
+            .secondaryClick { menu.targetState = true }
+            .mousePressAndHoldAt { menu.targetState = true }
+            .testTag("downloads-row-${item.id}"),
+    ) {
         if (divider) Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -612,6 +624,7 @@ private fun DownloadListRow(
                 contentDescription = stringResource(Res.string.details_actions_menu_label),
                 actions = actions,
                 modifier = Modifier.testTag("downloads-more-${item.id}"),
+                menu = menu,
             )
         }
     }
@@ -633,10 +646,14 @@ private fun DownloadCard(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val border by animateColorAsState(if (hovered) RedesignColors.hairlineFocused else RedesignColors.hairline, tween(180), label = "download_card_border")
+    val menu = remember { MutableTransitionState(false) }
+    val openMenu: (() -> Unit)? = actions?.let { { menu.targetState = true } }
     Box(
         modifier.aspectRatio(16f / 9f).clip(shape).background(RedesignColors.fill).border(1.dp, border, shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
+            .secondaryClick(openMenu)
+            .mousePressAndHoldAt(openMenu?.let { open -> { _ -> open() } })
             .testTag(tag),
     ) {
         DownloadArt(art, Modifier.fillMaxSize())
@@ -655,6 +672,7 @@ private fun DownloadCard(
                 actions = actions,
                 size = 32.dp,
                 modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).testTag("$tag-more"),
+                menu = menu,
             )
         }
     }

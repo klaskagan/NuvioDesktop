@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.nuvio.app.core.ui.nuvioFocusBorder
+import com.nuvio.app.core.ui.mousePressAndHoldAt
 import com.nuvio.app.core.ui.secondaryClickAt
 import com.nuvio.app.core.ui.nuvioDesktopDragScroll
 import com.nuvio.app.core.ui.SkeletonBlock
@@ -85,7 +86,6 @@ internal fun StreamCard(
     val badgeImages = stream.badges.filter { it.imageURL.isNotBlank() }
     val hasBadges = badgeImages.isNotEmpty() || (showFileSizeBadges && stream.behaviorHints.videoSize != null)
     var cardPositionInRoot by remember { mutableStateOf(Offset.Zero) }
-    var cardSize by remember { mutableStateOf(Offset.Zero) }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -120,7 +120,6 @@ internal fun StreamCard(
                 if (isDesktop) {
                     Modifier.onGloballyPositioned { coordinates ->
                         cardPositionInRoot = coordinates.positionInRoot()
-                        cardSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
                     }
                 } else {
                     Modifier
@@ -130,15 +129,18 @@ internal fun StreamCard(
             .combinedClickable(
                 enabled = enabled,
                 onClick = onClick,
-                // Desktop: press and hold opens the same actions menu as a right-click (Downloads tells
-                // people to long-press a stream), anchored at the card's centre.
-                onLongClick = if (isDesktop) {
-                    onSecondaryClick?.let { open -> { open(cardPositionInRoot + cardSize / 2f) } }
-                } else {
-                    onLongClick
-                },
+                onLongClick = if (isDesktop) null else onLongClick,
             )
             .secondaryClickAt(
+                if (isDesktop && enabled && onSecondaryClick != null) {
+                    { localPosition -> onSecondaryClick(cardPositionInRoot + localPosition) }
+                } else {
+                    null
+                },
+            )
+            // Desktop: press and hold opens the same actions menu as a right-click (Downloads tells
+            // people so), at the pointer. combinedClickable ignores mouse long-presses.
+            .mousePressAndHoldAt(
                 if (isDesktop && enabled && onSecondaryClick != null) {
                     { localPosition -> onSecondaryClick(cardPositionInRoot + localPosition) }
                 } else {

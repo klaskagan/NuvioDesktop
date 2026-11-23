@@ -129,9 +129,15 @@ Person Details opening with no transition). Apply these to every redesigned scre
   titles as landscape cards, and a show's episodes in place (Esc returns). Actions are a frosted ⋯
   menu (`RedesignOverflowButton`), not the mobile bottom sheet. Empty and error tiles everywhere use
   `RedesignMessageTile` (core/ui). `DownloadsDesktopUiTest` covers the lists, the show view and the menu.
-- **Desktop stream actions open on right-click and on press-and-hold.** `StreamCard` used to ignore
-  long-press on desktop while Downloads told people to long-press a stream to download; a held press
-  now opens the same actions menu at the card's centre.
+- **Desktop context actions open on right-click and on mouse press-and-hold.** Compose's
+  `combinedClickable(onLongClick)` ignores a mouse hold on desktop, so a "press and hold" promise
+  needs `mousePressAndHoldAt` (core/ui `SecondaryClick`, after the clickable so the hold swallows the
+  click); `redesignContextMenuTrigger` pairs it with right-click. Stream cards, Downloads rows and
+  cards, and Cloud rows / panel files use it; Cloud rows show `RedesignContextMenu` (the ⋯ menu's
+  popup, at the pointer): Play, Download file, Copy link, or Show files for a pack. The first fix
+  only swapped `onLongClick` and was never pressed in a test; `StreamCardActionsUiTest` and
+  `LibraryDesktopUiTest.cloudRowsOpenTheirActionsOnRightClickAndHold` hold with the mouse. In tests,
+  press at the node's centre: its top-left corner is outside a rounded clip and never hits.
 - **Frosted sidebars come in pairs.** A page with its own backdrop in a separate nav entry (Person)
   passes `frostedSidebar` to `DetailNavigationFrame` and insets its content, not its backdrop, by
   `LocalBackdropContentStartInset`. While two such entries cross, the one leaving hides its sidebar
@@ -246,6 +252,12 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   nested shelves independently scrollable and reset transient gesture work on
   disposal. `CalendarMonthPager.kt` and the shared history gesture helpers are
   references; thresholds and directions remain interaction-specific.
+- A list scrolling inside a tile (Library's Your lists, the Cloud files panel) keeps its wheel and
+  trackpad scroll: `Modifier.containedScroll()` before its scroller. Compose otherwise hands the
+  leftover at its end to the page, which then scrolls under the pointer. A nested-scroll connection
+  alone isn't enough on desktop: a wheel the list can't use bubbles to the page as a raw pointer
+  event, so the modifier consumes that too. Assert the page's scroll range, not a child's bounds.
+  `LibraryDesktopUiTest.yourListsKeepsItsScrollFromThePage`.
 
 ## Styling, meaning, and settings
 
@@ -445,7 +457,9 @@ solid, a 72% grey dim, see-through over Search's results). Keep these together:
 - "Scrolled" means content has moved under the surface. Tabs report it through
   `LocalNuvioNavBarScrollState` (Search must too; it once reported nothing, so posters ran under a
   clear bar). Detail pages report it, with their backdrop's tint, through
-  `LocalDetailTopBarState`. Report from a `snapshotFlow`: a `SideEffect` in the page's outer scope
+  `LocalDetailTopBarState`. A tab whose header stays pinned outside its scrolling panes (Library,
+  Calendar, History) reports 0: nothing passes under the bar, and Library's reported pane scroll
+  once turned the bar solid over a fixed header. Report from a `snapshotFlow`: a `SideEffect` in the page's outer scope
   never re-ran while the list scrolled, so the service page's bar stayed clear over its rows.
 - A band under the bar starts its surface below the bar, so translucent options don't double.
 - Tinted takes the colour actually behind the bar: the artwork's top strip under the backdrop's

@@ -143,6 +143,54 @@ class LibraryDesktopUiTest {
     }
 
     @Test
+    fun cloudRowsOpenTheirActionsOnRightClickAndHold() = libraryTest { harness ->
+        onNodeWithTag("library-source-Cloud").performClick()
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("library-cloud-list").fetchSemanticsNodes().isNotEmpty() }
+
+        // Right-click a single-file row: Play / Download file / Copy link at the pointer.
+        onNodeWithTag("library-cloud-row-rd:Torrent:movie").performMouseInput { rightClick(center) }
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("library-cloud-action-play-m1").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("library-cloud-action-download-m1").assertExists()
+        onNodeWithTag("library-cloud-action-copy-m1").assertExists()
+        snapshot("cloud-row-menu")
+        runOnIdle { assertTrue(harness.played == null, "right-click must not play") }
+        onNodeWithTag("library-cloud-action-play-m1").performClick()
+        runOnIdle { assertEquals("m1", harness.played) }
+
+        // Press and hold a season pack's row: Show files.
+        onNodeWithTag("library-cloud-row-rd:Torrent:show").performMouseInput { moveTo(center); press(); advanceEventTime(1_000); release() }
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("library-cloud-action-files").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("library-cloud-action-files").performClick()
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("library-cloud-panel").fetchSemanticsNodes().isNotEmpty() }
+
+        // A file in the panel has the same menu.
+        harness.played = null
+        onNodeWithTag("library-cloud-file-e2").performMouseInput { rightClick(center) }
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("library-cloud-action-play-e2").fetchSemanticsNodes().isNotEmpty() }
+        runOnIdle { assertTrue(AppKeyboardShortcuts.overlayEscape?.invoke() == true) }
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("library-cloud-action-play-e2").fetchSemanticsNodes().isEmpty() }
+        onNodeWithTag("library-cloud-panel").assertExists()
+        runOnIdle { assertTrue(harness.played == null) }
+    }
+
+    @Test
+    fun yourListsKeepsItsScrollFromThePage() = libraryTest { _ ->
+        fun pageOffset() = onNodeWithTag("library-shelves").fetchSemanticsNode().config
+            .getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange) { null }!!.value()
+        assertEquals(0f, pageOffset())
+        // Wheel well past the end of Your lists: the page under it stays put.
+        onNodeWithTag("library-your-lists").performMouseInput { enter(center); scroll(100f, ScrollWheel.Vertical) }
+        mainClock.advanceTimeBy(1_000)
+        waitForIdle()
+        assertEquals(0f, pageOffset(), "scrolling Your lists moved the page")
+        // The same wheel over the lead tile does scroll the page (the check above can fail).
+        onNodeWithTag("library-board-lead").performMouseInput { moveTo(center); scroll(100f, ScrollWheel.Vertical) }
+        mainClock.advanceTimeBy(1_000)
+        waitForIdle()
+        assertTrue(pageOffset() > 0f, "the page itself should still scroll")
+    }
+
+    @Test
     fun leadTilePlaysTheLatestSave() = libraryTest { harness ->
         onNodeWithTag("library-board-play").performClick()
         // The latest save in the fixtures is index 11 ("Anatomy of a Fall", a movie).

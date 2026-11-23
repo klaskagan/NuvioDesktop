@@ -3101,6 +3101,8 @@
     <string name="library_cloud_kind_item">Item</string>
     <string name="library_cloud_search_placeholder">Filter by title or file name</string>
     <string name="library_cloud_added">added %1$s</string>
+    <string name="library_cloud_show_files">Show files</string>
+    <string name="library_cloud_link_failed">Couldn't get a link for this file.</string>
     <string name="library_names_and">%1$s and %2$s</string>
     <string name="library_ago_today">today</string>
     <string name="library_ago_yesterday">yesterday</string>
@@ -3128,7 +3130,7 @@
         <item quantity="one">%1$d provider</item>
         <item quantity="other">%1$d providers</item>
     </plurals>
-    <string name="downloads_desktop_empty_message">Right-click a stream, or press and hold it, then choose Download file to watch it offline.</string>
+    <string name="downloads_desktop_empty_message">Open a title and right-click Play to list its streams. Then right-click a stream, or press and hold it, and choose Download file.</string>
     <string name="downloads_kind_movie">Movie</string>
     <string name="downloads_kind_show">Show</string>
     <plurals name="downloads_downloading_count">

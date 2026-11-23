@@ -69,6 +69,23 @@ import com.nuvio.app.core.ui.RedesignTightTracking
 import com.nuvio.app.core.ui.RedesignTileShape
 import com.nuvio.app.core.ui.SkeletonBlock
 import com.nuvio.app.core.ui.redesignText
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import com.nuvio.app.core.build.AppFeaturePolicy
+import com.nuvio.app.core.ui.NuvioToastController
+import com.nuvio.app.core.ui.RedesignAction
+import com.nuvio.app.core.ui.RedesignContextMenu
+import com.nuvio.app.core.ui.redesignContextMenuTrigger
+import com.nuvio.app.core.ui.containedScroll
+import com.nuvio.app.features.cloud.CloudLibraryFile
+import kotlinx.coroutines.launch
 import com.nuvio.app.features.cloud.CloudLibraryItem
 import com.nuvio.app.features.cloud.CloudLibraryItemType
 import com.nuvio.app.features.cloud.CloudLibraryProviderState
@@ -262,6 +279,12 @@ internal fun LazyListScope.libraryCloudItems(
                             shape = cloudRowShape(index, last),
                             divider = index > 0,
                             onClick = { actions.cloudSelectItem(item) },
+                            menuActions = item.playableFiles.singleOrNull()?.let { rememberCloudFileActions(item, it, actions) }
+                                ?: listOfNotNull(
+                                    RedesignAction(stringResource(Res.string.library_cloud_show_files), Icons.Outlined.Folder, tag = "library-cloud-action-files") {
+                                        actions.cloudSelectItem(item)
+                                    }.takeIf { item.playableFiles.size > 1 },
+                                ),
                             modifier = libraryDesktopItemModifier(),
                         )
                     }
@@ -308,9 +331,12 @@ private fun LibraryCloudRow(
     shape: Shape,
     divider: Boolean,
     onClick: () -> Unit,
+    menuActions: List<RedesignAction>,
     modifier: Modifier,
 ) {
     val playable = item.playableFiles.size
+    val menu = remember { MutableTransitionState(false) }
+    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val fill by animateColorAsState(
@@ -324,10 +350,15 @@ private fun LibraryCloudRow(
     )
     Column(modifier.fillMaxWidth().clip(shape).background(fill)) {
         if (divider) Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
+        Box {
+        RedesignContextMenu(menu, menuActions, menuAnchor)
         Row(
             Modifier.fillMaxWidth()
                 .hoverable(interaction)
                 .clickable(enabled = playable > 0, interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
+                .redesignContextMenuTrigger(
+                    menuActions.takeIf { it.isNotEmpty() }?.let { { at -> menuAnchor = at; menu.targetState = true } },
+                )
                 .semantics { this.selected = selected }
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .testTag("library-cloud-row-${item.stableKey}"),
@@ -378,6 +409,7 @@ private fun LibraryCloudRow(
                     )
                 }
             }
+        }
         }
     }
 }
@@ -430,18 +462,24 @@ internal fun LibraryCloudFilePanel(
             )
         }
         Spacer(Modifier.height(10.dp))
-        Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+        Column(Modifier.fillMaxWidth().weight(1f, fill = false).containedScroll().verticalScroll(rememberScrollState())) {
             if (files.isEmpty()) {
                 Text(stringResource(Res.string.cloud_library_no_files_message), style = redesignText(13.sp, color = RedesignColors.textSecondary))
             }
             files.forEach { file ->
+                val fileActions = rememberCloudFileActions(item, file, actions)
+                val menu = remember { MutableTransitionState(false) }
+                var menuAnchor by remember { mutableStateOf(Offset.Zero) }
                 val interaction = remember { MutableInteractionSource() }
                 val hovered by interaction.collectIsHoveredAsState()
                 val fill by animateColorAsState(if (hovered) Color.White.copy(alpha = 0.08f) else Color.Transparent, tween(140), label = "cloud_file_fill")
+                Box {
+                RedesignContextMenu(menu, fileActions, menuAnchor)
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(fill)
                         .hoverable(interaction)
                         .clickable(interactionSource = interaction, indication = null, role = Role.Button) { actions.cloudPlayFile(item, file) }
+                        .redesignContextMenuTrigger { at -> menuAnchor = at; menu.targetState = true }
                         .padding(horizontal = 10.dp, vertical = 10.dp)
                         .testTag("library-cloud-file-${file.stableKey}"),
                     verticalAlignment = Alignment.CenterVertically,
@@ -456,7 +494,42 @@ internal fun LibraryCloudFilePanel(
                     Text(cloudFileLabel(file), style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     file.sizeBytes?.let { Text(formatCloudBytes(it), style = redesignText(13.sp, color = RedesignColors.textMuted)) }
                 }
+                }
             }
+        }
+    }
+}
+
+/** Play / Download file / Copy link for one cloud file: the row and file-panel context menu. */
+@Composable
+private fun rememberCloudFileActions(
+    item: CloudLibraryItem,
+    file: CloudLibraryFile,
+    actions: LibraryDesktopActions,
+): List<RedesignAction> {
+    val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
+    val play = stringResource(Res.string.action_play)
+    val download = stringResource(Res.string.streams_download_file)
+    val copy = stringResource(Res.string.streams_copy_link)
+    val copied = stringResource(Res.string.streams_link_copied)
+    val failed = stringResource(Res.string.library_cloud_link_failed)
+    val key = file.stableKey
+    return remember(item, file, actions) {
+        buildList {
+            add(RedesignAction(play, Icons.Rounded.PlayArrow, tag = "library-cloud-action-play-$key") { actions.cloudPlayFile(item, file) })
+            if (AppFeaturePolicy.downloadsEnabled) {
+                add(RedesignAction(download, Icons.Rounded.Download, tag = "library-cloud-action-download-$key") {
+                    scope.launch { NuvioToastController.show(downloadCloudFile(item, file)?.toastMessage() ?: failed) }
+                })
+            }
+            add(RedesignAction(copy, Icons.Rounded.ContentCopy, tag = "library-cloud-action-copy-$key") {
+                scope.launch {
+                    val url = resolveCloudFileUrl(item, file)
+                    if (url != null) clipboard.setText(AnnotatedString(url))
+                    NuvioToastController.show(if (url != null) copied else failed)
+                }
+            })
         }
     }
 }

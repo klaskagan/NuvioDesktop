@@ -50,7 +50,7 @@ class DownloadsDesktopUiTest {
     @Test
     fun emptyStateTellsDesktopHowToDownload() = downloadsTest(emptyList()) { _, _ ->
         onNodeWithTag("downloads-empty").assertIsDisplayed()
-        onNodeWithText("Right-click a stream", substring = true).assertIsDisplayed()
+        onNodeWithText("right-click Play", substring = true).assertIsDisplayed()
         snapshot("downloads-empty")
     }
 

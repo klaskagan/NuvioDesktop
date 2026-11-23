@@ -49,6 +49,14 @@ internal fun cloudFileLabel(file: CloudLibraryFile): String {
     return if (title.isBlank()) code else "$code · $title"
 }
 
+/** Season and episode from a file name ("Show.S02E03…" → 2 to 3). */
+internal fun cloudEpisodeOf(file: CloudLibraryFile): Pair<Int, Int>? =
+    EpisodeToken.find(file.name)?.let { it.groupValues[1].toInt() to it.groupValues[2].toInt() }
+
+/** A show's title without its season tag: "Severance S02" → "Severance". */
+internal fun cloudShowTitle(raw: String): String =
+    cloudDisplayTitle(raw).replace(SeasonToken, "").replace(Regex("""\s{2,}"""), " ").trim().ifBlank { cloudDisplayTitle(raw) }
+
 /** Episode order for a season pack; files without an episode keep their name order after them. */
 internal fun cloudFileSortKey(file: CloudLibraryFile): String =
     EpisodeToken.find(file.name)?.let { "0-${pad(it.groupValues[1].toInt(), 3)}-${pad(it.groupValues[2].toInt(), 4)}" }

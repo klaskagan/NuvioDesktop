@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import com.nuvio.app.core.ui.containedScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.BookmarkAdd
@@ -276,7 +277,8 @@ private fun LibraryListsTile(
                 style = redesignText(12.sp, FontWeight.Medium, RedesignColors.textMuted),
             )
         }
-        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
+        // Its own scroll ends at its last list; the page under it doesn't take over.
+        Column(Modifier.fillMaxWidth().weight(1f).containedScroll().verticalScroll(rememberScrollState()).testTag("library-your-lists")) {
             sections.forEach { section -> LibraryListRow(section, onOpen) }
         }
     }
