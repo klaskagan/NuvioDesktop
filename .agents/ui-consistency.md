@@ -123,6 +123,9 @@ Person Details opening with no transition). Apply these to every redesigned scre
   `CloudLibraryPresentation.kt`, `CloudLibraryPresentationTest`), not by the provider's transport
   type; rows show files, size, provider and when it was added (`addedAtEpochMs` from TorBox
   `created_at` and Premiumize file dates), and the header says when the list was refreshed.
+  A list opened from the shelves is a grid: the layout button then offers the shelves and goes back
+  to them, leaving the layout setting alone (`libraryLayoutToggle`, shared with the test harness so
+  the test runs the real decision). It used to switch the setting to grid, which only hid Back.
 - **Downloads is redesigned on desktop** (`DownloadsDesktopScreen.kt`, mobile keeps `DownloadsScreen`):
   its route sits in `DetailNavigationFrame` with its own backdrop like a service page, Library's
   header shape with Pause all and the folder button, active transfers as one frosted list, finished

@@ -97,6 +97,16 @@ class LibraryDesktopUiTest {
         runOnIdle { assertEquals(null, harness.opened) }
         assertEquals(LibraryLayoutMode.HORIZONTAL, harness.layout)
 
+        // While a list is open the layout button offers the shelves and returns to them,
+        // leaving the setting alone (it used to switch the setting to grid and just hide Back).
+        onNodeWithTag("library-list-row-favorites").performClick()
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("library-grid").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("library-layout-toggle").assertContentDescriptionEquals("Show horizontal shelves")
+        onNodeWithTag("library-layout-toggle").performClick()
+        waitUntil(timeoutMillis = 3_000) { onAllNodesWithTag("library-shelves").fetchSemanticsNodes().isNotEmpty() }
+        runOnIdle { assertEquals(null, harness.opened) }
+        assertEquals(LibraryLayoutMode.HORIZONTAL, harness.layout)
+
         // View all on a shelf opens that list too.
         onNodeWithTag("library-shelf-watchlist").performScrollTo()
         onAllNodesWithContentDescription("View All", useUnmergedTree = true).onFirst().performClick()
@@ -297,8 +307,7 @@ class LibraryDesktopUiTest {
             actions = LibraryDesktopActions(
                 selectViewMode = { h.mode = it; h.opened = null },
                 toggleLayout = {
-                    h.layout = if (h.layout == LibraryLayoutMode.HORIZONTAL) LibraryLayoutMode.VERTICAL else LibraryLayoutMode.HORIZONTAL
-                    h.opened = null
+                    libraryLayoutToggle(listOpened, h.layout)?.let { h.layout = it } ?: run { h.opened = null }
                 },
                 openList = { h.opened = it.type },
                 closeList = { h.opened = null },

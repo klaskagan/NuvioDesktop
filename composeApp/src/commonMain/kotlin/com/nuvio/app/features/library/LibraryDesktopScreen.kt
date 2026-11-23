@@ -305,7 +305,8 @@ private fun LibraryDesktopHeader(
             // Three reserved slots, so switching source never moves a control.
             when (pane) {
                 LibraryDesktopPane.Shelves, LibraryDesktopPane.Grid -> {
-                    val showGrid = model.layoutMode == LibraryLayoutMode.HORIZONTAL
+                    // Offers the other view than the one on screen; an opened list is a grid.
+                    val showGrid = model.layoutMode == LibraryLayoutMode.HORIZONTAL && model.openedListKey == null
                     RedesignIconButton(
                         contentDescription = stringResource(
                             if (showGrid) Res.string.library_layout_show_vertical else Res.string.library_layout_show_horizontal,
@@ -570,4 +571,15 @@ internal fun LibraryCloseListButton(onClick: () -> Unit) {
         vector = Icons.AutoMirrored.Rounded.ArrowBack,
         modifier = Modifier.testTag("library-list-back"),
     )
+}
+
+/**
+ * The layout button: the layout to switch the setting to, or null to close the list opened from the
+ * shelves. That list already shows as a grid, so the button offers the shelves and goes back to them
+ * (as Back / Esc) without touching the setting; it used to set grid, which only hid Back.
+ */
+internal fun libraryLayoutToggle(listOpened: Boolean, layout: LibraryLayoutMode): LibraryLayoutMode? = when {
+    listOpened -> null
+    layout == LibraryLayoutMode.HORIZONTAL -> LibraryLayoutMode.VERTICAL
+    else -> LibraryLayoutMode.HORIZONTAL
 }

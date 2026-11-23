@@ -375,14 +375,9 @@ fun LibraryScreen(
                     closeList()
                 },
                 toggleLayout = {
-                    if (displaySettings.layoutMode == LibraryLayoutMode.HORIZONTAL) {
-                        // Switching to the grid from an opened list keeps that list.
-                        if (listOpened) openedListKey?.let(LibraryDisplaySettingsRepository::setSelectedSection)
-                        LibraryDisplaySettingsRepository.setLayoutMode(LibraryLayoutMode.VERTICAL)
-                    } else {
-                        LibraryDisplaySettingsRepository.setLayoutMode(LibraryLayoutMode.HORIZONTAL)
-                    }
-                    closeList()
+                    libraryLayoutToggle(listOpened, displaySettings.layoutMode)
+                        ?.let(LibraryDisplaySettingsRepository::setLayoutMode)
+                        ?: closeList()
                 },
                 openList = openList,
                 closeList = closeList,
