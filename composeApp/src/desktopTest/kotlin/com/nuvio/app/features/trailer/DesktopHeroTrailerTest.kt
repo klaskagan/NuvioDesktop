@@ -1,6 +1,5 @@
 package com.nuvio.app.features.trailer
 
-import com.nuvio.app.features.details.CornerTrailerStyle
 import com.nuvio.app.features.details.DesktopHeroTrailerAttempt
 import com.nuvio.app.features.details.DesktopHeroTrailerEnd
 import com.nuvio.app.features.details.MetaTrailer
@@ -107,10 +106,6 @@ class DesktopHeroTrailerTest {
         assertTrue(replay.markReady())
         assertEquals(DesktopHeroTrailerEnd.Failed, replay.finish(DesktopHeroTrailerEnd.Failed))
         assertNull(replay.finish(DesktopHeroTrailerEnd.Completed))
-    }
-
-    @Test fun unknownCornerTrailerStyleFallsBackToTvStyle() {
-        assertEquals(CornerTrailerStyle.TvStyle, CornerTrailerStyle.fromStoredValue("unknown"))
     }
 
     private fun trailer(

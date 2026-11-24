@@ -147,10 +147,7 @@ import com.nuvio.app.features.details.components.DetailProductionSection
 import com.nuvio.app.features.details.components.DetailSeriesContent
 import com.nuvio.app.features.details.components.DesktopHeroTrailerPreview
 import com.nuvio.app.features.details.components.rememberDesktopHeroTrailer
-import com.nuvio.app.features.details.components.DesktopArtworkAccent
-import com.nuvio.app.features.details.components.LocalDetailsArtworkText
 import com.nuvio.app.features.details.components.DesktopDetailBackdrop
-import com.nuvio.app.features.details.components.DesktopDetailHero
 import com.nuvio.app.features.details.components.DetailSeriesListEpisode
 import com.nuvio.app.features.details.components.DetailSeriesListHeader
 import com.nuvio.app.features.details.components.DetailTrailersSection
@@ -1184,16 +1181,6 @@ fun MetaDetailsScreen(
                         }
                     },
                 )
-                val replayCornerTrailer: () -> Unit = {
-                    val completed = completedDesktopTrailer
-                    if (!isLeavingDetails && completed != null) {
-                        completedDesktopTrailer = null
-                        fadingDesktopAttempt = null
-                        desktopHeroAttempt = null
-                        replayDesktopTrailer = completed
-                        replayCount++
-                    }
-                }
                 val headerTarget = if (isHeroCollapsed.value) 1f else 0f
                 val headerProgressState = animateFloatAsState(
                     targetValue = headerTarget,
@@ -1324,14 +1311,8 @@ fun MetaDetailsScreen(
                         metaScreenSettingsUiState.items.any { it.key == key && it.enabled }
                     }
                     val useDesktopDetailLayout = isDesktop && screenMaxWidth >= 1000.dp
-                    // The board replaces the wide desktop hero; the hero branch below is unreachable while this holds.
+                    // The board is the wide desktop layout.
                     val useBoard = boardLayout
-                    val cornerTrailerStyle = metaScreenSettingsUiState.cornerTrailerStyle.takeIf {
-                        useDesktopDetailLayout && !useBoard && heroTrailerPlaybackEnabled &&
-                            metaScreenSettingsUiState.heroTrailerLayout == HeroTrailerLayout.Corner
-                    }
-                    val useCornerAccent = cornerTrailerStyle == CornerTrailerStyle.TvStyle ||
-                        cornerTrailerStyle == CornerTrailerStyle.CleanSplit
                     val viewportHeight = maxHeight
                     val screenHeight = maxHeight
                     val desktopPageHorizontalPadding = desktopPageHorizontalPaddingForWidth(screenMaxWidth.value)
@@ -1392,9 +1373,7 @@ fun MetaDetailsScreen(
                         dominantPainterColorState.color
                     }
                     val dominantBackdropTargetColor = when {
-                        useCornerAccent && (dominantBackdropImageBitmap != null || dominantBackdropPainter != null) ->
-                            colorScheme.background.blendTowards(extractedDominantColor, fraction = 0.25f)
-                        !useCornerAccent && dominantColorEnabled ->
+                        dominantColorEnabled ->
                             dominantBackdropBlendColor(extractedDominantColor, colorScheme.background)
                         else -> colorScheme.background
                     }
@@ -1585,7 +1564,7 @@ fun MetaDetailsScreen(
                             MetaScreenBackgroundMode.Cinematic -> if (cinematicBackground && !useDesktopDetailLayout) {
                                 ArtworkBackdrop(image = cinematicBackdrop)
                             }
-                            MetaScreenBackgroundMode.DominantColor -> if (deferredMetaWorkAllowed && !useCornerAccent) {
+                            MetaScreenBackgroundMode.DominantColor -> if (deferredMetaWorkAllowed) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -1593,60 +1572,8 @@ fun MetaDetailsScreen(
                                 )
                             }
                         }
-                        if (useCornerAccent) {
-                            DesktopArtworkAccent(backdrop = meta.background, poster = meta.poster)
-                        } else if (useDesktopDetailLayout && !useBoard) {
-                            DesktopDetailBackdrop(
-                                meta = meta,
-                                viewportHeight = viewportHeight,
-                                heroTrailerReady = heroTrailerReady && cornerTrailerStyle == null,
-                                heroTrailer = desktopTrailer.takeIf { cornerTrailerStyle == null && heroTrailerSourceUrl != null },
-                                heroGradientColor = dominantBackdropColor.takeIf { dominantColorEnabled },
-                                onBackdropLoaded = { painter -> dominantBackdropPainter = painter },
-                            )
-
-                            if (backgroundMode == MetaScreenBackgroundMode.Cinematic) {
-                                DesktopDetailBackdrop(
-                                    meta = meta,
-                                    viewportHeight = viewportHeight,
-                                    blurBackdrop = true,
-                                    modifier = Modifier
-                                        .zIndex(0.25f)
-                                        .graphicsLayer {
-                                            alpha = detailScrolledBackgroundProgress(
-                                                scrollOffsetPx = detailScrollOffsetPx(),
-                                                heroHeightPx = heroHeightPx.intValue,
-                                            )
-                                        },
-                                )
-                            }
-
-                            val scrolledBackgroundColor = if (dominantColorEnabled) {
-                                dominantBackdropColor
-                            } else {
-                                colorScheme.background
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .zIndex(0.5f)
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        alpha = detailScrolledBackgroundAlpha(
-                                            scrollOffsetPx = detailScrollOffsetPx(),
-                                            heroHeightPx = heroHeightPx.intValue,
-                                            maxAlpha = if (backgroundMode == MetaScreenBackgroundMode.Cinematic) {
-                                                DetailScrolledBackgroundCinematicMaxAlpha
-                                            } else {
-                                                DetailScrolledBackgroundDefaultMaxAlpha
-                                            },
-                                        )
-                                    }
-                                    .background(scrolledBackgroundColor),
-                            )
-                        }
                         CompositionLocalProvider(
-                            LocalOnBackdrop provides ((!useCornerAccent && backgroundMode.usesBackdropBackground) || (useBoard && boardBackdrop != null)),
-                            LocalDetailsArtworkText provides useCornerAccent,
+                            LocalOnBackdrop provides (backgroundMode.usesBackdropBackground || (useBoard && boardBackdrop != null)),
                         ) {
                             RedesignTypography(enabled = useBoard) {
                             LazyColumn(
@@ -1664,53 +1591,6 @@ fun MetaDetailsScreen(
                                         args = boardSectionArgs,
                                         board = boardArgs,
                                         hasContent = sectionArgs::hasContent,
-                                    )
-                                } else if (useDesktopDetailLayout) {
-                                    item(
-                                        key = "detail-desktop-hero",
-                                        contentType = "detail-hero",
-                                    ) {
-                                        DesktopDetailHero(
-                                            meta = meta,
-                                            showOverallRatings = metaScreenSettingsUiState.showOverallRatings,
-                                            isMdbListActive = mdbListSettings.isActive,
-                                            playButtonLabel = playButtonLabel,
-                                            isPrimaryPlayEnabled = isPrimaryPlayEnabled,
-                                            isSaved = isSaved,
-                                            isWatched = isWatched,
-                                            onHeightChanged = { heroHeightPx.intValue = it },
-                                            heroTrailerSourceUrl = heroTrailerSourceUrl,
-                                            heroTrailerReady = heroTrailerReady,
-                                            cornerTrailerStyle = cornerTrailerStyle,
-                                            cornerTrailer = desktopTrailer,
-                                            onCornerArtworkLoaded = { dominantBackdropPainter = it },
-                                            cornerAccent = dominantBackdropColor,
-                                            onReplayCornerTrailer = replayCornerTrailer.takeIf { completedDesktopTrailer != null },
-                                            heroTrailerMuted = heroTrailerMuted,
-                                            onHeroTrailerMuteToggle = {
-                                                HeroTrailerAudioState.toggleMuted()
-                                            },
-                                            onPlayClick = onPrimaryPlayClick,
-                                            onPlayLongClick = if (showManualPlayOption) onPrimaryPlayLongClick else null,
-                                            onShuffleClick = if (showShuffleButton) ({
-                                                if (shuffleSettings.enabled) saveShuffle(shuffleSettings.copy(enabled = false)) else showShuffle = true
-                                            }) else null,
-                                            shuffleEnabled = shuffleSettings.enabled,
-                                            onWatchedClick = toggleWatched,
-                                            onSaveClick = toggleSaved,
-                                            onSaveLongClick = openLibraryListPicker,
-                                        )
-                                    }
-                                    configuredMetaSectionItems(
-                                        settings = metaScreenSettingsUiState.copy(
-                                            items = metaScreenSettingsUiState.items.filterNot {
-                                                it.key in desktopHeroOwnedMetaSectionKeys
-                                            },
-                                        ),
-                                        args = sectionArgs,
-                                        isTablet = true,
-                                        contentHorizontalPadding = desktopPageHorizontalPadding,
-                                        contentMaxWidth = Dp.Unspecified,
                                     )
                                 } else {
                                     item(

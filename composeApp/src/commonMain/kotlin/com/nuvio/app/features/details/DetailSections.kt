@@ -129,10 +129,8 @@ import com.nuvio.app.features.details.components.DetailProductionSection
 import com.nuvio.app.features.details.components.DetailSeriesContent
 import com.nuvio.app.features.details.components.DesktopHeroTrailerPreview
 import com.nuvio.app.features.details.components.rememberDesktopHeroTrailer
-import com.nuvio.app.features.details.components.DesktopArtworkAccent
 import com.nuvio.app.features.details.components.LocalDetailsArtworkText
 import com.nuvio.app.features.details.components.DesktopDetailBackdrop
-import com.nuvio.app.features.details.components.DesktopDetailHero
 import com.nuvio.app.features.details.components.DetailSeriesListEpisode
 import com.nuvio.app.features.details.components.DetailSeriesListHeader
 import com.nuvio.app.features.details.components.DetailTrailersSection

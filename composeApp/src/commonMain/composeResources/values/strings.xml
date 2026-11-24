@@ -1132,15 +1132,6 @@
     <string name="settings_meta_details_description">Runtime, status, release, language, and related info.</string>
     <string name="settings_meta_hero_trailer_playback">Hero Trailer Playback</string>
     <string name="settings_meta_hero_trailer_playback_description">Play trailer previews in the metadata hero when a trailer is available.</string>
-    <string name="settings_meta_hero_trailer_layout">Hero trailer layout</string>
-    <string name="settings_meta_hero_trailer_layout_description">Choose where trailers play in the Details hero.</string>
-    <string name="settings_meta_hero_trailer_backdrop">Backdrop</string>
-    <string name="settings_meta_hero_trailer_corner">Corner</string>
-    <string name="settings_meta_corner_trailer_style">Corner trailer style</string>
-    <string name="settings_meta_corner_trailer_style_description">Choose how the trailer and artwork appear in wide Details windows.</string>
-    <string name="settings_meta_corner_trailer_tv_style">TV-style hero</string>
-    <string name="settings_meta_corner_trailer_framed">Framed trailer</string>
-    <string name="settings_meta_corner_trailer_clean_split">Clean split header</string>
     <string name="detail_replay_trailer">Replay trailer</string>
     <string name="detail_board_tab_stats">Your stats</string>
     <string name="detail_board_tab_cast">Cast &amp; crew</string>

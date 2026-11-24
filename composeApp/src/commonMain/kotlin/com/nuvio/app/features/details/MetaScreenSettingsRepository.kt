@@ -76,34 +76,11 @@ enum class MetaScreenBackgroundMode {
     }
 }
 
-enum class HeroTrailerLayout(val storedValue: String) {
-    Backdrop("backdrop"),
-    Corner("corner");
-
-    companion object {
-        fun fromStoredValue(value: String): HeroTrailerLayout =
-            entries.firstOrNull { it.storedValue == value } ?: Backdrop
-    }
-}
-
-enum class CornerTrailerStyle(val storedValue: String) {
-    TvStyle("tv_style"),
-    Framed("framed"),
-    CleanSplit("clean_split");
-
-    companion object {
-        fun fromStoredValue(value: String): CornerTrailerStyle =
-            entries.firstOrNull { it.storedValue == value } ?: TvStyle
-    }
-}
-
 data class MetaScreenSettingsUiState(
     val items: List<MetaScreenSectionItem> = emptyList(),
     val backgroundMode: MetaScreenBackgroundMode = MetaScreenBackgroundMode.Default,
     val cinematicBackground: Boolean = MetaScreenBackgroundMode.Default.usesBackdropBackground,
     val heroTrailerPlayback: Boolean = false,
-    val heroTrailerLayout: HeroTrailerLayout = HeroTrailerLayout.Backdrop,
-    val cornerTrailerStyle: CornerTrailerStyle = CornerTrailerStyle.TvStyle,
     val trailerPlayerBackend: TrailerPlayerBackend = TrailerPlayerBackend.YouTube,
     val tabLayout: Boolean = false,
     val episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal,
@@ -158,9 +135,6 @@ private data class StoredMetaScreenSettingsPayload(
     val cinematicBackground: Boolean = false,
     @SerialName("hero_trailer_playback")
     val heroTrailerPlayback: Boolean = false,
-    @SerialName("hero_trailer_layout")
-    val heroTrailerLayout: String = HeroTrailerLayout.Backdrop.storedValue,
-    val cornerTrailerStyle: String = CornerTrailerStyle.TvStyle.storedValue,
     @SerialName("trailer_player_backend")
     val trailerPlayerBackend: String = TrailerPlayerBackend.YouTube.storedValue,
     @SerialName("tvStyleLayout")
@@ -248,8 +222,6 @@ object MetaScreenSettingsRepository {
     private var preferences: MutableMap<MetaScreenSectionKey, StoredMetaScreenSectionPreference> = mutableMapOf()
     private var backgroundMode: MetaScreenBackgroundMode = MetaScreenBackgroundMode.Default
     private var trailerPlayerBackend = TrailerPlayerBackend.YouTube
-    private var heroTrailerLayout = HeroTrailerLayout.Backdrop
-    private var cornerTrailerStyle = CornerTrailerStyle.TvStyle
     private var heroTrailerPlayback: Boolean = false
     private var tabLayout: Boolean = false
     private var episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal
@@ -271,8 +243,6 @@ object MetaScreenSettingsRepository {
             if (parsed != null) {
                 backgroundMode = MetaScreenBackgroundMode.parse(parsed.backgroundMode)
                     ?: MetaScreenBackgroundMode.fromLegacyCinematic(parsed.cinematicBackground)
-                heroTrailerLayout = HeroTrailerLayout.fromStoredValue(parsed.heroTrailerLayout)
-                cornerTrailerStyle = CornerTrailerStyle.fromStoredValue(parsed.cornerTrailerStyle)
                 heroTrailerPlayback = parsed.heroTrailerPlayback
                 trailerPlayerBackend = TrailerPlayerBackend.parse(parsed.trailerPlayerBackend)
                 tabLayout = parsed.tabLayout
@@ -298,8 +268,6 @@ object MetaScreenSettingsRepository {
         hasLoaded = false
         preferences.clear()
         backgroundMode = MetaScreenBackgroundMode.Default
-        heroTrailerLayout = HeroTrailerLayout.Backdrop
-        cornerTrailerStyle = CornerTrailerStyle.TvStyle
         heroTrailerPlayback = false
         trailerPlayerBackend = TrailerPlayerBackend.YouTube
         tabLayout = false
@@ -326,20 +294,6 @@ object MetaScreenSettingsRepository {
     fun setTrailerPlayerBackend(backend: TrailerPlayerBackend) {
         ensureLoaded()
         trailerPlayerBackend = backend
-        publish()
-        persist()
-    }
-
-    fun setHeroTrailerLayout(layout: HeroTrailerLayout) {
-        ensureLoaded()
-        heroTrailerLayout = layout
-        publish()
-        persist()
-    }
-
-    fun setCornerTrailerStyle(style: CornerTrailerStyle) {
-        ensureLoaded()
-        cornerTrailerStyle = style
         publish()
         persist()
     }
@@ -410,8 +364,6 @@ object MetaScreenSettingsRepository {
         hasLoaded = false
         preferences.clear()
         backgroundMode = MetaScreenBackgroundMode.Default
-        heroTrailerLayout = HeroTrailerLayout.Backdrop
-        cornerTrailerStyle = CornerTrailerStyle.TvStyle
         heroTrailerPlayback = false
         trailerPlayerBackend = TrailerPlayerBackend.YouTube
         tabLayout = false
@@ -467,8 +419,6 @@ object MetaScreenSettingsRepository {
         ensureLoaded()
         preferences.clear()
         backgroundMode = MetaScreenBackgroundMode.Default
-        heroTrailerLayout = HeroTrailerLayout.Backdrop
-        cornerTrailerStyle = CornerTrailerStyle.TvStyle
         heroTrailerPlayback = false
         trailerPlayerBackend = TrailerPlayerBackend.YouTube
         tabLayout = false
@@ -545,8 +495,6 @@ object MetaScreenSettingsRepository {
             backgroundMode = backgroundMode,
             cinematicBackground = backgroundMode.usesBackdropBackground,
             heroTrailerPlayback = heroTrailerPlayback,
-            heroTrailerLayout = heroTrailerLayout,
-            cornerTrailerStyle = cornerTrailerStyle,
             trailerPlayerBackend = trailerPlayerBackend,
             tabLayout = tabLayout,
             episodeCardStyle = episodeCardStyle,
@@ -565,8 +513,6 @@ object MetaScreenSettingsRepository {
                     backgroundMode = MetaScreenBackgroundMode.persist(backgroundMode),
                     cinematicBackground = backgroundMode.usesBackdropBackground,
                     heroTrailerPlayback = heroTrailerPlayback,
-                    heroTrailerLayout = heroTrailerLayout.storedValue,
-                    cornerTrailerStyle = cornerTrailerStyle.storedValue,
                     trailerPlayerBackend = trailerPlayerBackend.storedValue,
                     tabLayout = tabLayout,
                     episodeCardStyle = MetaEpisodeCardStyle.persist(episodeCardStyle),

@@ -10,7 +10,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import com.nuvio.app.AppEnvironment
 import com.nuvio.app.core.ui.NuvioTheme
-import com.nuvio.app.features.details.components.DesktopDetailHero
 import com.nuvio.app.features.details.*
 import java.io.File
 import javax.imageio.ImageIO
@@ -24,82 +23,6 @@ import org.junit.Test
 class DetailsTrailerUiTest {
     @Test fun nativeDetailsOpensOverlayAndOnlyExpandEntersFullscreen() = checkOverlay(TrailerPlayerBackend.Native)
     @Test fun youtubeDetailsOpensOverlayAndOnlyExpandEntersFullscreen() = checkOverlay(TrailerPlayerBackend.YouTube)
-
-    @Test fun cornerStylesKeepHeroGeometryAndOnlyAccentStylesOfferReplay() =
-        runDesktopComposeUiTest(width = 1080, height = 900) {
-            val style = mutableStateOf(CornerTrailerStyle.TvStyle)
-            val ready = mutableStateOf(true)
-            val completed = mutableStateOf(false)
-            val trailer: @Composable (Modifier, Boolean) -> Unit = { modifier, _ ->
-                Box(modifier.background(Color.Blue).testTag("trailer-frame"))
-            }
-            val meta = MetaDetails(
-                "corner-fixture", "movie", "Corner trailer fixture",
-                description = "An extended synopsis for the trailer layout. ".repeat(24),
-            )
-            setContent {
-                NuvioTheme {
-                    DesktopDetailHero(
-                        meta = meta,
-                        showOverallRatings = false,
-                        isMdbListActive = false,
-                        playButtonLabel = "Play fixture",
-                        isPrimaryPlayEnabled = true,
-                        isSaved = false,
-                        isWatched = false,
-                        onHeightChanged = {},
-                        heroTrailerSourceUrl = if (ready.value) "fixture" else null,
-                        heroTrailerReady = ready.value,
-                        heroTrailerMuted = false,
-                        onHeroTrailerMuteToggle = {},
-                        onPlayClick = {},
-                        onPlayLongClick = null,
-                        onShuffleClick = null,
-                        shuffleEnabled = false,
-                        onWatchedClick = {},
-                        onSaveClick = {},
-                        onSaveLongClick = null,
-                        cornerTrailerStyle = style.value,
-                        cornerTrailer = trailer,
-                        cornerAccent = Color.DarkGray,
-                        onReplayCornerTrailer = if (completed.value) {
-                            {
-                                completed.value = false
-                                ready.value = true
-                            }
-                        } else null,
-                    )
-                }
-            }
-
-            for (variant in CornerTrailerStyle.entries) {
-                runOnIdle {
-                    style.value = variant
-                    ready.value = true
-                    completed.value = false
-                }
-                val play = onNodeWithText("Play fixture")
-                val playBounds = play.fetchSemanticsNode().boundsInRoot
-                val media = onNodeWithTag("trailer-frame")
-                assertTrue(playBounds.right < media.fetchSemanticsNode().boundsInRoot.left)
-                onNodeWithContentDescription("Mute trailer").assertIsDisplayed()
-                runOnIdle {
-                    ready.value = false
-                    completed.value = true
-                }
-                assertEquals(playBounds, play.fetchSemanticsNode().boundsInRoot)
-                onNodeWithContentDescription("Mute trailer").assertDoesNotExist()
-                val replay = onNodeWithText("Replay trailer")
-                if (variant == CornerTrailerStyle.Framed) {
-                    media.assertDoesNotExist()
-                    replay.assertDoesNotExist()
-                } else {
-                    replay.assertIsDisplayed().performClick()
-                    replay.assertDoesNotExist()
-                    onNodeWithContentDescription("Mute trailer").assertIsDisplayed()
-                }
-            }
-        }
 
     private fun checkOverlay(backend: TrailerPlayerBackend) = runDesktopComposeUiTest(width = 1280, height = 1000) {
         check(System.getProperty("nuvio.test.isolatedHome") == "true")
