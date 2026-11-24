@@ -1226,6 +1226,23 @@ object TmdbMetadataService {
         return response.backdrops.toImages(TmdbGalleryKind.Backdrop) + response.posters.toImages(TmdbGalleryKind.Poster)
     }
 
+    /** An episode's stills ("tv/{id}/season/{s}/episode/{e}/images"), best voted first, full size with a w780 thumbnail. */
+    internal suspend fun episodeStills(tmdbId: String, season: Int, episode: Int): List<TmdbGalleryImage> {
+        val response = fetch<TmdbEpisodeImagesResponse>(endpoint = "tv/$tmdbId/season/$season/episode/$episode/images") ?: return emptyList()
+        return response.stills.mapNotNull { file ->
+            val path = file.filePath?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            TmdbGalleryImage(
+                kind = TmdbGalleryKind.Backdrop,
+                url = buildImageUrl(path, "original") ?: return@mapNotNull null,
+                thumbnail = buildImageUrl(path, "w780"),
+                width = file.width,
+                height = file.height,
+                vote = file.voteAverage ?: 0.0,
+                textFree = true,
+            )
+        }.sortedByDescending { it.vote }
+    }
+
     /** One page of TMDB's recommendations for a film ([mediaType] "movie") or a series ("tv"). */
     internal suspend fun recommendationPage(tmdbId: String, mediaType: String, page: Int): Pair<List<MetaPreview>, Int?>? {
         val language = normalizeTmdbLanguage(TmdbSettingsRepository.snapshot().language)
@@ -2269,6 +2286,9 @@ internal data class TmdbGalleryImage(
     val vote: Double,
     val textFree: Boolean,
 )
+
+@Serializable
+private data class TmdbEpisodeImagesResponse(val stills: List<TmdbGalleryFile> = emptyList())
 
 @Serializable
 private data class TmdbGalleryResponse(

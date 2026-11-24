@@ -7,6 +7,9 @@ import com.nuvio.app.features.tmdb.TmdbMetadataService
 import com.nuvio.app.features.tmdb.TmdbService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -54,8 +57,8 @@ fun galleryVisible(images: List<GalleryImage>, filter: GalleryFilter): List<Gall
 
 /**
  * The Details gallery (design doc "Gallery"): TMDB backdrops and posters for the title, a series'
- * episode stills from its own metadata, and, with the user's Kinopoisk key, real film stills and
- * behind-the-scenes photos. Kinopoisk failing (no key, a bad key, the daily quota) leaves TMDB only.
+ * episode stills from TMDB, and, with the user's Kinopoisk key, stills and behind-the-scenes photos
+ * for films and series. Kinopoisk failing (no key, a bad key, the daily quota) leaves TMDB only.
  */
 object DetailGalleryRepository {
     private val mutex = Mutex()
@@ -66,10 +69,10 @@ object DetailGalleryRepository {
         mutex.withLock { cache[key]?.let { return it } }
         val isSeries = meta.type == "series"
         val images = coroutineScope {
+            val tmdbId = async { withTimeoutOrNull(4_000L) { TmdbService.ensureTmdbId(meta.id, meta.type, fallbackImdbId = meta.imdbId) } }
             val tmdb = async {
-                val tmdbId = withTimeoutOrNull(4_000L) { TmdbService.ensureTmdbId(meta.id, meta.type, fallbackImdbId = meta.imdbId) }
-                    ?: return@async emptyList()
-                runCatchingNonCancel { TmdbMetadataService.galleryImages(tmdbId, if (isSeries) "tv" else "movie") }.orEmpty().map { image ->
+                val id = tmdbId.await() ?: return@async emptyList()
+                runCatchingNonCancel { TmdbMetadataService.galleryImages(id, if (isSeries) "tv" else "movie") }.orEmpty().map { image ->
                     GalleryImage(
                         url = image.url,
                         thumbnail = image.thumbnail ?: image.url,
@@ -82,30 +85,56 @@ object DetailGalleryRepository {
                     )
                 }
             }
-            val kinopoisk = async {
-                if (isSeries) emptyList() else meta.imdbId?.let { KinopoiskGalleryRepository.images(it) }.orEmpty()
-            }
-            val stills = if (isSeries) {
-                meta.videos.filter { !it.thumbnail.isNullOrBlank() && (it.season ?: 0) > 0 }.map { video ->
-                    GalleryImage(
-                        url = video.thumbnail!!,
-                        thumbnail = video.thumbnail,
-                        kind = GalleryKind.EpisodeStill,
-                        source = GallerySource.Episodes,
-                        caption = listOfNotNull(
-                            if (video.season != null && video.episode != null) "S${video.season} E${video.episode}" else null,
-                            video.title.takeIf { it.isNotBlank() },
-                        ).joinToString(" · "),
-                    )
-                }
-            } else {
-                emptyList()
-            }
-            tmdb.await() + stills + kinopoisk.await()
+            // Kinopoisk covers films and series alike; it matches either by IMDb id.
+            val kinopoisk = async { meta.imdbId?.let { KinopoiskGalleryRepository.images(it) }.orEmpty() }
+            val stills = async { if (isSeries) episodeStills(meta, tmdbId.await()) else emptyList() }
+            tmdb.await() + stills.await() + kinopoisk.await()
         }
         mutex.withLock { cache[key] = images }
         return images
     }
+}
+
+/** Most episodes whose TMDB stills are fetched; later ones keep the image Details already has. */
+private const val EpisodeStillLookups = 60
+
+/**
+ * A series' episode stills: every still TMDB has for each episode (in episode order), captioned
+ * "S2 E3 · Title". Without a TMDB id, or for an episode TMDB has none for, the episode's own
+ * thumbnail from Details stands in.
+ */
+private suspend fun episodeStills(meta: MetaDetails, tmdbId: String?): List<GalleryImage> = coroutineScope {
+    val episodes = meta.videos.filter { (it.season ?: 0) > 0 && it.episode != null }
+        .sortedWith(compareBy({ it.season }, { it.episode }))
+    val gate = Semaphore(6)
+    episodes.mapIndexed { index, video ->
+        async {
+            val caption = listOfNotNull(
+                "S${video.season} E${video.episode}",
+                video.title.takeIf { it.isNotBlank() },
+            ).joinToString(" · ")
+            val fetched = if (tmdbId != null && index < EpisodeStillLookups) {
+                gate.withPermit {
+                    runCatchingNonCancel { TmdbMetadataService.episodeStills(tmdbId, video.season!!, video.episode!!) }.orEmpty()
+                }
+            } else emptyList()
+            fetched.map { still ->
+                GalleryImage(
+                    url = still.url,
+                    thumbnail = still.thumbnail ?: still.url,
+                    kind = GalleryKind.EpisodeStill,
+                    source = GallerySource.Episodes,
+                    width = still.width,
+                    height = still.height,
+                    caption = caption,
+                )
+            }.ifEmpty {
+                listOfNotNull(video.thumbnail?.takeIf { it.isNotBlank() }?.let {
+                    GalleryImage(url = it, thumbnail = it, kind = GalleryKind.EpisodeStill, source = GallerySource.Episodes, caption = caption)
+                })
+            }
+        }
+    }.awaitAll().flatten()
 }
 
 /**
