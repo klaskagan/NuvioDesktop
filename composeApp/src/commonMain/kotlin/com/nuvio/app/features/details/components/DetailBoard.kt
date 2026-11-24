@@ -114,6 +114,20 @@ import nuvio.composeapp.generated.resources.playback_unavailable
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import com.nuvio.app.features.details.MetaPerson
+import nuvio.composeapp.generated.resources.detail_board_created_by
+import nuvio.composeapp.generated.resources.detail_board_directed_by
+import nuvio.composeapp.generated.resources.detail_board_starring
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
 
 /** The board's height; the loading skeleton uses the same value so nothing moves when data arrives. */
 internal val DetailBoardHeight = 440.dp
@@ -247,6 +261,8 @@ internal fun BoardActionPill(
     modifier: Modifier = Modifier,
     active: Boolean = false,
     onLongClick: (() -> Unit)? = null,
+    /** Only the icon, while the Rate strip borrows the row's width. */
+    iconOnly: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -260,15 +276,26 @@ internal fun BoardActionPill(
         label = "board_action_fill",
     )
     val content by animateColorAsState(if (active) RedesignOnLight else RedesignColors.textPrimary, tween(180), label = "board_action_content")
+    val end by animateDpAsState(if (iconOnly) 13.dp else 18.dp, tween(BoardMotionMillis, easing = FastOutSlowInEasing), label = "board_action_end")
+    val start by animateDpAsState(if (iconOnly) 13.dp else 14.dp, tween(BoardMotionMillis, easing = FastOutSlowInEasing), label = "board_action_start")
     Row(
         modifier.height(44.dp).clip(CircleShape).background(fill).border(1.dp, RedesignColors.hairline, CircleShape)
             .boardClickable(interaction, onClick, onLongClick)
-            .padding(start = 14.dp, end = 18.dp),
+            .semantics { contentDescription = label }
+            .padding(start = start, end = end),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(label, style = redesignText(14.sp, FontWeight.SemiBold, content), maxLines = 1)
+        AnimatedVisibility(
+            visible = !iconOnly,
+            enter = fadeIn(tween(200)) + expandHorizontally(tween(BoardMotionMillis, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(120)) + shrinkHorizontally(tween(BoardMotionMillis, easing = FastOutSlowInEasing)),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(8.dp))
+                Text(label, style = redesignText(14.sp, FontWeight.SemiBold, content), maxLines = 1)
+            }
+        }
     }
 }
 
@@ -793,4 +820,60 @@ internal fun DetailBoardSkeleton(horizontalPadding: Dp, onBack: () -> Unit, isSe
             }
         }
     }
+}
+
+/** The crew and leading cast a credit line names: "Created by" or "Directed by", then "Starring". */
+internal data class BoardCredits(val lead: List<MetaPerson>, val starring: List<MetaPerson>)
+
+internal fun boardCredits(meta: MetaDetails, isSeries: Boolean, creatorRole: String, directorRole: String, writerRole: String): BoardCredits {
+    val crewRoles = setOf(creatorRole, directorRole, writerRole, "Creator", "Director", "Writer").map { it.lowercase() }.toSet()
+    val wanted = (if (isSeries) listOf(creatorRole, "Creator") else listOf(directorRole, "Director")).map { it.lowercase() }
+    val lead = meta.cast.filter { it.role?.lowercase() in wanted }.distinctBy { it.name }
+        .ifEmpty { if (isSeries) emptyList() else meta.director.map { MetaPerson(it, directorRole) } }
+        .take(3)
+    val starring = meta.cast.filter { it.role?.lowercase() !in crewRoles }.distinctBy { it.name }.take(3)
+    return BoardCredits(lead, starring)
+}
+
+/**
+ * Between the ratings and the overview: who made it and who is in it, as one line of prose that
+ * wraps at word boundaries. Every name opens that person; nothing is ever cut off. Hidden when
+ * there is no one to name.
+ */
+@Composable
+internal fun BoardCreditLine(
+    credits: BoardCredits,
+    isSeries: Boolean,
+    onPerson: ((MetaPerson) -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    if (credits.lead.isEmpty() && credits.starring.isEmpty()) return
+    val leadLabel = stringResource(if (isSeries) Res.string.detail_board_created_by else Res.string.detail_board_directed_by)
+    val starringLabel = stringResource(Res.string.detail_board_starring)
+    val nameStyle = SpanStyle(color = Color(0xFFDFE3E7), fontWeight = FontWeight.SemiBold)
+    val hoverStyle = TextLinkStyles(style = nameStyle, hoveredStyle = SpanStyle(color = RedesignColors.textPrimary, textDecoration = TextDecoration.Underline))
+    val text = remember(credits, leadLabel, starringLabel, onPerson) {
+        buildAnnotatedString {
+            fun group(label: String, people: List<MetaPerson>) {
+                append(label)
+                append(' ')
+                people.forEachIndexed { index, person ->
+                    if (onPerson != null) {
+                        withLink(LinkAnnotation.Clickable(tag = person.name, styles = hoverStyle) { onPerson(person) }) { append(person.name) }
+                    } else {
+                        withStyle(nameStyle) { append(person.name) }
+                    }
+                    if (index < people.lastIndex) append(", ")
+                }
+            }
+            if (credits.lead.isNotEmpty()) group(leadLabel, credits.lead)
+            if (credits.lead.isNotEmpty() && credits.starring.isNotEmpty()) append("  ·  ")
+            if (credits.starring.isNotEmpty()) group(starringLabel, credits.starring)
+        }
+    }
+    Text(
+        text,
+        style = redesignText(13.5.sp, color = RedesignColors.textMuted, lineHeight = 19.sp),
+        modifier = modifier.widthIn(max = 620.dp).testTag("detail_board_credit_line"),
+    )
 }

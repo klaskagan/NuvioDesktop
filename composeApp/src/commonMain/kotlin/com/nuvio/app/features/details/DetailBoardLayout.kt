@@ -114,6 +114,13 @@ import com.nuvio.app.features.details.components.DetailBoardTileHeights
 import nuvio.composeapp.generated.resources.detail_board_on_tv
 import nuvio.composeapp.generated.resources.detail_board_watch_party
 import nuvio.composeapp.generated.resources.detail_board_download
+import com.nuvio.app.features.details.components.BoardRateControl
+import com.nuvio.app.features.details.components.rememberFavoriteState
+import com.nuvio.app.features.details.components.BoardCreditLine
+import com.nuvio.app.features.details.components.boardCredits
+import nuvio.composeapp.generated.resources.person_role_creator
+import nuvio.composeapp.generated.resources.person_role_director
+import nuvio.composeapp.generated.resources.person_role_writer
 
 /** The episode the primary button would play, as the Up next tile shows it. */
 internal data class DetailBoardUpNext(
@@ -388,6 +395,14 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
             Spacer(Modifier.height(14.dp))
             BoardMetaLine(meta, stringResource(if (isSeries) Res.string.media_series else Res.string.media_movie))
             BoardRatings(meta, args.isMdbListActive, board.showOverallRatings)
+            val creatorRole = stringResource(Res.string.person_role_creator)
+            val directorRole = stringResource(Res.string.person_role_director)
+            val writerRole = stringResource(Res.string.person_role_writer)
+            val credits = remember(meta, isSeries) { boardCredits(meta, isSeries, creatorRole, directorRole, writerRole) }
+            if (credits.lead.isNotEmpty() || credits.starring.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                BoardCreditLine(credits, isSeries, onPerson = args.onCastClick?.let { open -> { person -> open(person, null) } })
+            }
             meta.description?.takeIf { it.isNotBlank() }?.let { overview ->
                 Spacer(Modifier.height(10.dp))
                 Text(
@@ -399,6 +414,9 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                 )
             }
             Spacer(Modifier.height(18.dp))
+            // While the Rate strip is open, Library, Watched and Trailer give up their labels so the
+            // row keeps its width.
+            var rateOpen by remember(meta.id) { mutableStateOf(false) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 BoardPlayButton(
                     label = args.playButtonLabel,
@@ -413,6 +431,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                     active = args.isSaved,
                     onClick = args.onSaveClick,
                     onLongClick = args.onSaveLongClick,
+                    iconOnly = rateOpen,
                     modifier = Modifier.testTag("detail_board_library"),
                 )
                 BoardActionPill(
@@ -420,6 +439,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                     icon = if (args.isWatched) Icons.Rounded.Check else Icons.Rounded.CheckCircleOutline,
                     active = args.isWatched,
                     onClick = args.onWatchedClick,
+                    iconOnly = rateOpen,
                     modifier = Modifier.testTag("detail_board_watched"),
                 )
                 val trailer = remember(meta.trailers) { rankDesktopHeroTrailers(meta.trailers).firstOrNull() ?: meta.trailers.firstOrNull() }
@@ -428,12 +448,17 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                         label = stringResource(Res.string.detail_board_trailer),
                         icon = Icons.Rounded.Movie,
                         onClick = { args.onTrailerClick(trailer) },
+                        iconOnly = rateOpen,
                         modifier = Modifier.testTag("detail_board_trailer"),
                     )
                 }
                 val ratingMedia = remember(meta) { meta.ratingReference() }
                 val ratingState by rememberRatingState(ratingMedia)
-                if (ratingState.isAvailable) DetailRating(media = ratingMedia, title = meta.name, state = ratingState)
+                val favoriteState = rememberFavoriteState(ratingMedia)
+                // Rate B rates the whole title; episodes are rated from their card's menu.
+                if (ratingState.isAvailable || favoriteState.isAvailable) {
+                    BoardRateControl(media = ratingMedia, rating = ratingState, favorite = favoriteState, onOpenChange = { rateOpen = it })
+                }
             }
         }
     }

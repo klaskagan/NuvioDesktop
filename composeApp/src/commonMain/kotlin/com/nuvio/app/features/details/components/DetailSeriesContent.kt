@@ -138,6 +138,8 @@ fun DetailSeriesContent(
     onEpisodeCardStyleChange: ((MetaEpisodeCardStyle) -> Unit)? = null,
     /** An episode click with the card's bounds, so Quick pick can open beside it. Wins over [onEpisodeClick]. */
     onEpisodeClickAt: ((MetaVideo, Rect?) -> Unit)? = null,
+    /** Right-click / press-and-hold with the card's bounds, for the board's context menu. Wins over [onEpisodeLongPress]. */
+    onEpisodeLongPressAt: ((MetaVideo, Rect?) -> Unit)? = null,
 ) {
     val hasVideos = meta.videos.isNotEmpty()
     if (meta.type != "series" && !hasVideos) return
@@ -200,6 +202,7 @@ fun DetailSeriesContent(
 
     val episodeBounds = remember(meta.id) { mutableMapOf<String, Rect>() }
     val episodeClick: ((MetaVideo) -> Unit)? = onEpisodeClickAt?.let { at -> { video: MetaVideo -> at(video, episodeBounds[video.id]) } } ?: onEpisodeClick
+    val episodeLongPress: ((MetaVideo) -> Unit)? = onEpisodeLongPressAt?.let { at -> { video: MetaVideo -> at(video, episodeBounds[video.id]) } } ?: onEpisodeLongPress
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val sizing = seriesContentSizing(maxWidth.value)
         val containerWidthDp = maxWidth.value
@@ -284,7 +287,7 @@ fun DetailSeriesContent(
                                 preferredEpisodeNumber = preferredEpisodeNumber,
                             ),
                             onEpisodeClick = episodeClick,
-                            onEpisodeLongPress = onEpisodeLongPress,
+                            onEpisodeLongPress = episodeLongPress,
                             episodeBounds = episodeBounds,
                         )
                     } else {
@@ -315,7 +318,7 @@ fun DetailSeriesContent(
                                     sizing = sizing,
                                     modifier = Modifier.onGloballyPositioned { episodeBounds[episode.id] = it.boundsInRoot() },
                                     onClick = { episodeClick?.invoke(episode) },
-                                    onLongPress = { onEpisodeLongPress?.invoke(episode) },
+                                    onLongPress = { episodeLongPress?.invoke(episode) },
                                 )
                             }
                         }
@@ -498,6 +501,7 @@ internal fun DetailSeriesListEpisode(
     onEpisodeLongPress: ((MetaVideo) -> Unit)?,
     modifier: Modifier = Modifier,
     onEpisodeClickAt: ((MetaVideo, Rect?) -> Unit)? = null,
+    onEpisodeLongPressAt: ((MetaVideo, Rect?) -> Unit)? = null,
 ) {
     var bounds by remember { mutableStateOf<Rect?>(null) }
     BoxWithConstraints(modifier = modifier.fillMaxWidth().onGloballyPositioned { bounds = it.boundsInRoot() }) {
@@ -524,7 +528,7 @@ internal fun DetailSeriesListEpisode(
             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
             sizing = sizing,
             onClick = { onEpisodeClickAt?.invoke(episode, bounds) ?: onEpisodeClick?.invoke(episode) },
-            onLongPress = { onEpisodeLongPress?.invoke(episode) },
+            onLongPress = { onEpisodeLongPressAt?.invoke(episode, bounds) ?: onEpisodeLongPress?.invoke(episode) },
         )
     }
 }

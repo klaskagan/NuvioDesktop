@@ -229,6 +229,25 @@ import com.nuvio.app.features.party.messageRes
 import com.nuvio.app.features.handoff.tvHandoffSupported
 import com.nuvio.app.features.handoff.detailsTvHandoffRequest
 import nuvio.composeapp.generated.resources.streams_resume_from_time
+import com.nuvio.app.features.details.components.BoardContextMenu
+import com.nuvio.app.features.details.components.BoardMenuAction
+import com.nuvio.app.features.details.components.BoardRateControl
+import com.nuvio.app.features.tracking.TrackingFavoriteState
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.CheckCircleOutline
+import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAddCheck
+import nuvio.composeapp.generated.resources.detail_board_choose_source
+import nuvio.composeapp.generated.resources.detail_board_rate_episode
+import nuvio.composeapp.generated.resources.episode_mark_unwatched
+import nuvio.composeapp.generated.resources.episode_mark_watched
+import nuvio.composeapp.generated.resources.episode_mark_previous_unwatched
+import nuvio.composeapp.generated.resources.episode_mark_previous_watched
+import nuvio.composeapp.generated.resources.episode_mark_season_unwatched
+import nuvio.composeapp.generated.resources.episode_mark_season_watched
+import com.nuvio.app.core.ui.RedesignColors
+import com.nuvio.app.core.ui.redesignText
+import nuvio.composeapp.generated.resources.detail_board_mark_previous_seasons
 
 private val watchedMarkerDiagnosticLog = Logger.withTag("WatchedMarkerDiag")
 private const val DetailScrolledBackgroundDefaultMaxAlpha = 0.86f
@@ -328,6 +347,8 @@ fun MetaDetailsScreen(
     var autoLoadAttempted by remember(type, id) { mutableStateOf(false) }
     var observedOfflineState by remember(type, id) { mutableStateOf(false) }
     var selectedEpisodeForActions by remember(type, id) { mutableStateOf<MetaVideo?>(null) }
+    // Where the board's episode menu opens: the card it was asked from.
+    var episodeMenuAnchor by remember(type, id) { mutableStateOf<Rect?>(null) }
     var selectedEpisodeZoomAnchor by remember(type, id) { mutableStateOf<PosterZoomAnchor?>(null) }
     var episodeToRate by remember(type, id) { mutableStateOf<MetaVideo?>(null) }
     val episodeOverlayHazeState = rememberHazeState()
@@ -1621,6 +1642,7 @@ fun MetaDetailsScreen(
                     // Resume: autoplay on plays, a downloaded copy plays, otherwise choose a source here.
                     var episodePick by remember(meta.id) { mutableStateOf<EpisodeQuickPick?>(null) }
                     val resumeTemplate = stringResource(Res.string.streams_resume_from_time, "{t}")
+                    var openEpisodeQuickPick: (MetaVideo, Rect?) -> Unit = { _, _ -> }
                     val onBoardEpisodeClick: (MetaVideo, Rect?) -> Unit = { video, anchor ->
                         val hasDownload = AppFeaturePolicy.downloadsEnabled && com.nuvio.app.features.downloads.DownloadsRepository.findPlayableDownload(
                             parentMetaId = meta.id,
@@ -1631,6 +1653,12 @@ fun MetaDetailsScreen(
                         if (showManualPlayOption || hasDownload || onPlayManually == null) {
                             onEpisodePlayClick(video)
                         } else {
+                            openEpisodeQuickPick(video, anchor)
+                        }
+                    }
+                    val primaryResumeLine = quickPickResumeLine(yourWayProgress, resumeTemplate)
+                    fun openEpisodeQuickPickImpl(video: MetaVideo, anchor: Rect?) {
+                        run {
                             val videoId = video.id.takeIf { it.isNotBlank() } ?: buildPlaybackVideoId(meta.id, video.season, video.episode, video.id)
                             val entry = watchProgressUiState.progressForVideo(videoId = videoId, parentMetaId = meta.id, seasonNumber = video.season, episodeNumber = video.episode)
                                 ?.takeUnless { it.isCompleted }
@@ -1651,7 +1679,7 @@ fun MetaDetailsScreen(
                             )
                         }
                     }
-                    val primaryResumeLine = quickPickResumeLine(yourWayProgress, resumeTemplate)
+                    openEpisodeQuickPick = ::openEpisodeQuickPickImpl
                     // With autoplay on, Play keeps starting playback and choosing a source opens Quick pick.
                     // With autoplay off, Play itself opens Quick pick in place of the full list.
                     val boardSectionArgs = (if (openQuickPick == null) sectionArgs else sectionArgs.copy(
@@ -1661,6 +1689,10 @@ fun MetaDetailsScreen(
                         boardStyle = true,
                         onEpisodeCardStyleChange = MetaScreenSettingsRepository::setEpisodeCardStyle,
                         onEpisodeClickAt = onBoardEpisodeClick,
+                        onEpisodeMenuAt = { video, anchor ->
+                            episodeMenuAnchor = anchor
+                            selectedEpisodeForActions = video
+                        },
                     )
                     val boardArgs = DetailBoardArgs(
                         onPlayAnchor = { boardPlayAnchor = it },
@@ -2031,7 +2063,62 @@ fun MetaDetailsScreen(
                                     progressByVideoId = progressByVideoId,
                                 )
                             }
-                            EpisodeWatchedActionSheet(
+                            val episodeSeasonLabel = selectedEpisode.season?.let {
+                                stringResource(Res.string.episodes_season, it)
+                            } ?: stringResource(Res.string.episodes_specials)
+                            if (useBoard) {
+                                val episodeRatingMedia = remember(meta, selectedEpisode) { meta.ratingReference(selectedEpisode) }
+                                val episodeRating by rememberRatingState(episodeRatingMedia)
+                                val code = listOfNotNull(selectedEpisode.season?.let { "S$it" }, selectedEpisode.episode?.let { "E$it" }).joinToString(" ")
+                                BoardContextMenu(
+                                    title = listOf(code, selectedEpisode.title).filter { it.isNotBlank() }.joinToString(" · "),
+                                    anchor = episodeMenuAnchor,
+                                    actions = listOfNotNull(
+                                        BoardMenuAction(stringResource(Res.string.detail_board_choose_source), Icons.Rounded.Tune, "detail_episode_menu_choose") {
+                                            openEpisodeQuickPick(selectedEpisode, episodeMenuAnchor)
+                                        }.takeIf { onPlayManually != null },
+                                        BoardMenuAction(
+                                            stringResource(if (isSelectedEpisodeWatched) Res.string.episode_mark_unwatched else Res.string.episode_mark_watched),
+                                            Icons.Rounded.CheckCircleOutline,
+                                            "detail_episode_menu_watched",
+                                        ) { WatchingActions.toggleEpisodeWatched(meta = meta, episode = selectedEpisode, isCurrentlyWatched = isSelectedEpisodeWatched) },
+                                        BoardMenuAction(
+                                            stringResource(if (arePreviousEpisodesWatched) Res.string.episode_mark_previous_unwatched else Res.string.episode_mark_previous_watched),
+                                            Icons.Rounded.DoneAll,
+                                            "detail_episode_menu_previous",
+                                        ) { WatchingActions.togglePreviousEpisodesWatched(meta = meta, episodes = previousEpisodes, areCurrentlyWatched = arePreviousEpisodesWatched) }
+                                            .takeIf { previousEpisodes.isNotEmpty() },
+                                        BoardMenuAction(
+                                            stringResource(if (isSeasonWatched) Res.string.episode_mark_season_unwatched else Res.string.episode_mark_season_watched, episodeSeasonLabel),
+                                            Icons.AutoMirrored.Rounded.PlaylistAddCheck,
+                                            "detail_episode_menu_season",
+                                        ) { WatchingActions.toggleSeasonWatched(meta = meta, episodes = seasonEpisodes, areCurrentlyWatched = isSeasonWatched) },
+                                    ),
+                                    onDismiss = {
+                                        selectedEpisodeForActions = null
+                                        episodeMenuAnchor = null
+                                    },
+                                    footer = if (episodeRating.isAvailable) {
+                                        {
+                                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text(
+                                                    stringResource(Res.string.detail_board_rate_episode, code).uppercase(),
+                                                    style = redesignText(11.sp, FontWeight.Medium, RedesignColors.textMuted),
+                                                    modifier = Modifier.padding(start = 6.dp),
+                                                )
+                                                BoardRateControl(
+                                                    media = episodeRatingMedia,
+                                                    rating = episodeRating,
+                                                    favorite = TrackingFavoriteState(),
+                                                    onOpenChange = {},
+                                                    height = 40.dp,
+                                                    alwaysOpen = true,
+                                                )
+                                            }
+                                        }
+                                    } else null,
+                                )
+                            } else EpisodeWatchedActionSheet(
                                 episode = selectedEpisode,
                                 seasonLabel = selectedEpisode.season?.let {
                                     stringResource(Res.string.episodes_season, it)
@@ -2104,7 +2191,27 @@ fun MetaDetailsScreen(
                                     )
                                 }
                             }
-                            SeasonWatchedActionSheet(
+                            if (useBoard) {
+                                // Seasons have no rating of their own in the tracking layer, so their menu ends at the actions.
+                                BoardContextMenu(
+                                    title = seasonLabel,
+                                    anchor = null,
+                                    actions = listOfNotNull(
+                                        BoardMenuAction(
+                                            stringResource(if (isSeasonWatched) Res.string.episode_mark_season_unwatched else Res.string.episode_mark_season_watched, seasonLabel),
+                                            Icons.AutoMirrored.Rounded.PlaylistAddCheck,
+                                            "detail_season_menu_watched",
+                                        ) { WatchingActions.toggleSeasonWatched(meta = meta, episodes = seasonEpisodes, areCurrentlyWatched = isSeasonWatched) },
+                                        BoardMenuAction(
+                                            stringResource(Res.string.detail_board_mark_previous_seasons),
+                                            Icons.Rounded.DoneAll,
+                                            "detail_season_menu_previous",
+                                        ) { WatchingActions.togglePreviousEpisodesWatched(meta = meta, episodes = previousSeasonEpisodes, areCurrentlyWatched = false) }
+                                            .takeIf { canMarkPreviousSeasons },
+                                    ),
+                                    onDismiss = { selectedSeasonForActions = null },
+                                )
+                            } else SeasonWatchedActionSheet(
                                 seasonLabel = seasonLabel,
                                 isSeasonWatched = isSeasonWatched,
                                 canMarkPreviousSeasons = canMarkPreviousSeasons,

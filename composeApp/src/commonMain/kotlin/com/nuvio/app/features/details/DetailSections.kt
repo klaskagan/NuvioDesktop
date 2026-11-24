@@ -268,6 +268,7 @@ internal data class DetailSectionArgs(
     val boardStyle: Boolean = false,
     val onEpisodeCardStyleChange: ((MetaEpisodeCardStyle) -> Unit)? = null,
     val onEpisodeClickAt: ((MetaVideo, androidx.compose.ui.geometry.Rect?) -> Unit)? = null,
+    val onEpisodeMenuAt: ((MetaVideo, androidx.compose.ui.geometry.Rect?) -> Unit)? = null,
 ) {
     /** Whether [key] has anything to show for this title. */
     fun hasContent(key: MetaScreenSectionKey): Boolean =
@@ -424,6 +425,7 @@ internal fun LazyListScope.configuredMetaSectionItems(
                         onEpisodeClick = onEpisodeClick,
                         onEpisodeLongPress = onEpisodeLongPress,
                         onEpisodeClickAt = onEpisodeClickAt,
+                        onEpisodeLongPressAt = onEpisodeMenuAt,
                     )
                 }
             }
@@ -692,6 +694,7 @@ internal fun ConfiguredMetaSections(
                                 boardStyle = boardStyle,
                                 onEpisodeCardStyleChange = onEpisodeCardStyleChange,
                                 onEpisodeClickAt = onEpisodeClickAt,
+                                onEpisodeLongPressAt = onEpisodeMenuAt,
                             )
                             if (isDesktop && meta.type == "series") {
                                 Box(Modifier.padding(top = 18.dp)) { seriesAudience() }
