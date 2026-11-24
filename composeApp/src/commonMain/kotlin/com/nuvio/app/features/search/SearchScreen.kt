@@ -168,6 +168,9 @@ fun SearchScreen(
     val addonsUiState by AddonRepository.uiState.collectAsStateWithLifecycle()
     val uiState by SearchRepository.uiState.collectAsStateWithLifecycle()
     val discoverUiState by SearchRepository.discoverUiState.collectAsStateWithLifecycle()
+    // Latest non-empty Discover titles, shown dimmed while a new filter loads (see discoverContent).
+    val discoverHeldLatch = remember { arrayOf(emptyList<MetaPreview>()) }
+    if (discoverUiState.items.isNotEmpty()) discoverHeldLatch[0] = discoverUiState.items
     val homeCatalogSettingsUiState by remember {
         HomeCatalogSettingsRepository.snapshot()
         HomeCatalogSettingsRepository.uiState
@@ -566,6 +569,7 @@ fun SearchScreen(
                     SearchPreferencesStorage.saveLandscapeEnabled(searchLandscape)
                 },
                 discoverUiState = discoverUiState,
+                discoverHeldItems = discoverHeldLatch[0],
                 discoverColumns = discoverColumns,
                 addonManifestsLoading = addonManifestsLoading,
                 networkCondition = networkStatusUiState.condition,

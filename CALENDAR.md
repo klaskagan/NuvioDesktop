@@ -126,6 +126,8 @@ and `RedesignTypography`.
   Empty Day browsing still advances the date used by the
   toolbar and view switching. Reveal a selected date only after its data and
   actual rendered list are ready, using deferred list positioning.
+  The Day/Week list stays transparent until that positioning lands and then fades in:
+  shown earlier, it opened on the lead week and jumped every section up on first load.
 - Month reserves six rows via `calendarMonthGridRange` (42 slots), independently
   of the minimal fetch range. Hide dates and borders outside the selected month.
   Cells, grid width, and the full-width selected-day shelf retain their dimensions

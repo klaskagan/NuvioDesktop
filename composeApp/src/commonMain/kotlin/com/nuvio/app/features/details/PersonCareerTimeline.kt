@@ -110,6 +110,8 @@ internal fun LazyListScope.personCareerTimeline(
     credits: List<ActingCredit>,
     today: LocalDate,
     padding: Dp,
+    /** Credits dated before this year (archive footage) don't start the shown span. */
+    notBeforeYear: Int? = null,
     redesign: Boolean,
     watchedKeys: Set<String>,
     fullyWatchedSeriesKeys: Set<String>,
@@ -126,7 +128,7 @@ internal fun LazyListScope.personCareerTimeline(
             )
             val muted = if (redesign) RedesignColors.textMuted else MaterialTheme.nuvio.colors.textMuted
             val titles = pluralStringResource(Res.plurals.person_career_title_count, credits.size, credits.size)
-            val span = remember(credits, today) { careerYearSpan(credits, today) }
+            val span = remember(credits, today, notBeforeYear) { careerYearSpan(credits, today, notBeforeYear) }
             Text(
                 when {
                     span == null -> titles

@@ -41,6 +41,10 @@ Person Details opening with no transition). Apply these to every redesigned scre
   placement), so inserted or removed sections slide instead of shifting the page.
 - **Refetches never flash placeholders:** keep the previous results on screen, dimmed, until new
   ones arrive (Search `heldSearch`). Skeletons are for the first load only.
+  Discover does the same on a type/catalog/genre change (`discoverContent(heldItems)`): the
+  grid collapsing to two skeleton rows snapped the page to the top. A placeholder also resolves
+  to the final choice only: the service page's hero waits for its charts instead of showing
+  Popular's first title and swapping it (`tagHeroItems`, `StreamingRowLayoutTest`).
 - **Controls ease:** hover and selection colours tween (~140–220 ms), and tab indicators slide
   (`SearchScopeTabs`). Avoid default grey indication boxes on redesigned surfaces.
 - **Chrome reacts to real state:** a sticky bar fades its dim and blur in only once actually

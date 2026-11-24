@@ -192,6 +192,21 @@ class PersonCreditsTest {
         assertEquals(1998 to 2023, careerYearSpan(career.getValue(CareerDepartment.Directing), today))
     }
 
+    @Test fun creditsDatedBeforeBirthDoNotStartTheCareer() {
+        // Archive footage carries the footage's year: Tom Hanks read "since 1948" and "1953 – 2026".
+        val today = LocalDate(2026, 11, 24)
+        val credits = listOf(item("Archive", "1948-05-01"), item("Splash", "1984-03-09"), item("Here", "2024-11-01"))
+        val person = PersonDetail(
+            tmdbId = 31, name = "Tom Hanks", biography = null, birthday = "1956-07-09", deathday = null, placeOfBirth = null,
+            profilePhoto = null, knownFor = "Acting", movieCredits = credits, tvCredits = emptyList(),
+        )
+        assertEquals(1956, person.careerFloorYear())
+        val acting = credits.map { ActingCredit(it, emptyList()) }
+        assertEquals(1984 to 2024, careerYearSpan(acting, today, person.careerFloorYear()))
+        assertEquals(1948 to 2024, careerYearSpan(acting, today))
+        assertEquals("3 titles · since 1984", buildCreditSummary(credits, person.careerFloorYear()))
+    }
+
     @Test fun careerFallsBackToActingCreditsWhenNoDepartmentsWereMapped() {
         val person = PersonDetail(
             tmdbId = 1, name = "Actor", biography = null, birthday = null, deathday = null, placeOfBirth = null,

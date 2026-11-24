@@ -1,5 +1,8 @@
 package com.nuvio.app.features.calendar
 
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -268,12 +271,16 @@ internal fun CalendarScreen(
                             }
                         }
                         val listState = if (shownView == CalendarView.Day) dayState else weekState
+                        // A reveal opens one lead week early and scrolls to the revealed week once the
+                        // range has loaded. Showing the list before that scroll put the lead week at the
+                        // top and then jumped every section up; it fades in once positioned instead.
+                        val revealAlpha by animateFloatAsState(if (pendingReveal) 0f else 1f, tween(if (pendingReveal) 120 else 260), label = "calendar_reveal")
                         if (shownView == CalendarView.Week) {
                             KeepReadingWeekAnchor(weekState, groups to dates, dates.chunked(7).map { it.first() },
                                 enabled = view == CalendarView.Week && !pendingReveal)
                         }
                         val pageModifier = if (shownView == CalendarView.Week) Modifier.then(if (totalWidth > maxWidth) Modifier.excludeFromHistoryGestures() else Modifier).horizontalScroll(weekHorizontalState).width(totalWidth) else Modifier.fillMaxWidth()
-                        LazyColumn(state = listState, modifier = pageModifier.fillMaxHeight().testTag("calendar-agenda"), verticalArrangement = Arrangement.spacedBy(if (shownView == CalendarView.Week) 28.dp else 12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+                        LazyColumn(state = listState, modifier = pageModifier.fillMaxHeight().graphicsLayer { alpha = revealAlpha }.testTag("calendar-agenda"), verticalArrangement = Arrangement.spacedBy(if (shownView == CalendarView.Week) 28.dp else 12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
                             if (shownView == CalendarView.Day) {
                                 if (groups.isEmpty()) item(key = "empty") {
                                     Column(Modifier.fillParentMaxHeight()) {

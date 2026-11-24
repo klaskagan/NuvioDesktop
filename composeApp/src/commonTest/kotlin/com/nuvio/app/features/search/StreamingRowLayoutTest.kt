@@ -78,6 +78,19 @@ class StreamingRowLayoutTest {
     }
 
     @Test
+    fun heroWaitsForTheChartsInsteadOfSwappingFromPopular() {
+        // The Netflix page showed Popular's first title, then swapped to the chart's in one frame.
+        val shelves = SearchDiscoveryShelvesUi(
+            rails = mapOf(SearchShelfKey(SearchShelfSort.Popular, television = true) to listOf(title("popular"))),
+        )
+        assertTrue(tagHeroItems(SearchTopTenUi(loading = true), shelves, SearchScope.All).isEmpty())
+        val charts = SearchTopTenUi(sections = listOf(chart(television = true) to section("top", title("hit"))))
+        assertEquals(listOf("tmdb:hit"), tagHeroItems(charts, shelves, SearchScope.All).map { it.id })
+        // Without charts, Popular still leads once they have finished loading.
+        assertEquals(listOf("tmdb:popular"), tagHeroItems(SearchTopTenUi(), shelves, SearchScope.All).map { it.id })
+    }
+
+    @Test
     fun rowsFollowTheLayoutAndTheSlotExpandsOnlyWhereAServiceHasCollections() {
         val shelves = SearchDiscoveryShelvesUi(
             rails = mapOf(

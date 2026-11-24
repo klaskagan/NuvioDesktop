@@ -388,7 +388,8 @@ internal fun LazyListScope.searchDesktopResults(
         item(key = "search-grid-header") {
             SearchSectionHeader(
                 title = if (scope == SearchScope.All) stringResource(Res.string.compose_search_movies_and_tv) else scope.label(),
-                count = stringResource(Res.string.search_titles_count, gridItems.size),
+                // Every title in the scope, the spotlight included, so it matches the tab's count.
+                count = stringResource(Res.string.search_titles_count, state.results.inScope(scope).size),
                 modifier = itemModifier().padding(horizontal = gutter).padding(top = if (spotlight != null) 18.dp else 8.dp),
             ) {
                 SearchSortChip(sort = sort, onSortChange = onSortChange)
@@ -760,6 +761,7 @@ internal fun LazyListScope.searchDesktopList(
     searchLandscape: Boolean,
     onToggleLandscape: () -> Unit,
     discoverUiState: DiscoverUiState,
+    discoverHeldItems: List<MetaPreview> = emptyList(),
     discoverColumns: Int,
     addonManifestsLoading: Boolean,
     networkCondition: NetworkCondition,
@@ -831,7 +833,8 @@ internal fun LazyListScope.searchDesktopList(
                     SearchScopeTabs(
                         selected = scope,
                         counts = mapOf(
-                            SearchScope.All to uiState.results.size + uiState.people.size,
+                            // Titles only, like the section count under it; people have their own tab.
+                            SearchScope.All to uiState.results.size,
                             SearchScope.Movies to uiState.results.inScope(SearchScope.Movies).size,
                             SearchScope.Shows to uiState.results.inScope(SearchScope.Shows).size,
                             SearchScope.People to uiState.people.size,
@@ -873,6 +876,7 @@ internal fun LazyListScope.searchDesktopList(
             horizontalPadding = gutter,
             desktopHeader = true,
             itemModifier = itemModifier,
+            heldItems = discoverHeldItems,
         )
         return
     }

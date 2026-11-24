@@ -580,6 +580,7 @@ private fun PersonOverview(
                 credits = timeline,
                 today = today,
                 padding = padding,
+                notBeforeYear = person.careerFloorYear(),
                 // The wide desktop page passes its redesigned header; other layouts keep their row style.
                 redesign = header != null,
                 watchedKeys = watchedKeys,
@@ -634,7 +635,7 @@ internal fun PersonIdentitySidebar(
         (person.movieCredits + person.tvCredits).distinctBy { it.id }
     }
     val creditSummary = remember(credits) {
-        buildCreditSummary(credits)
+        buildCreditSummary(credits, person.careerFloorYear())
     }
     val scrollState = rememberScrollState()
 
@@ -1351,10 +1352,11 @@ private fun String.initials(): String {
         .ifBlank { firstOrNull()?.uppercase() ?: "?" }
 }
 
-private fun buildCreditSummary(credits: List<MetaPreview>): String {
+internal fun buildCreditSummary(credits: List<MetaPreview>, notBeforeYear: Int? = null): String {
     if (credits.isEmpty()) return ""
     val firstYear = credits
         .mapNotNull { it.rawReleaseDate?.take(4)?.toIntOrNull() }
+        .filter { notBeforeYear == null || it >= notBeforeYear }
         .minOrNull()
     return buildString {
         append(credits.size)
@@ -1469,7 +1471,7 @@ private fun PersonRedesignHeader(
     modifier: Modifier = Modifier,
 ) {
     val credits = remember(person.movieCredits, person.tvCredits) { (person.movieCredits + person.tvCredits).distinctBy { it.id } }
-    val creditSummary = remember(credits) { buildCreditSummary(credits) }
+    val creditSummary = remember(credits) { buildCreditSummary(credits, person.careerFloorYear()) }
     PersonHeaderLayout(
         name = person.name,
         eyebrow = person.knownFor?.takeIf { it.isNotBlank() },

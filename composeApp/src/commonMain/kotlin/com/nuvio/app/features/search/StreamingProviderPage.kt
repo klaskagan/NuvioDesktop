@@ -162,6 +162,9 @@ internal fun tagHeroItems(topTen: SearchTopTenUi, shelves: SearchDiscoveryShelve
         }
     }
     val charts = topTen.sections.filter { (chart, _) -> chart.visibleIn(scope) }
+    // The charts lead the hero. Falling back to Popular while they still load showed one title
+    // (Black Mirror) and then swapped to the chart's first title in a single frame.
+    if (charts.isEmpty() && topTen.loading) return emptyList()
     val fromCharts = if (charts.isEmpty()) emptyList() else interleave(
         charts.filter { it.first.television != false }.flatMap { it.second.items },
         charts.filter { it.first.television == false }.flatMap { it.second.items },
@@ -239,28 +242,45 @@ internal fun LazyListScope.streamingProviderPage(
     onCollectionRowViewAll: ((HomeCatalogSection) -> Unit)? = null,
 ) {
     val heroItems = tagHeroItems(topTen, shelves, scope)
-    if (heroItems.isNotEmpty()) {
+    if (heroItems.isNotEmpty() || shelves.loading || topTen.loading) {
+        // One item for placeholder and hero, so the hero crossfades in at the placeholder's size
+        // instead of a 300dp box being replaced by the full-height hero.
         item(key = "tag-hero") {
-            // Home's rotating hero (auto-advance, progress dots, logo, ratings row), as a card in the column.
-            HomeHeroMetaLoadEffect(heroItems, heroMeta)
-            val hero = rememberHomeHeroState(heroItems, heroMeta)
-            Box(itemModifier().padding(horizontal = gutter).padding(top = 22.dp).clip(RoundedCornerShape(18.dp))) {
-                HomeHeroSection(
-                    items = hero.items,
-                    viewportHeight = SearchTagHeroViewport,
-                    sectionPadding = 28.dp,
-                    showImdbRating = hero.showImdbRating,
-                    showMdbListRatings = hero.showMdbListRatings,
-                    onItemClick = onPosterClick,
-                )
+            androidx.compose.animation.Crossfade(
+                targetState = heroItems.isNotEmpty(),
+                animationSpec = tween(320),
+                label = "tag_hero",
+            ) { ready ->
+                if (ready) {
+                    // Home's rotating hero (auto-advance, progress dots, logo, ratings row), as a card in the column.
+                    HomeHeroMetaLoadEffect(heroItems, heroMeta)
+                    val hero = rememberHomeHeroState(heroItems, heroMeta)
+                    Box(itemModifier().padding(horizontal = gutter).padding(top = 22.dp).clip(RoundedCornerShape(18.dp))) {
+                        HomeHeroSection(
+                            items = hero.items,
+                            viewportHeight = SearchTagHeroViewport,
+                            sectionPadding = 28.dp,
+                            showImdbRating = hero.showImdbRating,
+                            showMdbListRatings = hero.showMdbListRatings,
+                            onItemClick = onPosterClick,
+                        )
+                    }
+                } else {
+                    androidx.compose.foundation.layout.BoxWithConstraints(
+                        itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth(),
+                    ) {
+                        val height = com.nuvio.app.features.home.components.homeHeroLayout(
+                            maxWidthDp = maxWidth.value,
+                            viewportHeightDp = SearchTagHeroViewport.value,
+                            preferDesktopLayout = true,
+                        ).heroHeight
+                        Box(
+                            Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(18.dp))
+                                .background(RedesignColors.fill).testTag("tag-skeleton-spotlight"),
+                        )
+                    }
+                }
             }
-        }
-    } else if (shelves.loading || topTen.loading) {
-        item(key = "tag-skeleton-spotlight") {
-            Box(
-                itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth().height(300.dp)
-                    .clip(RoundedCornerShape(18.dp)).background(RedesignColors.fill),
-            )
         }
     }
     tagPageRows(layout, shelves, topTen, collectionRows, scope).forEach { row ->

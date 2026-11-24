@@ -1,5 +1,7 @@
 package com.nuvio.app.features.search
 
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,6 +50,12 @@ internal fun LazyListScope.discoverContent(
     desktopHeader: Boolean = false,
     /** Desktop Search passes its own, so these rows are blur sources for the pinned field band. */
     itemModifier: LazyItemScope.() -> Modifier = { Modifier },
+    /**
+     * The previous selection's titles. A new type/catalog/genre starts with no items, and the grid
+     * collapsing to two skeleton rows snapped the page to the top and back under the heading; the
+     * old titles stay, dimmed, until the new ones arrive (refetches never flash placeholders).
+     */
+    heldItems: List<MetaPreview> = emptyList(),
 ) {
     if (desktopHeader) {
         item(key = "discover-header") {
@@ -100,6 +108,22 @@ internal fun LazyListScope.discoverContent(
     }
 
     when {
+        heldItems.isNotEmpty() && state.items.isEmpty() && state.emptyStateReason == null && state.errorMessage == null -> {
+            items(count = (heldItems.size + columns - 1) / columns, key = { "discover-row:$it" }) { rowIndex ->
+                val firstIndex = rowIndex * columns
+                PosterGridRow(
+                    items = heldItems.subList(firstIndex, minOf(firstIndex + columns, heldItems.size)),
+                    columns = columns,
+                    modifier = itemModifier().padding(horizontal = horizontalPadding)
+                        .graphicsLayer { alpha = 0.4f }.testTag("discover-held-row"),
+                    watchedKeys = watchedKeys,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                    onPosterClick = null,
+                    onPosterLongClick = null,
+                )
+            }
+        }
+
         (state.isLoading || (isSourceLoading && state.selectedCatalogKey?.startsWith("go3:") != true)) && state.items.isEmpty() -> {
             items(2) {
                 PosterGridSkeletonRow(

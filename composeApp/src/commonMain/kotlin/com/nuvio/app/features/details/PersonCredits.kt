@@ -122,8 +122,15 @@ internal fun careerTabs(person: PersonDetail): List<CareerDepartment> {
 }
 
 /** First and last released year among [credits], for the tab's summary line. */
-internal fun careerYearSpan(credits: List<ActingCredit>, today: LocalDate): Pair<Int, Int>? {
+/**
+ * The year a career can start: the person's birth year. Archive footage and compilations carry
+ * the footage's date, so Tom Hanks read "since 1948" in the header and "1953 – 2026" in Career.
+ */
+internal fun PersonDetail.careerFloorYear(): Int? = birthday?.take(4)?.toIntOrNull()
+
+internal fun careerYearSpan(credits: List<ActingCredit>, today: LocalDate, notBeforeYear: Int? = null): Pair<Int, Int>? {
     val years = credits.mapNotNull { it.media.creditDate()?.takeIf { date -> date <= today }?.year }
+        .filter { notBeforeYear == null || it >= notBeforeYear }
     return if (years.isEmpty()) null else years.min() to years.max()
 }
 
