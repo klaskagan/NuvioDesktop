@@ -48,6 +48,10 @@ import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.navigation.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import com.nuvio.app.features.streams.StreamBadgeSettingsRepository
+import com.nuvio.app.features.streams.pickPreference
+import com.nuvio.app.features.streams.streamRowInfo
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.getString
@@ -100,6 +104,8 @@ internal fun StreamDestination(
     var pendingP2pStreamOpen by remember { mutableStateOf<PendingP2pStreamOpen?>(null) }
     // The source being started from the desktop sheet, shown as its "starting" card until the player opens.
     var startingStream by remember(route.launchId) { mutableStateOf<StreamItem?>(null) }
+    // A direct link opens at once; the starting card is held for a moment first so the pick reads.
+    var holdingStart by remember(route.launchId) { mutableStateOf(false) }
     val shouldResolveEpisodeVideoId =
         launch.parentMetaId != null &&
             launch.seasonNumber != null &&
@@ -873,32 +879,49 @@ internal fun StreamDestination(
                 startFromBeginning = launch.startFromBeginning,
                 onStreamSelected = { stream, resolvedResumePositionMs, resolvedResumeProgressFraction ->
                     startingStream = stream
-                    openSelectedStream(
-                        stream = stream,
-                        resolvedResumePositionMs = resolvedResumePositionMs,
-                        resolvedResumeProgressFraction = resolvedResumeProgressFraction,
-                        forceExternal = false,
-                        forceInternal = false,
-                        saveForReuse = stream != sharedStream?.stream,
-                   // On desktop the player replaces Sources: closing it lands on Details (design doc, Sources flow).
-                        replaceStreamRoute = isDesktop,
-                    )
+                    // A pick from the sheet teaches Best match (design doc, Sources · confirmed).
+                    StreamBadgeSettingsRepository.learnPick(streamRowInfo(stream).pickPreference(streamsUiState.groups.flatMap { it.streams }.map(::streamRowInfo)))
+                    streamRouteScope.launch {
+                        if (isDesktop) {
+                            holdingStart = true
+                            delay(StartingCardHoldMs)
+                            holdingStart = false
+                        }
+                        openSelectedStream(
+                            stream = stream,
+                            resolvedResumePositionMs = resolvedResumePositionMs,
+                            resolvedResumeProgressFraction = resolvedResumeProgressFraction,
+                            forceExternal = false,
+                            forceInternal = false,
+                            saveForReuse = stream != sharedStream?.stream,
+                            // On desktop the player replaces Sources: closing it lands on Details (design doc, Sources flow).
+                            replaceStreamRoute = isDesktop,
+                        )
+                    }
                 },
                 onStreamSelectedFromStart = { stream ->
                     startingStream = stream
-                    openSelectedStream(
-                        stream = stream,
-                        resolvedResumePositionMs = null,
-                        resolvedResumeProgressFraction = null,
-                        forceExternal = false,
-                        forceInternal = false,
-                        saveForReuse = stream != sharedStream?.stream,
-                        fromStart = true,
-                        replaceStreamRoute = isDesktop,
-                    )
+                    StreamBadgeSettingsRepository.learnPick(streamRowInfo(stream).pickPreference(streamsUiState.groups.flatMap { it.streams }.map(::streamRowInfo)))
+                    streamRouteScope.launch {
+                        if (isDesktop) {
+                            holdingStart = true
+                            delay(StartingCardHoldMs)
+                            holdingStart = false
+                        }
+                        openSelectedStream(
+                            stream = stream,
+                            resolvedResumePositionMs = null,
+                            resolvedResumeProgressFraction = null,
+                            forceExternal = false,
+                            forceInternal = false,
+                            saveForReuse = stream != sharedStream?.stream,
+                            fromStart = true,
+                            replaceStreamRoute = isDesktop,
+                        )
+                    }
                 },
                 downloadMode = launch.downloadMode,
-                startingStream = startingStream.takeIf { resolvingDebridStream || preparingServerStream || resolvingYouTubeStream },
+                startingStream = startingStream.takeIf { holdingStart || resolvingDebridStream || preparingServerStream || resolvingYouTubeStream },
                 startingPreparing = resolvingDebridStream || preparingServerStream || resolvingYouTubeStream,
                 onCancelStarting = {
                     // Stops the resolve or preparation in flight; the sheet comes back as it was.
@@ -906,6 +929,7 @@ internal fun StreamDestination(
                     resolvingDebridStream = false
                     preparingServerStream = false
                     resolvingYouTubeStream = false
+                    holdingStart = false
                     startingStream = null
                 },
                 onStreamActionOpen = { stream, openExternally, resolvedResumePositionMs, resolvedResumeProgressFraction ->
@@ -955,3 +979,6 @@ internal fun StreamDestination(
         }
     }
 }
+
+/** How long the starting card shows for a direct link before the player opens (its fold-in is ~260 ms). */
+private const val StartingCardHoldMs = 450L

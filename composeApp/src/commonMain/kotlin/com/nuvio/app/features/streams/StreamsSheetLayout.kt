@@ -135,6 +135,11 @@ import nuvio.composeapp.generated.resources.streams_sheet_status_failed
 import nuvio.composeapp.generated.resources.streams_sheet_starting
 import nuvio.composeapp.generated.resources.streams_sheet_step_found
 import nuvio.composeapp.generated.resources.streams_sheet_step_preparing
+import nuvio.composeapp.generated.resources.streams_sheet_remembered_sources
+import nuvio.composeapp.generated.resources.streams_sheet_remembered_from
+import nuvio.composeapp.generated.resources.streams_sheet_remembered
+import nuvio.composeapp.generated.resources.streams_sheet_starting_from_start
+import nuvio.composeapp.generated.resources.streams_sheet_starting_from
 import nuvio.composeapp.generated.resources.streams_sheet_step_opening
 
 /** Desktop windows at least this wide show the Sources sheet in place of the two-pane layout. */
@@ -188,7 +193,8 @@ internal fun StreamsSheetLayout(
     val selectable: (StreamItem) -> Boolean = { it.isSelectableForPlayback(debridEnabled) }
     val preferredLanguages = rememberStreamPreferredLanguages()
     val rememberedLanguage = StreamBadgeSettingsRepository.uiState.collectAsStateWithLifecycle().value.sheetLanguage
-    val picks = remember(rows, debridEnabled, preferredLanguages) { streamQuickPicks(rows, preferredLanguages, selectable) }
+    val learnedPick = StreamBadgeSettingsRepository.uiState.collectAsStateWithLifecycle().value.learnedPick
+    val picks = remember(rows, debridEnabled, preferredLanguages, learnedPick) { streamQuickPicks(rows, preferredLanguages, learnedPick, selectable) }
     var filter by remember { mutableStateOf(StreamSheetFilter(language = rememberedLanguage)) }
     // The pills keep one order (Settings' languages, then the most common), whichever is selected:
     // ordering them by the selection made every click shuffle the row.
@@ -201,7 +207,7 @@ internal fun StreamsSheetLayout(
     val resolutions = remember(rows) { streamResolutionChoices(rows) }
     // A resolution that leaves the list (another addon filter) must not keep filtering it to nothing.
     LaunchedEffect(resolutions) { if (filter.resolution != null && filter.resolution !in resolutions) filter = filter.copy(resolution = null) }
-    val grouped = remember(rows, filter, preferredLanguages) { groupStreamRows(rows, filter, preferredLanguages) }
+    val grouped = remember(rows, filter, preferredLanguages, learnedPick) { groupStreamRows(rows, filter, preferredLanguages, learnedPick) }
     val hasResume = (resumeProgressFraction ?: 0f) > 0f || (resumePositionMs ?: 0L) > 0L
     // On by default for each launch; off plays from the beginning, server progress included.
     var resumeOn by rememberSaveable { mutableStateOf(true) }
@@ -304,7 +310,24 @@ internal fun StreamsSheetLayout(
                 modifier = Modifier.align(Alignment.Center),
             ) {
                 val starting = remember(startingStream) { startingStream?.let(::streamRowInfo) }
-                if (starting != null) StartingCard(starting, preparing = startingPreparing, onCancel = onCancelStarting)
+                if (starting != null) {
+                    StartingCard(
+                        row = starting,
+                        preparing = startingPreparing,
+                        artwork = episodeThumbnail?.takeIf { isEpisode && it.isNotBlank() } ?: artwork,
+                        kicker = if (isEpisode && seasonNumber != null && episodeNumber != null) {
+                            "$title · ${stringResource(Res.string.detail_board_episode_code, seasonNumber, episodeNumber)}"
+                        } else {
+                            null
+                        },
+                        title = episodeTitle?.takeIf { isEpisode && it.isNotBlank() } ?: title,
+                        fromLabel = resumeLabel?.let { stringResource(Res.string.streams_sheet_starting_from, it) }
+                            ?: stringResource(Res.string.streams_sheet_starting_from_start),
+                        preferredLanguages = preferredLanguages,
+                        learned = learnedPick,
+                        onCancel = onCancelStarting,
+                    )
+                }
             }
         }
     }
@@ -367,27 +390,78 @@ private fun DownloadModeCard() {
     }
 }
 
-/** What happens after a source is confirmed: found → preparing → opening the player, with Cancel. */
+/**
+ * What happens after a source is confirmed: the sheet folds into this card (what is starting, from
+ * where, its labels and live steps: found → preparing → opening the player), with Cancel and what
+ * Best match learned from the pick.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StartingCard(row: StreamRowInfo, preparing: Boolean, onCancel: () -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
+private fun StartingCard(
+    row: StreamRowInfo,
+    preparing: Boolean,
+    artwork: String?,
+    kicker: String?,
+    title: String,
+    fromLabel: String,
+    preferredLanguages: List<String>,
+    learned: StreamPickPreference?,
+    onCancel: () -> Unit,
+) {
+    val shape = RoundedCornerShape(22.dp)
     Column(
-        Modifier.width(380.dp).clip(shape).background(RedesignMenuSurface).border(1.dp, RedesignColors.hairline, shape)
+        Modifier.width(520.dp).clip(shape).background(RedesignMenuSurface).border(1.dp, RedesignColors.hairline, shape)
             .padding(20.dp).testTag("streams_sheet_starting"),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        StreamKicker(stringResource(Res.string.streams_sheet_starting, streamQualityLabel(row.resolution)))
-        Text(row.rawName.ifBlank { row.stream.streamLabel }, style = redesignText(14.sp, FontWeight.SemiBold, lineHeight = 19.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-        StartingStep(stringResource(Res.string.streams_sheet_step_found, row.service ?: row.stream.addonName), done = true, active = false)
-        StartingStep(stringResource(Res.string.streams_sheet_step_preparing), done = !preparing, active = preparing)
-        StartingStep(stringResource(Res.string.streams_sheet_step_opening), done = false, active = !preparing)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(Modifier.width(150.dp).height(84.dp).clip(RoundedCornerShape(12.dp)).background(RedesignColors.fill)) {
+                NuvioAsyncImage(model = artwork, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
+            Column(Modifier.weight(1f)) {
+                StreamKicker(kicker ?: stringResource(Res.string.streams_sheet_starting, streamQualityLabel(row.resolution)))
+                Text(title, style = redesignText(19.sp, FontWeight.Bold, lineHeight = 23.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(fromLabel, style = redesignText(13.sp, color = RedesignColors.textSecondary))
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            StreamQualityBadge(row.resolution)
+            row.labels.forEach { StreamTag(it) }
+            StreamLanguageChips(row, preferredLanguages)
+        }
         Text(
-            stringResource(Res.string.action_cancel),
-            style = redesignText(13.sp, FontWeight.SemiBold, RedesignColors.textSecondary),
-            modifier = Modifier.align(Alignment.End).clip(CircleShape).clickable(role = Role.Button, onClick = onCancel)
-                .testTag("streams_sheet_starting_cancel").padding(horizontal = 12.dp, vertical = 6.dp),
+            listOfNotNull(row.rawName.ifBlank { row.stream.streamLabel }, row.stream.addonName.takeIf { it.isNotBlank() }).joinToString(" · "),
+            style = redesignText(12.sp, color = RedesignColors.textMuted, lineHeight = 16.sp), maxLines = 2, overflow = TextOverflow.Ellipsis,
         )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StartingStep(stringResource(Res.string.streams_sheet_step_found, row.service ?: row.stream.addonName), done = true, active = false)
+            StartingStep(stringResource(Res.string.streams_sheet_step_preparing), done = !preparing, active = preparing)
+            StartingStep(stringResource(Res.string.streams_sheet_step_opening), done = false, active = !preparing)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                rememberedPickLine(learned).orEmpty(),
+                style = redesignText(12.sp, color = RedesignColors.textMuted, lineHeight = 16.sp),
+                modifier = Modifier.weight(1f).testTag("streams_sheet_remembered"),
+            )
+            Text(
+                stringResource(Res.string.action_cancel),
+                style = redesignText(13.sp, FontWeight.SemiBold, RedesignColors.textSecondary),
+                modifier = Modifier.clip(CircleShape).clickable(role = Role.Button, onClick = onCancel)
+                    .testTag("streams_sheet_starting_cancel").padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
     }
+}
+
+/** "Remembered: next time Best match prefers Russian BDRip from TorBox", or null with nothing to learn. */
+@Composable
+private fun rememberedPickLine(pick: StreamPickPreference?): String? {
+    pick ?: return null
+    val what = listOfNotNull(pick.language?.let(::streamLanguageName), pick.source).joinToString(" ")
+        .ifBlank { stringResource(Res.string.streams_sheet_remembered_sources) }
+    val phrase = pick.service?.let { stringResource(Res.string.streams_sheet_remembered_from, what, it) } ?: what
+    return stringResource(Res.string.streams_sheet_remembered, phrase)
 }
 
 @Composable

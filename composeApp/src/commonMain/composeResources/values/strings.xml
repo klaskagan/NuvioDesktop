@@ -2050,6 +2050,11 @@
     <string name="streams_sheet_step_found">Found on %1$s</string>
     <string name="streams_sheet_step_preparing">Preparing the stream</string>
     <string name="streams_sheet_step_opening">Opening the player</string>
+    <string name="streams_sheet_starting_from">From %1$s</string>
+    <string name="streams_sheet_starting_from_start">From the start</string>
+    <string name="streams_sheet_remembered">Remembered: next time Best match prefers %1$s</string>
+    <string name="streams_sheet_remembered_from">%1$s from %2$s</string>
+    <string name="streams_sheet_remembered_sources">sources</string>
     <string name="streams_sheet_duplicates">×%1$d</string>
     <string name="streams_status_instant">Instant</string>
     <string name="streams_status_instant_service">Instant · %1$s</string>

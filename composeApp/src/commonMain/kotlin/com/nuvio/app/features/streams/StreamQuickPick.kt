@@ -110,8 +110,9 @@ internal fun StreamQuickPickPanel(
     val debridEnabled = debridSettings.canResolvePlayableLinks
     val rows = remember(current.groups) { current.groups.flatMap { it.streams }.map(::streamRowInfo).let(::mergeDuplicateStreams) }
     val preferredLanguages = rememberStreamPreferredLanguages()
-    val picks = remember(rows, debridEnabled, preferredLanguages) {
-        streamQuickPicks(rows, preferredLanguages) { it.isSelectableForPlayback(debridEnabled) }
+    val learnedPick = StreamBadgeSettingsRepository.uiState.collectAsStateWithLifecycle().value.learnedPick
+    val picks = remember(rows, debridEnabled, preferredLanguages, learnedPick) {
+        streamQuickPicks(rows, preferredLanguages, learnedPick) { it.isSelectableForPlayback(debridEnabled) }
     }
     val loading = current.requestToken == null || current.isAnyLoading || current.groups.any { it.isLoading }
     val shape = RoundedCornerShape(22.dp)

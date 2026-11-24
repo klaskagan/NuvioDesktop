@@ -230,6 +230,20 @@ class StreamSheetModelTest {
     }
 
     @Test
+    fun aPickFromTheSheetTeachesBestMatchItsLanguageAndService() {
+        val ru1080 = torbox("TB+", "1080p", "Show [WEB-DL 1080p] MVO + Original (Eng)\n👤 5 💾 6.4 GB\n🇬🇧 / 🇷🇺")
+        val rows = listOf(readyUhd, ru1080).map(::streamRowInfo)
+        val learned = rows[1].pickPreference(among = rows)!!
+        assertEquals("RU", learned.language)
+        assertEquals(learned, StreamPickPreference.decode(learned.encode()))
+        // Starting now and the user's languages still come first; then the learned pick beats resolution.
+        assertEquals(ru1080, streamQuickPicks(rows, learned = learned).best?.stream)
+        assertEquals(readyUhd, streamQuickPicks(rows).best?.stream)
+        assertNull(StreamPickPreference.decode(""))
+        assertNull(StreamPickPreference.decode("||"))
+    }
+
+    @Test
     fun preferredLanguageBeatsAHigherResolutionWithoutIt() {
         val ru1080 = torbox("TB+", "1080p", "Show [WEB-DL 1080p] MVO + Original (Eng)\n👤 5 💾 6.4 GB\n🇬🇧 / 🇷🇺")
         val rows = listOf(readyUhd, ru1080).map(::streamRowInfo)

@@ -327,16 +327,62 @@ internal val StreamRowInfo.startsNow: Boolean
         availability == StreamAvailability.Direct
 
 /** Where the row's best language sits in [preferred] (lower is better); last when it has none of them. */
+/**
+ * What a source picked from the sheet was: its audio language, release type and service. Best match
+ * prefers sources that share these next time ("Remembered: … prefers Russian BDRip from TorBox").
+ */
+data class StreamPickPreference(val language: String?, val source: String?, val service: String?) {
+    val isEmpty: Boolean get() = language == null && source == null && service == null
+
+    fun encode(): String = listOf(language, source, service).joinToString("|") { it.orEmpty().replace("|", " ") }
+
+    companion object {
+        fun decode(value: String?): StreamPickPreference? {
+            val parts = value?.split("|")?.takeIf { it.size == 3 } ?: return null
+            return StreamPickPreference(
+                parts[0].ifBlank { null }, parts[1].ifBlank { null }, parts[2].ifBlank { null },
+            ).takeUnless { it.isEmpty }
+        }
+    }
+}
+
+private val releaseSourceLabels = DebridStreamQuality.entries.filter { it != DebridStreamQuality.UNKNOWN }.map { it.label }.toSet() + setOf("BDRip", "Remux")
+
+/**
+ * What picking [this] row teaches Best match; null when the row says nothing it could prefer. With
+ * several audio languages, the one fewest of the other sources ([among]) have is what made it the
+ * pick (a Russian dub beside the original English), so that one is learned; on a tie, the later one,
+ * since addons list the original audio first.
+ */
+internal fun StreamRowInfo.pickPreference(among: List<StreamRowInfo> = emptyList()): StreamPickPreference? = StreamPickPreference(
+    language = languages.withIndex()
+        .minWithOrNull(compareBy<IndexedValue<String>> { (_, code) -> among.count { row -> code in row.languages } }.thenByDescending { it.index })
+        ?.value,
+    source = labels.firstOrNull { it in releaseSourceLabels },
+    service = service,
+).takeUnless { it.isEmpty }
+
+/** How many of a learned pick's traits this row shares (0–3). */
+private fun StreamRowInfo.learnedScore(learned: StreamPickPreference?): Int {
+    if (learned == null) return 0
+    var score = 0
+    if (learned.language != null && languages.any { it.equals(learned.language, ignoreCase = true) }) score++
+    if (learned.source != null && labels.any { it.equals(learned.source, ignoreCase = true) }) score++
+    if (learned.service != null && service.equals(learned.service, ignoreCase = true)) score++
+    return score
+}
+
 private fun StreamRowInfo.languageRank(preferred: List<String>): Int =
     preferred.indexOfFirst { wanted -> languages.any { it.equals(wanted, ignoreCase = true) } }.let { if (it < 0) Int.MAX_VALUE else it }
 
 /**
  * Sources that start now come first, then the user's languages (so a 1080p in a preferred language
- * beats a 4K without it), then resolution.
+ * beats a 4K without it), then what the last pick from the sheet taught ([learned]), then resolution.
  */
-private fun bestFirst(preferred: List<String>): Comparator<StreamRowInfo> =
+private fun bestFirst(preferred: List<String>, learned: StreamPickPreference? = null): Comparator<StreamRowInfo> =
     compareBy<StreamRowInfo> { !it.startsNow }
         .thenBy { it.languageRank(preferred) }
+        .thenByDescending { it.learnedScore(learned) }
         .thenByDescending { it.resolution.value }
         .thenBy { it.availability.ordinal }
         .thenByDescending { it.labels.size }
@@ -364,9 +410,10 @@ internal fun groupStreamRows(
     rows: List<StreamRowInfo>,
     filter: StreamSheetFilter,
     preferredLanguages: List<String> = emptyList(),
+    learned: StreamPickPreference? = null,
 ): List<Pair<DebridStreamResolution, List<StreamRowInfo>>> {
     val order: Comparator<StreamRowInfo> = when (filter.sort) {
-        StreamSheetSort.Quality -> bestFirst(preferredLanguages)
+        StreamSheetSort.Quality -> bestFirst(preferredLanguages, learned)
         StreamSheetSort.Size -> compareByDescending { it.sizeBytes ?: 0L }
         StreamSheetSort.Seeds -> compareByDescending { it.seeds ?: 0 }
     }
@@ -389,7 +436,7 @@ internal data class StreamQuickPicks(
 
 /**
  * Best match is the top source by [bestFirst] among those [selectable], which puts sources that
- * start now and the user's [preferredLanguages] ahead of resolution. Faster start is the
+ * start now, the user's [preferredLanguages] and what their last pick taught ([learned]) ahead of resolution. Faster start is the
  * smallest source that starts now at the next resolution down (1080p at most, so a 4K best match
  * offers 1080p and not 480p); failing that, a same-resolution source under half the size. On your
  * server is the first source from a media server.
@@ -397,11 +444,12 @@ internal data class StreamQuickPicks(
 internal fun streamQuickPicks(
     rows: List<StreamRowInfo>,
     preferredLanguages: List<String> = emptyList(),
+    learned: StreamPickPreference? = null,
     selectable: (StreamItem) -> Boolean = { true },
 ): StreamQuickPicks {
     val usable = rows.filter { selectable(it.stream) }
     val server = usable.firstOrNull { it.availability == StreamAvailability.Server }
-    val best = usable.filter { it !== server }.sortedWith(bestFirst(preferredLanguages)).firstOrNull() ?: server
+    val best = usable.filter { it !== server }.sortedWith(bestFirst(preferredLanguages, learned)).firstOrNull() ?: server
     // A lighter alternative keeps the best match's language when it is one the user asked for.
     val bestRank = best?.languageRank(preferredLanguages) ?: Int.MAX_VALUE
     val lighter = usable.filter { it !== best && it !== server && it.startsNow && it.sizeBytes != null }

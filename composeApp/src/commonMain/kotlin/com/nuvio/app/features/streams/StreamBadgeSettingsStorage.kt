@@ -20,6 +20,9 @@ internal expect object StreamBadgeSettingsStorage {
     /** The Sources sheet's language filter, an upper-case code; blank for none. Device-local. */
     fun loadSheetLanguage(): String?
     fun saveSheetLanguage(language: String)
+    /** What the last source picked from the sheet was ("RU|BDRip|TorBox"); blank for nothing yet. Device-local. */
+    fun loadLearnedPick(): String?
+    fun saveLearnedPick(value: String)
     fun loadLegacyDebridStreamBadgeRules(): String?
     fun clearLegacyDebridStreamBadgeRules()
     fun exportToSyncPayload(): JsonObject

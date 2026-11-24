@@ -26,6 +26,8 @@ data class StreamBadgeSettingsUiState(
     val backgroundMode: StreamBackgroundMode = StreamBackgroundMode.Normal,
     /** The Sources sheet's remembered language filter (upper-case code), or null for all languages. */
     val sheetLanguage: String? = null,
+    /** What Best match learned from the last source picked in the sheet. */
+    val learnedPick: StreamPickPreference? = null,
 )
 
 enum class StreamBackgroundMode {
@@ -57,6 +59,7 @@ object StreamBadgeSettingsRepository {
     private var badgePlacement = StreamBadgePlacement.BOTTOM
     private var backgroundMode = StreamBackgroundMode.Normal
     private var sheetLanguage: String? = null
+    private var learnedPick: StreamPickPreference? = null
 
     fun ensureLoaded() {
         if (hasLoaded) return
@@ -77,6 +80,7 @@ object StreamBadgeSettingsRepository {
         badgePlacement = StreamBadgePlacement.BOTTOM
         backgroundMode = StreamBackgroundMode.Normal
         sheetLanguage = null
+        learnedPick = null
         _uiState.value = StreamBadgeSettingsUiState()
     }
 
@@ -222,6 +226,7 @@ object StreamBadgeSettingsRepository {
             }
             ?: StreamBadgePlacement.BOTTOM
         sheetLanguage = StreamBadgeSettingsStorage.loadSheetLanguage()?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }
+        learnedPick = StreamPickPreference.decode(StreamBadgeSettingsStorage.loadLearnedPick())
         if (legacyRules != null) {
             saveStreamBadgeRules()
             StreamBadgeSettingsStorage.clearLegacyDebridStreamBadgeRules()
@@ -239,6 +244,7 @@ object StreamBadgeSettingsRepository {
             badgePlacement = badgePlacement,
             backgroundMode = backgroundMode,
             sheetLanguage = sheetLanguage,
+            learnedPick = learnedPick,
         )
     }
 
@@ -249,6 +255,15 @@ object StreamBadgeSettingsRepository {
         if (sheetLanguage == normalized) return
         sheetLanguage = normalized
         StreamBadgeSettingsStorage.saveSheetLanguage(normalized.orEmpty())
+        publish()
+    }
+
+    /** Remembers what the source just picked from the sheet was, so Best match prefers it next time. */
+    internal fun learnPick(pick: StreamPickPreference?) {
+        ensureLoaded()
+        if (pick == null || pick == learnedPick) return
+        learnedPick = pick
+        StreamBadgeSettingsStorage.saveLearnedPick(pick.encode())
         publish()
     }
 
