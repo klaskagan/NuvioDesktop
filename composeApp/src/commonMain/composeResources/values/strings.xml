@@ -1231,6 +1231,7 @@
     <string name="detail_reviews_too_short">Write at least %1$d words.</string>
     <string name="settings_tracking_reviews">Reviews source</string>
     <string name="settings_tracking_reviews_description">Where Details reads reviews, likes and posts yours.</string>
+    <string name="settings_tracking_ratings_wetrakr_description">Rate titles and episodes on your WeTrakr account.</string>
     <string name="detail_board_tv_picker_title">Play on a TV</string>
     <string name="detail_board_tv_send">Send to %1$s</string>
     <string name="detail_board_tv_none">No paired TVs yet.</string>
@@ -3227,6 +3228,7 @@
     <string name="library_source_label_trakt">Trakt</string>
     <string name="library_source_label_simkl">Simkl</string>
     <string name="library_source_label_mdblist">MDBList</string>
+    <string name="library_source_label_wetrakr">WeTrakr</string>
     <string name="library_lists_and_more">%1$s and %2$d more</string>
     <string name="library_grid_showing">%1$d of %2$d titles</string>
     <string name="library_board_recent">Recently saved</string>

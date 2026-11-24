@@ -233,6 +233,10 @@ internal class WeTrakrApiClient(
         return results
     }
 
+    /** One authorized GET (a single page): Details' comments and lookups. */
+    suspend fun get(scope: WeTrakrAuthScope, path: String, query: List<Pair<String, String>> = emptyList()): WeTrakrResponse =
+        authorized(scope, HttpMethod.Get, path, query, allowNotFound = true)
+
     suspend fun post(scope: WeTrakrAuthScope, path: String, body: JsonElement, allowNotFound: Boolean = false): WeTrakrResponse =
         authorized(scope, HttpMethod.Post, path, body = body, allowNotFound = allowNotFound)
 

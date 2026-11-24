@@ -126,6 +126,7 @@ import org.jetbrains.compose.resources.stringResource
 import androidx.compose.runtime.collectAsState
 import nuvio.composeapp.generated.resources.settings_tracking_reviews
 import nuvio.composeapp.generated.resources.settings_tracking_reviews_description
+import nuvio.composeapp.generated.resources.settings_tracking_ratings_wetrakr_description
 
 internal fun LazyListScope.trackingSettingsContent(
     isTablet: Boolean,
@@ -316,7 +317,7 @@ private fun TrackingDataSources(
                 onClick = { activePickerName = TrackingDataPicker.MORE_LIKE_THIS.name },
             )
         }
-        if (simklConnected || mdblistConnected) {
+        if (wetrakrConnected || simklConnected || mdblistConnected) {
             val effectiveRatingSource = settingsUiState.ratingSource?.takeIf { it in connectedProviders }
             val ratingsFallback = settingsUiState.ratingSource?.takeIf { effectiveRatingSource == null }?.let { source ->
                 stringResource(
@@ -358,6 +359,7 @@ private fun TrackingDataSources(
             title = stringResource(Res.string.trakt_library_source_dialog_title),
             subtitle = stringResource(Res.string.trakt_library_source_dialog_subtitle),
             selectedValue = effectiveLibrarySource,
+            options = librarySourceOptions(traktConnected, simklConnected, mdblistConnected, wetrakrConnected),
             onSelected = TrackingSettingsRepository::setLibrarySourceMode,
             onDismiss = { activePickerName = null },
         )
@@ -366,6 +368,7 @@ private fun TrackingDataSources(
             title = stringResource(Res.string.trakt_watch_progress_dialog_title),
             subtitle = stringResource(Res.string.tracking_watch_progress_dialog_subtitle),
             selectedValue = effectiveProgressSource,
+            options = watchProgressSourceOptions(traktConnected, simklConnected, mdblistConnected, wetrakrConnected),
             onSelected = { source ->
                 scope.launch {
                     WatchProgressSourceCoordinator.selectSource(
@@ -410,7 +413,7 @@ private fun TrackingDataSources(
             title = stringResource(Res.string.settings_tracking_ratings),
             subtitle = stringResource(Res.string.settings_tracking_ratings_picker_subtitle),
             selectedValue = settingsUiState.ratingSource?.takeIf { it in connectedProviders },
-            options = ratingSourceOptions(simklConnected, mdblistConnected),
+            options = ratingSourceOptions(simklConnected, mdblistConnected, wetrakrConnected),
             onSelected = TrackingRatings::setSource,
             onDismiss = { activePickerName = null },
         )
@@ -574,6 +577,13 @@ private fun librarySourceOptions(
             unavailableReason = trackingUnavailableReason(TrackingBrand.TRAKT, traktAvailable),
         ),
         TrackingPickerOption(
+            value = LibrarySourceMode.WETRAKR,
+            title = stringResource(Res.string.tracking_source_wetrakr),
+            description = stringResource(Res.string.settings_wetrakr_library_description),
+            enabled = wetrakrConnected,
+            unavailableReason = trackingUnavailableReason(TrackingBrand.WETRAKR, wetrakrConnected),
+        ),
+        TrackingPickerOption(
             value = LibrarySourceMode.SIMKL,
             title = stringResource(Res.string.tracking_source_simkl),
             description = stringResource(Res.string.settings_tracking_simkl_library_description),
@@ -586,15 +596,6 @@ private fun librarySourceOptions(
             description = stringResource(Res.string.settings_mdblist_library_description),
             enabled = mdblistConnected,
             unavailableReason = trackingUnavailableReason(TrackingBrand.MDBLIST, mdblistConnected),
-        ),
-        TrackingPickerOption(
-        ),
-        TrackingPickerOption(
-            value = LibrarySourceMode.WETRAKR,
-            title = stringResource(Res.string.tracking_source_wetrakr),
-            description = stringResource(Res.string.settings_wetrakr_library_description),
-            enabled = wetrakrConnected,
-            unavailableReason = trackingUnavailableReason(TrackingBrand.WETRAKR, wetrakrConnected),
         ),
     )
 }
@@ -622,6 +623,13 @@ private fun watchProgressSourceOptions(
             unavailableReason = trackingUnavailableReason(TrackingBrand.TRAKT, traktAvailable),
         ),
         TrackingPickerOption(
+            value = WatchProgressSource.WETRAKR,
+            title = stringResource(Res.string.tracking_source_wetrakr),
+            description = stringResource(Res.string.settings_wetrakr_progress_description),
+            enabled = wetrakrConnected,
+            unavailableReason = trackingUnavailableReason(TrackingBrand.WETRAKR, wetrakrConnected),
+        ),
+        TrackingPickerOption(
             value = WatchProgressSource.SIMKL,
             title = stringResource(Res.string.tracking_source_simkl),
             description = stringResource(Res.string.settings_tracking_simkl_progress_description),
@@ -634,15 +642,6 @@ private fun watchProgressSourceOptions(
             description = stringResource(Res.string.settings_mdblist_progress_description),
             enabled = mdblistConnected,
             unavailableReason = trackingUnavailableReason(TrackingBrand.MDBLIST, mdblistConnected),
-        ),
-        TrackingPickerOption(
-        ),
-        TrackingPickerOption(
-            value = WatchProgressSource.WETRAKR,
-            title = stringResource(Res.string.tracking_source_wetrakr),
-            description = stringResource(Res.string.settings_wetrakr_progress_description),
-            enabled = wetrakrConnected,
-            unavailableReason = trackingUnavailableReason(TrackingBrand.WETRAKR, wetrakrConnected),
         ),
     )
 }
@@ -693,11 +692,19 @@ private fun recommendationsSourceOptions(
 private fun ratingSourceOptions(
     simklConnected: Boolean,
     mdblistConnected: Boolean,
+    wetrakrConnected: Boolean,
 ): List<TrackingPickerOption<TrackingProviderId?>> = listOf(
     TrackingPickerOption(
         value = null,
         title = ratingSourceLabel(null),
         description = stringResource(Res.string.settings_tracking_ratings_off_description),
+    ),
+    TrackingPickerOption(
+        value = TrackingProviderId.WETRAKR,
+        title = ratingSourceLabel(TrackingProviderId.WETRAKR),
+        description = stringResource(Res.string.settings_tracking_ratings_wetrakr_description),
+        enabled = wetrakrConnected,
+        unavailableReason = trackingUnavailableReason(TrackingBrand.WETRAKR, wetrakrConnected),
     ),
     TrackingPickerOption(
         value = TrackingProviderId.SIMKL,

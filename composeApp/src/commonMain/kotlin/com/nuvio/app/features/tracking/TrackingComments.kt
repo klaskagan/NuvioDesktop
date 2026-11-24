@@ -21,6 +21,8 @@ data class TrackingComment(
     val createdAt: String? = null,
     /** The comment on the tracker's website, for "Open on …". */
     val webUrl: String? = null,
+    /** Where an imported comment was first written ("TV Time"), shown with its author. */
+    val origin: String? = null,
 ) {
     val hasSpoilerContent: Boolean get() = spoiler || containsInlineSpoilers
 }
@@ -61,6 +63,9 @@ interface TrackingCommentsProvider {
     val providerId: TrackingProviderId
     val capabilities: TrackingCommentsCapabilities
 
+    /** False once the tracker said comments aren't open to this app; the next source is used. */
+    val isAvailable: Boolean get() = true
+
     suspend fun page(meta: MetaDetails, sort: TrackingCommentsSort, page: Int): TrackingCommentsPage
 
     /** False when the tracker refused; the caller rolls its optimistic change back. */
@@ -82,7 +87,7 @@ object TrackingComments {
         chosen: TrackingProviderId? = TrackingSettingsRepository.uiState.value.reviewsSource,
         connected: Set<TrackingProviderId> = TrackingProviderRegistry.connectedProviderIds.value,
     ): TrackingCommentsProvider? {
-        val available = providers.value.filterKeys { it in connected }
+        val available = providers.value.filter { (id, provider) -> id in connected && provider.isAvailable }
         return chosen?.let(available::get) ?: available.entries.minByOrNull { it.key.ordinal }?.value
     }
 

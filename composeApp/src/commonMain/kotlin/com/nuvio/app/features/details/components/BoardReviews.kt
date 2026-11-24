@@ -353,6 +353,8 @@ private fun ReviewCard(
 private fun ReviewHeader(comment: TrackingComment) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(comment.authorName, style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        // Imported comments credit where they were written (a tracker's attribution rules).
+        comment.origin?.let { Text(it, style = redesignText(12.sp, color = RedesignColors.textMuted), maxLines = 1) }
         if (comment.review) {
             Text(
                 stringResource(Res.string.detail_comments_badge_review),

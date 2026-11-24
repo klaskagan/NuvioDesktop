@@ -400,6 +400,7 @@ private fun librarySourceLabel(mode: LibrarySourceMode): String = stringResource
         LibrarySourceMode.TRAKT -> Res.string.library_source_label_trakt
         LibrarySourceMode.SIMKL -> Res.string.library_source_label_simkl
         LibrarySourceMode.MDBLIST -> Res.string.library_source_label_mdblist
+        LibrarySourceMode.WETRAKR -> Res.string.library_source_label_wetrakr
     },
 )
 
@@ -444,6 +445,7 @@ internal fun LibraryLoadProblem(model: LibraryDesktopModel, actions: LibraryDesk
                     LibrarySourceMode.TRAKT -> Res.string.library_trakt_load_failed
                     LibrarySourceMode.SIMKL -> Res.string.library_simkl_load_failed
                     LibrarySourceMode.MDBLIST -> Res.string.library_mdblist_load_failed
+                    LibrarySourceMode.WETRAKR -> Res.string.library_wetrakr_load_failed
                 },
             ),
             message = model.uiState.errorMessage.orEmpty(),
@@ -464,6 +466,7 @@ internal fun LibraryEmptyLibrary(model: LibraryDesktopModel, actions: LibraryDes
                 LibrarySourceMode.TRAKT -> Res.string.library_trakt_empty_title
                 LibrarySourceMode.SIMKL -> Res.string.library_simkl_empty_title
                 LibrarySourceMode.MDBLIST -> Res.string.library_mdblist_empty_title
+                LibrarySourceMode.WETRAKR -> Res.string.library_wetrakr_empty_title
             },
         ),
         message = stringResource(
@@ -472,6 +475,7 @@ internal fun LibraryEmptyLibrary(model: LibraryDesktopModel, actions: LibraryDes
                 LibrarySourceMode.TRAKT -> Res.string.library_trakt_empty_message
                 LibrarySourceMode.SIMKL -> Res.string.library_simkl_empty_message
                 LibrarySourceMode.MDBLIST -> Res.string.library_mdblist_empty_message
+                LibrarySourceMode.WETRAKR -> Res.string.library_wetrakr_empty_message
             },
         ),
         modifier = Modifier.padding(horizontal = gutter),

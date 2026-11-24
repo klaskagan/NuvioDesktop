@@ -7,7 +7,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.format.formatLocalDateTime
 import com.nuvio.app.features.tracking.TrackingProviderId
@@ -26,8 +25,6 @@ internal fun WeTrakrProviderCard(modifier: Modifier = Modifier) {
     val auth by remember { WeTrakrTracker.ensureLoaded(); WeTrakrTracker.authState }.collectAsStateWithLifecycle()
     val sync by WeTrakrTracker.sync.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    val uriHandler = LocalUriHandler.current
-    var showCodeSheet by remember { mutableStateOf(false) }
     val syncStatus = sync.takeIf { it.scope == auth.scope }
     TrackingProviderCard(
         brand = TrackingBrand.WETRAKR,
@@ -64,10 +61,9 @@ internal fun WeTrakrProviderCard(modifier: Modifier = Modifier) {
         errorMessage = weTrakrAccountError(auth.error, syncStatus?.error),
         websiteLabel = stringResource(Res.string.settings_wetrakr_visit),
         websiteUrl = WeTrakrConfig.WEBSITE_URL,
+        // The card shows the code inline while WeTrakr waits for approval, like MDBList's.
         onConnectRequested = {
-            showCodeSheet = true
             WeTrakrTracker.connect()
-            if (!WeTrakrTracker.authState.value.awaitingApproval) showCodeSheet = false
             null
         },
         onResumeAuthorization = { WeTrakrTracker.pendingAuthorizationUrl() },
@@ -87,17 +83,6 @@ internal fun WeTrakrProviderCard(modifier: Modifier = Modifier) {
         },
         modifier = modifier,
     )
-
-    if (showCodeSheet) {
-        TrackingDeviceCodeSheet(
-            userCode = auth.userCode,
-            verificationUrl = auth.verificationUrl ?: WeTrakrConfig.DEFAULT_VERIFICATION_URL,
-            isConnected = auth.isAuthenticated,
-            onOpenVerificationPage = { url -> runCatching { uriHandler.openUri(url) } },
-            onCancel = { WeTrakrTracker.cancelAuthorization() },
-            onDismiss = { showCodeSheet = false },
-        )
-    }
 }
 
 @Composable

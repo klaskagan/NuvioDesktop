@@ -1,6 +1,6 @@
 package com.nuvio.app.features.wetrakr
 
-import com.nuvio.app.features.tracking.TrackingAnimeIdMapper
+
 import com.nuvio.app.features.tracking.TrackingHistoryItem
 import com.nuvio.app.features.tracking.TrackingHistoryWriter
 import com.nuvio.app.features.tracking.TrackingListStatus
@@ -14,7 +14,7 @@ import com.nuvio.app.features.tracking.TrackingRefreshIntent
 import com.nuvio.app.features.tracking.TrackingScrobbleAction
 import com.nuvio.app.features.tracking.TrackingScrobbleEvent
 import com.nuvio.app.features.tracking.TrackingScrobbler
-import com.nuvio.app.features.tracking.notFoundTotal
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -61,7 +61,7 @@ class WeTrakrTrackingWrites internal constructor(
 
     override suspend fun scrobble(profileId: Int, action: TrackingScrobbleAction, event: TrackingScrobbleEvent) {
         val scope = scope(profileId)
-        val media = TrackingAnimeIdMapper.toImdbReference(event.media)
+        val media = WeTrakrAnimeIds.toImdbReference(event.media)
         val target = resolve(media) ?: return
         val episode = media.episode
         if (!target.isMovie && episode == null) return
@@ -96,7 +96,7 @@ class WeTrakrTrackingWrites internal constructor(
         val wholeShows = linkedMapOf<String, Long?>()
         val episodes = linkedMapOf<String, MutableList<WeTrakrEpisodeWrite>>()
         var notFound = 0
-        TrackingAnimeIdMapper.toImdbHistoryItems(items).forEach { item ->
+        WeTrakrAnimeIds.toImdbHistoryItems(items).forEach { item ->
             val target = resolve(item.media)
             if (target == null) {
                 notFound += 1
@@ -149,7 +149,7 @@ class WeTrakrTrackingWrites internal constructor(
         val wholeShows = mutableSetOf<String>()
         val episodes = linkedMapOf<String, MutableList<WeTrakrEpisodeWrite>>()
         var notFound = 0
-        TrackingAnimeIdMapper.toImdbReferences(items).forEach { media ->
+        WeTrakrAnimeIds.toImdbReferences(items).forEach { media ->
             val target = resolve(media)
             if (target == null) {
                 notFound += 1

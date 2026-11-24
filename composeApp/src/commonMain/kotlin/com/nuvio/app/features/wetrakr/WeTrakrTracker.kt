@@ -72,6 +72,9 @@ object WeTrakrTracker : TrackingAuthProvider {
         TrackingProviderRegistry.registerWatchedProvider(watchedProvider)
         TrackingProviderRegistry.registerLibraryProvider(libraryProvider)
         TrackingProviderRegistry.registerRatingProvider(ratingProvider)
+        // Details: WeTrakr as a reviews source and as the Rate strip's favorite heart.
+        com.nuvio.app.features.tracking.TrackingComments.register(WeTrakrCommentsProvider(api, store))
+        com.nuvio.app.features.tracking.TrackingFavorites.register(WeTrakrFavoritesProvider(api, store))
     }
 
     fun hasRequiredCredentials(): Boolean = WeTrakrConfig.isConfigured

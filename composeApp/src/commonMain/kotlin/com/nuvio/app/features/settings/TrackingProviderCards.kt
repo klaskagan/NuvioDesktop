@@ -121,6 +121,7 @@ import nuvio.composeapp.generated.resources.settings_trakt_device_instructions
 import nuvio.composeapp.generated.resources.settings_trakt_save_actions_description
 import nuvio.composeapp.generated.resources.settings_trakt_sign_in_description
 import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.resources.painterResource
 
 internal enum class TrackingBrand(val displayName: String) {
     NUVIO("Nuvio"),
@@ -786,10 +787,6 @@ internal fun TrackingBrandGlyph(
         )
         TrackingBrand.TMDB -> Image(
             painter = integrationLogoPainter(IntegrationLogo.Tmdb),
-            contentDescription = contentDescription,
-            modifier = modifier,
-            contentScale = ContentScale.Fit,
-        )
             contentDescription = contentDescription,
             modifier = modifier,
             contentScale = ContentScale.Fit,
