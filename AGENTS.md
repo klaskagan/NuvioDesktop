@@ -10,6 +10,9 @@ For new features or changes involving UI, navigation, player controls, or settin
 read `.agents/skills/nuvio-project-patterns/SKILL.md` before implementation. If the
 skill is not in the session catalog, read that file directly.
 
+- Desktop Details work (board, tabs, Rate, Quick pick, Sources, Watch it your way
+  windows) follows the skill's "Details redesign" section: the design artifact is the
+  source of truth, and the build tracker is updated when done.
 - Find the closest existing screen or interaction and reuse its components and
   theme tokens. Name that reference in the first implementation update.
 - Settings subpages belong in the existing Settings navigation. Playback selectors

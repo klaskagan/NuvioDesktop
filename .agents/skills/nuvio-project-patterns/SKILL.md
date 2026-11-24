@@ -54,6 +54,43 @@ failure patterns and the behavior/tests that prevent recurrence. For Calendar
 work, also read [the Calendar contract](../../../CALENDAR.md); its six-row grid,
 orientation setting, and navigation choices are feature-specific.
 
+## Details redesign: design doc and build tracker
+
+Applies to any change or bug on the desktop Details page: the board, its tabs, Rate,
+Watch it your way and the windows it opens (TV picker, party lobby), Quick pick and the
+Sources sheet. It applies even when the request only says "match the design" or "doesn't
+match the design".
+
+- **Source of truth:** the Details design artifact,
+  https://claude.ai/artifact/PguAGFQv9PsdVdSPwksUGw. Read the live artifact first. Find
+  the frame by its name in the page's contents; its caption is the spec. If the request
+  names no frame, map it to one (for example "watch party window" → Party lobby,
+  "rate button" → Rate · inline and Rate B · states) and say which.
+- **Build status:** the Details build tracker,
+  https://claude.ai/artifact/WBJmEq4C5RozpxNvM1gGKr. Each frame there has its status and
+  a "Build gap" line.
+- **Sources:** `~/Documents/Nuvio/design/details-redesign/` (its README has the edit
+  routine). Status per frame lives in `V1_STATUS` in `gen_gaps.py`; `gen_design.py`
+  builds the design page from the same frames.
+- **Before coding:** name the frame(s) and list what differs, from the Build gap line and
+  your own look at the running app.
+- **Finish, every time:**
+  1. Check the result in the running app against the frame.
+  2. Update that frame's `V1_STATUS` entry: status, plus a note of what still differs.
+     Only frames you actually checked.
+  3. `cd ~/Documents/Nuvio/design/details-redesign && python3 gen_gaps.py art`, preview
+     both `art/page.html` and `art/design.html`, then republish both to their URLs.
+  4. In the handoff, say what changed in the tracker.
+- **Design changes** (only when the user asks): change the frame in `gen_gaps.py` /
+  `gen_design.py` first, then build to it. The pages hold design frames only: never
+  build renders, test snapshots or other implementation screenshots; gaps are text.
+- **Visual checks:** computer use with full-screen control (background `app_*` clicks
+  don't reach MainKt). Hover and open only: never click Rate stars or ♥ (the strip opens
+  under the pointer and saves), Play/Resume, or Watch party (it creates a real party).
+  Close layers with Esc.
+- **Branch:** Details redesign work is on a worktree cut from `nuvio-redesign` and merges
+  back there, never into develop.
+
 ## Integrate state and behavior
 
 Keep shared feature state and contracts in their existing commonMain layer;
