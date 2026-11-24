@@ -168,15 +168,17 @@ internal fun detailBoardTabLabel(tab: DetailBoardTab, items: List<MetaScreenSect
         DetailBoardTab.Cast -> stringResource(Res.string.detail_board_tab_cast)
         DetailBoardTab.Reviews -> stringResource(Res.string.detail_board_tab_reviews)
         DetailBoardTab.Trailers -> title(MetaScreenSectionKey.TRAILERS)
+        DetailBoardTab.Gallery -> title(MetaScreenSectionKey.GALLERY)
         DetailBoardTab.More -> title(MetaScreenSectionKey.MORE_LIKE_THIS)
         DetailBoardTab.Details -> title(MetaScreenSectionKey.DETAILS)
     }
 }
 
-private fun detailBoardTabCount(tab: DetailBoardTab, meta: MetaDetails): Int? = when (tab) {
+private fun detailBoardTabCount(tab: DetailBoardTab, meta: MetaDetails, args: DetailSectionArgs): Int? = when (tab) {
     DetailBoardTab.Episodes -> meta.videos.count { (it.season ?: 0) > 0 && it.episode != null }.takeIf { it > 0 }
     DetailBoardTab.Cast -> meta.cast.size.takeIf { it > 0 }
     DetailBoardTab.Trailers -> meta.trailers.size.takeIf { it > 0 }
+    DetailBoardTab.Gallery -> args.gallery.size.takeIf { it > 0 }
     else -> null
 }
 
@@ -201,7 +203,7 @@ internal fun LazyListScope.detailBoardItems(
             tabs = board.tabs,
             selected = board.selectedTab,
             label = { detailBoardTabLabel(it, settings.items) },
-            count = { detailBoardTabCount(it, args.meta) },
+            count = { detailBoardTabCount(it, args.meta, args) },
             onSelect = board.onSelectTab,
             pinned = board.pinned(),
             meta = args.meta,

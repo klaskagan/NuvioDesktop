@@ -248,6 +248,9 @@ import nuvio.composeapp.generated.resources.episode_mark_season_watched
 import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.redesignText
 import nuvio.composeapp.generated.resources.detail_board_mark_previous_seasons
+import com.nuvio.app.features.gallery.GalleryImage
+import com.nuvio.app.features.gallery.DetailGalleryRepository
+import com.nuvio.app.features.gallery.KinopoiskSettingsRepository
 
 private val watchedMarkerDiagnosticLog = Logger.withTag("WatchedMarkerDiag")
 private const val DetailScrolledBackgroundDefaultMaxAlpha = 0.86f
@@ -349,6 +352,8 @@ fun MetaDetailsScreen(
     var selectedEpisodeForActions by remember(type, id) { mutableStateOf<MetaVideo?>(null) }
     // Where the board's episode menu opens: the card it was asked from.
     var episodeMenuAnchor by remember(type, id) { mutableStateOf<Rect?>(null) }
+    // The gallery's "Set as background": this title's backdrop for this visit.
+    var boardBackgroundOverride by remember(type, id) { mutableStateOf<String?>(null) }
     var selectedEpisodeZoomAnchor by remember(type, id) { mutableStateOf<PosterZoomAnchor?>(null) }
     var episodeToRate by remember(type, id) { mutableStateOf<MetaVideo?>(null) }
     val episodeOverlayHazeState = rememberHazeState()
@@ -572,7 +577,7 @@ fun MetaDetailsScreen(
                 if (boardLayout && boardBackdropMode != ShellBackdropMode.Solid) BackdropFocusController() else null
             }
             if (boardBackdrop != null) {
-                val boardArt = displayedMeta?.let { shown -> shown.background?.takeIf { it.isNotBlank() } ?: shown.poster }
+                val boardArt = boardBackgroundOverride ?: displayedMeta?.let { shown -> shown.background?.takeIf { it.isNotBlank() } ?: shown.poster }
                 LaunchedEffect(boardBackdrop, boardArt) { boardBackdrop.base = boardArt }
                 ShellBackdrop(boardBackdrop, showArtwork = boardBackdropMode == ShellBackdropMode.Ambient)
             }
@@ -1335,6 +1340,32 @@ fun MetaDetailsScreen(
                         )
                     }
                 }
+                // More like this, unwatched: the pool loads once per title and Trakt connection; until it
+                // arrives the title's own recommendations stand in, filtered by local watch history.
+                val traktConnectedForPool = traktAuthUiState.mode == TraktConnectionMode.CONNECTED
+                var recommendationPool by remember(meta.id, traktConnectedForPool) { mutableStateOf<RecommendationPool?>(null) }
+                LaunchedEffect(meta.id, traktConnectedForPool, metaScreenSettingsUiState.moreLikeThisUnwatchedOnly, isDesktop) {
+                    if (!isDesktop || !metaScreenSettingsUiState.moreLikeThisUnwatchedOnly || recommendationPool != null) return@LaunchedEffect
+                    recommendationPool = runCatching {
+                        UnwatchedRecommendations.load(meta, traktConnectedForPool, watchedUiState.watchedKeys, ProfileRepository.activeProfileId)
+                    }.getOrNull()
+                }
+                val moreLikeThisUnwatched = remember(recommendationPool, meta, watchedUiState.watchedKeys) {
+                    val pool = recommendationPool ?: RecommendationPool(meta.moreLikeThis, setOfNotNull(meta.imdbId), emptySet())
+                    UnwatchedRecommendations.unwatched(pool, meta, watchedUiState.watchedKeys)
+                }
+                // Gallery: TMDB images, episode stills and (with a key) Kinopoisk stills, once per title.
+                var galleryImages by remember(meta.id) { mutableStateOf<List<GalleryImage>>(emptyList()) }
+                val kinopoiskKey by remember { KinopoiskSettingsRepository.ensureLoaded(); KinopoiskSettingsRepository.apiKey }.collectAsStateWithLifecycle()
+                LaunchedEffect(meta.id, meta.videos.size, kinopoiskKey, isDesktop) {
+                    if (isDesktop) galleryImages = DetailGalleryRepository.load(meta)
+                }
+                // Behind the film: Wikidata by IMDb id, once per title; nothing shows until it answers.
+                var behindTheFilm by remember(meta.imdbId) { mutableStateOf<BehindTheFilm?>(null) }
+                LaunchedEffect(meta.imdbId, isDesktop) {
+                    val imdb = meta.imdbId ?: meta.id.takeIf { it.startsWith("tt") } ?: return@LaunchedEffect
+                    if (isDesktop) behindTheFilm = BehindTheFilmRepository.load(imdb)
+                }
                 val partyAvailable by PartyRepository.available.collectAsStateWithLifecycle()
                 val startWatchParty: (() -> Unit)? = onOpenParty?.takeIf { partyAvailable && PartyRepository.canUse && yourWayVideoId != null }?.let { openParty ->
                     {
@@ -1693,6 +1724,12 @@ fun MetaDetailsScreen(
                             episodeMenuAnchor = anchor
                             selectedEpisodeForActions = video
                         },
+                        moreLikeThisUnwatched = moreLikeThisUnwatched,
+                        moreLikeThisUnwatchedOnly = metaScreenSettingsUiState.moreLikeThisUnwatchedOnly,
+                        onMoreLikeThisUnwatchedOnlyChange = MetaScreenSettingsRepository::setMoreLikeThisUnwatchedOnly,
+                        behindTheFilm = behindTheFilm,
+                        gallery = galleryImages,
+                        onSetBackground = { url -> boardBackgroundOverride = url },
                     )
                     val boardArgs = DetailBoardArgs(
                         onPlayAnchor = { boardPlayAnchor = it },

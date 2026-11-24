@@ -200,6 +200,12 @@ import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
+import com.nuvio.app.features.details.components.BoardCastGrid
+import com.nuvio.app.features.details.components.BoardMoreLikeThis
+import com.nuvio.app.features.details.components.BehindTheFilmTile
+import com.nuvio.app.features.details.components.BoardGallery
+import com.nuvio.app.features.gallery.GalleryImage
+import com.nuvio.app.features.gallery.GalleryMinimumImages
 
 /**
  * Everything the Details sections read and call, gathered once by [MetaDetailsScreen]. Every layout
@@ -269,6 +275,15 @@ internal data class DetailSectionArgs(
     val onEpisodeCardStyleChange: ((MetaEpisodeCardStyle) -> Unit)? = null,
     val onEpisodeClickAt: ((MetaVideo, androidx.compose.ui.geometry.Rect?) -> Unit)? = null,
     val onEpisodeMenuAt: ((MetaVideo, androidx.compose.ui.geometry.Rect?) -> Unit)? = null,
+    // More like this on the board: the unwatched titles (shared fill logic) and the remembered switch.
+    val moreLikeThisUnwatched: List<MetaPreview>? = null,
+    val moreLikeThisUnwatchedOnly: Boolean = true,
+    val onMoreLikeThisUnwatchedOnlyChange: ((Boolean) -> Unit)? = null,
+    /** The Details tab's "Behind the film" tile (Wikidata), once looked up. */
+    val behindTheFilm: BehindTheFilm? = null,
+    /** The gallery's images (desktop board); the tab shows from [GalleryMinimumImages]. */
+    val gallery: List<GalleryImage> = emptyList(),
+    val onSetBackground: ((String) -> Unit)? = null,
 ) {
     /** Whether [key] has anything to show for this title. */
     fun hasContent(key: MetaScreenSectionKey): Boolean =
@@ -285,6 +300,7 @@ internal data class DetailSectionArgs(
             comments = comments,
             isCommentsLoading = isCommentsLoading,
             commentsError = commentsError,
+            galleryCount = gallery.size,
         )
 }
 
@@ -320,6 +336,7 @@ internal fun LazyListScope.configuredMetaSectionItems(
                 comments = comments,
                 isCommentsLoading = isCommentsLoading,
                 commentsError = commentsError,
+                galleryCount = gallery.size,
             )
 
         val showSeriesAudience = showAudience && isDesktop && meta.type == "series" && episodeListCurrentSeason != null
@@ -557,6 +574,7 @@ private fun metaSectionHasContent(
     comments: List<TraktCommentReview>,
     isCommentsLoading: Boolean,
     commentsError: String?,
+    galleryCount: Int = 0,
 ): Boolean =
     when (key) {
         MetaScreenSectionKey.ACTIONS -> true
@@ -569,6 +587,7 @@ private fun metaSectionHasContent(
         MetaScreenSectionKey.DETAILS -> hasAdditionalInfoSection
         MetaScreenSectionKey.COLLECTION -> !hasEpisodes && hasCollectionSection
         MetaScreenSectionKey.MORE_LIKE_THIS -> hasMoreLikeThisSection
+        MetaScreenSectionKey.GALLERY -> galleryCount >= GalleryMinimumImages
     }
 
 /** Renders the sections enabled in [settings] one after another, or grouped into tabs. */
@@ -600,6 +619,7 @@ internal fun ConfiguredMetaSections(
                 MetaScreenSectionKey.DETAILS -> hasAdditionalInfoSection
                 MetaScreenSectionKey.COLLECTION -> !hasEpisodes && hasCollectionSection
                 MetaScreenSectionKey.MORE_LIKE_THIS -> hasMoreLikeThisSection
+                MetaScreenSectionKey.GALLERY -> gallery.size >= GalleryMinimumImages
             }
         }
 
@@ -635,7 +655,9 @@ internal fun ConfiguredMetaSections(
                         DetailProductionSection(meta = meta, showHeader = showHeader, onCompanyClick = onCompanyClick)
                     }
                 }
-                MetaScreenSectionKey.CAST -> {
+                MetaScreenSectionKey.CAST -> if (boardStyle) {
+                    BoardCastGrid(cast = meta.cast, isSeries = meta.type == "series" || hasEpisodes, onCastClick = onCastClick)
+                } else {
                     DetailCastSection(
                         cast = meta.cast,
                         showHeader = showHeader,
@@ -703,8 +725,19 @@ internal fun ConfiguredMetaSections(
                     }
                 }
                 MetaScreenSectionKey.DETAILS -> {
-                    if (hasAdditionalInfoSection) {
-                        DetailAdditionalInfoSection(meta = meta, showHeader = showHeader)
+                    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                        if (hasAdditionalInfoSection) {
+                            DetailAdditionalInfoSection(meta = meta, showHeader = showHeader)
+                        }
+                        // Under About / More / Links on the board, once Wikidata has answered.
+                        val behind = behindTheFilm
+                        if (boardStyle && behind != null) {
+                            BehindTheFilmTile(
+                                info = behind,
+                                isSeries = meta.type == "series" || hasEpisodes,
+                                onPerson = onCastClick?.let { open -> { person -> open(person, null) } },
+                            )
+                        }
                     }
                 }
                 MetaScreenSectionKey.COLLECTION -> {
@@ -720,6 +753,11 @@ internal fun ConfiguredMetaSections(
                         )
                     }
                 }
+                MetaScreenSectionKey.GALLERY -> {
+                    if (boardStyle && gallery.size >= GalleryMinimumImages) {
+                        BoardGallery(images = gallery, title = meta.name, onSetBackground = onSetBackground)
+                    }
+                }
                 MetaScreenSectionKey.MORE_LIKE_THIS -> {
                     if (hasMoreLikeThisSection) {
                         val sourceLabel = when (meta.moreLikeThisSource) {
@@ -728,7 +766,18 @@ internal fun ConfiguredMetaSections(
                             MoreLikeThisSource.SIMKL -> stringResource(Res.string.detail_more_like_this_powered_by_simkl)
                             null -> null
                         }
-                        DetailPosterRailSection(
+                        if (boardStyle && onMoreLikeThisUnwatchedOnlyChange != null) {
+                            BoardMoreLikeThis(
+                                items = if (moreLikeThisUnwatchedOnly) moreLikeThisUnwatched.orEmpty() else meta.moreLikeThis,
+                                unwatchedOnly = moreLikeThisUnwatchedOnly,
+                                onUnwatchedOnlyChange = onMoreLikeThisUnwatchedOnlyChange,
+                                watchedKeys = watchedKeys,
+                                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                                sourceLabel = sourceLabel,
+                                horizontalScrollPadding = horizontalScrollPadding,
+                                onPosterClick = onOpenMeta,
+                            )
+                        } else DetailPosterRailSection(
                             title = stringResource(Res.string.details_more_like_this),
                             items = meta.moreLikeThis,
                             watchedKeys = watchedKeys,

@@ -129,6 +129,8 @@ import org.jetbrains.compose.resources.stringResource
 import sh.calvin.reorderable.ReorderableCollectionItemScope
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import nuvio.composeapp.generated.resources.meta_section_gallery_title
+import nuvio.composeapp.generated.resources.meta_section_gallery_description
 
 internal fun LazyListScope.metaScreenSettingsContent(
     isTablet: Boolean,
@@ -592,6 +594,7 @@ private val MetaScreenSectionKey.titleRes: StringResource
         MetaScreenSectionKey.DETAILS -> Res.string.settings_meta_details
         MetaScreenSectionKey.COLLECTION -> Res.string.settings_meta_collection
         MetaScreenSectionKey.MORE_LIKE_THIS -> Res.string.settings_meta_more_like_this
+        MetaScreenSectionKey.GALLERY -> Res.string.meta_section_gallery_title
     }
 
 private val MetaScreenSectionKey.descriptionRes: StringResource
@@ -606,6 +609,7 @@ private val MetaScreenSectionKey.descriptionRes: StringResource
         MetaScreenSectionKey.DETAILS -> Res.string.settings_meta_details_description
         MetaScreenSectionKey.COLLECTION -> Res.string.settings_meta_collection_description
         MetaScreenSectionKey.MORE_LIKE_THIS -> Res.string.settings_meta_more_like_this_description
+        MetaScreenSectionKey.GALLERY -> Res.string.meta_section_gallery_description
     }
 
 @Composable

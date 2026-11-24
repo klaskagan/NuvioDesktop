@@ -1199,13 +1199,41 @@ object TmdbMetadataService {
         return items
     }
 
-    internal suspend fun movieRecommendationPage(tmdbId: String, page: Int): Pair<List<MetaPreview>, Int?>? {
+    internal suspend fun movieRecommendationPage(tmdbId: String, page: Int): Pair<List<MetaPreview>, Int?>? =
+        recommendationPage(tmdbId, "movie", page)
+
+    /**
+     * A title's backdrops and posters for the Details gallery. Text-free images (no language) and
+     * English ones; [mediaType] is "movie" or "tv".
+     */
+    internal suspend fun galleryImages(tmdbId: String, mediaType: String): List<TmdbGalleryImage> {
+        val response = fetch<TmdbGalleryResponse>(
+            endpoint = "$mediaType/$tmdbId/images",
+            query = mapOf("include_image_language" to "en,null"),
+        ) ?: return emptyList()
+        fun List<TmdbGalleryFile>.toImages(kind: TmdbGalleryKind) = mapNotNull { file ->
+            val path = file.filePath?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            TmdbGalleryImage(
+                kind = kind,
+                url = buildImageUrl(path, "original") ?: return@mapNotNull null,
+                thumbnail = buildImageUrl(path, if (kind == TmdbGalleryKind.Poster) "w342" else "w780"),
+                width = file.width,
+                height = file.height,
+                vote = file.voteAverage ?: 0.0,
+                textFree = file.language == null,
+            )
+        }
+        return response.backdrops.toImages(TmdbGalleryKind.Backdrop) + response.posters.toImages(TmdbGalleryKind.Poster)
+    }
+
+    /** One page of TMDB's recommendations for a film ([mediaType] "movie") or a series ("tv"). */
+    internal suspend fun recommendationPage(tmdbId: String, mediaType: String, page: Int): Pair<List<MetaPreview>, Int?>? {
         val language = normalizeTmdbLanguage(TmdbSettingsRepository.snapshot().language)
         val response = fetch<TmdbRecommendationResponse>(
-            endpoint = "movie/$tmdbId/recommendations",
+            endpoint = "$mediaType/$tmdbId/recommendations",
             query = mapOf("language" to language, "page" to page.toString()),
         ) ?: return null
-        return mapRecommendations(response.results, "movie") to response.totalPages
+        return mapRecommendations(response.results, mediaType) to response.totalPages
     }
 
     private fun mapRecommendations(results: List<TmdbRecommendationItem>, mediaType: String): List<MetaPreview> =
@@ -1685,6 +1713,7 @@ private fun buildPeople(
                 role = castMember.character?.trim()?.takeIf(String::isNotBlank),
                 photo = buildImageUrl(castMember.profilePath, "w500"),
                 tmdbId = castMember.id,
+                episodeCount = castMember.episodeCount,
             )
         }
 
@@ -1938,6 +1967,7 @@ private data class TmdbAggregateCreditsResponse(
                 name = member.name,
                 character = member.roles.firstOrNull()?.character,
                 profilePath = member.profilePath,
+                episodeCount = member.totalEpisodeCount ?: member.roles.sumOf { it.episodeCount ?: 0 }.takeIf { it > 0 },
             )
         },
         crew = crew.flatMap { member ->
@@ -1959,6 +1989,7 @@ private data class TmdbAggregateCastMember(
     val name: String? = null,
     val roles: List<TmdbAggregateRole> = emptyList(),
     @SerialName("profile_path") val profilePath: String? = null,
+    @SerialName("total_episode_count") val totalEpisodeCount: Int? = null,
 )
 
 @Serializable
@@ -1989,6 +2020,8 @@ private data class TmdbCastMember(
     @SerialName("original_name") val originalName: String? = null,
     val character: String? = null,
     @SerialName("profile_path") val profilePath: String? = null,
+    /** A series' episodes this person appears in (aggregate credits only). */
+    @kotlinx.serialization.Transient val episodeCount: Int? = null,
 )
 
 @Serializable
@@ -2224,3 +2257,30 @@ internal data class TmdbDiscoverResult(
 )
 
 internal data class TmdbLandscapeArtwork(val backdrop: String?, val logo: String?, val cleanBackdrop: String? = null)
+
+internal enum class TmdbGalleryKind { Backdrop, Poster }
+
+internal data class TmdbGalleryImage(
+    val kind: TmdbGalleryKind,
+    val url: String,
+    val thumbnail: String?,
+    val width: Int?,
+    val height: Int?,
+    val vote: Double,
+    val textFree: Boolean,
+)
+
+@Serializable
+private data class TmdbGalleryResponse(
+    val backdrops: List<TmdbGalleryFile> = emptyList(),
+    val posters: List<TmdbGalleryFile> = emptyList(),
+)
+
+@Serializable
+private data class TmdbGalleryFile(
+    @SerialName("file_path") val filePath: String? = null,
+    @SerialName("iso_639_1") val language: String? = null,
+    @SerialName("vote_average") val voteAverage: Double? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+)

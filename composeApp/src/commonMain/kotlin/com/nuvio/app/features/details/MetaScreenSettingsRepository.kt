@@ -25,6 +25,7 @@ enum class MetaScreenSectionKey {
     DETAILS,
     COLLECTION,
     MORE_LIKE_THIS,
+    GALLERY,
     ;
 
 
@@ -85,6 +86,8 @@ data class MetaScreenSettingsUiState(
     val tabLayout: Boolean = false,
     val episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal,
     val blurUnwatchedEpisodes: Boolean = false,
+    /** Details' More like this lists only titles the user hasn't watched. On by default. */
+    val moreLikeThisUnwatchedOnly: Boolean = true,
     val posterTransitionEnabled: Boolean = false,
     val showOverallRatings: Boolean = true,
     val episodeRatingsVisibility: EpisodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL,
@@ -142,6 +145,8 @@ private data class StoredMetaScreenSettingsPayload(
     val episodeCardStyle: String = "horizontal",
     @SerialName("blur_unwatched_episodes")
     val blurUnwatchedEpisodes: Boolean = false,
+    @SerialName("more_like_this_unwatched_only")
+    val moreLikeThisUnwatchedOnly: Boolean = true,
     @SerialName("poster_transition_enabled")
     val posterTransitionEnabled: Boolean = false,
     @SerialName("show_overall_ratings")
@@ -199,6 +204,11 @@ object MetaScreenSettingsRepository {
             descriptionRes = Res.string.meta_section_trailers_description,
         ),
         MetaScreenSectionDefinition(
+            key = MetaScreenSectionKey.GALLERY,
+            titleRes = Res.string.meta_section_gallery_title,
+            descriptionRes = Res.string.meta_section_gallery_description,
+        ),
+        MetaScreenSectionDefinition(
             key = MetaScreenSectionKey.DETAILS,
             titleRes = Res.string.meta_section_details_title,
             descriptionRes = Res.string.meta_section_details_description,
@@ -226,6 +236,7 @@ object MetaScreenSettingsRepository {
     private var tabLayout: Boolean = false
     private var episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal
     private var blurUnwatchedEpisodes: Boolean = false
+    private var moreLikeThisUnwatchedOnly: Boolean = true
     private var showOverallRatings: Boolean = true
     private var episodeRatingsVisibility: EpisodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
     private var posterTransitionEnabled: Boolean = false
@@ -249,6 +260,7 @@ object MetaScreenSettingsRepository {
                 episodeCardStyle = MetaEpisodeCardStyle.parse(parsed.episodeCardStyle)
                     ?: MetaEpisodeCardStyle.Horizontal
                 blurUnwatchedEpisodes = parsed.blurUnwatchedEpisodes
+                moreLikeThisUnwatchedOnly = parsed.moreLikeThisUnwatchedOnly
                 posterTransitionEnabled = parsed.posterTransitionEnabled
                 showOverallRatings = parsed.showOverallRatings
                 episodeRatingsVisibility = EpisodeRatingsVisibility.parse(parsed.episodeRatingsVisibility)
@@ -273,6 +285,7 @@ object MetaScreenSettingsRepository {
         tabLayout = false
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
+        moreLikeThisUnwatchedOnly = true
         posterTransitionEnabled = false
         showOverallRatings = true
         episodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
@@ -315,6 +328,13 @@ object MetaScreenSettingsRepository {
     fun setEpisodeCardStyle(style: MetaEpisodeCardStyle) {
         ensureLoaded()
         episodeCardStyle = style
+        publish()
+        persist()
+    }
+
+    fun setMoreLikeThisUnwatchedOnly(enabled: Boolean) {
+        ensureLoaded()
+        moreLikeThisUnwatchedOnly = enabled
         publish()
         persist()
     }
@@ -369,6 +389,7 @@ object MetaScreenSettingsRepository {
         tabLayout = false
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
+        moreLikeThisUnwatchedOnly = true
         posterTransitionEnabled = false
         showOverallRatings = true
         episodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
@@ -424,6 +445,7 @@ object MetaScreenSettingsRepository {
         tabLayout = false
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
+        moreLikeThisUnwatchedOnly = true
         posterTransitionEnabled = false
         showOverallRatings = true
         episodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
@@ -464,7 +486,11 @@ object MetaScreenSettingsRepository {
 
     private fun normalizePreferences() {
         val normalized = mutableMapOf<MetaScreenSectionKey, StoredMetaScreenSectionPreference>()
-        definitions.sortedBy { definition -> preferences[definition.key]?.order ?: Int.MAX_VALUE }
+        // A section added after the user arranged theirs (Gallery) lands after its neighbour, not last.
+        fun position(key: MetaScreenSectionKey): Double = preferences[key]?.order?.toDouble()
+            ?: if (key == MetaScreenSectionKey.GALLERY) preferences[MetaScreenSectionKey.TRAILERS]?.order?.plus(0.5) ?: Double.MAX_VALUE
+            else Double.MAX_VALUE
+        definitions.sortedBy { definition -> position(definition.key) }
             .forEachIndexed { index, definition ->
                 val stored = preferences[definition.key]
                 normalized[definition.key] = StoredMetaScreenSectionPreference(
@@ -499,6 +525,7 @@ object MetaScreenSettingsRepository {
             tabLayout = tabLayout,
             episodeCardStyle = episodeCardStyle,
             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+            moreLikeThisUnwatchedOnly = moreLikeThisUnwatchedOnly,
             posterTransitionEnabled = posterTransitionEnabled,
             showOverallRatings = showOverallRatings,
             episodeRatingsVisibility = episodeRatingsVisibility,
@@ -517,6 +544,7 @@ object MetaScreenSettingsRepository {
                     tabLayout = tabLayout,
                     episodeCardStyle = MetaEpisodeCardStyle.persist(episodeCardStyle),
                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                    moreLikeThisUnwatchedOnly = moreLikeThisUnwatchedOnly,
                     posterTransitionEnabled = posterTransitionEnabled,
                     showOverallRatings = showOverallRatings,
                     episodeRatingsVisibility = episodeRatingsVisibility.name,

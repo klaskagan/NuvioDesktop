@@ -32,10 +32,11 @@ internal object MovieRecommendationRules {
         currentId: String,
         watchedKeys: Set<String>,
         currentAliases: Set<String> = emptySet(),
+        type: String = "movie",
     ): List<MetaPreview> {
         val seen = (currentAliases + currentId).toMutableSet()
         return items.asSequence()
-            .filter { it.type == "movie" }
+            .filter { it.type == type }
             .filter { item ->
                 val ids = item.alternateIds + item.id
                 val distinct = ids.none(seen::contains)

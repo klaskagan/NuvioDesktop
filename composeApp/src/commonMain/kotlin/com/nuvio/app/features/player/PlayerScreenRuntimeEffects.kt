@@ -63,6 +63,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
+import com.nuvio.app.features.details.UnwatchedRecommendations
 
 private const val SKIP_INTERVAL_RESOLVE_TIMEOUT_MS = 4_000L
 
@@ -107,52 +108,19 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
     LaunchedEffect(poolKey, recommendationMeta, shouldPrefetchRecommendations, watchedUiState.hasLoadedRemoteItems) {
         if (!shouldPrefetchRecommendations || recommendationMeta == null) return@LaunchedEffect
         movieRecommendationPoolLoadingKey = poolKey
-        val currentId = parentMetaId
-        val tmdbId = withTimeoutOrNull(3_000L) {
-            TmdbService.ensureTmdbId(currentId, "movie", fallbackImdbId = recommendationMeta.imdbId)
-        }
-        val aliases = setOfNotNull(recommendationMeta.imdbId, tmdbId?.let { "tmdb:$it" })
-        val items = when {
-            poolKey.second -> TraktRelatedRepository.getRelatedForPlayback(recommendationMeta)
-                .ifEmpty {
-                    recommendationMeta.moreLikeThis.takeIf {
-                        recommendationMeta.moreLikeThisSource == MoreLikeThisSource.TRAKT
-                    }.orEmpty()
-                }
-            recommendationMeta.moreLikeThisSource == MoreLikeThisSource.TRAKT -> withTimeoutOrNull(4_000L) {
-                MetaDetailsRepository.fetch("movie", currentId, cacheResult = false)
-            }?.moreLikeThis.orEmpty()
-            else -> recommendationMeta.moreLikeThis
-        }
-        val primary = MetaDetailsRepository.playbackRecommendationArtwork(recommendationMeta, items)
-        val traktWatchedAliases = if (poolKey.second) {
-            TraktWatchedSyncAdapter.pullExtraWatchedKeys(profileId)
-        } else {
-            emptySet()
-        }
-        val poolItems = if (poolKey.second && tmdbId != null) {
-            MovieRecommendationRules.appendFallbackPages(
-                primary = primary,
-                hasEnough = {
-                    MovieRecommendationRules.candidates(
-                        it, currentId, watchedUiState.watchedKeys + traktWatchedAliases, aliases,
-                    ).size == MovieRecommendationRules.LIMIT
-                },
-            ) { page ->
-                withTimeoutOrNull(3_000L) { TmdbMetadataService.movieRecommendationPage(tmdbId, page) }
-                    ?.let { (results, total) ->
-                        MetaDetailsRepository.playbackRecommendationArtwork(recommendationMeta, results) to total
-                    }
-            }
-        } else {
-            primary
-        }
+        // Shared with Details' More like this (UnwatchedRecommendations), so the two can't drift apart.
+        val pool = UnwatchedRecommendations.load(
+            meta = recommendationMeta,
+            traktConnected = poolKey.second,
+            watchedKeys = watchedUiState.watchedKeys,
+            profileId = profileId,
+        )
         if (poolKey == movieRecommendationPoolKey) {
             movieRecommendationPool = MovieRecommendationPool(
                 poolKey,
-                poolItems,
-                aliases,
-                traktWatchedAliases,
+                pool.items,
+                pool.currentAliases,
+                pool.extraWatchedKeys,
             )
             movieRecommendationPoolLoadingKey = null
         }

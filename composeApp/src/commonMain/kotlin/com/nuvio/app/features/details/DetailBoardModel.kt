@@ -13,6 +13,7 @@ internal enum class DetailBoardTab(val sections: List<MetaScreenSectionKey>) {
     Cast(listOf(MetaScreenSectionKey.CAST, MetaScreenSectionKey.PRODUCTION)),
     Reviews(listOf(MetaScreenSectionKey.COMMENTS)),
     Trailers(listOf(MetaScreenSectionKey.TRAILERS)),
+    Gallery(listOf(MetaScreenSectionKey.GALLERY)),
     More(listOf(MetaScreenSectionKey.COLLECTION, MetaScreenSectionKey.MORE_LIKE_THIS)),
     Details(listOf(MetaScreenSectionKey.DETAILS)),
 }

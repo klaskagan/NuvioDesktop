@@ -1448,7 +1448,7 @@ private fun PersonAvatarImage(person: PersonDetail, fallbackProfilePhoto: String
         }
     }
     Box(
-        modifier.clip(CircleShape).background(Color(0xFF24262B)).border(2.dp, Color.White.copy(alpha = 0.16f), CircleShape),
+        modifier.clip(PersonPortraitShape).background(Color(0xFF24262B)).border(1.dp, Color.White.copy(alpha = 0.16f), PersonPortraitShape),
         contentAlignment = Alignment.Center,
     ) {
         if (request != null) {
@@ -1515,7 +1515,8 @@ private fun PersonHeaderLayout(
     val bioReserve = with(density) { (bioStyle.lineHeight * PERSON_BIO_LINES).toDp() } + PERSON_BIO_SHOW_MORE_HEIGHT
     Column(modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            avatar(Modifier.size(150.dp))
+            // A 2:3 portrait, like the cast tiles on Details: the redesign has no round avatars.
+            avatar(Modifier.size(width = 120.dp, height = 180.dp))
             Spacer(Modifier.width(28.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1628,7 +1629,7 @@ private fun PersonRailPlaceholder(title: String, horizontalPadding: Dp, modifier
 @Composable
 private fun PersonCompactHeader(person: PersonDetail, fallbackProfilePhoto: String?, avatarTransitionKey: String, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-        PersonAvatarImage(person, fallbackProfilePhoto, avatarTransitionKey, Modifier.size(56.dp))
+        PersonAvatarImage(person, fallbackProfilePhoto, avatarTransitionKey, Modifier.size(width = 40.dp, height = 60.dp))
         Spacer(Modifier.width(14.dp))
         Column {
             person.knownFor?.takeIf { it.isNotBlank() }?.let {
@@ -1655,7 +1656,7 @@ private fun DesktopPersonDetailSkeleton(
             biography = null,
             loading = true,
             avatar = { avatarModifier ->
-                Box(avatarModifier.clip(CircleShape).skeleton(CircleShape), contentAlignment = Alignment.Center) {
+                Box(avatarModifier.clip(PersonPortraitShape).skeleton(PersonPortraitShape), contentAlignment = Alignment.Center) {
                     if (avatarRequest != null) {
                         AsyncImage(model = avatarRequest, contentDescription = personName, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
                     }
@@ -1668,3 +1669,5 @@ private fun DesktopPersonDetailSkeleton(
     }
 }
 
+/** The person's portrait on the redesigned page: the cast tiles' 2:3 shape and corners. */
+private val PersonPortraitShape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)

@@ -81,6 +81,8 @@ data class MetaPerson(
     val role: String? = null,
     val photo: String? = null,
     val tmdbId: Int? = null,
+    /** For series: the episodes this person appears in, shown as "N eps." on their tile. */
+    val episodeCount: Int? = null,
 )
 
 data class MetaCompany(
