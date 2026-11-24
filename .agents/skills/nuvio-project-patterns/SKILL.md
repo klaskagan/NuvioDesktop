@@ -155,6 +155,9 @@ agent's window; do not click there. Find your own window id from your process's 
 (CoreGraphics `CGWindowListCopyWindowInfo`) and capture it read-only with
 `screencapture -x -o -l<windowId> out.png`.
 
+Android compiles with `./gradlew :composeApp:compileAndroidMain` (the KMP Android-library target);
+there is no `compileDebugKotlinAndroid`. Report a pre-existing Android failure separately from your change.
+
 Run the smallest meaningful behavioral checks plus compilation appropriate to the
 changed source sets. For visual changes, compare the actual UI with the chosen
 reference: corners, padding, alignment, typography, icons, focus, selected rows,

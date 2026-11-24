@@ -47,6 +47,10 @@ movie/duration, and cancelled when playback or timing mode changes. A pending
 lookup does not flash the four-minute card before authoritative timing arrives.
 The timing choice is profile-scoped and included in settings sync/transfer.
 
+The pool comes from `UnwatchedRecommendations.load` (`features/details/UnwatchedRecommendations.kt`),
+which Details' More like this "Unwatched only" also uses, for series as well as films. Change the
+paging-and-fill there, not in either caller.
+
 The shared primary decoder accepts a request function, allowing recommendations
 (and the backup) to reuse `createApiHttpClient` with cancellable five-second
 requests and bounded response bodies. Do not substitute the desktop addon HTTP

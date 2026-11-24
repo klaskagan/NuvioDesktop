@@ -173,6 +173,32 @@ Person Details opening with no transition). Apply these to every redesigned scre
     when it is selected. Without it the row dropped back down the page on every switch.
   - The audience cards moved to the Your stats tab, and the progress card became a tile; both hide
     with the Episodes section. `SeriesAudienceDetailsUiTest` and `DetailBoardModelTest` cover this.
+  - Loading, error and content crossfade (`DetailContentState` in `MetaDetailsScreen`); the skeleton
+    builds the same side column as the board for the title's type. Side tiles use
+    `DetailBoardTileHeights` (series 132/136/144, film 138/130/144); the first tile takes the
+    spare height and every tile keeps `DetailBoardTileBottomPadding`. Put a tile's `testTag`
+    before its padding, or bounds checks measure the content box: `DetailBoardSideColumnUiTest`.
+  - Watch it your way is a three-column grid of up to six actions in the user's order: On TV
+    (picker popover, Manage TVs → Settings → Paired TVs), Watch party (creates the party, opens
+    its lobby), Download (Sources sheet in download mode), Shuffle, Choose source, Lists. A
+    missing action is left out; the grid reflows. Actions with a popover use
+    `DetailSecondaryAction.popup`.
+  - Episodes: season pills (watched/total, Specials last) with Posters and Row / List at the right,
+    in both card styles (the List style renders through `DetailSeriesListHeader`, so board flags go
+    there too). An episode click follows the Resume rules: autoplay on or a download plays, else
+    Quick pick opens beside the card. Right-click opens the frosted board menu, which ends with
+    that episode's Rate strip; seasons have no rating, so their menu stops at the actions.
+  - Rate is option B, inline: hover or click opens the ten-star strip, Library/Watched/Trailer
+    collapse to icons, keys pick (handlers sit above the focus target), Esc/Cancel close even
+    with the pointer still over it. The ♥ is `TrackingFavorites` (Trakt, WeTrakr).
+  - People names never truncate (credit line as one wrapping paragraph, portrait tiles with no
+    `maxLines`); the redesign has no round avatars (cast tiles and the person page are 2:3).
+  - Reviews read from `TrackingComments` (Settings → Tracking → Reviews source), never a tracker's
+    types: optimistic likes roll back on refusal; the reader and composer are frosted popups.
+    `BoardReviewsUiTest`.
+  - More like this "Unwatched only" and the player's end-credits strip share
+    `UnwatchedRecommendations`; Gallery is a section (`GALLERY`, after Trailers) with a
+    full-window viewer; Behind the film reads Wikidata once per IMDb id.
 - **Desktop stream selection is Quick pick plus the Sources sheet** (windows ≥ `StreamsSheetMinWidth`).
   The sheet (`StreamsSheetLayout.kt`) replaces the two-pane list: the title, resume line and a Best
   match card on the left; every source on the right, grouped by resolution, each row showing decoded
@@ -198,6 +224,15 @@ Person Details opening with no transition). Apply these to every redesigned scre
     languages) rank ahead of resolution among sources that start now, in Best match, Quick pick and
     the Quality sort. The filter is stored per profile, device-local (`stream_sheet_language`).
   - `StreamSheetModelTest` and `StreamsSheetUiTest` cover labels, grouping, filters, picks and the sheet.
+  - Exact copies one addon lists twice merge into the best-seeded row (`mergeDuplicateStreams`, "×N"),
+    and same-named rows show what tells them apart. A release's stated resolution beats a "UHD" tag;
+    BDRip and Remux are labelled from the release; a bare language tag never repeats a chip.
+  - The resume switch (off = from the start, a media server's position too) replaces the resume
+    line; download mode swaps it for a "Saves to Downloads" card. Every addon has a status pill.
+    A row body opens in place; ▶ plays; hover reveals Download and Copy link.
+  - On desktop the player always replaces Sources (`replaceStreamRoute`, P2P and external player
+    included), and `DesktopNavigationHistory.finishPlayback` drops the popped Sources location,
+    so closing the player lands on Details and Back leaves it: `DesktopNavigationHistoryTest`.
 
 Regression check: open the screen, navigate to and back from a detail page, type and refine a
 query, switch tabs, and scroll one step. There should be no frame where content pops, jumps, or
