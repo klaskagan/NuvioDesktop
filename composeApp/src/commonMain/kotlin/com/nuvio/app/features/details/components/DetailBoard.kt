@@ -122,6 +122,10 @@ import nuvio.composeapp.generated.resources.detail_logo_content_description
 import nuvio.composeapp.generated.resources.detail_mute_trailer
 import nuvio.composeapp.generated.resources.detail_unmute_trailer
 import nuvio.composeapp.generated.resources.playback_unavailable
+import nuvio.composeapp.generated.resources.detail_trailers_cant_play
+import nuvio.composeapp.generated.resources.detail_trailers_open_youtube
+import nuvio.composeapp.generated.resources.detail_gallery_close
+import com.nuvio.app.core.ui.RedesignPillButton
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -319,6 +323,9 @@ internal fun BoxScope.DetailFeatureTile(
     meta: MetaDetails,
     expanded: Boolean,
     trailer: (@Composable (Modifier, Boolean) -> Unit)?,
+    /** A picked trailer's title, shown while [expanded]. */
+    expandedTitle: String? = null,
+    expandedFailure: com.nuvio.app.features.details.DetailBoardTrailerFailure? = null,
     trailerReady: Boolean,
     trailerMuted: Boolean,
     onMuteToggle: () -> Unit,
@@ -390,6 +397,48 @@ internal fun BoxScope.DetailFeatureTile(
             .graphicsLayer { alpha = textAlpha },
         content = titleBlock,
     )
+    AnimatedVisibility(
+        visible = expanded && expandedFailure != null,
+        enter = fadeIn(tween(BoardMotionMillis)),
+        exit = fadeOut(tween(160)),
+        modifier = Modifier.align(Alignment.Center),
+    ) {
+        Column(
+            Modifier.clip(RoundedCornerShape(16.dp)).background(Color.Black.copy(alpha = 0.55f))
+                .padding(horizontal = 28.dp, vertical = 22.dp).testTag("detail_board_trailer_failed"),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(stringResource(Res.string.detail_trailers_cant_play), style = redesignText(16.sp, FontWeight.SemiBold))
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RedesignPillButton(
+                    label = stringResource(Res.string.detail_trailers_open_youtube),
+                    onClick = { expandedFailure?.onOpenExternally?.invoke() },
+                    primary = true,
+                    modifier = Modifier.testTag("detail_board_trailer_open_youtube"),
+                )
+                RedesignPillButton(
+                    label = stringResource(Res.string.detail_gallery_close),
+                    onClick = { expandedFailure?.onClose?.invoke() },
+                )
+            }
+        }
+    }
+    AnimatedVisibility(
+        visible = expanded && expandedTitle != null,
+        enter = fadeIn(tween(BoardMotionMillis)),
+        exit = fadeOut(tween(160)),
+        modifier = Modifier.align(Alignment.BottomStart).padding(start = 28.dp, end = 28.dp, bottom = 24.dp),
+    ) {
+        Text(
+            expandedTitle.orEmpty(),
+            style = redesignText(18.sp, FontWeight.Bold),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.34f))
+                .padding(horizontal = 14.dp, vertical = 8.dp).testTag("detail_board_trailer_title"),
+        )
+    }
 }
 
 /** The title's logo, or its name where there is none or it fails to load. */

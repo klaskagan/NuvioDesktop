@@ -1,5 +1,6 @@
 package com.nuvio.app.features.gallery
 
+import co.touchlab.kermit.Logger
 import com.nuvio.app.features.addons.httpRequestRaw
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.tmdb.TmdbGalleryKind
@@ -86,7 +87,11 @@ object DetailGalleryRepository {
                 }
             }
             // Kinopoisk covers films and series alike; it matches either by IMDb id.
-            val kinopoisk = async { meta.imdbId?.let { KinopoiskGalleryRepository.images(it) }.orEmpty() }
+            val kinopoisk = async {
+                val imdb = meta.imdbId ?: meta.id.takeIf { it.startsWith("tt") }
+                if (imdb == null) Logger.withTag("KinopoiskGallery").i { "No IMDb id for ${meta.id}; Kinopoisk skipped" }
+                imdb?.let { KinopoiskGalleryRepository.images(it) }.orEmpty()
+            }
             val stills = async { if (isSeries) episodeStills(meta, tmdbId.await()) else emptyList() }
             tmdb.await() + stills.await() + kinopoisk.await()
         }
@@ -144,6 +149,7 @@ private suspend fun episodeStills(meta: MetaDetails, tmdbId: String?): List<Gall
  */
 internal object KinopoiskGalleryRepository {
     private const val BASE = "https://kinopoiskapiunofficial.tech/api/v2.2"
+    private val log = Logger.withTag("KinopoiskGallery")
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
     private val cache = mutableMapOf<String, List<GalleryImage>>()
@@ -156,16 +162,19 @@ internal object KinopoiskGalleryRepository {
         KinopoiskSettingsRepository.ensureLoaded()
         val apiKey = KinopoiskSettingsRepository.apiKey.value ?: return emptyList()
         mutex.withLock { cache[imdbId]?.let { return it } }
-        val result = runCatchingNonCancel {
+        val result = runCatchingNonCancel(onError = { log.w { "Lookup failed for $imdbId: ${it::class.simpleName}: ${it.message}" } }) {
             withTimeoutOrNull(8_000L) {
                 val headers = mapOf("X-API-KEY" to apiKey, "Accept" to "application/json")
                 val search = httpRequestRaw("GET", "$BASE/films?imdbId=$imdbId", headers, "")
-                if (search.status !in 200..299) return@withTimeoutOrNull null
+                if (search.status !in 200..299) {
+                    log.w { "Search for $imdbId answered HTTP ${search.status}" }
+                    return@withTimeoutOrNull null
+                }
                 val filmId = json.decodeFromString<KinopoiskSearch>(search.body).items.firstOrNull()?.kinopoiskId
                     ?: return@withTimeoutOrNull emptyList()
                 listOf("STILL" to GalleryKind.Still, "SHOOTING" to GalleryKind.BehindTheScenes).flatMap { (type, kind) ->
                     val page = httpRequestRaw("GET", "$BASE/films/$filmId/images?type=$type&page=1", headers, "")
-                    if (page.status !in 200..299) emptyList()
+                    if (page.status !in 200..299) emptyList<GalleryImage>().also { log.w { "$type images answered HTTP ${page.status}" } }
                     else json.decodeFromString<KinopoiskImages>(page.body).items.mapNotNull { item ->
                         val url = item.imageUrl?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                         GalleryImage(url = url, thumbnail = item.previewUrl ?: url, kind = kind, source = GallerySource.Kinopoisk)
@@ -173,8 +182,8 @@ internal object KinopoiskGalleryRepository {
                 }
             }
         }
-        // Over quota or a bad key: nothing now, and the next title tries again.
-        val images = result ?: return emptyList()
+        // Over quota, a bad key or a timeout: nothing now, and the next title tries again.
+        val images = result ?: return emptyList<GalleryImage>().also { log.w { "No Kinopoisk images for $imdbId (failed or timed out)" } }
         mutex.withLock { cache[imdbId] = images }
         return images
     }
@@ -192,10 +201,11 @@ internal object KinopoiskGalleryRepository {
     private data class KinopoiskImage(val imageUrl: String? = null, val previewUrl: String? = null)
 }
 
-private inline fun <T> runCatchingNonCancel(block: () -> T): T? = try {
+private inline fun <T> runCatchingNonCancel(onError: (Exception) -> Unit = {}, block: () -> T): T? = try {
     block()
 } catch (error: CancellationException) {
     throw error
-} catch (_: Exception) {
+} catch (error: Exception) {
+    onError(error)
     null
 }

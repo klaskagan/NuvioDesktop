@@ -3,6 +3,7 @@ package com.nuvio.app.features.trailer
 import com.nuvio.app.features.details.DesktopHeroTrailerAttempt
 import com.nuvio.app.features.details.DesktopHeroTrailerEnd
 import com.nuvio.app.features.details.MetaTrailer
+import com.nuvio.app.features.details.heroTrailerUprightAspect
 import com.nuvio.app.features.details.rankDesktopHeroTrailers
 import com.nuvio.app.features.details.startDesktopHeroTrailer
 import kotlinx.coroutines.awaitCancellation
@@ -15,6 +16,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DesktopHeroTrailerTest {
+    /** Portrait clips keep their own shape; landscape and unknown sizes keep the cropped fill. */
+    @Test fun portraitRenditionsDrawAtTheirOwnAspect() {
+        assertEquals(1080f / 1920f, heroTrailerUprightAspect(1080, 1920))
+        assertEquals(1f, heroTrailerUprightAspect(720, 720))
+        assertNull(heroTrailerUprightAspect(1920, 1080))
+        assertNull(heroTrailerUprightAspect(0, 0))
+    }
+
     @Test fun uploadResolutionPrecedesCategoryAndOfficialStatus() {
         val uploads = listOf(
             trailer("hd", 720),

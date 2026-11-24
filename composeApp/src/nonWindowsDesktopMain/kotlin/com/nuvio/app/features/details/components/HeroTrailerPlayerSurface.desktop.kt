@@ -1,6 +1,12 @@
 package com.nuvio.app.features.details.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import com.nuvio.app.features.details.heroTrailerUprightAspect
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import com.nuvio.app.features.details.DesktopHeroTrailerEnd
@@ -248,9 +254,21 @@ private fun rememberDesktopTrailerSession(
         } else {
             null
         }
+    val uprightAspect = preview?.rendition?.let { heroTrailerUprightAspect(it.width, it.height) }
     return { modifier, fillFrame ->
-        Box(modifier = modifier.clipToBounds()) {
+        Box(modifier = modifier.clipToBounds(), contentAlignment = Alignment.Center) {
             CompositionLocalProvider(LocalVideoFrameDrawn provides onFrameDrawn) {
+                if (uprightAspect != null) {
+                    // A portrait clip stands centred at its own shape on a dark field, never cropped
+                    // or stretched to the tile's 16:9.
+                    Box(Modifier.fillMaxSize().background(Color(0xE6060708)))
+                    VideoPlayerSurface(
+                        playerState = player,
+                        modifier = Modifier.fillMaxHeight().aspectRatio(uprightAspect),
+                        contentScale = ContentScale.FillBounds,
+                    )
+                    return@CompositionLocalProvider
+                }
                 VideoPlayerSurface(
                     playerState = player,
                     modifier = Modifier

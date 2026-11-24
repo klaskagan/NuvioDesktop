@@ -173,6 +173,16 @@ second player open. Check the sharp left edge of TV-style, the disappearing
 Framed overlay, and a letterboxed trailer such as *The Return of the King*.
 All three retain the existing 1.35× overscan for encoded letterbox bars.
 
+**Picked trailers and portrait clips.** On the desktop board, a trailer picked
+from the Trailers tab or the Trailer button replays through the same session in
+the expanded featured tile. It plays even with hero trailer playback turned off: that setting only stops trailers starting on their own. It is tried alone, and a failure shows "can't play in
+Nuvio" with Open in YouTube in the tile, not the old pop-up. The macOS player
+can't read a pinned HLS stream's track size, so it assumes 1920×1080 and asks for
+16:9 frames, which squashes portrait clips (Shorts). For a rendition whose HLS
+`RESOLUTION` is portrait or square (`heroTrailerUprightAspect`), the surface draws
+at that ratio, centred, instead of cropping. `DesktopHeroTrailerTest` covers the
+ratio; check *Severance*'s "Today is hot" clip in MainKt.
+
 ## Native toolbar pointer re-entry
 
 The native toolbar must reveal on pointer movement over the player surface after

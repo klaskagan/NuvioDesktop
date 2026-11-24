@@ -2,6 +2,9 @@ package com.nuvio.app.features.details
 
 import com.nuvio.app.features.details.components.CastFilter
 import com.nuvio.app.features.details.components.castFilterPeople
+import com.nuvio.app.features.details.components.TrailerKind
+import com.nuvio.app.features.details.components.trailerKinds
+import com.nuvio.app.features.details.components.trailersVisible
 import com.nuvio.app.features.gallery.GalleryFilter
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.GalleryKind
@@ -43,5 +46,13 @@ class DetailTabContentTest {
             listOf(DetailBoardTab.Trailers, DetailBoardTab.Gallery, DetailBoardTab.More),
             detailBoardTabs(order, hasContent = { true }, hasStats = false),
         )
+    }
+
+    @Test fun trailersGroupTmdbTypesIntoTheTabsFilters() {
+        fun video(key: String, type: String) = MetaTrailer(id = key, key = key, name = key, site = "YouTube", type = type)
+        val videos = listOf(video("a", "Trailer"), video("b", "Featurette"), video("c", "Teaser"), video("d", "Clip"), video("e", "Behind the Scenes"), video("a", "Trailer"))
+        assertEquals(listOf(TrailerKind.Trailer, TrailerKind.Teaser, TrailerKind.BehindTheScenes, TrailerKind.Clip), trailerKinds(videos))
+        assertEquals(listOf("b", "e"), trailersVisible(videos, TrailerKind.BehindTheScenes).map { it.key })
+        assertEquals(5, trailersVisible(videos, null).size)
     }
 }

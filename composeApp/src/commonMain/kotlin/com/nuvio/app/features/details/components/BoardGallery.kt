@@ -75,6 +75,7 @@ import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignIconButton
 import com.nuvio.app.core.ui.RedesignPillButton
 import com.nuvio.app.core.ui.RedesignPillGroup
+import com.nuvio.app.core.ui.RedesignSwitchPill
 import com.nuvio.app.core.ui.redesignText
 import com.nuvio.app.features.gallery.GalleryFilter
 import com.nuvio.app.features.gallery.GalleryImage
@@ -96,7 +97,6 @@ import nuvio.composeapp.generated.resources.detail_gallery_saved
 import nuvio.composeapp.generated.resources.detail_gallery_set_background
 import nuvio.composeapp.generated.resources.detail_gallery_stills
 import nuvio.composeapp.generated.resources.detail_gallery_text_free
-import nuvio.composeapp.generated.resources.meta_section_gallery_title
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
@@ -132,8 +132,8 @@ internal fun BoardGallery(
     val visible = remember(images, filter) { galleryVisible(images, filter) }
     var viewerIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     Column(modifier.fillMaxWidth().testTag("detail_board_gallery"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(Res.string.meta_section_gallery_title), style = redesignText(18.sp, FontWeight.Bold), modifier = Modifier.weight(1f))
+        // The tab already names it: filters on the left, Text-free only on the right (design frame "Gallery").
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (kinds.size > 1) {
                 RedesignPillGroup(
                     options = listOf<GalleryKind?>(null) + kinds,
@@ -141,12 +141,15 @@ internal fun BoardGallery(
                     label = { galleryKindLabel(it) },
                     onSelect = { filter = filter.copy(kind = it) },
                     optionTag = { "detail_gallery_filter_${it?.name ?: "All"}" },
+                    // Counts follow Text-free only, so a pill never promises images it hides.
+                    trailing = { option -> galleryVisible(images, filter.copy(kind = option)).size.toString() },
                 )
             }
-            RedesignPillButton(
+            Spacer(Modifier.weight(1f))
+            RedesignSwitchPill(
                 label = stringResource(Res.string.detail_gallery_text_free),
-                onClick = { filter = filter.copy(textFreeOnly = !filter.textFreeOnly) },
-                active = filter.textFreeOnly,
+                checked = filter.textFreeOnly,
+                onCheckedChange = { filter = filter.copy(textFreeOnly = it) },
                 modifier = Modifier.testTag("detail_gallery_text_free"),
             )
         }

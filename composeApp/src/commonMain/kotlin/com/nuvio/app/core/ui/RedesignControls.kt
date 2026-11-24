@@ -68,6 +68,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -272,6 +274,42 @@ internal fun RedesignPillButton(
         }
         Text(label, style = redesignText(13.sp, FontWeight.SemiBold, ink), maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (trailing != null) Icon(trailing, contentDescription = null, tint = iconInk, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+    }
+}
+
+/** The green of a switch that is on, as in the design's toggles. */
+internal val RedesignSwitchOn = Color(0xFF7BE0B0)
+
+/**
+ * A filter that is on or off ("Text-free only"): a pill in the [RedesignPillButton] track style
+ * with a small switch after its label, green when on.
+ */
+@Composable
+internal fun RedesignSwitchPill(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val fill by animateColorAsState(if (hovered) RedesignColors.fillStrong else RedesignColors.fill, tween(PillMotionMillis), label = "switch_pill_fill")
+    val track by animateColorAsState(if (checked) RedesignSwitchOn else Color.White.copy(alpha = 0.18f), tween(PillMotionMillis), label = "switch_pill_track")
+    val knob by animateDpAsState(if (checked) 15.dp else 3.dp, tween(PillMotionMillis, easing = FastOutSlowInEasing), label = "switch_pill_knob")
+    Row(
+        modifier.height(PillHeight).clip(CircleShape).background(fill)
+            .border(1.dp, RedesignColors.hairline, CircleShape)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, role = Role.Switch) { onCheckedChange(!checked) }
+            .semantics { toggleableState = if (checked) ToggleableState.On else ToggleableState.Off }
+            .padding(start = 16.dp, end = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(label, style = redesignText(13.sp, FontWeight.SemiBold), maxLines = 1)
+        Box(Modifier.size(width = 28.dp, height = 16.dp).clip(CircleShape).background(track)) {
+            Box(Modifier.padding(start = knob, top = 3.dp).size(10.dp).clip(CircleShape).background(Color.White))
+        }
     }
 }
 

@@ -45,3 +45,11 @@ internal suspend fun startDesktopHeroTrailer(
     }
     false
 } ?: false
+
+/**
+ * The true width / height of a portrait or square trailer rendition, or null for landscape and
+ * unknown sizes. The macOS player can't read a pinned HLS stream's size, so it hands back 16:9
+ * frames; drawing those at this ratio undoes the squeeze instead of cropping a stretched picture.
+ */
+internal fun heroTrailerUprightAspect(width: Int, height: Int): Float? =
+    if (width > 0 && height > 0 && width.toFloat() / height < 1.2f) width.toFloat() / height else null

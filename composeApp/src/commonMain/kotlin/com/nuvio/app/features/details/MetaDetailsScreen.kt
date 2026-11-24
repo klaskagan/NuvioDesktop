@@ -251,6 +251,7 @@ import com.nuvio.app.core.ui.redesignText
 import nuvio.composeapp.generated.resources.detail_board_mark_previous_seasons
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.DetailGalleryRepository
+import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.features.gallery.KinopoiskSettingsRepository
 import com.nuvio.app.features.tracking.TrackingProviderRegistry
 import com.nuvio.app.features.tracking.TrackingComments
@@ -883,9 +884,12 @@ fun MetaDetailsScreen(
                 val heroTrailerCandidates = remember(meta.trailers) {
                     if (isDesktop) rankDesktopHeroTrailers(meta.trailers) else listOfNotNull(selectHeroTrailer(meta.trailers))
                 }
-                val heroTrailerPlaybackEnabled = AppFeaturePolicy.heroTrailerPlaybackSupported &&
-                    inAppTrailerPlaybackEnabled &&
-                    metaScreenSettingsUiState.heroTrailerPlayback
+                val heroTrailerPlaybackAvailable = AppFeaturePolicy.heroTrailerPlaybackSupported && inAppTrailerPlaybackEnabled
+                // A trailer picked on the board plays in the tile even with hero autoplay off; the
+                // setting only stops trailers starting on their own.
+                var heroTrailerPicked by remember(meta.id) { mutableStateOf(false) }
+                val heroTrailerPlaybackEnabled = heroTrailerPlaybackAvailable &&
+                    (metaScreenSettingsUiState.heroTrailerPlayback || heroTrailerPicked)
                 var heroTrailerPlaybackSource by remember(meta.id, heroTrailerCandidates) { mutableStateOf<TrailerPlaybackSource?>(null) }
                 var desktopHeroAttempt by remember(meta.id, heroTrailerCandidates) { mutableStateOf<DesktopHeroTrailerAttempt?>(null) }
                 var heroTrailerReady by remember(meta.id, heroTrailerCandidates) { mutableStateOf(false) }
@@ -893,6 +897,8 @@ fun MetaDetailsScreen(
                 var completedDesktopTrailer by remember(meta.id, heroTrailerCandidates) { mutableStateOf<MetaTrailer?>(null) }
                 var replayDesktopTrailer by remember(meta.id, heroTrailerCandidates) { mutableStateOf<MetaTrailer?>(null) }
                 var replayCount by remember(meta.id, heroTrailerCandidates) { mutableIntStateOf(0) }
+                // A trailer picked on the board (Trailers tab, Trailer button) that couldn't play in the tile.
+                var pickedTrailerFailed by remember(meta.id) { mutableStateOf<MetaTrailer?>(null) }
                 var fadingDesktopAttempt by remember(meta.id, heroTrailerCandidates) { mutableStateOf<DesktopHeroTrailerAttempt?>(null) }
                 val heroTrailerMuted by HeroTrailerAudioState.muted.collectAsStateWithLifecycle()
                 val fadingAttempt = fadingDesktopAttempt
@@ -913,12 +919,14 @@ fun MetaDetailsScreen(
                     fadingDesktopAttempt = null
                     heroTrailerReady = false
                     heroTrailerFinished = false
-                    if (!deferredMetaWorkAllowed || !heroTrailerPlaybackEnabled || isLeavingDetails || heroTrailerCandidates.isEmpty()) {
+                    if (!deferredMetaWorkAllowed || !heroTrailerPlaybackEnabled || isLeavingDetails || (heroTrailerCandidates.isEmpty() && requestedReplay == null)) {
                         return@LaunchedEffect
                     }
                     if (isDesktop) {
                         val started = startDesktopHeroTrailer(
-                            trailers = listOfNotNull(requestedReplay) + heroTrailerCandidates.filterNot { it == requestedReplay },
+                            // A picked trailer plays alone: if it can't, the tile says so rather than
+                            // quietly playing a different one.
+                            trailers = requestedReplay?.let(::listOf) ?: heroTrailerCandidates,
                             resolve = { trailer ->
                                 val renditions = TrailerPlaybackResolver.resolveFromYouTubeUrl(
                                     trailer.youtubePlaybackUrl(),
@@ -941,6 +949,10 @@ fun MetaDetailsScreen(
                             },
                         )
                         if (!started) heroTrailerFinished = true
+                        // The picked trailer didn't start (another candidate may have): play it in the pop-up.
+                        if (requestedReplay != null && (!started || desktopHeroAttempt?.trailer?.key != requestedReplay.key)) {
+                            pickedTrailerFailed = requestedReplay
+                        }
                     } else {
                         heroTrailerPlaybackSource = TrailerPlaybackResolver.resolveFromYouTubeUrl(
                             heroTrailerCandidates.first().youtubePlaybackUrl(),
@@ -1587,10 +1599,20 @@ fun MetaDetailsScreen(
 
                     // ---- Desktop board state
                     val hasBoardStats = useBoard && meta.type == "series" && currentEpisodeListSeason != null
-                    val boardTabs = remember(metaScreenSettingsUiState.items, sectionArgs, hasBoardStats) {
+                    // Tab visibility must see the board-only inputs (gallery, reviews source), which the
+                    // shared sectionArgs leave out; the board's own args are built further down.
+                    val boardContentArgs = remember(sectionArgs, galleryImages, boardReviewsProvider, behindTheFilm) {
+                        sectionArgs.copy(
+                            boardStyle = true,
+                            gallery = galleryImages,
+                            reviewsProvider = boardReviewsProvider,
+                            behindTheFilm = behindTheFilm,
+                        )
+                    }
+                    val boardTabs = remember(metaScreenSettingsUiState.items, boardContentArgs, hasBoardStats) {
                         detailBoardTabs(
                             enabledSections = metaScreenSettingsUiState.items.filter { it.enabled }.map { it.key },
-                            hasContent = sectionArgs::hasContent,
+                            hasContent = boardContentArgs::hasContent,
                             hasStats = hasBoardStats,
                         )
                     }
@@ -1600,7 +1622,45 @@ fun MetaDetailsScreen(
                         ?: DetailBoardTab.Details
                     var boardExpanded by remember(meta.id) { mutableStateOf(false) }
                     val boardTrailerShown = heroTrailerSourceUrl != null
-                    LaunchedEffect(boardTrailerShown) { if (!boardTrailerShown) boardExpanded = false }
+                    // A picked trailer plays in the expanded tile: the page glides to the top, and closing
+                    // (collapse, Esc, or the clip ending) glides back to where it was picked.
+                    var boardPickedTrailer by remember(meta.id) { mutableStateOf<MetaTrailer?>(null) }
+                    var boardReturnScroll by remember(meta.id) { mutableStateOf<Pair<Int, Int>?>(null) }
+                    val boardScope = rememberCoroutineScope()
+                    val boardTrailerPlay: (MetaTrailer) -> Unit = { trailer ->
+                        if (!heroTrailerPlaybackAvailable) {
+                            // External playback (or no in-app hero player): open the trailer as before.
+                            resolveTrailer(trailer)
+                        } else {
+                            heroTrailerPicked = true
+                            if (boardPickedTrailer == null) {
+                                boardReturnScroll = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+                            }
+                            boardPickedTrailer = trailer
+                            pickedTrailerFailed = null
+                            replayDesktopTrailer = trailer
+                            replayCount++
+                            boardExpanded = true
+                            if (heroTrailerMuted) HeroTrailerAudioState.toggleMuted()
+                            boardScope.launch { listState.animateScrollToItem(0) }
+                        }
+                    }
+                    // The tile folds when its trailer goes, but not while a picked one is still starting.
+                    // A pick that failed keeps the tile open with its message until closed.
+                    LaunchedEffect(boardTrailerShown, heroTrailerFinished, pickedTrailerFailed) {
+                        if (!boardTrailerShown && pickedTrailerFailed == null && (boardPickedTrailer == null || heroTrailerFinished)) {
+                            boardExpanded = false
+                        }
+                    }
+                    LaunchedEffect(boardExpanded) {
+                        if (boardExpanded || boardPickedTrailer == null) return@LaunchedEffect
+                        boardPickedTrailer = null
+                        pickedTrailerFailed = null
+                        heroTrailerPicked = false
+                        boardReturnScroll?.let { (index, offset) -> listState.animateScrollToItem(index, offset) }
+                        boardReturnScroll = null
+                    }
+                    if (useBoard && boardExpanded) OverlayEscapeHandler { boardExpanded = false }
                     val boardPinned = remember(listState) { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
                     var boardKeepPinned by remember(meta.id) { mutableStateOf(false) }
                     LaunchedEffect(selectedBoardTab) {
@@ -1725,11 +1785,11 @@ fun MetaDetailsScreen(
                     openEpisodeQuickPick = ::openEpisodeQuickPickImpl
                     // With autoplay on, Play keeps starting playback and choosing a source opens Quick pick.
                     // With autoplay off, Play itself opens Quick pick in place of the full list.
-                    val boardSectionArgs = (if (openQuickPick == null) sectionArgs else sectionArgs.copy(
+                    // Built on boardContentArgs, so the tabs shown and the tabs' content read the same inputs.
+                    val boardSectionArgs = (if (openQuickPick == null) boardContentArgs else boardContentArgs.copy(
                         onPrimaryPlayClick = if (showManualPlayOption || hasPlayableDownload) onPrimaryPlayClick else openQuickPick,
                         onPrimaryPlayLongClick = openQuickPick.takeIf { showManualPlayOption },
                     )).copy(
-                        boardStyle = true,
                         onEpisodeCardStyleChange = MetaScreenSettingsRepository::setEpisodeCardStyle,
                         onEpisodeClickAt = onBoardEpisodeClick,
                         onEpisodeMenuAt = { video, anchor ->
@@ -1739,10 +1799,9 @@ fun MetaDetailsScreen(
                         moreLikeThisUnwatched = moreLikeThisUnwatched,
                         moreLikeThisUnwatchedOnly = metaScreenSettingsUiState.moreLikeThisUnwatchedOnly,
                         onMoreLikeThisUnwatchedOnlyChange = MetaScreenSettingsRepository::setMoreLikeThisUnwatchedOnly,
-                        behindTheFilm = behindTheFilm,
-                        gallery = galleryImages,
                         onSetBackground = { url -> boardBackgroundOverride = url },
-                        reviewsProvider = boardReviewsProvider,
+                        onTrailerClick = boardTrailerPlay,
+                        boardPlayingTrailer = boardPickedTrailer?.takeIf { boardExpanded && pickedTrailerFailed == null },
                     )
                     val boardArgs = DetailBoardArgs(
                         onPlayAnchor = { boardPlayAnchor = it },
@@ -1757,6 +1816,13 @@ fun MetaDetailsScreen(
                         },
                         pinned = { boardPinned.value },
                         expanded = boardExpanded,
+                        expandedTitle = boardPickedTrailer?.let { it.displayName?.takeIf(String::isNotBlank) ?: it.name },
+                        expandedFailure = pickedTrailerFailed?.takeIf { boardExpanded }?.let { failed ->
+                            DetailBoardTrailerFailure(
+                                onOpenExternally = { runCatching { uriHandler.openUri(failed.youtubePlaybackUrl()) } },
+                                onClose = { boardExpanded = false },
+                            )
+                        },
                         onToggleExpanded = {
                             boardExpanded = !boardExpanded
                             if (boardExpanded && heroTrailerMuted) HeroTrailerAudioState.toggleMuted()
@@ -1846,7 +1912,6 @@ fun MetaDetailsScreen(
                                         settings = metaScreenSettingsUiState,
                                         args = boardSectionArgs,
                                         board = boardArgs,
-                                        hasContent = sectionArgs::hasContent,
                                     )
                                 } else {
                                     item(

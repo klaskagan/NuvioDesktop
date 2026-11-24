@@ -13,6 +13,7 @@ import com.nuvio.app.AppEnvironment
 import com.nuvio.app.features.details.components.BoardCastGrid
 import com.nuvio.app.features.details.components.BoardGallery
 import com.nuvio.app.features.details.components.BoardMoreLikeThis
+import com.nuvio.app.features.details.components.BoardTrailers
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.GalleryKind
 import com.nuvio.app.features.gallery.GallerySource
@@ -71,6 +72,10 @@ class DetailBoardTabsContentUiTest {
         val backgrounds = mutableListOf<String>()
         setContent { AppEnvironment { BoardGallery(images, title = "Fixture", onSetBackground = { backgrounds += it }) } }
         onAllNodesWithTag("detail_gallery_tile").assertCountEquals(5)
+        // Text-free only is a switch pill, on by default.
+        onNodeWithTag("detail_gallery_text_free").assertIsOn()
+        onNodeWithTag("detail_gallery_text_free").performClick()
+        onNodeWithTag("detail_gallery_text_free").assertIsOff()
         onAllNodesWithTag("detail_gallery_tile")[1].performClick()
         waitForIdle()
         onNodeWithTag("detail_gallery_viewer").assertExists()
@@ -84,6 +89,23 @@ class DetailBoardTabsContentUiTest {
         onNodeWithTag("detail_gallery_viewer").performKeyInput { pressKey(Key.Escape) }
         waitForIdle()
         onNodeWithTag("detail_gallery_viewer").assertDoesNotExist()
+    }
+
+    @Test fun trailersFilterByTypeAndRingTheOnePlaying() = runDesktopComposeUiTest(width = 1360, height = 850) {
+        val videos = listOf(
+            MetaTrailer("1", "k1", "Official Trailer", "YouTube", type = "Trailer"),
+            MetaTrailer("2", "k2", "Teaser", "YouTube", type = "Teaser"),
+            MetaTrailer("3", "k3", "Inside the episode", "YouTube", type = "Featurette"),
+        )
+        val played = mutableListOf<String>()
+        setContent { AppEnvironment { BoardTrailers(videos, playing = videos[1], onPlay = { played += it.key }) } }
+        onAllNodesWithTag("detail_trailer_card").assertCountEquals(3)
+        onNodeWithTag("detail_trailer_now_playing", useUnmergedTree = true).assertExists()
+        onNodeWithTag("detail_trailers_filter_BehindTheScenes").performClick()
+        mainClock.advanceTimeBy(500); waitForIdle()
+        onAllNodesWithTag("detail_trailer_card").assertCountEquals(1)
+        onAllNodesWithTag("detail_trailer_card")[0].performClick()
+        assertEquals(listOf("k3"), played)
     }
 
     private fun textLayout(node: SemanticsNodeInteraction): TextLayoutResult {

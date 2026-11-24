@@ -88,6 +88,11 @@ match the design".
   don't reach MainKt). Hover and open only: never click Rate stars or ♥ (the strip opens
   under the pointer and saves), Play/Resume, or Watch party (it creates a real party).
   Close layers with Esc.
+- **Board-only tab inputs:** anything only the board has (gallery images, the reviews
+  source) is added in `boardContentArgs` in `MetaDetailsScreen.kt`. Tab visibility and
+  tab content both read those args (`detailBoardItems` takes no separate `hasContent`).
+  Gallery once had a hidden or empty tab because the shared `sectionArgs` decided it.
+  Check a new board tab in the running app, not only in component tests.
 - **Branch:** Details redesign work is on a worktree cut from `nuvio-redesign` and merges
   back there, never into develop.
 

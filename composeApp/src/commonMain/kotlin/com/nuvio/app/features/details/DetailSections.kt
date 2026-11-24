@@ -205,6 +205,7 @@ import com.nuvio.app.features.details.components.BoardMoreLikeThis
 import com.nuvio.app.features.details.components.BehindTheFilmTile
 import com.nuvio.app.features.details.components.BoardDetailsFacts
 import com.nuvio.app.features.details.components.BoardGallery
+import com.nuvio.app.features.details.components.BoardTrailers
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.GalleryMinimumImages
 import com.nuvio.app.features.tracking.TrackingCommentsProvider
@@ -286,6 +287,8 @@ internal data class DetailSectionArgs(
     val behindTheFilm: BehindTheFilm? = null,
     /** The gallery's images (desktop board); the tab shows from [GalleryMinimumImages]. */
     val gallery: List<GalleryImage> = emptyList(),
+    /** The trailer playing in the board's expanded featured tile, ringed on the Trailers tab. */
+    val boardPlayingTrailer: MetaTrailer? = null,
     val onSetBackground: ((String) -> Unit)? = null,
     /** The board's reviews source; Reviews shows its own loading, likes, reader and composer. */
     val reviewsProvider: TrackingCommentsProvider? = null,
@@ -698,7 +701,9 @@ internal fun ConfiguredMetaSections(
                     }
                 }
                 MetaScreenSectionKey.TRAILERS -> {
-                    if (hasTrailersSection) {
+                    if (hasTrailersSection && boardStyle) {
+                        BoardTrailers(trailers = meta.trailers, playing = boardPlayingTrailer, onPlay = onTrailerClick)
+                    } else if (hasTrailersSection) {
                         DetailTrailersSection(
                             trailers = meta.trailers,
                             onTrailerClick = onTrailerClick,

@@ -133,6 +133,9 @@ internal data class DetailBoardUpNext(
 
 /** What the desktop board needs beyond the shared [DetailSectionArgs]. */
 @Stable
+/** What the expanded tile offers when a picked trailer can't play in Nuvio. */
+internal class DetailBoardTrailerFailure(val onOpenExternally: () -> Unit, val onClose: () -> Unit)
+
 internal class DetailBoardArgs(
     val onPlayAnchor: (Rect) -> Unit,
     val onPinnedPlayAnchor: (Rect) -> Unit,
@@ -142,6 +145,10 @@ internal class DetailBoardArgs(
     val onSelectTab: (DetailBoardTab) -> Unit,
     val pinned: () -> Boolean,
     val expanded: Boolean,
+    /** The picked trailer's title, shown in the expanded tile. */
+    val expandedTitle: String? = null,
+    /** The picked trailer couldn't play here: the expanded tile says so. */
+    val expandedFailure: DetailBoardTrailerFailure? = null,
     val onToggleExpanded: () -> Unit,
     val trailer: (@Composable (Modifier, Boolean) -> Unit)?,
     val trailerReady: Boolean,
@@ -185,14 +192,14 @@ private fun detailBoardTabCount(tab: DetailBoardTab, meta: MetaDetails, args: De
 /**
  * The desktop Details page as a board: the title tile and personal tiles, the section tabs (which
  * pin), and the selected tab's sections. Sections come from the same [configuredMetaSectionItems]
- * every other layout uses, so a new section needs no board code beyond its tab.
+ * every other layout uses, so a new section needs no board code beyond its tab. What a tab shows is
+ * decided from [args] itself, so board-only inputs (gallery, reviews source) always count.
  */
 @OptIn(ExperimentalFoundationApi::class)
 internal fun LazyListScope.detailBoardItems(
     settings: MetaScreenSettingsUiState,
     args: DetailSectionArgs,
     board: DetailBoardArgs,
-    hasContent: (MetaScreenSectionKey) -> Boolean,
 ) {
     item(key = "detail-board", contentType = "detail-board") {
         DetailBoardItem(args, board)
@@ -240,7 +247,7 @@ internal fun LazyListScope.detailBoardItems(
         detailBoardFillItem(args)
         return
     }
-    val sections = detailBoardTabSections(board.selectedTab, settings.items, hasContent)
+    val sections = detailBoardTabSections(board.selectedTab, settings.items, args::hasContent)
     configuredMetaSectionItems(
         settings = settings.copy(items = sections, tabLayout = false),
         args = args,
@@ -385,6 +392,8 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
         DetailFeatureTile(
             meta = meta,
             expanded = board.expanded,
+            expandedTitle = board.expandedTitle,
+            expandedFailure = board.expandedFailure,
             trailer = board.trailer,
             trailerReady = board.trailerReady,
             trailerMuted = board.trailerMuted,

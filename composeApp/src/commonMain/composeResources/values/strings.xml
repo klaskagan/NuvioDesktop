@@ -1215,6 +1215,12 @@
     <string name="detail_gallery_saved">Saved to %1$s</string>
     <string name="detail_gallery_save_failed">Couldn&apos;t save the image</string>
     <string name="detail_gallery_close">Close</string>
+    <string name="detail_trailers_trailers">Trailers</string>
+    <string name="detail_trailers_teasers">Teasers</string>
+    <string name="detail_trailers_clips">Clips</string>
+    <string name="detail_trailers_now_playing">Now playing</string>
+    <string name="detail_trailers_cant_play">This video can&apos;t play in Nuvio</string>
+    <string name="detail_trailers_open_youtube">Open in YouTube</string>
     <string name="settings_kinopoisk_title">Kinopoisk API key</string>
     <string name="settings_kinopoisk_description">Adds real film stills and behind-the-scenes photos to the Details gallery. Uses your own key from kinopoiskapiunofficial.tech.</string>
     <string name="detail_reviews_from">from %1$s</string>
