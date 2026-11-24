@@ -94,6 +94,10 @@ internal fun <T> RedesignPillGroup(
     modifier: Modifier = Modifier,
     optionTag: ((T) -> String)? = null,
     fill: Boolean = false,
+    /** A muted note after an option's label ("3/8" after "Season 2"). */
+    trailing: ((T) -> String?)? = null,
+    /** Right-click or press-and-hold on an option (a season's actions). */
+    onOptionContextMenu: ((T) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val bounds = remember { mutableStateMapOf<Int, Pair<Dp, Dp>>() }
@@ -138,17 +142,23 @@ internal fun <T> RedesignPillGroup(
                         }
                         .hoverable(interaction)
                         .clickable(interactionSource = interaction, indication = null, role = Role.Tab) { onSelect(option) }
+                        .then(onOptionContextMenu?.let { menu -> Modifier.redesignContextMenuTrigger { _ -> menu(option) } } ?: Modifier)
                         .semantics { this.selected = isSelected }
                         .then(optionTag?.let { Modifier.testTag(it(option)) } ?: Modifier)
                         .padding(horizontal = if (fill) 8.dp else 14.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        label(option),
-                        style = redesignText(13.sp, FontWeight.SemiBold, color),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            label(option),
+                            style = redesignText(13.sp, FontWeight.SemiBold, color),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        trailing?.invoke(option)?.let { note ->
+                            Text("  $note", style = redesignText(12.sp, FontWeight.Medium, color.copy(alpha = 0.6f)), maxLines = 1)
+                        }
+                    }
                 }
             }
         }

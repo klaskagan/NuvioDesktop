@@ -1158,6 +1158,8 @@
     <string name="detail_board_on_tv">On TV</string>
     <string name="detail_board_watch_party">Watch party</string>
     <string name="detail_board_download">Download</string>
+    <string name="detail_board_episodes_row">Row</string>
+    <string name="detail_board_episodes_list">List</string>
     <string name="detail_board_tv_picker_title">Play on a TV</string>
     <string name="detail_board_tv_send">Send to %1$s</string>
     <string name="detail_board_tv_none">No paired TVs yet.</string>

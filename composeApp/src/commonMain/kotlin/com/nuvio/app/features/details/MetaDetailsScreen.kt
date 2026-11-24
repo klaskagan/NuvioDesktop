@@ -228,6 +228,7 @@ import com.nuvio.app.features.party.PartyMedia
 import com.nuvio.app.features.party.messageRes
 import com.nuvio.app.features.handoff.tvHandoffSupported
 import com.nuvio.app.features.handoff.detailsTvHandoffRequest
+import nuvio.composeapp.generated.resources.streams_resume_from_time
 
 private val watchedMarkerDiagnosticLog = Logger.withTag("WatchedMarkerDiag")
 private const val DetailScrolledBackgroundDefaultMaxAlpha = 0.86f
@@ -1616,11 +1617,50 @@ fun MetaDetailsScreen(
                         ) != null
                     }
                     val openQuickPick: (() -> Unit)? = openPrimarySources?.takeIf { useBoard }?.let { { quickPickOpen = true } }
+                    // An episode card opens its own Quick pick beside the card, under the same rules as
+                    // Resume: autoplay on plays, a downloaded copy plays, otherwise choose a source here.
+                    var episodePick by remember(meta.id) { mutableStateOf<EpisodeQuickPick?>(null) }
+                    val resumeTemplate = stringResource(Res.string.streams_resume_from_time, "{t}")
+                    val onBoardEpisodeClick: (MetaVideo, Rect?) -> Unit = { video, anchor ->
+                        val hasDownload = AppFeaturePolicy.downloadsEnabled && com.nuvio.app.features.downloads.DownloadsRepository.findPlayableDownload(
+                            parentMetaId = meta.id,
+                            seasonNumber = video.season,
+                            episodeNumber = video.episode,
+                            videoId = video.id,
+                        ) != null
+                        if (showManualPlayOption || hasDownload || onPlayManually == null) {
+                            onEpisodePlayClick(video)
+                        } else {
+                            val videoId = video.id.takeIf { it.isNotBlank() } ?: buildPlaybackVideoId(meta.id, video.season, video.episode, video.id)
+                            val entry = watchProgressUiState.progressForVideo(videoId = videoId, parentMetaId = meta.id, seasonNumber = video.season, episodeNumber = video.episode)
+                                ?.takeUnless { it.isCompleted }
+                            val code = if (video.season != null && video.episode != null) "S${video.season} E${video.episode}" else null
+                            episodePick = EpisodeQuickPick(
+                                video = video,
+                                videoId = videoId,
+                                anchor = anchor,
+                                request = StreamQuickPickRequest(
+                                    type = meta.type,
+                                    videoId = videoId,
+                                    parentMetaId = meta.id,
+                                    seasonNumber = video.season,
+                                    episodeNumber = video.episode,
+                                    label = listOfNotNull(code, video.title.takeIf { it.isNotBlank() }).joinToString(" · ").ifBlank { meta.name },
+                                    resumeLine = quickPickResumeLine(entry, resumeTemplate),
+                                ),
+                            )
+                        }
+                    }
+                    val primaryResumeLine = quickPickResumeLine(yourWayProgress, resumeTemplate)
                     // With autoplay on, Play keeps starting playback and choosing a source opens Quick pick.
                     // With autoplay off, Play itself opens Quick pick in place of the full list.
-                    val boardSectionArgs = if (openQuickPick == null) sectionArgs else sectionArgs.copy(
+                    val boardSectionArgs = (if (openQuickPick == null) sectionArgs else sectionArgs.copy(
                         onPrimaryPlayClick = if (showManualPlayOption || hasPlayableDownload) onPrimaryPlayClick else openQuickPick,
                         onPrimaryPlayLongClick = openQuickPick.takeIf { showManualPlayOption },
+                    )).copy(
+                        boardStyle = true,
+                        onEpisodeCardStyleChange = MetaScreenSettingsRepository::setEpisodeCardStyle,
+                        onEpisodeClickAt = onBoardEpisodeClick,
                     )
                     val boardArgs = DetailBoardArgs(
                         onPlayAnchor = { boardPlayAnchor = it },
@@ -1832,22 +1872,33 @@ fun MetaDetailsScreen(
                             }
                             }
                         }
-                        if (openQuickPick != null && openPrimarySources != null) {
+                        if (useBoard && (openQuickPick != null && openPrimarySources != null || episodePick != null)) {
                             RedesignTypography {
+                                val episodeOpen = episodePick
                                 DetailQuickPickOverlay(
-                                    open = quickPickOpen,
-                                    anchor = if (boardPinned.value) pinnedPlayAnchor ?: boardPlayAnchor else boardPlayAnchor,
-                                    request = quickPickRequest,
+                                    open = quickPickOpen || episodeOpen != null,
+                                    anchor = episodeOpen?.anchor ?: if (boardPinned.value) pinnedPlayAnchor ?: boardPlayAnchor else boardPlayAnchor,
+                                    request = episodeOpen?.request ?: quickPickRequest.copy(resumeLine = primaryResumeLine),
                                     onPick = { stream ->
                                         quickPickOpen = false
-                                        StreamPreselection.set(primaryVideoId, stream)
-                                        openPrimarySources()
+                                        episodePick = null
+                                        if (episodeOpen != null) {
+                                            StreamPreselection.set(episodeOpen.videoId, stream)
+                                            onEpisodeManualPlayClick(episodeOpen.video)
+                                        } else {
+                                            StreamPreselection.set(primaryVideoId, stream)
+                                            openPrimarySources?.invoke()
+                                        }
                                     },
                                     onAllSources = {
                                         quickPickOpen = false
-                                        openPrimarySources()
+                                        episodePick = null
+                                        if (episodeOpen != null) onEpisodeManualPlayClick(episodeOpen.video) else openPrimarySources?.invoke()
                                     },
-                                    onDismiss = { quickPickOpen = false },
+                                    onDismiss = {
+                                        quickPickOpen = false
+                                        episodePick = null
+                                    },
                                     modifier = Modifier.zIndex(3f),
                                 )
                             }
@@ -2494,6 +2545,30 @@ internal val DetailBoardMinWidth = 1000.dp
 
 /** What the Details page shows; the states crossfade. */
 private enum class DetailContentState { Loading, Error, Content, Empty }
+
+/** An episode's Quick pick on the board, opened beside its card. */
+private data class EpisodeQuickPick(
+    val video: MetaVideo,
+    val videoId: String,
+    val anchor: Rect?,
+    val request: StreamQuickPickRequest,
+)
+
+/** "Resume from 18:22 · 38%" for a Quick pick, or null when nothing is saved. [template] holds "{t}". */
+internal fun quickPickResumeLine(entry: WatchProgressEntry?, template: String): String? {
+    val position = entry?.lastPositionMs?.takeIf { it > 0L } ?: return null
+    val percent = entry.durationMs.takeIf { it > 0L }?.let { (position * 100 / it).toInt() }
+    return listOfNotNull(template.replace("{t}", position.formatResumeClock()), percent?.let { "$it%" }).joinToString(" · ")
+}
+
+private fun Long.formatResumeClock(): String {
+    val total = this / 1000
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val sec = total % 60
+    fun two(v: Long) = v.toString().padStart(2, '0')
+    return if (h > 0) "$h:${two(m)}:${two(sec)}" else "$m:${two(sec)}"
+}
 
 private val tabletHeroSectionKeys = setOf(
     MetaScreenSectionKey.ACTIONS,

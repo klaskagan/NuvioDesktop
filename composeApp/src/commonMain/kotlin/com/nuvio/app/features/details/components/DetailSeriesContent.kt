@@ -97,6 +97,20 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 import com.nuvio.app.core.i18n.localizedEpisodeTitle
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.platform.testTag
+import com.nuvio.app.core.ui.RedesignPillGroup
+import com.nuvio.app.core.ui.RedesignPillButton
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import nuvio.composeapp.generated.resources.detail_board_episodes_row
+import nuvio.composeapp.generated.resources.detail_board_episodes_list
+import nuvio.composeapp.generated.resources.episodes_specials
+import nuvio.composeapp.generated.resources.episodes_season
+import nuvio.composeapp.generated.resources.details_season_view_posters
 
 private val log = Logger.withTag("SeriesContent")
 
@@ -119,6 +133,11 @@ fun DetailSeriesContent(
     onEpisodeClick: ((MetaVideo) -> Unit)? = null,
     onEpisodeLongPress: ((MetaVideo) -> Unit)? = null,
     onSeasonLongPress: ((Int) -> Unit)? = null,
+    /** Desktop board: season pills with a Posters toggle and a Row / List switch, no "Seasons" header. */
+    boardStyle: Boolean = false,
+    onEpisodeCardStyleChange: ((MetaEpisodeCardStyle) -> Unit)? = null,
+    /** An episode click with the card's bounds, so Quick pick can open beside it. Wins over [onEpisodeClick]. */
+    onEpisodeClickAt: ((MetaVideo, Rect?) -> Unit)? = null,
 ) {
     val hasVideos = meta.videos.isNotEmpty()
     if (meta.type != "series" && !hasVideos) return
@@ -179,6 +198,8 @@ fun DetailSeriesContent(
         ?.takeIf { it in groupedEpisodes }
         ?: defaultSeason
 
+    val episodeBounds = remember(meta.id) { mutableMapOf<String, Rect>() }
+    val episodeClick: ((MetaVideo) -> Unit)? = onEpisodeClickAt?.let { at -> { video: MetaVideo -> at(video, episodeBounds[video.id]) } } ?: onEpisodeClick
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val sizing = seriesContentSizing(maxWidth.value)
         val containerWidthDp = maxWidth.value
@@ -186,19 +207,37 @@ fun DetailSeriesContent(
         Column(
             verticalArrangement = Arrangement.spacedBy(if (isDesktop) 12.dp else 16.dp),
         ) {
-            SeriesSeasonSelector(
-                meta = meta,
-                seasons = seasons,
-                groupedEpisodes = groupedEpisodes,
-                currentSeason = currentSeason,
-                sizing = sizing,
-                horizontalScrollPadding = horizontalScrollPadding,
-                onSelect = { season ->
-                    if (onControlledSeasonSelect != null) onControlledSeasonSelect(season)
-                    else selectedSeasonOverride = season
-                },
-                onLongPress = onSeasonLongPress,
-            )
+            val selectSeason: (Int) -> Unit = { season ->
+                if (onControlledSeasonSelect != null) onControlledSeasonSelect(season)
+                else selectedSeasonOverride = season
+            }
+            if (boardStyle) {
+                BoardSeasonBar(
+                    meta = meta,
+                    seasons = seasons,
+                    groupedEpisodes = groupedEpisodes,
+                    currentSeason = currentSeason,
+                    sizing = sizing,
+                    horizontalScrollPadding = horizontalScrollPadding,
+                    watchedKeys = watchedKeys,
+                    progressByVideoId = progressByVideoId,
+                    episodeCardStyle = episodeCardStyle,
+                    onEpisodeCardStyleChange = onEpisodeCardStyleChange,
+                    onSelect = selectSeason,
+                    onLongPress = onSeasonLongPress,
+                )
+            } else {
+                SeriesSeasonSelector(
+                    meta = meta,
+                    seasons = seasons,
+                    groupedEpisodes = groupedEpisodes,
+                    currentSeason = currentSeason,
+                    sizing = sizing,
+                    horizontalScrollPadding = horizontalScrollPadding,
+                    onSelect = selectSeason,
+                    onLongPress = onSeasonLongPress,
+                )
+            }
 
             AnimatedContent(
                 targetState = currentSeason,
@@ -244,8 +283,9 @@ fun DetailSeriesContent(
                                 preferredSeasonNumber = preferredSeasonNumber,
                                 preferredEpisodeNumber = preferredEpisodeNumber,
                             ),
-                            onEpisodeClick = onEpisodeClick,
+                            onEpisodeClick = episodeClick,
                             onEpisodeLongPress = onEpisodeLongPress,
+                            episodeBounds = episodeBounds,
                         )
                     } else {
                         Column(
@@ -273,7 +313,8 @@ fun DetailSeriesContent(
                                     episodeRatingsVisibility = episodeRatingsVisibility,
                                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                                     sizing = sizing,
-                                    onClick = { onEpisodeClick?.invoke(episode) },
+                                    modifier = Modifier.onGloballyPositioned { episodeBounds[episode.id] = it.boundsInRoot() },
+                                    onClick = { episodeClick?.invoke(episode) },
                                     onLongPress = { onEpisodeLongPress?.invoke(episode) },
                                 )
                             }
@@ -281,6 +322,106 @@ fun DetailSeriesContent(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The board's season bar: season pills ("Season 2  3/8", Specials last) in a horizontal scroll, or
+ * the season posters when Posters is on; at the right end the Posters toggle and a Row / List switch
+ * for the episode cards. No "Seasons" header: the tab already says Episodes.
+ */
+@Composable
+private fun BoardSeasonBar(
+    meta: MetaDetails,
+    seasons: List<Int>,
+    groupedEpisodes: Map<Int, List<MetaVideo>>,
+    currentSeason: Int,
+    sizing: SeriesContentSizing,
+    horizontalScrollPadding: Dp,
+    watchedKeys: Set<String>,
+    progressByVideoId: Map<String, WatchProgressEntry>,
+    episodeCardStyle: MetaEpisodeCardStyle,
+    onEpisodeCardStyleChange: ((MetaEpisodeCardStyle) -> Unit)?,
+    onSelect: (Int) -> Unit,
+    onLongPress: ((Int) -> Unit)?,
+) {
+    var seasonViewMode by remember { mutableStateOf(SeasonViewModeStorage.load() ?: SeasonViewMode.Text) }
+    val hasSeasonPosters = seasons.size > 1 && seasons.any { resolveSeasonPoster(season = it, groupedEpisodes = groupedEpisodes, meta = meta) != null }
+    val showPosters = hasSeasonPosters && seasonViewMode == SeasonViewMode.Posters
+    val counts = remember(groupedEpisodes, watchedKeys, progressByVideoId) {
+        groupedEpisodes.mapValues { (_, episodes) ->
+            val watched = episodes.count { episode ->
+                val videoId = buildPlaybackVideoId(parentMetaId = meta.id, seasonNumber = episode.season, episodeNumber = episode.episode, fallbackVideoId = episode.id)
+                progressByVideoId[videoId]?.isEffectivelyCompleted == true ||
+                    WatchingState.isEpisodeWatched(watchedKeys = watchedKeys, metaType = meta.type, metaId = meta.id, episode = episode)
+            }
+            "$watched/${episodes.size}"
+        }
+    }
+    val seasonLabels = seasons.associateWith { season ->
+        if (season <= 0) stringResource(Res.string.episodes_specials) else stringResource(Res.string.episodes_season, season)
+    }
+    Column(Modifier.animateContentSize(tween(280)), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.weight(1f)) {
+                if (seasons.size > 1) {
+                    Crossfade(targetState = showPosters, animationSpec = tween(280), label = "board_season_bar") { posters ->
+                        if (!posters) {
+                            // Specials (season 0) go last.
+                            val ordered = remember(seasons) { seasons.filter { it > 0 } + seasons.filter { it <= 0 } }
+                            Box(Modifier.horizontalScroll(rememberScrollState()).testTag("detail_board_season_pills")) {
+                                RedesignPillGroup(
+                                    options = ordered,
+                                    selected = currentSeason,
+                                    label = { seasonLabels.getValue(it) },
+                                    onSelect = onSelect,
+                                    optionTag = { "detail_board_season_$it" },
+                                    trailing = { counts[it] },
+                                    onOptionContextMenu = onLongPress,
+                                )
+                            }
+                        } else {
+                            Spacer(Modifier.height(1.dp))
+                        }
+                    }
+                }
+            }
+            if (hasSeasonPosters) {
+                RedesignPillButton(
+                    label = stringResource(Res.string.details_season_view_posters),
+                    onClick = {
+                        val next = if (seasonViewMode == SeasonViewMode.Posters) SeasonViewMode.Text else SeasonViewMode.Posters
+                        seasonViewMode = next
+                        SeasonViewModeStorage.save(next)
+                    },
+                    active = showPosters,
+                    modifier = Modifier.testTag("detail_board_season_posters"),
+                )
+            }
+            if (onEpisodeCardStyleChange != null) {
+                RedesignPillGroup(
+                    options = listOf(MetaEpisodeCardStyle.Horizontal, MetaEpisodeCardStyle.List),
+                    selected = episodeCardStyle,
+                    label = {
+                        stringResource(if (it == MetaEpisodeCardStyle.Horizontal) Res.string.detail_board_episodes_row else Res.string.detail_board_episodes_list)
+                    },
+                    onSelect = onEpisodeCardStyleChange,
+                    optionTag = { "detail_board_card_style_${it.name}" },
+                )
+            }
+        }
+        AnimatedVisibility(visible = showPosters, enter = fadeIn(tween(220)) + expandVertically(tween(260)), exit = fadeOut(tween(160)) + shrinkVertically(tween(220))) {
+            SeasonPosterScrollRow(
+                seasons = seasons,
+                groupedEpisodes = groupedEpisodes,
+                meta = meta,
+                currentSeason = currentSeason,
+                sizing = sizing,
+                horizontalScrollPadding = horizontalScrollPadding,
+                onSelect = onSelect,
+                onLongPress = onLongPress,
+            )
         }
     }
 }
@@ -295,9 +436,31 @@ internal fun DetailSeriesListHeader(
     onSeasonSelect: (Int) -> Unit,
     onSeasonLongPress: ((Int) -> Unit)?,
     modifier: Modifier = Modifier,
+    boardStyle: Boolean = false,
+    watchedKeys: Set<String> = emptySet(),
+    progressByVideoId: Map<String, WatchProgressEntry> = emptyMap(),
+    episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.List,
+    onEpisodeCardStyleChange: ((MetaEpisodeCardStyle) -> Unit)? = null,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val sizing = seriesContentSizing(maxWidth.value)
+        if (boardStyle) {
+            BoardSeasonBar(
+                meta = meta,
+                seasons = seasons,
+                groupedEpisodes = groupedEpisodes,
+                currentSeason = currentSeason,
+                sizing = sizing,
+                horizontalScrollPadding = horizontalScrollPadding,
+                watchedKeys = watchedKeys,
+                progressByVideoId = progressByVideoId,
+                episodeCardStyle = episodeCardStyle,
+                onEpisodeCardStyleChange = onEpisodeCardStyleChange,
+                onSelect = onSeasonSelect,
+                onLongPress = onSeasonLongPress,
+            )
+            return@BoxWithConstraints
+        }
         Column(verticalArrangement = Arrangement.spacedBy(if (isDesktop) 12.dp else 16.dp)) {
             SeriesSeasonSelector(
                 meta = meta,
@@ -334,8 +497,10 @@ internal fun DetailSeriesListEpisode(
     onEpisodeClick: ((MetaVideo) -> Unit)?,
     onEpisodeLongPress: ((MetaVideo) -> Unit)?,
     modifier: Modifier = Modifier,
+    onEpisodeClickAt: ((MetaVideo, Rect?) -> Unit)? = null,
 ) {
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+    var bounds by remember { mutableStateOf<Rect?>(null) }
+    BoxWithConstraints(modifier = modifier.fillMaxWidth().onGloballyPositioned { bounds = it.boundsInRoot() }) {
         val sizing = seriesContentSizing(maxWidth.value)
         val episodeVideoId = buildPlaybackVideoId(
             parentMetaId = meta.id,
@@ -358,7 +523,7 @@ internal fun DetailSeriesListEpisode(
             episodeRatingsVisibility = episodeRatingsVisibility,
             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
             sizing = sizing,
-            onClick = { onEpisodeClick?.invoke(episode) },
+            onClick = { onEpisodeClickAt?.invoke(episode, bounds) ?: onEpisodeClick?.invoke(episode) },
             onLongPress = { onEpisodeLongPress?.invoke(episode) },
         )
     }
@@ -733,6 +898,7 @@ private fun EpisodeHorizontalRow(
     preferredEpisodeNumber: Int? = null,
     onEpisodeClick: ((MetaVideo) -> Unit)?,
     onEpisodeLongPress: ((MetaVideo) -> Unit)?,
+    episodeBounds: MutableMap<String, Rect>? = null,
 ) {
     val rowMetrics = rememberEpisodeHorizontalCardMetrics(maxWidthDp)
     val listState = rememberLazyListState()
@@ -776,6 +942,7 @@ private fun EpisodeHorizontalRow(
                 episodeNumber = episode.episode,
                 fallbackVideoId = episode.id,
             )
+            Box(Modifier.onGloballyPositioned { coordinates -> episodeBounds?.set(episode.id, coordinates.boundsInRoot()) }) {
             EpisodeHorizontalCard(
                 video = episode,
                 fallbackImage = fallbackImage,
@@ -794,6 +961,7 @@ private fun EpisodeHorizontalRow(
                 onClick = { onEpisodeClick?.invoke(episode) },
                 onLongPress = { onEpisodeLongPress?.invoke(episode) },
             )
+            }
         }
     }
 }

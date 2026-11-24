@@ -263,6 +263,11 @@ internal data class DetailSectionArgs(
     val tvHandoff: DetailTvHandoff? = null,
     val onWatchPartyClick: (() -> Unit)? = null,
     val onDownloadClick: (() -> Unit)? = null,
+    // The desktop board's Episodes tab: season pills, the Row / List switch, and episode clicks with
+    // the card's bounds so Quick pick opens beside it.
+    val boardStyle: Boolean = false,
+    val onEpisodeCardStyleChange: ((MetaEpisodeCardStyle) -> Unit)? = null,
+    val onEpisodeClickAt: ((MetaVideo, androidx.compose.ui.geometry.Rect?) -> Unit)? = null,
 ) {
     /** Whether [key] has anything to show for this title. */
     fun hasContent(key: MetaScreenSectionKey): Boolean =
@@ -387,6 +392,11 @@ internal fun LazyListScope.configuredMetaSectionItems(
                         horizontalScrollPadding = contentHorizontalPadding,
                         onSeasonSelect = onEpisodeListSeasonSelect,
                         onSeasonLongPress = onSeasonLongPress,
+                        boardStyle = boardStyle,
+                        watchedKeys = watchedKeys,
+                        progressByVideoId = progressByVideoId,
+                        episodeCardStyle = settings.episodeCardStyle,
+                        onEpisodeCardStyleChange = onEpisodeCardStyleChange,
                     )
                 }
             }
@@ -413,6 +423,7 @@ internal fun LazyListScope.configuredMetaSectionItems(
                         blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                         onEpisodeClick = onEpisodeClick,
                         onEpisodeLongPress = onEpisodeLongPress,
+                        onEpisodeClickAt = onEpisodeClickAt,
                     )
                 }
             }
@@ -678,6 +689,9 @@ internal fun ConfiguredMetaSections(
                                 onEpisodeClick = onEpisodeClick,
                                 onEpisodeLongPress = onEpisodeLongPress,
                                 onSeasonLongPress = onSeasonLongPress,
+                                boardStyle = boardStyle,
+                                onEpisodeCardStyleChange = onEpisodeCardStyleChange,
+                                onEpisodeClickAt = onEpisodeClickAt,
                             )
                             if (isDesktop && meta.type == "series") {
                                 Box(Modifier.padding(top = 18.dp)) { seriesAudience() }
