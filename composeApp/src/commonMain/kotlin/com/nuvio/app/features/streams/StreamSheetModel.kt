@@ -52,6 +52,13 @@ internal data class StreamRowInfo(
     /** Voice-over and subtitle details from the addon's description: "RU Dub", "MVO", "Subs RU EN". */
     val audioTags: List<String>,
     val rawName: String,
+    /** How many identical copies of this source the addon listed; shown as "×N" when above one. */
+    val duplicateCount: Int = 1,
+    /**
+     * What tells this row apart from another of the same release name (tracker, seeds or size), or
+     * null when its name is unique.
+     */
+    val distinguisher: String? = null,
 )
 
 private val sizeRegex = Regex("""(\d+(?:[.,]\d+)?)\s*(TB|GB|MB)\b""", RegexOption.IGNORE_CASE)
@@ -65,6 +72,26 @@ private val avcRegex = Regex("""(?<![a-z0-9])(?:h[. ]?264|x264|avc)(?![a-z0-9])"
 
 // Addons mark a debrid source "[TB+]" (cached) or "[TB download]" (not cached yet).
 private val serviceMarkerRegex = Regex("""\[([A-Za-z0-9]{2,5})(?:\+|\s+download)]""", RegexOption.IGNORE_CASE)
+
+// A release that states its resolution outright ("UHD.BDRip.1080p") is that resolution, whatever
+// a "UHD" or "4K" tag beside it suggests.
+private val explicitResolutionRegex = Regex("""(?<![\p{L}\p{N}])(2160|1440|1080|720|576|480|360)[pi](?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+private val bdRipRegex = Regex("""(?<![\p{L}\p{N}])(?:BD|BR)-?Rip(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+private val remuxRegex = Regex("""(?<![\p{L}\p{N}])Remux(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+
+/** The source label, read from the release itself where the parser's quality is too broad. */
+internal fun streamSourceLabel(text: String, quality: DebridStreamQuality): String? = when {
+    remuxRegex.containsMatchIn(text) -> "Remux"
+    bdRipRegex.containsMatchIn(text) -> "BDRip"
+    quality != DebridStreamQuality.UNKNOWN -> quality.label
+    else -> null
+}
+
+internal fun streamResolution(text: String, parsed: DebridStreamResolution): DebridStreamResolution {
+    val stated = explicitResolutionRegex.findAll(text).map { it.groupValues[1].toInt() }.toSet().singleOrNull()
+        ?: return parsed
+    return DebridStreamResolution.entries.firstOrNull { it.value == stated } ?: parsed
+}
 
 private val flagLanguages = mapOf(
     "GB" to "EN", "US" to "EN", "AU" to "EN", "CA" to "EN", "RU" to "RU", "UA" to "UK", "PL" to "PL", "DE" to "DE",
@@ -220,9 +247,9 @@ internal fun streamRowInfo(stream: StreamItem): StreamRowInfo {
     val languages = streamLanguagesFromFlags(text).ifEmpty { facts.languages.map { it.code.uppercase() }.distinct() }
     return StreamRowInfo(
         stream = stream,
-        resolution = facts.resolution,
+        resolution = streamResolution(text, facts.resolution),
         labels = listOfNotNull(
-            facts.quality.takeIf { it != DebridStreamQuality.UNKNOWN }?.label,
+            streamSourceLabel(text, facts.quality),
             visual.takeIf { it.isNotBlank() },
             audio.takeIf { it.isNotBlank() },
             codec,
@@ -234,11 +261,53 @@ internal fun streamRowInfo(stream: StreamItem): StreamRowInfo {
             availability == StreamAvailability.Torrent || availability == StreamAvailability.Checking || availability == StreamAvailability.Download
         },
         languages = languages,
-        audioTags = streamAudioTags(described),
+        // A bare language tag ("UK") repeats the row's language chip, so it is left out.
+        audioTags = streamAudioTags(described).filterNot { tag -> languages.any { it.equals(tag, ignoreCase = true) } },
         rawName = stream.behaviorHints.filename?.takeIf { it.isNotBlank() }
             ?: (stream.description ?: stream.title ?: stream.name).orEmpty().lineSequence()
                 .map { it.trim() }.filter { it.isNotEmpty() }.maxByOrNull { it.length }.orEmpty(),
     )
+}
+
+/**
+ * Merges exact copies an addon lists more than once (same torrent file, or else the same link) into
+ * the best-seeded one with a [StreamRowInfo.duplicateCount]. Rows that remain with the same release
+ * name get a [StreamRowInfo.distinguisher]. Different addons' copies stay separate.
+ */
+internal fun mergeDuplicateStreams(rows: List<StreamRowInfo>): List<StreamRowInfo> {
+    fun key(row: StreamRowInfo): String? {
+        val stream = row.stream
+        val source = stream.infoHash?.takeIf { it.isNotBlank() }?.let { "${it.lowercase()}:${stream.fileIdx ?: -1}" }
+            ?: stream.url?.takeIf { it.isNotBlank() }
+            ?: stream.externalUrl?.takeIf { it.isNotBlank() }
+            ?: return null
+        return "${stream.addonId}|$source"
+    }
+    val merged = LinkedHashMap<Any, StreamRowInfo>()
+    rows.forEachIndexed { index, row ->
+        val k: Any = key(row) ?: index
+        val kept = merged[k]
+        merged[k] = when {
+            kept == null -> row
+            (row.seeds ?: -1) > (kept.seeds ?: -1) -> row.copy(duplicateCount = kept.duplicateCount + 1)
+            else -> kept.copy(duplicateCount = kept.duplicateCount + 1)
+        }
+    }
+    val result = merged.values.toList()
+    val sameName = result.groupBy { it.stream.addonId to it.rawName }.filter { it.key.second.isNotBlank() && it.value.size > 1 }
+    if (sameName.isEmpty()) return result
+    return result.map { row ->
+        val siblings = sameName[row.stream.addonId to row.rawName] ?: return@map row
+        val tracker = row.stream.sourceName?.trim()?.takeIf { it.isNotBlank() }
+        row.copy(
+            distinguisher = when {
+                tracker != null && siblings.count { it.stream.sourceName?.trim() == tracker } == 1 -> tracker
+                row.seeds != null && siblings.count { it.seeds == row.seeds } == 1 -> "${row.seeds} seeds"
+                row.sizeBytes != null -> formatStreamSize(row.sizeBytes)
+                else -> tracker
+            },
+        )
+    }
 }
 
 internal enum class StreamSheetSort { Quality, Size, Seeds }

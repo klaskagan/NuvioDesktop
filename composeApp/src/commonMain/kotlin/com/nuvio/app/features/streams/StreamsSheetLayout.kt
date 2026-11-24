@@ -101,6 +101,41 @@ import nuvio.composeapp.generated.resources.streams_sheet_sort_size
 import nuvio.composeapp.generated.resources.streams_sheet_title
 import nuvio.composeapp.generated.resources.streams_torrent_not_supported
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
+import com.nuvio.app.core.ui.NuvioLoadingIndicator
+import com.nuvio.app.core.ui.RedesignDanger
+import com.nuvio.app.core.ui.RedesignMenuSurface
+import kotlin.math.roundToInt
+import nuvio.composeapp.generated.resources.action_cancel
+import nuvio.composeapp.generated.resources.streams_resume_from_time
+import nuvio.composeapp.generated.resources.streams_sheet_from_start
+import nuvio.composeapp.generated.resources.streams_sheet_resume_toggle
+import nuvio.composeapp.generated.resources.streams_sheet_stopped_at
+import nuvio.composeapp.generated.resources.streams_sheet_download_card
+import nuvio.composeapp.generated.resources.streams_sheet_download_card_line
+import nuvio.composeapp.generated.resources.streams_sheet_download_quality
+import nuvio.composeapp.generated.resources.streams_sheet_download_title
+import nuvio.composeapp.generated.resources.streams_sheet_status_no_results
+import nuvio.composeapp.generated.resources.streams_sheet_status_failed
+import nuvio.composeapp.generated.resources.streams_sheet_starting
+import nuvio.composeapp.generated.resources.streams_sheet_step_found
+import nuvio.composeapp.generated.resources.streams_sheet_step_preparing
+import nuvio.composeapp.generated.resources.streams_sheet_step_opening
 
 /** Desktop windows at least this wide show the Sources sheet in place of the two-pane layout. */
 internal val StreamsSheetMinWidth = 1000.dp
@@ -131,6 +166,12 @@ internal fun StreamsSheetLayout(
     onRefresh: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onStreamSelectedFromStart: (StreamItem) -> Unit = { onStreamSelected(it, null, null) },
+    actions: StreamSheetActions = StreamSheetActions(),
+    downloadMode: Boolean = false,
+    startingStream: StreamItem? = null,
+    startingPreparing: Boolean = false,
+    onCancelStarting: () -> Unit = {},
 ) {
     val backdropMode = LocalShellBackdropMode.current
     val artwork = background?.takeIf { it.isNotBlank() } ?: poster
@@ -143,7 +184,7 @@ internal fun StreamsSheetLayout(
         if (topBarState != null) DesktopMergedTopBarHeight + DesktopTopBarContentGap else 16.dp
 
     val torrentNotSupported = stringResource(Res.string.streams_torrent_not_supported)
-    val rows = remember(uiState.filteredGroups) { uiState.filteredGroups.flatMap { it.streams }.map(::streamRowInfo) }
+    val rows = remember(uiState.filteredGroups) { uiState.filteredGroups.flatMap { it.streams }.map(::streamRowInfo).let(::mergeDuplicateStreams) }
     val selectable: (StreamItem) -> Boolean = { it.isSelectableForPlayback(debridEnabled) }
     val preferredLanguages = rememberStreamPreferredLanguages()
     val rememberedLanguage = StreamBadgeSettingsRepository.uiState.collectAsStateWithLifecycle().value.sheetLanguage
@@ -161,10 +202,24 @@ internal fun StreamsSheetLayout(
     // A resolution that leaves the list (another addon filter) must not keep filtering it to nothing.
     LaunchedEffect(resolutions) { if (filter.resolution != null && filter.resolution !in resolutions) filter = filter.copy(resolution = null) }
     val grouped = remember(rows, filter, preferredLanguages) { groupStreamRows(rows, filter, preferredLanguages) }
-    val play: (StreamItem) -> Unit = { stream ->
-        if (selectable(stream)) onStreamSelected(stream, resumePositionMs, resumeProgressFraction)
+    val hasResume = (resumeProgressFraction ?: 0f) > 0f || (resumePositionMs ?: 0L) > 0L
+    // On by default for each launch; off plays from the beginning, server progress included.
+    var resumeOn by rememberSaveable { mutableStateOf(true) }
+    val playFromStart: (StreamItem) -> Unit = { stream ->
+        if (selectable(stream)) onStreamSelectedFromStart(stream)
         else if (stream.needsLocalDebridResolve && !AppFeaturePolicy.p2pEnabled) NuvioToastController.show(torrentNotSupported)
     }
+    val play: (StreamItem) -> Unit = { stream ->
+        when {
+            downloadMode && actions.onDownload != null -> actions.onDownload.invoke(stream)
+            hasResume && !resumeOn -> playFromStart(stream)
+            selectable(stream) -> onStreamSelected(stream, resumePositionMs, resumeProgressFraction)
+            stream.needsLocalDebridResolve && !AppFeaturePolicy.p2pEnabled -> NuvioToastController.show(torrentNotSupported)
+        }
+    }
+    val resumeLabel = resumePositionMs?.takeIf { hasResume && resumeOn && it > 0L }?.toPlaybackClock()
+    // One row is open in place at a time; Best match dims while it is.
+    var expandedKey by remember { mutableStateOf<String?>(null) }
 
     RedesignTypography {
         Box(modifier.fillMaxSize()) {
@@ -188,18 +243,24 @@ internal fun StreamsSheetLayout(
                         title = episodeTitle?.takeIf { isEpisode && it.isNotBlank() } ?: title,
                         onBack = onBack,
                     )
-                    ResumeBanner(positionMs = resumePositionMs, progressFraction = resumeProgressFraction)
+                    if (downloadMode) {
+                        DownloadModeCard()
+                    } else if (hasResume) {
+                        ResumeToggleCard(positionMs = resumePositionMs, progressFraction = resumeProgressFraction, on = resumeOn, onToggle = { resumeOn = !resumeOn })
+                    }
+                    val bestAlpha by animateFloatAsState(if (expandedKey != null) 0.45f else 1f, tween(200), label = "best_match_dim")
                     BestMatchCard(
                         picks = picks,
                         preferredLanguages = preferredLanguages,
                         loading = uiState.isAnyLoading || uiState.groups.any { it.isLoading },
                         onPlay = play,
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        downloadMode = downloadMode,
+                        modifier = Modifier.weight(1f).fillMaxWidth().graphicsLayer { alpha = bestAlpha },
                     )
                 }
                 Box(Modifier.width(1.dp).fillMaxHeight().background(RedesignColors.hairline))
                 Column(Modifier.weight(1f).fillMaxHeight().padding(start = 22.dp, end = 14.dp, top = 18.dp)) {
-                    SheetHeader(uiState = uiState, total = rows.size)
+                    SheetHeader(uiState = uiState, total = rows.size, downloadMode = downloadMode)
                     Spacer(Modifier.height(12.dp))
                     SheetFilters(
                         uiState = uiState,
@@ -221,11 +282,128 @@ internal fun StreamsSheetLayout(
                         preferredLanguages = preferredLanguages,
                         onPlay = play,
                         onSecondaryClick = onStreamSecondaryClick,
+                        expandedKey = expandedKey,
+                        onToggleExpanded = { key -> expandedKey = if (expandedKey == key) null else key },
+                        downloadMode = downloadMode,
+                        actions = actions,
+                        resumeLabel = resumeLabel,
+                        onPlayFromStart = playFromStart,
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
                 }
             }
+            // Confirming folds the sheet into a small card with the start's live steps.
+            val startingScrim by animateFloatAsState(if (startingStream != null) 1f else 0f, tween(220), label = "starting_scrim")
+            if (startingScrim > 0f) {
+                Box(Modifier.fillMaxSize().graphicsLayer { alpha = startingScrim }.background(Color.Black.copy(alpha = 0.55f)))
+            }
+            AnimatedVisibility(
+                visible = startingStream != null,
+                enter = fadeIn(tween(220)) + scaleIn(tween(260), initialScale = 0.94f),
+                exit = fadeOut(tween(160)) + scaleOut(tween(180), targetScale = 0.97f),
+                modifier = Modifier.align(Alignment.Center),
+            ) {
+                val starting = remember(startingStream) { startingStream?.let(::streamRowInfo) }
+                if (starting != null) StartingCard(starting, preparing = startingPreparing, onCancel = onCancelStarting)
+            }
         }
+    }
+}
+
+/** The resume line as a switch: on resumes, off plays from the beginning. */
+@Composable
+private fun ResumeToggleCard(positionMs: Long?, progressFraction: Float?, on: Boolean, onToggle: () -> Unit) {
+    val headline = when {
+        !on -> stringResource(Res.string.streams_sheet_from_start)
+        positionMs != null && positionMs > 0L -> stringResource(Res.string.streams_resume_from_time, positionMs.toPlaybackClock())
+        else -> stringResource(Res.string.streams_sheet_resume_toggle)
+    }
+    val line = progressFraction?.takeIf { it > 0f }?.let { stringResource(Res.string.streams_sheet_stopped_at, (it * 100).roundToInt()) }
+    val interaction = remember { MutableInteractionSource() }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, RoundedCornerShape(16.dp))
+            .clickable(interactionSource = interaction, indication = null, role = Role.Switch, onClick = onToggle)
+            .semantics { toggleableState = if (on) ToggleableState.On else ToggleableState.Off }
+            .testTag("streams_sheet_resume_toggle")
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Crossfade(headline, animationSpec = tween(180), label = "resume_headline") {
+                Text(it, style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1)
+            }
+            if (line != null) Text(line, style = redesignText(12.sp, color = RedesignColors.textMuted), maxLines = 1)
+        }
+        RedesignSwitch(checked = on)
+    }
+}
+
+/** A small switch in the redesign's ink: a white track when on. */
+@Composable
+private fun RedesignSwitch(checked: Boolean) {
+    val track by animateColorAsState(if (checked) RedesignColors.textPrimary else RedesignColors.fillStrong, tween(180), label = "switch_track")
+    val knob by animateDpAsState(if (checked) 18.dp else 2.dp, tween(200, easing = FastOutSlowInEasing), label = "switch_knob")
+    val knobColor by animateColorAsState(if (checked) RedesignOnLight else RedesignColors.textSecondary, tween(180), label = "switch_knob_color")
+    Box(Modifier.size(width = 38.dp, height = 22.dp).clip(CircleShape).background(track)) {
+        Box(Modifier.padding(start = knob, top = 2.dp).size(18.dp).clip(CircleShape).background(knobColor))
+    }
+}
+
+/** In place of the resume card when the sheet was opened to download. */
+@Composable
+private fun DownloadModeCard() {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, RoundedCornerShape(16.dp))
+            .testTag("streams_sheet_download_card")
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(Icons.Rounded.Download, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(20.dp))
+        Column {
+            Text(stringResource(Res.string.streams_sheet_download_card), style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1)
+            Text(stringResource(Res.string.streams_sheet_download_card_line), style = redesignText(12.sp, color = RedesignColors.textMuted))
+        }
+    }
+}
+
+/** What happens after a source is confirmed: found → preparing → opening the player, with Cancel. */
+@Composable
+private fun StartingCard(row: StreamRowInfo, preparing: Boolean, onCancel: () -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        Modifier.width(380.dp).clip(shape).background(RedesignMenuSurface).border(1.dp, RedesignColors.hairline, shape)
+            .padding(20.dp).testTag("streams_sheet_starting"),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        StreamKicker(stringResource(Res.string.streams_sheet_starting, streamQualityLabel(row.resolution)))
+        Text(row.rawName.ifBlank { row.stream.streamLabel }, style = redesignText(14.sp, FontWeight.SemiBold, lineHeight = 19.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        StartingStep(stringResource(Res.string.streams_sheet_step_found, row.service ?: row.stream.addonName), done = true, active = false)
+        StartingStep(stringResource(Res.string.streams_sheet_step_preparing), done = !preparing, active = preparing)
+        StartingStep(stringResource(Res.string.streams_sheet_step_opening), done = false, active = !preparing)
+        Text(
+            stringResource(Res.string.action_cancel),
+            style = redesignText(13.sp, FontWeight.SemiBold, RedesignColors.textSecondary),
+            modifier = Modifier.align(Alignment.End).clip(CircleShape).clickable(role = Role.Button, onClick = onCancel)
+                .testTag("streams_sheet_starting_cancel").padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun StartingStep(label: String, done: Boolean, active: Boolean) {
+    val ink by animateColorAsState(if (done || active) RedesignColors.textPrimary else RedesignColors.textMuted, tween(200), label = "starting_step")
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+            Crossfade(if (done) 0 else if (active) 1 else 2, animationSpec = tween(180), label = "starting_step_icon") { state ->
+                when (state) {
+                    0 -> Icon(Icons.Rounded.Check, contentDescription = null, tint = Color(0xFF7BE0B0), modifier = Modifier.size(16.dp))
+                    1 -> NuvioLoadingIndicator(modifier = Modifier.size(14.dp))
+                    else -> Box(Modifier.size(6.dp).clip(CircleShape).background(RedesignColors.textMuted))
+                }
+            }
+        }
+        Text(label, style = redesignText(13.sp, FontWeight.Medium, ink))
     }
 }
 
@@ -260,6 +438,7 @@ private fun BestMatchCard(
     loading: Boolean,
     onPlay: (StreamItem) -> Unit,
     modifier: Modifier = Modifier,
+    downloadMode: Boolean = false,
 ) {
     val shape = RoundedCornerShape(18.dp)
     Column(
@@ -307,7 +486,7 @@ private fun BestMatchCard(
             StreamStatusChip(best)
         }
         BoardPlayButton(
-            label = stringResource(Res.string.streams_sheet_play_quality, streamQualityLabel(best.resolution)),
+            label = stringResource(if (downloadMode) Res.string.streams_sheet_download_quality else Res.string.streams_sheet_play_quality, streamQualityLabel(best.resolution)),
             enabled = true,
             onClick = { onPlay(best.stream) },
             onLongClick = null,
@@ -345,12 +524,12 @@ private fun AlternativeRow(label: String, row: StreamRowInfo, onPlay: (StreamIte
 }
 
 @Composable
-private fun SheetHeader(uiState: StreamsUiState, total: Int) {
+private fun SheetHeader(uiState: StreamsUiState, total: Int, downloadMode: Boolean = false) {
     val loading = uiState.isAnyLoading || uiState.groups.any { it.isLoading }
     val addons = uiState.groups.count { it.streams.isNotEmpty() }
     val count = if (addons == 1) stringResource(Res.string.streams_sheet_count_one_addon, total) else stringResource(Res.string.streams_sheet_count, total, addons)
     Column {
-        Text(stringResource(Res.string.streams_sheet_title), style = redesignText(22.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking))
+        Text(stringResource(if (downloadMode) Res.string.streams_sheet_download_title else Res.string.streams_sheet_title), style = redesignText(22.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking))
         Text(
             when {
                 total > 0 && loading -> "$count · ${stringResource(Res.string.streams_checking_more_addons)}"
@@ -365,7 +544,16 @@ private fun SheetHeader(uiState: StreamsUiState, total: Int) {
 }
 
 @Composable
-private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit, trailing: String? = null, tag: String? = null) {
+private fun FilterPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    trailing: String? = null,
+    tag: String? = null,
+    trailingColor: Color? = null,
+    loading: Boolean = false,
+    muted: Boolean = false,
+) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val fill by animateColorAsState(
@@ -377,7 +565,15 @@ private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit, tr
         tween(180),
         label = "filter_pill",
     )
-    val content by animateColorAsState(if (selected) RedesignOnLight else RedesignColors.textSecondary, tween(180), label = "filter_pill_text")
+    val content by animateColorAsState(
+        when {
+            selected -> RedesignOnLight
+            muted -> RedesignColors.textMuted
+            else -> RedesignColors.textSecondary
+        },
+        tween(180),
+        label = "filter_pill_text",
+    )
     Row(
         Modifier.height(32.dp).clip(CircleShape).background(fill).border(1.dp, RedesignColors.hairline, CircleShape)
             .hoverable(interaction)
@@ -387,7 +583,11 @@ private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit, tr
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, style = redesignText(12.8.sp, FontWeight.SemiBold, content), maxLines = 1)
-        if (trailing != null) Text("  $trailing", style = redesignText(12.sp, FontWeight.Medium, content.copy(alpha = 0.7f)), maxLines = 1)
+        if (loading) {
+            Spacer(Modifier.width(8.dp))
+            NuvioLoadingIndicator(modifier = Modifier.size(12.dp).testTag("streams_sheet_addon_searching"))
+        }
+        if (trailing != null) Text("  $trailing", style = redesignText(12.sp, FontWeight.Medium, trailingColor ?: content.copy(alpha = 0.7f)), maxLines = 1)
     }
 }
 
@@ -405,12 +605,31 @@ private fun SheetFilters(
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterPill(all, selected = uiState.selectedFilter == null, onClick = { StreamsRepository.selectFilter(null) },
                 trailing = uiState.groups.sumOf { it.streams.size }.takeIf { it > 0 }?.toString(), tag = "streams_sheet_addon_all")
-            uiState.groups.filter { it.streams.isNotEmpty() || it.isLoading }.forEach { group ->
+            // Every addon shows how its search went: a count, still searching, no results or failed.
+            // Only addons with results filter the list.
+            val noResults = stringResource(Res.string.streams_sheet_status_no_results)
+            val failed = stringResource(Res.string.streams_sheet_status_failed)
+            uiState.groups.forEach { group ->
+                val status = when {
+                    group.streams.isNotEmpty() -> AddonStatus.Results
+                    group.isLoading -> AddonStatus.Searching
+                    group.error != null -> AddonStatus.Failed
+                    else -> AddonStatus.Empty
+                }
                 FilterPill(
                     group.addonName,
                     selected = uiState.selectedFilter == group.addonId,
-                    onClick = { StreamsRepository.selectFilter(group.addonId) },
-                    trailing = if (group.isLoading) "…" else group.streams.size.toString(),
+                    onClick = { if (status == AddonStatus.Results) StreamsRepository.selectFilter(group.addonId) },
+                    trailing = when (status) {
+                        AddonStatus.Results -> group.streams.size.toString()
+                        AddonStatus.Searching -> null
+                        AddonStatus.Empty -> "· $noResults"
+                        AddonStatus.Failed -> "· $failed"
+                    },
+                    trailingColor = RedesignDanger.takeIf { status == AddonStatus.Failed },
+                    loading = status == AddonStatus.Searching,
+                    muted = status == AddonStatus.Empty || status == AddonStatus.Failed,
+                    tag = "streams_sheet_addon_${group.addonId}",
                 )
             }
         }
@@ -481,6 +700,12 @@ private fun SheetList(
     onPlay: (StreamItem) -> Unit,
     onSecondaryClick: (StreamItem, Offset) -> Unit,
     modifier: Modifier = Modifier,
+    expandedKey: String? = null,
+    onToggleExpanded: (String) -> Unit = {},
+    downloadMode: Boolean = false,
+    actions: StreamSheetActions = StreamSheetActions(),
+    resumeLabel: String? = null,
+    onPlayFromStart: (StreamItem) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val loading = uiState.isAnyLoading || uiState.groups.any { it.isLoading }
@@ -513,12 +738,19 @@ private fun SheetList(
                     }
                     items(rows.size, key = { index -> "row-${resolution.name}-$index-${streamSheetRowKey(rows[index].stream)}" }) { index ->
                         val row = rows[index]
+                        val key = streamSheetRowKey(row.stream)
                         StreamSheetRow(
                             row = row,
                             enabled = selectable(row.stream),
                             highlight = highlightOf(row.stream),
                             preferredLanguages = preferredLanguages,
                             onClick = { onPlay(row.stream) },
+                            expanded = expandedKey == key,
+                            onToggleExpanded = { onToggleExpanded(key) },
+                            downloadMode = downloadMode,
+                            actions = actions,
+                            resumeLabel = resumeLabel,
+                            onPlayFromStart = { onPlayFromStart(row.stream) },
                             onSecondaryClick = { position ->
                                 val stream = row.stream
                                 if (stream.playableDirectUrl != null || stream.shouldOpenExternally || stream.isAddonDebridCandidate) {
@@ -538,6 +770,8 @@ private fun SheetList(
         )
     }
 }
+
+private enum class AddonStatus { Results, Searching, Empty, Failed }
 
 private fun streamSheetRowKey(stream: StreamItem): String =
     listOf(stream.addonId, stream.url ?: stream.infoHash ?: stream.clientResolve?.infoHash ?: stream.streamLabel, stream.fileIdx).joinToString("|")

@@ -58,6 +58,8 @@ import com.nuvio.app.features.party.partyMediaKey
 import com.nuvio.app.features.streams.LocalSharedStream
 import com.nuvio.app.features.streams.LocalStreamHighlight
 import com.nuvio.app.features.streams.SharedStream
+import kotlinx.coroutines.cancelChildren
+import com.nuvio.app.isDesktop
 
 private data class PendingP2pStreamOpen(
     val stream: StreamItem,
@@ -66,6 +68,8 @@ private data class PendingP2pStreamOpen(
     val forceExternal: Boolean,
     val forceInternal: Boolean,
     val isAutoPlay: Boolean,
+    /** The player replaces Sources (autoplay or a Quick pick), so closing it returns to Details. */
+    val replaceStreamRoute: Boolean = isAutoPlay,
 )
 
 @Composable
@@ -94,6 +98,8 @@ internal fun StreamDestination(
     var resolvingYouTubeStream by rememberSaveable(route.launchId) { mutableStateOf(false) }
     var preparingServerStream by remember(route.launchId) { mutableStateOf(false) }
     var pendingP2pStreamOpen by remember { mutableStateOf<PendingP2pStreamOpen?>(null) }
+    // The source being started from the desktop sheet, shown as its "starting" card until the player opens.
+    var startingStream by remember(route.launchId) { mutableStateOf<StreamItem?>(null) }
     val shouldResolveEpisodeVideoId =
         launch.parentMetaId != null &&
             launch.seasonNumber != null &&
@@ -163,8 +169,8 @@ internal fun StreamDestination(
         )
     }
 
-    suspend fun serverResumePositionMs(stream: StreamItem): Long? {
-        if (stream.serverTarget == null || launch.startFromBeginning) return null
+    suspend fun serverResumePositionMs(stream: StreamItem, fromStart: Boolean = launch.startFromBeginning): Long? {
+        if (stream.serverTarget == null || fromStart) return null
         val saved = WatchProgressRepository.progressForVideo(
             videoId = effectiveVideoId,
             parentMetaId = launch.parentMetaId,
@@ -263,6 +269,7 @@ internal fun StreamDestination(
         forceExternal: Boolean,
         forceInternal: Boolean,
         isAutoPlay: Boolean,
+        replaceStreamRoute: Boolean = isAutoPlay,
     ) {
         if (stream.p2pInfoHash == null) {
             if (isAutoPlay) StreamsRepository.skipAutoPlayStream(stream)
@@ -280,6 +287,7 @@ internal fun StreamDestination(
                 forceExternal = forceExternal,
                 forceInternal = forceInternal,
                 isAutoPlay = isAutoPlay,
+                replaceStreamRoute = replaceStreamRoute,
             )
             return
         }
@@ -287,7 +295,7 @@ internal fun StreamDestination(
             stream = stream,
             resolvedResumePositionMs = resolvedResumePositionMs,
             resolvedResumeProgressFraction = resolvedResumeProgressFraction,
-            replaceStreamRoute = isAutoPlay,
+            replaceStreamRoute = replaceStreamRoute,
         )
     }
 
@@ -607,6 +615,8 @@ internal fun StreamDestination(
         saveForReuse: Boolean = true,
         // True for a Quick pick hand-off: the player replaces this route, so closing it returns to Details.
         replaceStreamRoute: Boolean = false,
+        // The sheet's resume toggle is off: a media server's newer position is ignored too.
+        fromStart: Boolean = launch.startFromBeginning,
     ) {
         if (stream.needsServerPreparation) {
             if (preparingServerStream) return
@@ -619,7 +629,7 @@ internal fun StreamDestination(
                         NuvioToastController.show(error.serverPlaybackMessage())
                         return@launch
                     }
-                val serverResumeMs = serverResumePositionMs(prepared)
+                val serverResumeMs = serverResumePositionMs(prepared, fromStart)
                 preparingServerStream = false
                 openSelectedStream(
                     stream = prepared,
@@ -628,6 +638,7 @@ internal fun StreamDestination(
                     forceExternal = false,
                     forceInternal = true,
                     replaceStreamRoute = replaceStreamRoute,
+                    fromStart = fromStart,
                 )
             }
             return
@@ -650,6 +661,7 @@ internal fun StreamDestination(
                         forceExternal = forceExternal,
                         forceInternal = forceInternal,
                         replaceStreamRoute = replaceStreamRoute,
+                        fromStart = fromStart,
                     )
                     else -> {
                         resolved.toastMessage()?.let { NuvioToastController.show(it) }
@@ -676,6 +688,7 @@ internal fun StreamDestination(
                 forceExternal = forceExternal,
                 forceInternal = forceInternal,
                 isAutoPlay = false,
+                replaceStreamRoute = replaceStreamRoute,
             )
             return
         }
@@ -773,8 +786,10 @@ internal fun StreamDestination(
 
         if (!forceInternal && externalPlayerSupported && (forceExternal || playerSettings.externalPlayerEnabled)) {
             streamRouteScope.launch {
-                openExternalPlayback(playerLaunch)
+                val opened = openExternalPlayback(playerLaunch)
                 StreamsRepository.cancelLoading()
+                // A Quick pick launched the external player: Sources was only a hand-off, so leave it.
+                if (opened && replaceStreamRoute) navController.popBackStack(route)
             }
             return
         }
@@ -857,6 +872,7 @@ internal fun StreamDestination(
                 manualSelection = launch.manualSelection,
                 startFromBeginning = launch.startFromBeginning,
                 onStreamSelected = { stream, resolvedResumePositionMs, resolvedResumeProgressFraction ->
+                    startingStream = stream
                     openSelectedStream(
                         stream = stream,
                         resolvedResumePositionMs = resolvedResumePositionMs,
@@ -864,7 +880,33 @@ internal fun StreamDestination(
                         forceExternal = false,
                         forceInternal = false,
                         saveForReuse = stream != sharedStream?.stream,
+                   // On desktop the player replaces Sources: closing it lands on Details (design doc, Sources flow).
+                        replaceStreamRoute = isDesktop,
                     )
+                },
+                onStreamSelectedFromStart = { stream ->
+                    startingStream = stream
+                    openSelectedStream(
+                        stream = stream,
+                        resolvedResumePositionMs = null,
+                        resolvedResumeProgressFraction = null,
+                        forceExternal = false,
+                        forceInternal = false,
+                        saveForReuse = stream != sharedStream?.stream,
+                        fromStart = true,
+                        replaceStreamRoute = isDesktop,
+                    )
+                },
+                downloadMode = launch.downloadMode,
+                startingStream = startingStream.takeIf { resolvingDebridStream || preparingServerStream || resolvingYouTubeStream },
+                startingPreparing = resolvingDebridStream || preparingServerStream || resolvingYouTubeStream,
+                onCancelStarting = {
+                    // Stops the resolve or preparation in flight; the sheet comes back as it was.
+                    streamRouteScope.coroutineContext.cancelChildren()
+                    resolvingDebridStream = false
+                    preparingServerStream = false
+                    resolvingYouTubeStream = false
+                    startingStream = null
                 },
                 onStreamActionOpen = { stream, openExternally, resolvedResumePositionMs, resolvedResumeProgressFraction ->
                     openSelectedStream(
@@ -888,7 +930,7 @@ internal fun StreamDestination(
                         stream = pending.stream,
                         resolvedResumePositionMs = pending.resumePositionMs,
                         resolvedResumeProgressFraction = pending.resumeProgressFraction,
-                        replaceStreamRoute = pending.isAutoPlay,
+                        replaceStreamRoute = pending.replaceStreamRoute,
                     )
                 },
                 onDismiss = {

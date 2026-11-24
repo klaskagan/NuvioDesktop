@@ -253,4 +253,51 @@ class StreamSheetModelTest {
         assertEquals("4 GB", formatStreamSize(4L * 1024 * 1024 * 1024))
         assertEquals("940 MB", formatStreamSize(940L * 1024 * 1024))
     }
+
+    @Test
+    fun aBdRipIsLabelledBdRipAndSitsAtItsStatedResolution() {
+        val row = streamRowInfo(torrent("Torrentio\n4k", "Dune.Part.Two.2024.UHD.BDRip.1080p.HDR.DTS-HD.MA.7.1.x265\n👤 90 💾 14.2 GB"))
+        assertEquals("BDRip", row.labels.first())
+        assertEquals(DebridStreamResolution.P1080, row.resolution)
+        val remux = streamRowInfo(torrent("Torrentio\n4k", "Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.DV.HDR.TrueHD.7.1.Atmos\n💾 74 GB"))
+        assertEquals("Remux", remux.labels.first())
+        assertEquals(DebridStreamResolution.P2160, remux.resolution)
+    }
+
+    @Test
+    fun aBareLanguageTagDoesNotRepeatTheLanguageChip() {
+        val row = streamRowInfo(
+            torrent(
+                "Torrentio\n4k",
+                "Ready or Not [2019 WEB-DL 2160p] Dub + Ukr + Original (Eng)\n🇬🇧 / 🇷🇺 / 🇺🇦\n💾 9 GB",
+            ),
+        )
+        assertTrue("UK" in row.languages, row.languages.toString())
+        assertTrue("UK" !in row.audioTags, row.audioTags.toString())
+        assertTrue("Dub" in row.audioTags, row.audioTags.toString())
+    }
+
+    @Test
+    fun exactCopiesFromOneAddonMergeIntoTheBestSeededRow() {
+        val a = torrent("Torrentio\n1080p", "Show.S01E01.1080p.WEB.h264\n👤 12 💾 1.4 GB", hash = "abc")
+        val b = torrent("Torrentio\n1080p", "Show.S01E01.1080p.WEB.h264\n👤 80 💾 1.4 GB", hash = "abc")
+        val c = torrent("Torrentio\n1080p", "Show.S01E01.1080p.WEB.h264\n👤 5 💾 1.4 GB", hash = "abc")
+        val otherAddon = b.copy(addonId = "addon:other", addonName = "Other")
+        val merged = mergeDuplicateStreams(listOf(a, b, c, otherAddon).map(::streamRowInfo))
+        assertEquals(2, merged.size)
+        val kept = merged.first { it.stream.addonId == "addon:torrentio" }
+        assertEquals(3, kept.duplicateCount)
+        assertEquals(80, kept.seeds)
+        assertEquals(1, merged.first { it.stream.addonId == "addon:other" }.duplicateCount)
+    }
+
+    @Test
+    fun differentFilesWithTheSameNameGetSomethingToTellThemApart() {
+        val small = torrent("Torrentio\n1080p", "Show.S01E01.1080p.WEB.h264\n👤 12 💾 1.4 GB", hash = "one").copy(sourceName = "TorrentGalaxy")
+        val large = torrent("Torrentio\n1080p", "Show.S01E01.1080p.WEB.h264\n👤 40 💾 2.1 GB", hash = "two").copy(sourceName = "1337x")
+        val merged = mergeDuplicateStreams(listOf(small, large).map(::streamRowInfo))
+        assertEquals(listOf("TorrentGalaxy", "1337x"), merged.map { it.distinguisher })
+        val unique = mergeDuplicateStreams(listOf(streamRowInfo(direct("Comet", "Other.Show.S01E01.720p.mkv"))))
+        assertNull(unique.single().distinguisher)
+    }
 }

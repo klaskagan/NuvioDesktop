@@ -77,6 +77,7 @@ internal fun DetailsDestination(
     onPlay: ContentPlayAction,
     onPlayManually: ContentPlayAction,
     sharedTransitionScope: SharedTransitionScope,
+    onDownload: ContentPlayAction? = null,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val onBack = rememberGuardedPopBackStack(navController, route)
@@ -96,6 +97,7 @@ internal fun DetailsDestination(
         onBack = onBack,
         onPlay = onPlay,
         onPlayManually = onPlayManually,
+        onDownload = onDownload,
         onOpenMeta = onOpenMeta,
         onCastClick = { person, avatarTransitionKey ->
             val tmdbId = person.tmdbId

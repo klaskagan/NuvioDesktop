@@ -1082,6 +1082,7 @@ internal fun MainAppContent(
             resumeProgressFraction: Float?,
             manualSelection: Boolean,
             startFromBeginning: Boolean,
+            downloadMode: Boolean = false,
         ) {
             val targetResumePositionMs = if (startFromBeginning) 0L else (resumePositionMs ?: 0L)
             val targetResumeProgressFraction = if (startFromBeginning) null else resumeProgressFraction
@@ -1156,6 +1157,7 @@ internal fun MainAppContent(
                     resumeProgressFraction = targetResumeProgressFraction,
                     manualSelection = manualSelection,
                     startFromBeginning = startFromBeginning,
+                    downloadMode = downloadMode,
                 ),
             )
             navController.navigate(
@@ -1232,6 +1234,31 @@ internal fun MainAppContent(
                     resumeProgressFraction = null,
                     manualSelection = true,
                     startFromBeginning = false,
+                )
+            }
+
+        // Details' Download: the Sources sheet for that episode or film, where a source is downloaded.
+        val onDownloadManually: ContentPlayAction =
+            { type, videoId, parentMetaId, parentMetaType, title, logo, poster, background, seasonNumber, episodeNumber, episodeTitle, episodeThumbnail, pauseDescription, _ ->
+                launchPlaybackWithDownloadPreference(
+                    type = type,
+                    videoId = videoId,
+                    parentMetaId = parentMetaId,
+                    parentMetaType = parentMetaType,
+                    title = title,
+                    logo = logo,
+                    poster = poster,
+                    background = background,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber,
+                    episodeTitle = episodeTitle,
+                    episodeThumbnail = episodeThumbnail,
+                    pauseDescription = pauseDescription,
+                    resumePositionMs = null,
+                    resumeProgressFraction = null,
+                    manualSelection = true,
+                    startFromBeginning = true,
+                    downloadMode = true,
                 )
             }
 
@@ -1926,6 +1953,7 @@ internal fun MainAppContent(
                             navController = navController,
                             onPlay = onPlay,
                             onPlayManually = onPlayManually,
+                            onDownload = onDownloadManually.takeIf { AppFeaturePolicy.downloadsEnabled },
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = LocalNavAnimatedContentScope.current,
                         )

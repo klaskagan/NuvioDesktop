@@ -256,6 +256,7 @@ fun MetaDetailsScreen(
     onBack: () -> Unit,
     onPlay: ((type: String, videoId: String, parentMetaId: String, parentMetaType: String, title: String, logo: String?, poster: String?, background: String?, seasonNumber: Int?, episodeNumber: Int?, episodeTitle: String?, episodeThumbnail: String?, pauseDescription: String?, resumePositionMs: Long?) -> Unit)? = null,
     onPlayManually: ((type: String, videoId: String, parentMetaId: String, parentMetaType: String, title: String, logo: String?, poster: String?, background: String?, seasonNumber: Int?, episodeNumber: Int?, episodeTitle: String?, episodeThumbnail: String?, pauseDescription: String?, resumePositionMs: Long?) -> Unit)? = null,
+    onDownload: ((type: String, videoId: String, parentMetaId: String, parentMetaType: String, title: String, logo: String?, poster: String?, background: String?, seasonNumber: Int?, episodeNumber: Int?, episodeTitle: String?, episodeThumbnail: String?, pauseDescription: String?, resumePositionMs: Long?) -> Unit)? = null,
     onOpenMeta: ((MetaPreview) -> Unit)? = null,
     onCastClick: ((MetaPerson, String?) -> Unit)? = null,
     onCompanyClick: ((MetaCompany, String) -> Unit)? = null,
@@ -1290,6 +1291,28 @@ fun MetaDetailsScreen(
                     tvHandoffSupported && tvAccount != null && !tvAccount.isAnonymous && yourWayVideoId != null &&
                         ((yourWayProgress?.durationMs ?: 0L) > 0L || (yourWayRuntime ?: 0) > 0)
                 }
+                // Download: the Sources sheet in download mode for the up-next episode or the film.
+                val downloadYourWay: (() -> Unit)? = onDownload?.takeIf { yourWayVideoId != null && playbackAvailability.canStream(meta.type, yourWayVideoId) }?.let { download ->
+                    {
+                        val action = seriesActionState.value
+                        download(
+                            meta.type,
+                            yourWayVideoId ?: meta.id,
+                            meta.id,
+                            meta.type,
+                            meta.name,
+                            meta.logo,
+                            meta.poster,
+                            meta.background,
+                            action?.seasonNumber,
+                            action?.episodeNumber,
+                            action?.episodeTitle,
+                            action?.episodeThumbnail,
+                            if (action != null) seriesPauseDescription else meta.description,
+                            null,
+                        )
+                    }
+                }
                 val partyAvailable by PartyRepository.available.collectAsStateWithLifecycle()
                 val startWatchParty: (() -> Unit)? = onOpenParty?.takeIf { partyAvailable && PartyRepository.canUse && yourWayVideoId != null }?.let { openParty ->
                     {
@@ -1410,6 +1433,7 @@ fun MetaDetailsScreen(
                     animatedVisibilityScope = animatedVisibilityScope,
                     tvHandoff = detailTvHandoff,
                     onWatchPartyClick = startWatchParty,
+                    onDownloadClick = downloadYourWay,
                 )
 
                 BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(start = boardStartInset)) {

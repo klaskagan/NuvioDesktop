@@ -42,6 +42,18 @@ class DesktopNavigationHistoryTest {
     private val movie = DetailRoute("movie", "one")
     private val actor = PersonDetailRoute(42, "Actor")
 
+    /** A Quick pick hands Sources over to the player; closing it lands on Details, and Back leaves Details. */
+    @Test fun closingThePlayerAfterSourcesReturnsToDetailsAndBackSkipsSources() {
+        val stream = StreamRoute(7)
+        navigator.navigate(movie)
+        navigator.navigate(stream)
+        navigator.navigate(PlayerRoute(8)) { popUpTo<StreamRoute> { inclusive = true } }
+        assertTrue(navigator.popBackStack())
+        assertEquals(movie, navigator.currentRoute)
+        assertTrue(navigator.popBackStack())
+        assertEquals(TabsRoute, navigator.currentRoute)
+    }
+
     @Test fun tabsHaveChronologicalBackAndForward() {
         navigator.selectDesktopTab(AppScreenTab.Search)
         navigator.selectDesktopTab(AppScreenTab.Library)

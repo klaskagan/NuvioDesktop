@@ -19,6 +19,8 @@ data class StreamLaunch(
     val resumeProgressFraction: Float? = null,
     val manualSelection: Boolean = false,
     val startFromBeginning: Boolean = false,
+    /** Opened from Details' Download: a source is downloaded instead of played. */
+    val downloadMode: Boolean = false,
 )
 
 object StreamLaunchStore {

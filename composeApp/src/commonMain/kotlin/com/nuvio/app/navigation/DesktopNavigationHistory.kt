@@ -114,10 +114,18 @@ internal class DesktopNavigationHistory(
         return null
     }
 
+    /**
+     * The player closed onto [routes]. Drops history entries that are this location again, or this
+     * location plus the Sources route the player replaced (`popUpTo<StreamRoute>`): Back from Details
+     * must not reopen Sources.
+     */
     fun finishPlayback(routes: List<AppRoute>) {
         current = current.copy(routes = routes.toList())
-        while (past.lastOrNull() == current) past.removeAt(past.lastIndex)
+        while (past.lastOrNull()?.let { it == current || it.isReplacedStreamOf(current) } == true) past.removeAt(past.lastIndex)
     }
+
+    private fun DesktopNavigationLocation.isReplacedStreamOf(location: DesktopNavigationLocation): Boolean =
+        routes.lastOrNull() is StreamRoute && copy(routes = routes.dropLast(1)) == location
 
     fun invalidateRoute(route: AppRoute) {
         if ((route is PlayerRoute || route is StreamRoute || route is CatalogRoute) && route !in disposed) disposed.add(route)

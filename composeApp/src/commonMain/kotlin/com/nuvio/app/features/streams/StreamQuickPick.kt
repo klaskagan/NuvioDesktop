@@ -108,7 +108,7 @@ internal fun StreamQuickPickPanel(
     // Results of an earlier title must never be offered for this one.
     val current = uiState.takeIf { it.requestToken == token } ?: StreamsUiState()
     val debridEnabled = debridSettings.canResolvePlayableLinks
-    val rows = remember(current.groups) { current.groups.flatMap { it.streams }.map(::streamRowInfo) }
+    val rows = remember(current.groups) { current.groups.flatMap { it.streams }.map(::streamRowInfo).let(::mergeDuplicateStreams) }
     val preferredLanguages = rememberStreamPreferredLanguages()
     val picks = remember(rows, debridEnabled, preferredLanguages) {
         streamQuickPicks(rows, preferredLanguages) { it.isSelectableForPlayback(debridEnabled) }

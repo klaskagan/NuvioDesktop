@@ -6,6 +6,9 @@ import com.nuvio.app.AppEnvironment
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.assertEquals
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import org.junit.Test
 
 @OptIn(ExperimentalTestApi::class)
@@ -211,5 +214,90 @@ class StreamsSheetUiTest {
         onNodeWithText("Looking for sources…").assertIsDisplayed()
         onAllNodesWithTag("stream_sheet_row").assertCountEquals(0)
         onNodeWithTag("streams_sheet_play_best").assertDoesNotExist()
+    }
+
+    /** The status row, the resume switch, a row opened in place, merged copies and download mode. */
+    @Test
+    fun sheetShowsAddonStatusResumeSwitchOpenRowsAndDownloadMode() = runDesktopComposeUiTest(width = 1360, height = 850) {
+        check(System.getProperty("nuvio.test.isolatedHome") == "true")
+        val withStatus = state.copy(
+            groups = state.groups.mapIndexed { index, group ->
+                // Torrentio lists its 4K release twice.
+                if (index == 0) group.copy(streams = group.streams + group.streams.first()) else group
+            } + listOf(
+                AddonStreamGroup("MediaFusion", "addon:mediafusion", emptyList(), isLoading = true),
+                AddonStreamGroup("Jackettio", "addon:jackettio", emptyList()),
+                AddonStreamGroup("Peerflix", "addon:peerflix", emptyList(), error = "timeout"),
+            ),
+        )
+        val resumed = mutableListOf<Pair<String?, Long?>>()
+        val fromStart = mutableListOf<String?>()
+        val downloaded = mutableListOf<String?>()
+        var downloadMode by mutableStateOf(false)
+        setContent {
+            AppEnvironment {
+                StreamsSheetLayout(
+                    isEpisode = true,
+                    title = "Severance",
+                    background = null,
+                    poster = null,
+                    episodeThumbnail = null,
+                    seasonNumber = 2,
+                    episodeNumber = 3,
+                    episodeTitle = "Who Is Alive?",
+                    uiState = withStatus,
+                    debridEnabled = true,
+                    resumePositionMs = 1_102_000,
+                    resumeProgressFraction = 0.38f,
+                    onStreamSelected = { stream, position, _ -> resumed += stream.name to position },
+                    onStreamSelectedFromStart = { fromStart += it.name },
+                    onStreamSecondaryClick = { _, _ -> },
+                    onRefresh = {},
+                    onBack = {},
+                    actions = StreamSheetActions(onDownload = { downloaded += it.name }, onCopyLink = {}),
+                    downloadMode = downloadMode,
+                )
+            }
+        }
+        waitForIdle()
+        // Every addon shows how its search went.
+        onNodeWithTag("streams_sheet_addon_searching", useUnmergedTree = true).assertExists()
+        onNodeWithText("· no results", substring = true, useUnmergedTree = true).assertExists()
+        onNodeWithText("· failed", substring = true, useUnmergedTree = true).assertExists()
+        // The repeated 4K release is one row marked ×2.
+        onAllNodesWithTag("stream_sheet_row").assertCountEquals(4)
+        onNodeWithText("×2", substring = true, useUnmergedTree = true).assertExists()
+
+        // Resume is on: Best match resumes. Off: it plays from the start.
+        onNodeWithText("Resume from 18:22", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithTag("streams_sheet_play_best").performClick()
+        assertEquals(listOf<Pair<String?, Long?>>("best4k" to 1_102_000L), resumed)
+        onNodeWithTag("streams_sheet_resume_toggle").performClick()
+        waitForIdle()
+        onNodeWithText("Plays from the start", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithTag("streams_sheet_play_best").performClick()
+        assertEquals(listOf<String?>("best4k"), fromStart)
+        onNodeWithTag("streams_sheet_resume_toggle").performClick()
+        waitForIdle()
+
+        // Clicking a row body opens it in place instead of playing.
+        onAllNodesWithTag("stream_sheet_row")[0].performClick()
+        waitForIdle()
+        onNodeWithTag("stream_sheet_row_details", useUnmergedTree = true).assertIsDisplayed()
+        assertEquals(1, resumed.size)
+        onNodeWithTag("stream_row_play_start").performClick()
+        assertEquals(2, fromStart.size)
+        onNodeWithTag("stream_row_download_full").performClick()
+        assertEquals(1, downloaded.size)
+
+        // Opened from Download: the sheet says so, and its primary actions download.
+        runOnIdle { downloadMode = true }
+        waitForIdle()
+        onNodeWithText("Download a source").assertIsDisplayed()
+        onNodeWithTag("streams_sheet_download_card").assertIsDisplayed()
+        onNodeWithTag("streams_sheet_resume_toggle").assertDoesNotExist()
+        onNodeWithText("Download 4K").performClick()
+        assertEquals(listOf<String?>("best4k", "best4k"), downloaded)
+        assertEquals(1, resumed.size)
     }
 }
