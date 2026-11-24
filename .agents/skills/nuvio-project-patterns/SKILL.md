@@ -88,6 +88,11 @@ match the design".
   don't reach MainKt). Hover and open only: never click Rate stars or ♥ (the strip opens
   under the pointer and saves), Play/Resume, or Watch party (it creates a real party).
   Close layers with Esc.
+- **Ratings:** Rate reads and saves through `TrackingRatings` to the one tracker picked in
+  Settings → Tracking → Ratings (`ratingTarget`; one tracker so scores never disagree).
+  A tracker that rates needs a registered `TrackingRatingProvider` (Trakt:
+  `TraktRatingsProvider`) and an option in `ratingSourceOptions`; Trakt was missing
+  both, so ratings never reached it. Regression: `RatingTargetTest`.
 - **Branch:** Details redesign work is on a worktree cut from `nuvio-redesign` and merges
   back there, never into develop.
 

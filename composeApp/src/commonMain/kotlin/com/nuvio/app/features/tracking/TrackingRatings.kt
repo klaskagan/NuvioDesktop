@@ -78,11 +78,13 @@ object TrackingRatings {
         source?.let(TrackingProviderRegistry::ratingProvider)?.onEnabled()
     }
 
-    private fun provider(media: TrackingMediaReference): TrackingRatingProvider? {
-        val source = TrackingSettingsRepository.uiState.value.ratingSource ?: return null
-        if (source !in TrackingProviderRegistry.connectedProviderIds.value) return null
-        return TrackingProviderRegistry.ratingProvider(source)?.takeIf { it.supports(media) && (media.wholeSeason == null || it.ratesSeasons) }
-    }
+    private fun provider(media: TrackingMediaReference): TrackingRatingProvider? =
+        ratingTarget(
+            providers = TrackingProviderRegistry.ratingProviders(),
+            connected = TrackingProviderRegistry.connectedProviderIds.value,
+            source = TrackingSettingsRepository.uiState.value.ratingSource,
+            media = media,
+        )
 
     private fun TrackingMediaReference.ratingKey(provider: TrackingProviderId): String = buildString {
         append(ProfileRepository.activeProfileId)
@@ -101,4 +103,19 @@ object TrackingRatings {
             append(it.number)
         }
     }
+}
+
+/**
+ * The one service Rate reads and saves to: the source picked in Settings → Tracking → Ratings, when
+ * it is connected, registered, and can rate [media] (a whole season only where it rates seasons).
+ */
+internal fun ratingTarget(
+    providers: List<TrackingRatingProvider>,
+    connected: Set<TrackingProviderId>,
+    source: TrackingProviderId?,
+    media: TrackingMediaReference,
+): TrackingRatingProvider? {
+    if (source == null || source !in connected) return null
+    return providers.firstOrNull { it.providerId == source }
+        ?.takeIf { it.supports(media) && (media.wholeSeason == null || it.ratesSeasons) }
 }

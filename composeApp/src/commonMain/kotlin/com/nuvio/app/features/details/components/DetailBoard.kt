@@ -151,6 +151,10 @@ private val BoardGap = 14.dp
 private val tileScrim = Brush.verticalGradient(0.30f to Color.Transparent, 1f to Color(0xEB08090B))
 private const val BoardMotionMillis = 360
 
+/** The featured tile's title column: wide enough for the actions with Rate open. Text inside stays at [BoardTitleTextMaxWidth]. */
+internal val BoardTitleColumnMaxWidth = 920.dp
+internal val BoardTitleTextMaxWidth = 760.dp
+
 private fun Modifier.boardTile(border: Color = RedesignColors.hairline): Modifier =
     clip(RedesignTileShape).background(RedesignColors.fill).border(1.dp, border, RedesignTileShape)
 
@@ -299,8 +303,9 @@ internal fun BoardActionPill(
         Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(18.dp))
         AnimatedVisibility(
             visible = !iconOnly,
-            enter = fadeIn(tween(200)) + expandHorizontally(tween(BoardMotionMillis, easing = FastOutSlowInEasing)),
-            exit = fadeOut(tween(120)) + shrinkHorizontally(tween(BoardMotionMillis, easing = FastOutSlowInEasing)),
+            // Shrink toward the icon so a half-hidden label reads "Libr", never "rary".
+            enter = fadeIn(tween(200)) + expandHorizontally(tween(BoardMotionMillis, easing = FastOutSlowInEasing), expandFrom = Alignment.Start),
+            exit = fadeOut(tween(120)) + shrinkHorizontally(tween(BoardMotionMillis, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Start),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.width(8.dp))
@@ -386,7 +391,10 @@ internal fun BoxScope.DetailFeatureTile(
         }
     }
     Column(
-        Modifier.align(Alignment.BottomStart).padding(start = 28.dp, end = 28.dp, bottom = 24.dp).widthIn(max = 760.dp)
+        // 920dp fits the action row with the Rate strip open (✕ and ✓ included); the title block keeps
+        // its text to 760dp itself. Overflowing this column instead hid ✕ and ✓ from the hand cursor,
+        // which finds click targets by their (parent-clipped) semantics bounds.
+        Modifier.align(Alignment.BottomStart).padding(start = 28.dp, end = 28.dp, bottom = 24.dp).widthIn(max = BoardTitleColumnMaxWidth)
             .graphicsLayer { alpha = textAlpha },
         content = titleBlock,
     )
