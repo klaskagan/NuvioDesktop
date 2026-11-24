@@ -251,6 +251,8 @@ import nuvio.composeapp.generated.resources.detail_board_mark_previous_seasons
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.DetailGalleryRepository
 import com.nuvio.app.features.gallery.KinopoiskSettingsRepository
+import com.nuvio.app.features.tracking.TrackingProviderRegistry
+import com.nuvio.app.features.tracking.TrackingComments
 
 private val watchedMarkerDiagnosticLog = Logger.withTag("WatchedMarkerDiag")
 private const val DetailScrolledBackgroundDefaultMaxAlpha = 0.86f
@@ -1354,6 +1356,13 @@ fun MetaDetailsScreen(
                     val pool = recommendationPool ?: RecommendationPool(meta.moreLikeThis, setOfNotNull(meta.imdbId), emptySet())
                     UnwatchedRecommendations.unwatched(pool, meta, watchedUiState.watchedKeys)
                 }
+                // Reviews come from the reviews source (Settings → Tracking), whichever tracker that is.
+                val connectedTrackers by TrackingProviderRegistry.connectedProviderIds.collectAsStateWithLifecycle()
+                val registeredReviewSources by TrackingComments.registered.collectAsStateWithLifecycle()
+                val boardReviewsProvider = remember(trackingSettingsUiState.reviewsSource, connectedTrackers, registeredReviewSources, commentsEnabled, meta.type) {
+                    TrackingComments.provider(trackingSettingsUiState.reviewsSource, connectedTrackers)
+                        ?.takeIf { commentsEnabled && meta.type.lowercase() in setOf("movie", "series", "show", "tv") }
+                }
                 // Gallery: TMDB images, episode stills and (with a key) Kinopoisk stills, once per title.
                 var galleryImages by remember(meta.id) { mutableStateOf<List<GalleryImage>>(emptyList()) }
                 val kinopoiskKey by remember { KinopoiskSettingsRepository.ensureLoaded(); KinopoiskSettingsRepository.apiKey }.collectAsStateWithLifecycle()
@@ -1730,6 +1739,7 @@ fun MetaDetailsScreen(
                         behindTheFilm = behindTheFilm,
                         gallery = galleryImages,
                         onSetBackground = { url -> boardBackgroundOverride = url },
+                        reviewsProvider = boardReviewsProvider,
                     )
                     val boardArgs = DetailBoardArgs(
                         onPlayAnchor = { boardPlayAnchor = it },

@@ -119,6 +119,9 @@ import nuvio.composeapp.generated.resources.trakt_watch_progress_source_trakt
 import nuvio.composeapp.generated.resources.trakt_watch_progress_subtitle
 import nuvio.composeapp.generated.resources.trakt_watch_progress_title
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.runtime.collectAsState
+import nuvio.composeapp.generated.resources.settings_tracking_reviews
+import nuvio.composeapp.generated.resources.settings_tracking_reviews_description
 
 internal fun LazyListScope.trackingSettingsContent(
     isTablet: Boolean,
@@ -204,6 +207,7 @@ private enum class TrackingDataPicker {
     WATCH_PROGRESS,
     MORE_LIKE_THIS,
     RATINGS,
+    REVIEWS,
 }
 
 @Composable
@@ -325,6 +329,21 @@ private fun TrackingDataSources(
                 onClick = { activePickerName = TrackingDataPicker.RATINGS.name },
             )
         }
+        // Reviews on Details come from one tracker with comments; it sits next to the rating source.
+        val reviewProviders = com.nuvio.app.features.tracking.TrackingComments.registered.collectAsState().value.keys
+            .sortedBy { it.ordinal }
+        if (reviewProviders.any { it in connectedProviders }) {
+            val effectiveReviews = com.nuvio.app.features.tracking.TrackingComments.provider(settingsUiState.reviewsSource, connectedProviders)?.providerId
+            SettingsGroupDivider(isTablet = isTablet)
+            TrackingPreferenceActionRow(
+                title = stringResource(Res.string.settings_tracking_reviews),
+                description = stringResource(Res.string.settings_tracking_reviews_description),
+                value = effectiveReviews?.displayName ?: ratingSourceLabel(null),
+                supportingMessage = null,
+                isTablet = isTablet,
+                onClick = { activePickerName = TrackingDataPicker.REVIEWS.name },
+            )
+        }
     }
 
     when (activePicker) {
@@ -363,6 +382,23 @@ private fun TrackingDataSources(
             ),
             options = recommendationsSourceOptions(traktConnected),
             onSelected = TrackingSettingsRepository::setMoreLikeThisSource,
+            onDismiss = { activePickerName = null },
+        )
+        TrackingDataPicker.REVIEWS -> TrackingAdaptivePicker(
+            isTablet = isTablet,
+            title = stringResource(Res.string.settings_tracking_reviews),
+            subtitle = stringResource(Res.string.settings_tracking_reviews_description),
+            selectedValue = com.nuvio.app.features.tracking.TrackingComments.provider(settingsUiState.reviewsSource, connectedProviders)?.providerId,
+            options = com.nuvio.app.features.tracking.TrackingComments.registered.collectAsState().value.keys.sortedBy { it.ordinal }.map { id ->
+                TrackingPickerOption<com.nuvio.app.features.tracking.TrackingProviderId?>(
+                    value = id,
+                    title = id.displayName,
+                    description = stringResource(Res.string.settings_tracking_reviews_description),
+                    enabled = id in connectedProviders,
+                    unavailableReason = if (id in connectedProviders) null else stringResource(Res.string.settings_tracking_connect_first, id.displayName),
+                )
+            },
+            onSelected = TrackingSettingsRepository::setReviewsSource,
             onDismiss = { activePickerName = null },
         )
         TrackingDataPicker.RATINGS -> TrackingAdaptivePicker(

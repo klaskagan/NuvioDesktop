@@ -43,4 +43,7 @@ object TrackingSettingsRepository {
 
     fun setRatingSource(source: TrackingProviderId?) =
         TraktSettingsRepository.setRatingSource(source)
+
+    fun setReviewsSource(source: TrackingProviderId?) =
+        TraktSettingsRepository.setReviewsSource(source)
 }

@@ -36,4 +36,5 @@ fun ensureTrackingProvidersRegistered() {
     TrackingProviderRegistry.registerProgressProvider(SimklTrackingProgressProvider)
     TrackingProviderRegistry.registerRatingProvider(SimklRatings)
     TrackingFavorites.register(TraktFavoritesProvider)
+    com.nuvio.app.features.tracking.TrackingComments.register(com.nuvio.app.features.trakt.TraktCommentsProvider)
 }

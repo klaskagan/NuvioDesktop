@@ -38,10 +38,11 @@ object TraktCommentsRepository {
         meta: MetaDetails,
         page: Int = 1,
         forceRefresh: Boolean = false,
+        sort: String = COMMENTS_SORT,
     ): TraktCommentsPage {
         val target = resolveCommentsTarget(meta)
             ?: return TraktCommentsPage(emptyList(), page, 0, 0)
-        val cacheKey = "${target.type.apiValue}|${target.pathId}"
+        val cacheKey = "${target.type.apiValue}|${target.pathId}|$sort"
 
         if (forceRefresh) {
             cacheMutex.withLock { cache.remove(cacheKey) }
@@ -72,7 +73,7 @@ object TraktCommentsRepository {
             TraktCommentsType.MOVIE -> "movies"
             TraktCommentsType.SHOW -> "shows"
         }
-        val url = "https://api.trakt.tv/$endpoint/${target.pathId}/comments/$COMMENTS_SORT?page=$page&limit=$COMMENTS_LIMIT"
+        val url = "https://api.trakt.tv/$endpoint/${target.pathId}/comments/$sort?page=$page&limit=$COMMENTS_LIMIT"
 
         val response = try {
             httpRequestRaw(
@@ -124,7 +125,87 @@ object TraktCommentsRepository {
 
     fun clearCache() {
         cache.clear()
+        likedIds = null
     }
+
+    // ---- Likes and posting (Settings → Tracking → Reviews source = Trakt).
+
+    private var likedIds: MutableSet<Long>? = null
+
+    /** The comments the signed-in user has liked, read once per session (Trakt has no per-comment flag). */
+    internal suspend fun likedCommentIds(): Set<Long> = cacheMutex.withLock {
+        likedIds?.let { return@withLock it.toSet() }
+        val headers = TraktAuthRepository.authorizedHeaders() ?: return@withLock emptySet()
+        val ids = mutableSetOf<Long>()
+        var page = 1
+        while (page <= 10) {
+            val response = runCatching {
+                httpRequestRaw("GET", "https://api.trakt.tv/users/me/likes/comments?page=$page&limit=100", headers, "")
+            }.getOrNull() ?: break
+            if (response.status !in 200..299) break
+            val items = runCatching { commentsJson.decodeFromString<List<TraktLikedCommentDto>>(response.body) }.getOrDefault(emptyList())
+            items.mapNotNullTo(ids) { it.comment?.id }
+            val pages = response.headers.entries.firstOrNull { it.key.equals("X-Pagination-Page-Count", true) }?.value?.toIntOrNull() ?: 1
+            if (items.isEmpty() || page >= pages) break
+            page++
+        }
+        likedIds = ids
+        ids.toSet()
+    }
+
+    internal suspend fun setLiked(commentId: Long, liked: Boolean): Boolean {
+        val headers = TraktAuthRepository.authorizedHeaders() ?: return false
+        val response = runCatching {
+            httpRequestRaw(if (liked) "POST" else "DELETE", "https://api.trakt.tv/comments/$commentId/like", headers, "")
+        }.getOrNull() ?: return false
+        val ok = response.status in 200..299
+        if (ok) cacheMutex.withLock {
+            likedIds?.let { if (liked) it += commentId else it -= commentId }
+            cache.clear()
+        }
+        return ok
+    }
+
+    /**
+     * Posts as the signed-in user to the title, one of its seasons or one episode (their Trakt ids
+     * are looked up from the show). 422 is Trakt's validation (too short, or not English).
+     */
+    internal suspend fun post(meta: MetaDetails, season: Int?, episode: Int?, text: String, spoiler: Boolean): Pair<Int, String?> {
+        val headers = TraktAuthRepository.authorizedHeaders() ?: return 401 to null
+        val target = resolveCommentsTarget(meta) ?: return 404 to null
+        val body = when {
+            target.type == TraktCommentsType.MOVIE -> """{"movie":{"ids":${idsJson(target.pathId)}}"""
+            season != null && episode != null -> {
+                val id = traktChildId(headers, "https://api.trakt.tv/shows/${target.pathId}/seasons/$season/episodes/$episode") ?: return 404 to null
+                """{"episode":{"ids":{"trakt":$id}}"""
+            }
+            season != null -> {
+                val id = traktSeasonId(headers, target.pathId, season) ?: return 404 to null
+                """{"season":{"ids":{"trakt":$id}}"""
+            }
+            else -> """{"show":{"ids":${idsJson(target.pathId)}}"""
+        } + ""","comment":${kotlinx.serialization.json.JsonPrimitive(text)},"spoiler":$spoiler}"""
+        val response = runCatching {
+            httpRequestRaw("POST", "https://api.trakt.tv/comments", mapOf("Content-Type" to "application/json") + headers, body)
+        }.getOrNull() ?: return 0 to null
+        if (response.status in 200..299) cacheMutex.withLock { cache.clear() }
+        return response.status to response.body.takeIf { response.status !in 200..299 }
+    }
+
+    private fun idsJson(pathId: String): String =
+        if (pathId.startsWith("tt")) """{"imdb":"$pathId"}""" else pathId.toLongOrNull()?.let { """{"trakt":$it}""" } ?: """{"slug":"$pathId"}"""
+
+    private suspend fun traktChildId(headers: Map<String, String>, url: String): Long? = runCatching {
+        val response = httpRequestRaw("GET", url, headers, "")
+        if (response.status !in 200..299) return@runCatching null
+        commentsJson.decodeFromString<TraktIdsHolderDto>(response.body).ids?.trakt
+    }.getOrNull()
+
+    private suspend fun traktSeasonId(headers: Map<String, String>, showId: String, season: Int): Long? = runCatching {
+        val response = httpRequestRaw("GET", "https://api.trakt.tv/shows/$showId/seasons", headers, "")
+        if (response.status !in 200..299) return@runCatching null
+        commentsJson.decodeFromString<List<TraktSeasonIdDto>>(response.body).firstOrNull { it.number == season }?.ids?.trakt
+    }.getOrNull()
 
     private suspend fun resolveCommentsTarget(meta: MetaDetails): ResolvedCommentsTarget? {
         val type = resolveCommentsType(meta) ?: return null
@@ -246,3 +327,78 @@ private fun toReviewModel(dto: TraktCommentDto): TraktCommentReview {
 }
 
 private fun currentTimeMillis(): Long = TraktPlatformClock.nowEpochMs()
+
+@kotlinx.serialization.Serializable
+private data class TraktLikedCommentDto(val comment: TraktLikedCommentRef? = null)
+
+@kotlinx.serialization.Serializable
+private data class TraktLikedCommentRef(val id: Long? = null)
+
+@kotlinx.serialization.Serializable
+private data class TraktTraktIdDto(val trakt: Long? = null)
+
+@kotlinx.serialization.Serializable
+private data class TraktIdsHolderDto(val ids: TraktTraktIdDto? = null)
+
+@kotlinx.serialization.Serializable
+private data class TraktSeasonIdDto(val number: Int? = null, val ids: TraktTraktIdDto? = null)
+
+/** Trakt as a reviews source: comments by most liked or newest, likes, and posting. */
+object TraktCommentsProvider : com.nuvio.app.features.tracking.TrackingCommentsProvider {
+    override val providerId = com.nuvio.app.features.tracking.TrackingProviderId.TRAKT
+    override val capabilities = com.nuvio.app.features.tracking.TrackingCommentsCapabilities(canLike = true, canPost = true)
+
+    override suspend fun page(
+        meta: MetaDetails,
+        sort: com.nuvio.app.features.tracking.TrackingCommentsSort,
+        page: Int,
+    ): com.nuvio.app.features.tracking.TrackingCommentsPage {
+        val result = TraktCommentsRepository.getCommentsPage(
+            meta,
+            page = page,
+            sort = if (sort == com.nuvio.app.features.tracking.TrackingCommentsSort.Newest) "newest" else "likes",
+        )
+        val liked = TraktCommentsRepository.likedCommentIds()
+        return com.nuvio.app.features.tracking.TrackingCommentsPage(
+            items = result.items.map { it.toTrackingComment(it.id in liked) },
+            page = result.currentPage,
+            pageCount = result.pageCount,
+            itemCount = result.itemCount,
+        )
+    }
+
+    override suspend fun setLiked(comment: com.nuvio.app.features.tracking.TrackingComment, liked: Boolean): Boolean =
+        comment.id.toLongOrNull()?.let { TraktCommentsRepository.setLiked(it, liked) } ?: false
+
+    override suspend fun post(
+        meta: MetaDetails,
+        scope: com.nuvio.app.features.tracking.TrackingCommentScope,
+        text: String,
+        spoiler: Boolean,
+    ): com.nuvio.app.features.tracking.TrackingCommentPostResult {
+        if (com.nuvio.app.features.tracking.TrackingComments.wordCount(text) < capabilities.minWords) {
+            return com.nuvio.app.features.tracking.TrackingCommentPostResult.TooShort
+        }
+        val (status, body) = TraktCommentsRepository.post(meta, scope.season, scope.episode, text, spoiler)
+        return when (status) {
+            in 200..299 -> com.nuvio.app.features.tracking.TrackingCommentPostResult.Posted
+            422 -> com.nuvio.app.features.tracking.TrackingCommentPostResult.TooShort
+            else -> com.nuvio.app.features.tracking.TrackingCommentPostResult.Failed(body?.take(200))
+        }
+    }
+}
+
+internal fun TraktCommentReview.toTrackingComment(likedByMe: Boolean = false) = com.nuvio.app.features.tracking.TrackingComment(
+    id = id.toString(),
+    authorName = authorDisplayName,
+    authorUsername = authorUsername,
+    text = comment,
+    spoiler = spoiler,
+    containsInlineSpoilers = containsInlineSpoilers,
+    review = review,
+    likes = likes,
+    likedByMe = likedByMe,
+    rating = rating,
+    createdAt = createdAt,
+    webUrl = "https://trakt.tv/comments/$id",
+)

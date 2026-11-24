@@ -206,6 +206,8 @@ import com.nuvio.app.features.details.components.BehindTheFilmTile
 import com.nuvio.app.features.details.components.BoardGallery
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.GalleryMinimumImages
+import com.nuvio.app.features.tracking.TrackingCommentsProvider
+import com.nuvio.app.features.details.components.BoardReviews
 
 /**
  * Everything the Details sections read and call, gathered once by [MetaDetailsScreen]. Every layout
@@ -284,6 +286,8 @@ internal data class DetailSectionArgs(
     /** The gallery's images (desktop board); the tab shows from [GalleryMinimumImages]. */
     val gallery: List<GalleryImage> = emptyList(),
     val onSetBackground: ((String) -> Unit)? = null,
+    /** The board's reviews source; Reviews shows its own loading, likes, reader and composer. */
+    val reviewsProvider: TrackingCommentsProvider? = null,
 ) {
     /** Whether [key] has anything to show for this title. */
     fun hasContent(key: MetaScreenSectionKey): Boolean =
@@ -301,6 +305,7 @@ internal data class DetailSectionArgs(
             isCommentsLoading = isCommentsLoading,
             commentsError = commentsError,
             galleryCount = gallery.size,
+            reviewsReady = boardStyle && reviewsProvider != null,
         )
 }
 
@@ -337,6 +342,7 @@ internal fun LazyListScope.configuredMetaSectionItems(
                 isCommentsLoading = isCommentsLoading,
                 commentsError = commentsError,
                 galleryCount = gallery.size,
+                reviewsReady = boardStyle && reviewsProvider != null,
             )
 
         val showSeriesAudience = showAudience && isDesktop && meta.type == "series" && episodeListCurrentSeason != null
@@ -575,13 +581,14 @@ private fun metaSectionHasContent(
     isCommentsLoading: Boolean,
     commentsError: String?,
     galleryCount: Int = 0,
+    reviewsReady: Boolean = false,
 ): Boolean =
     when (key) {
         MetaScreenSectionKey.ACTIONS -> true
         MetaScreenSectionKey.OVERVIEW -> true
         MetaScreenSectionKey.PRODUCTION -> hasProductionSection
         MetaScreenSectionKey.CAST -> meta.cast.isNotEmpty()
-        MetaScreenSectionKey.COMMENTS -> shouldShowComments && (isCommentsLoading || comments.isNotEmpty() || !commentsError.isNullOrBlank())
+        MetaScreenSectionKey.COMMENTS -> reviewsReady || shouldShowComments && (isCommentsLoading || comments.isNotEmpty() || !commentsError.isNullOrBlank())
         MetaScreenSectionKey.TRAILERS -> hasTrailersSection
         MetaScreenSectionKey.EPISODES -> hasEpisodes
         MetaScreenSectionKey.DETAILS -> hasAdditionalInfoSection
@@ -667,7 +674,13 @@ internal fun ConfiguredMetaSections(
                         animatedVisibilityScope = animatedVisibilityScope,
                     )
                 }
-                MetaScreenSectionKey.COMMENTS -> {
+                MetaScreenSectionKey.COMMENTS -> if (boardStyle && reviewsProvider != null) {
+                    BoardReviews(
+                        meta = meta,
+                        provider = reviewsProvider,
+                        episodes = remember(meta.videos) { meta.videos.mapNotNull { v -> v.season?.let { s -> v.episode?.let { e -> s to e } } } },
+                    )
+                } else {
                     if (shouldShowComments && (isCommentsLoading || comments.isNotEmpty() || !commentsError.isNullOrBlank())) {
                         DetailCommentsSection(
                             comments = comments,
