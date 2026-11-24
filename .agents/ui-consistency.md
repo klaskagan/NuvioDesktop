@@ -187,18 +187,26 @@ Person Details opening with no transition). Apply these to every redesigned scre
     in both card styles (the List style renders through `DetailSeriesListHeader`, so board flags go
     there too). An episode click follows the Resume rules: autoplay on or a download plays, else
     Quick pick opens beside the card. Right-click opens the frosted board menu, which ends with
-    that episode's Rate strip; seasons have no rating, so their menu stops at the actions.
+    that episode's Rate strip. A season pill's menu ends with the season's strip when the rating
+    source rates seasons (`TrackingRatingProvider.ratesSeasons`: WeTrakr, MDBList; a reference with
+    `wholeSeason`); with Simkl it stops at the actions.
   - Rate is option B, inline: hover or click opens the ten-star strip, Library/Watched/Trailer
     collapse to icons, keys pick (handlers sit above the focus target), Esc/Cancel close even
     with the pointer still over it. The ♥ is `TrackingFavorites` (Trakt, WeTrakr).
   - People names never truncate (credit line as one wrapping paragraph, portrait tiles with no
-    `maxLines`); the redesign has no round avatars (cast tiles and the person page are 2:3).
+    `maxLines`); the redesign has no round avatars (cast tiles, the credit line's hover card and the
+    person page all use `PersonPortrait`, 2:3). The hover card opens after a short rest on a name
+    (pointer over the text layout, not a per-name hit box) and never takes focus.
+  - The Details tab is `BoardDetailsFacts`: About, More and Links tiles of equal height, then the
+    overview. Links shows IMDb and TMDB, then one link per connected tracker from
+    `TrackingTitleLinks` (Trakt by id search, WeTrakr by its own id); late links fade in.
   - Reviews read from `TrackingComments` (Settings → Tracking → Reviews source), never a tracker's
     types: optimistic likes roll back on refusal; the reader and composer are frosted popups.
     `BoardReviewsUiTest`.
   - More like this "Unwatched only" and the player's end-credits strip share
     `UnwatchedRecommendations`; Gallery is a section (`GALLERY`, after Trailers) with a
-    full-window viewer; Behind the film reads Wikidata once per IMDb id.
+    full-window viewer (TMDB episode stills for the first 60 episodes, Kinopoisk for films and
+    series); Behind the film reads Wikidata once per IMDb id.
 - **Desktop stream selection is Quick pick plus the Sources sheet** (windows ≥ `StreamsSheetMinWidth`).
   The sheet (`StreamsSheetLayout.kt`) replaces the two-pane list: the title, resume line and a Best
   match card on the left; every source on the right, grouped by resolution, each row showing decoded
@@ -230,6 +238,11 @@ Person Details opening with no transition). Apply these to every redesigned scre
   - The resume switch (off = from the start, a media server's position too) replaces the resume
     line; download mode swaps it for a "Saves to Downloads" card. Every addon has a status pill.
     A row body opens in place; ▶ plays; hover reveals Download and Copy link.
+  - Every pick folds the sheet into the starting card (title, from-time, labels, steps); a direct
+    link holds it `StartingCardHoldMs` before the player opens, so nothing flashes. The pick's
+    language (the one fewest other sources have), release type and service are learned
+    (`StreamPickPreference`, per profile, device-local) and rank after preferred languages and
+    before resolution in Best match, Quick pick and the Quality sort; the card says what it learned.
   - On desktop the player always replaces Sources (`replaceStreamRoute`, P2P and external player
     included), and `DesktopNavigationHistory.finishPlayback` drops the popped Sources location,
     so closing the player lands on Details and Back leaves it: `DesktopNavigationHistoryTest`.
