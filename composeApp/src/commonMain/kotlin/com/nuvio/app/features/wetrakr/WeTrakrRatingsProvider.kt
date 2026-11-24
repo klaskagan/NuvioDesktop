@@ -28,18 +28,23 @@ internal class WeTrakrRatingsProvider(
 
     override fun supports(media: TrackingMediaReference): Boolean = writes.resolve(media) != null
 
+    override val ratesSeasons: Boolean get() = true
+
     override fun rating(media: TrackingMediaReference): Double? {
         val target = writes.resolve(media) ?: return null
         val episode = media.episode
+        val season = media.wholeSeason.takeIf { !target.isMovie && episode == null }
         val type = when {
             target.isMovie -> WeTrakrMediaType.MOVIE
             episode != null -> WeTrakrMediaType.EPISODE
+            season != null -> WeTrakrMediaType.SEASON
             else -> WeTrakrMediaType.SHOW
         }
         val aliases = target.ids.aliases().toSet()
         return sync.currentProjection().snapshot.ratings.firstOrNull { rating ->
             rating.type.equals(type, ignoreCase = true) &&
                 rating.ids.aliases().any(aliases::contains) &&
+                (season == null || rating.season == season) &&
                 (episode == null || (rating.season == (episode.season ?: 1) && rating.number == episode.number))
         }?.rating?.takeIf { it > 0.0 }
     }
@@ -54,16 +59,18 @@ internal class WeTrakrRatingsProvider(
         val response = api.post(scope, path, document(target, media, value))
         if (response.notFoundCount() > 0) return TrackingMutationResult(1, 1)
         val episode = media.episode
+        val season = media.wholeSeason.takeIf { !target.isMovie && episode == null }
         sync.applyRating(
             scope,
             WeTrakrRatingEntry(
                 type = when {
                     target.isMovie -> WeTrakrMediaType.MOVIE
                     episode != null -> WeTrakrMediaType.EPISODE
+                    season != null -> WeTrakrMediaType.SEASON
                     else -> WeTrakrMediaType.SHOW
                 },
                 ids = target.ids,
-                season = episode?.let { it.season ?: 1 },
+                season = episode?.let { it.season ?: 1 } ?: season,
                 number = episode?.number,
                 rating = value?.toDouble() ?: 0.0,
             ),
@@ -75,9 +82,17 @@ internal class WeTrakrRatingsProvider(
 
     private fun document(target: WeTrakrTarget, media: TrackingMediaReference, rating: Int?): JsonObject = buildJsonObject {
         val episode = media.episode
+        val season = media.wholeSeason.takeIf { !target.isMovie }
         val item = buildJsonObject {
             target.putIdentity(this)
-            if (episode == null) {
+            if (episode == null && season != null) {
+                put("seasons", buildJsonArray {
+                    add(buildJsonObject {
+                        put("number", season)
+                        rating?.let { put("rating", it) }
+                    })
+                })
+            } else if (episode == null) {
                 rating?.let { put("rating", it) }
             } else {
                 put("seasons", buildJsonArray {

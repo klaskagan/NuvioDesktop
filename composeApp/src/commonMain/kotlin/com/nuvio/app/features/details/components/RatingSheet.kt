@@ -267,3 +267,7 @@ internal fun MetaDetails.ratingReference(episode: MetaVideo? = null): TrackingMe
     )
     return reference.copy(ids = reference.ids.mergeMissing(TrackingExternalIds(imdb = imdbId)))
 }
+
+/** The whole of [season] as a rating target; only trackers that rate seasons accept it. */
+internal fun MetaDetails.seasonRatingReference(season: Int): TrackingMediaReference =
+    ratingReference().copy(wholeSeason = season)

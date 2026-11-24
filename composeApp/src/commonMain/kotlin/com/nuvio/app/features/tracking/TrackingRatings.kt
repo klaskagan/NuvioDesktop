@@ -18,6 +18,9 @@ interface TrackingRatingProvider {
 
     fun rating(media: TrackingMediaReference): Double?
 
+    /** Whether [TrackingMediaReference.wholeSeason] references can be rated; most trackers rate titles and episodes only. */
+    val ratesSeasons: Boolean get() = false
+
     suspend fun rate(profileId: Int, media: TrackingMediaReference, rating: Int?): TrackingMutationResult
 
     fun onEnabled() = Unit
@@ -78,7 +81,7 @@ object TrackingRatings {
     private fun provider(media: TrackingMediaReference): TrackingRatingProvider? {
         val source = TrackingSettingsRepository.uiState.value.ratingSource ?: return null
         if (source !in TrackingProviderRegistry.connectedProviderIds.value) return null
-        return TrackingProviderRegistry.ratingProvider(source)?.takeIf { it.supports(media) }
+        return TrackingProviderRegistry.ratingProvider(source)?.takeIf { it.supports(media) && (media.wholeSeason == null || it.ratesSeasons) }
     }
 
     private fun TrackingMediaReference.ratingKey(provider: TrackingProviderId): String = buildString {
@@ -87,6 +90,10 @@ object TrackingRatings {
         append(provider.storageId)
         append(':')
         append(stableKey)
+        wholeSeason?.let {
+            append(":season:")
+            append(it)
+        }
         episode?.let {
             append(':')
             append(it.season ?: -1)

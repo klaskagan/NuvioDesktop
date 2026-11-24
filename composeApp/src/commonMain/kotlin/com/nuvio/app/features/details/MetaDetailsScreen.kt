@@ -159,6 +159,7 @@ import com.nuvio.app.features.details.components.EpisodeWatchedActionSheet
 import com.nuvio.app.features.details.components.RatingSheet
 import com.nuvio.app.features.details.components.formatRating
 import com.nuvio.app.features.details.components.ratingReference
+import com.nuvio.app.features.details.components.seasonRatingReference
 import com.nuvio.app.features.details.components.rememberRatingState
 import com.nuvio.app.features.details.components.SeasonWatchedActionSheet
 import com.nuvio.app.features.details.components.TabletArtworkBackdropAlignment
@@ -2239,7 +2240,9 @@ fun MetaDetailsScreen(
                                 }
                             }
                             if (useBoard) {
-                                // Seasons have no rating of their own in the tracking layer, so their menu ends at the actions.
+                                // The menu ends with that season's Rate strip when the rating source rates seasons.
+                                val seasonRatingMedia = remember(meta, selectedSeason) { meta.seasonRatingReference(selectedSeason) }
+                                val seasonRating by rememberRatingState(seasonRatingMedia)
                                 BoardContextMenu(
                                     title = seasonLabel,
                                     anchor = null,
@@ -2257,6 +2260,25 @@ fun MetaDetailsScreen(
                                             .takeIf { canMarkPreviousSeasons },
                                     ),
                                     onDismiss = { selectedSeasonForActions = null },
+                                    footer = if (seasonRating.isAvailable) {
+                                        {
+                                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text(
+                                                    stringResource(Res.string.detail_board_rate_episode, "S$selectedSeason").uppercase(),
+                                                    style = redesignText(11.sp, FontWeight.Medium, RedesignColors.textMuted),
+                                                    modifier = Modifier.padding(start = 6.dp),
+                                                )
+                                                BoardRateControl(
+                                                    media = seasonRatingMedia,
+                                                    rating = seasonRating,
+                                                    favorite = TrackingFavoriteState(),
+                                                    onOpenChange = {},
+                                                    height = 40.dp,
+                                                    alwaysOpen = true,
+                                                )
+                                            }
+                                        }
+                                    } else null,
                                 )
                             } else SeasonWatchedActionSheet(
                                 seasonLabel = seasonLabel,

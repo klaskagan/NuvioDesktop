@@ -67,6 +67,8 @@ data class TrackingMediaReference(
     val episode: TrackingEpisode? = null,
     val catalog: TrackingCatalogReference? = null,
     val posterUrl: String? = null,
+    /** A whole season of the show (only rated, never watched); [episode] is then null. */
+    val wholeSeason: Int? = null,
 ) {
     val hasResolvableIdentity: Boolean
         get() = ids.hasAny || !title.isNullOrBlank()

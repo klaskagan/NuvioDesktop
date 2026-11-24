@@ -22,13 +22,15 @@ class MdbListUserRatings(
 
     override fun supports(media: TrackingMediaReference): Boolean = media.ids.toMdbListIds() != null
 
+    override val ratesSeasons: Boolean get() = true
+
     override fun rating(media: TrackingMediaReference): Double? = sync.currentSnapshot()?.userRating(media)
 
     override suspend fun rate(profileId: Int, media: TrackingMediaReference, rating: Int?): TrackingMutationResult {
         val scope = sync.currentScope()
         if (scope.profileId != profileId) return TrackingMutationResult(attemptedCount = 1, notFoundCount = 1)
         return sync.write(scope, setOf(MdbListSyncBucket.RATINGS)) { snapshot ->
-            val target = snapshot.mutationTarget(media)
+            val target = snapshot.ratingTarget(media)
                 ?: return@write snapshot to TrackingMutationResult(attemptedCount = 1, notFoundCount = 1)
             val response = api.post(
                 if (rating == null) "/sync/ratings/remove" else "/sync/ratings",
@@ -55,12 +57,21 @@ class MdbListUserRatings(
 
 internal fun MdbListSyncSnapshot.userRating(reference: TrackingMediaReference): Double? {
     val ratings = ratings ?: return null
-    val target = mutationTarget(reference) ?: return null
+    val target = ratingTarget(reference) ?: return null
     return ratings.firstOrNull { it.matches(target) }?.rating
 }
 
+/** What a rating applies to: [mutationTarget], or a whole season of the show for a season reference. */
+internal fun MdbListSyncSnapshot.ratingTarget(reference: TrackingMediaReference): MdbListMutationTarget? {
+    val target = mutationTarget(reference) ?: return null
+    val season = reference.wholeSeason ?: return target
+    if (target.type != MdbListItemType.SHOW || season < 0) return null
+    return target.copy(type = MdbListItemType.SEASON, season = season)
+}
+
 internal fun MdbListRatingRecord.matches(target: MdbListMutationTarget): Boolean =
-    type == target.type && media.ids.matches(target.media.ids) && (type != MdbListItemType.EPISODE ||
+    type == target.type && media.ids.matches(target.media.ids) &&
+        (type != MdbListItemType.SEASON || season == target.season) && (type != MdbListItemType.EPISODE ||
         (episodeTmdbId != null && episodeTmdbId == target.episodeTmdbId) ||
         (episodeTvdbId != null && episodeTvdbId == target.episodeTvdbId) ||
         (season == target.season && episode == target.episode))
@@ -72,6 +83,13 @@ internal fun mdbListRatingPayload(target: MdbListMutationTarget, rating: Int?): 
     }
     when {
         target.type == MdbListItemType.MOVIE -> put("movies", ratingItems(target.media.ids.requestIds(), rating))
+        target.type == MdbListItemType.SEASON -> put("shows", JsonArray(listOf(buildJsonObject {
+            put("ids", target.media.ids.requestIds())
+            put("seasons", JsonArray(listOf(buildJsonObject {
+                put("number", requireNotNull(target.season))
+                rating?.let { put("rating", it) }
+            })))
+        })))
         target.type != MdbListItemType.EPISODE -> put("shows", ratingItems(target.media.ids.requestIds(), rating))
         episodeIds.isNotEmpty() -> put("episodes", ratingItems(episodeIds, rating))
         else -> put("shows", JsonArray(listOf(buildJsonObject {

@@ -72,6 +72,27 @@ class MdbListUserRatingsTest {
     }
 
     @Test
+    fun `a whole season is its own rating target`() {
+        val snapshot = MdbListSyncSnapshot(
+            42,
+            ratings = listOf(
+                MdbListRatingRecord(MdbListItemType.SHOW, MdbListMedia(MdbListIds(imdb = "tt9")), 6.0, TIME),
+                MdbListRatingRecord(MdbListItemType.SEASON, MdbListMedia(MdbListIds(imdb = "tt9")), 9.0, TIME, 2),
+            )
+        )
+        assertEquals(9.0, snapshot.userRating(show().copy(wholeSeason = 2)))
+        assertNull(snapshot.userRating(show().copy(wholeSeason = 1)))
+        assertEquals(6.0, snapshot.userRating(show()))
+        assertNull(snapshot.ratingTarget(movie().copy(wholeSeason = 1)))
+
+        val season = payload(snapshot.ratingTarget(show().copy(wholeSeason = 2)), 7)
+            .getValue("shows").jsonArray.single().jsonObject.getValue("seasons").jsonArray.single().jsonObject
+        assertEquals("2", season.getValue("number").jsonPrimitive.content)
+        assertEquals("7", season.getValue("rating").jsonPrimitive.content)
+        assertNull(season["episodes"])
+    }
+
+    @Test
     fun `write failures count not found items and errors`() {
         assertEquals(0, mdbListRatingFailures("""{"updated":{"movies":1},"not_found":{"movies":[]}}"""))
         assertEquals(2, mdbListRatingFailures("""{"updated":{},"not_found":{"movies":[{"ids":{"tmdb":1}}]},"errors":[{"error":"bad"}]}"""))
