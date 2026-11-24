@@ -12,6 +12,7 @@ import com.nuvio.app.features.simkl.SimklSyncRepository
 import com.nuvio.app.features.tracking.TrackingFavorites
 import com.nuvio.app.features.tracking.TrackingProviderRegistry
 import com.nuvio.app.features.trakt.TraktFavoritesProvider
+import com.nuvio.app.features.trakt.TraktTitleLinks
 import com.nuvio.app.features.mdblist.MdbListTracker
 import com.nuvio.app.features.trakt.TraktAuthRepository
 import com.nuvio.app.features.trakt.TraktScrobbleRepository
@@ -38,5 +39,6 @@ fun ensureTrackingProvidersRegistered() {
     TrackingProviderRegistry.registerProgressProvider(SimklTrackingProgressProvider)
     TrackingProviderRegistry.registerRatingProvider(SimklRatings)
     TrackingFavorites.register(TraktFavoritesProvider)
+    com.nuvio.app.features.tracking.TrackingTitleLinks.register(TraktTitleLinks)
     com.nuvio.app.features.tracking.TrackingComments.register(com.nuvio.app.features.trakt.TraktCommentsProvider)
 }

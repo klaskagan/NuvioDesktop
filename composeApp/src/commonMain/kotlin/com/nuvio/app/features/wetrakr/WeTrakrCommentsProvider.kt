@@ -136,6 +136,10 @@ internal class WeTrakrCommentsProvider(
 
     private fun pathType(meta: MetaDetails) = if (meta.type == "movie") "movies" else "shows"
 
+    /** The title's page on wetrakr.com ("/shows/{id}", "/movies/{id}"), for the Links tile. */
+    internal suspend fun webUrl(meta: MetaDetails): String? =
+        weTrakrId(meta)?.let { "${WeTrakrConfig.WEBSITE_URL}/${pathType(meta)}/$it" }
+
     /** A request that steps aside (null) on any failure; COMMENTS_NOT_ENABLED retires the source. */
     private suspend fun guarded(block: suspend () -> WeTrakrResponse): WeTrakrResponse? = try {
         block().takeIf { it.status in 200..299 }

@@ -91,4 +91,29 @@ class DetailBoardTabsContentUiTest {
         node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(results)
         return results.first()
     }
+
+    /** The Details tab: About, More and Links tiles, IMDb and TMDB links from the ids, then the overview. */
+    @Test fun detailsTabShowsAboutMoreAndLinksTiles() = runDesktopComposeUiTest(width = 1300, height = 900) {
+        val meta = MetaDetails(
+            "tmdb:95396", "series", "Severance", imdbId = "tt11280740",
+            description = "Mark leads a team of office workers.",
+            status = "Returning Series", releaseInfo = "2022-02-18", genres = listOf("Drama", "Mystery"),
+            networks = listOf(MetaCompany("Apple TV+")), awards = "10 Primetime Emmys",
+            cast = listOf(MetaPerson("Dan Erickson", "Creator")),
+            videos = (1..2).flatMap { s -> (1..3).map { e -> MetaVideo("v:$s:$e", "E$e", season = s, episode = e) } },
+        )
+        setContent { AppEnvironment { Box(Modifier.width(1200.dp)) { com.nuvio.app.features.details.components.BoardDetailsFacts(meta, isSeries = true) } } }
+        mainClock.advanceTimeBy(500); waitForIdle()
+        onNodeWithText("ABOUT").assertIsDisplayed()
+        onNodeWithText("MORE").assertIsDisplayed()
+        onNodeWithText("Apple TV+").assertIsDisplayed()
+        onNodeWithText("Dan Erickson").assertIsDisplayed()
+        onNodeWithText("2 · 6 episodes").assertIsDisplayed()
+        onNodeWithText("Drama, Mystery").assertIsDisplayed()
+        onNodeWithText("10 Primetime Emmys").assertIsDisplayed()
+        onNodeWithTag("detail_board_link_IMDb").assertExists()
+        onNodeWithTag("detail_board_link_TMDB").assertExists()
+        onNodeWithText("95396").assertIsDisplayed()
+        onNodeWithText("Mark leads a team of office workers.").assertIsDisplayed()
+    }
 }

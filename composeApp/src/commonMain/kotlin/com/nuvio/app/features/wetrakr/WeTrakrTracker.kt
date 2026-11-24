@@ -73,7 +73,13 @@ object WeTrakrTracker : TrackingAuthProvider {
         TrackingProviderRegistry.registerLibraryProvider(libraryProvider)
         TrackingProviderRegistry.registerRatingProvider(ratingProvider)
         // Details: WeTrakr as a reviews source and as the Rate strip's favorite heart.
-        com.nuvio.app.features.tracking.TrackingComments.register(WeTrakrCommentsProvider(api, store))
+        val comments = WeTrakrCommentsProvider(api, store)
+        com.nuvio.app.features.tracking.TrackingComments.register(comments)
+        com.nuvio.app.features.tracking.TrackingTitleLinks.register(object : com.nuvio.app.features.tracking.TrackingTitleLinkProvider {
+            override val providerId = TrackingProviderId.WETRAKR
+            override val label = "WeTrakr"
+            override suspend fun url(meta: com.nuvio.app.features.details.MetaDetails): String? = comments.webUrl(meta)
+        })
         com.nuvio.app.features.tracking.TrackingFavorites.register(WeTrakrFavoritesProvider(api, store))
     }
 

@@ -1172,6 +1172,15 @@
     <string name="rating_word_10">Masterpiece</string>
     <string name="rating_favorite">Favorite on %1$s</string>
     <string name="detail_board_created_by">Created by</string>
+    <string name="detail_facts_about">About</string>
+    <string name="detail_facts_more">More</string>
+    <string name="detail_facts_links">Links</string>
+    <string name="detail_facts_network">Network</string>
+    <string name="detail_facts_first_aired">First aired</string>
+    <string name="detail_facts_released">Released</string>
+    <string name="detail_facts_seasons_value">%1$d · %2$d episodes</string>
+    <string name="detail_facts_genres">Genres</string>
+    <string name="detail_facts_awards">Awards</string>
     <string name="detail_board_directed_by">Directed by</string>
     <string name="detail_board_starring">Starring</string>
     <string name="detail_board_rate_episode">Rate %1$s</string>

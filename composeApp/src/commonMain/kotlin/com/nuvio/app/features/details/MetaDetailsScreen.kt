@@ -856,7 +856,9 @@ fun MetaDetailsScreen(
                         meta.ageRating != null ||
                         meta.country != null ||
                         meta.language != null ||
-                        meta.hasMovieFinancialDetails
+                        meta.hasMovieFinancialDetails ||
+                        // The board's Details tab also has genres, awards, links and the overview.
+                        meta.genres.isNotEmpty() || !meta.awards.isNullOrBlank() || meta.imdbId != null || !meta.description.isNullOrBlank()
                 }
                 val hasCollectionSection = remember(meta) {
                     meta.collectionName != null && meta.collectionItems.isNotEmpty()

@@ -203,6 +203,7 @@ import org.jetbrains.compose.resources.stringResource
 import com.nuvio.app.features.details.components.BoardCastGrid
 import com.nuvio.app.features.details.components.BoardMoreLikeThis
 import com.nuvio.app.features.details.components.BehindTheFilmTile
+import com.nuvio.app.features.details.components.BoardDetailsFacts
 import com.nuvio.app.features.details.components.BoardGallery
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.GalleryMinimumImages
@@ -739,7 +740,9 @@ internal fun ConfiguredMetaSections(
                 }
                 MetaScreenSectionKey.DETAILS -> {
                     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                        if (hasAdditionalInfoSection) {
+                        if (boardStyle) {
+                            BoardDetailsFacts(meta = meta, isSeries = meta.type == "series" || hasEpisodes)
+                        } else if (hasAdditionalInfoSection) {
                             DetailAdditionalInfoSection(meta = meta, showHeader = showHeader)
                         }
                         // Under About / More / Links on the board, once Wikidata has answered.

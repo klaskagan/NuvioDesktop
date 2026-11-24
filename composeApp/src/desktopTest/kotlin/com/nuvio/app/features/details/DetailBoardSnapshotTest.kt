@@ -19,7 +19,9 @@ class DetailBoardSnapshotTest {
         val series = MetaDetails(
             "snapshot-series", "series", "Severance",
             description = "Mark leads a team of office workers whose memories have been surgically divided between their work and personal lives.",
-            releaseInfo = "2022-",
+            releaseInfo = "2022-02-18", status = "Returning Series", imdbId = "tt11280740", genres = listOf("Drama", "Mystery", "Sci-Fi"),
+            networks = listOf(MetaCompany("Apple TV+")), ageRating = "TV-MA", country = "US", language = "en", awards = "10 Primetime Emmys",
+            productionCompanies = listOf(MetaCompany("Fifth Season"), MetaCompany("Red Hour")),
             cast = listOf(MetaPerson("Dan Erickson", "Creator"), MetaPerson("Adam Scott", "Mark S.", episodeCount = 19), MetaPerson("Britt Lower", "Helly R.", episodeCount = 19), MetaPerson("Zach Cherry", "Dylan G."), MetaPerson("Alexander Skarsgård-Pettersson", "A guest with a long role name")),
             videos = (1..2).flatMap { s -> (1..9).map { e -> MetaVideo("snapshot-series:$s:$e", "Episode $e of season $s", "202${1 + s}-0$s-0$e", season = s, episode = e) } },
         )
@@ -44,6 +46,9 @@ class DetailBoardSnapshotTest {
                 onNodeWithText("Cast & crew").performClick()
                 mainClock.advanceTimeBy(1_000); waitForIdle()
                 ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(dir, "${meta.id}-cast.png"))
+                onNodeWithText("Details").performClick()
+                mainClock.advanceTimeBy(1_000); waitForIdle()
+                ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(dir, "${meta.id}-details.png"))
             }
         }
         MetaDetailsRepository.clear()

@@ -1,5 +1,8 @@
 package com.nuvio.app.features.trakt
 
+import com.nuvio.app.features.tracking.imdbIdOrNull
+import com.nuvio.app.features.tracking.tmdbIdOrNull
+
 import com.nuvio.app.features.addons.httpRequestRaw
 import com.nuvio.app.features.tracking.TrackingFavoritesProvider
 import com.nuvio.app.features.tracking.TrackingMediaKind
@@ -118,4 +121,16 @@ internal object TraktFavoritesProvider : TrackingFavoritesProvider {
 
     @Serializable
     private data class FavoriteEntry(val movie: FavoriteMedia? = null, val show: FavoriteMedia? = null)
+}
+
+/** Trakt's page for a title, through its id search ("trakt.tv/search/imdb/tt…" redirects to the title). */
+internal object TraktTitleLinks : com.nuvio.app.features.tracking.TrackingTitleLinkProvider {
+    override val providerId = com.nuvio.app.features.tracking.TrackingProviderId.TRAKT
+    override val label = "Trakt"
+
+    override suspend fun url(meta: com.nuvio.app.features.details.MetaDetails): String? {
+        val type = if (meta.type == "movie") "movie" else "show"
+        meta.imdbIdOrNull()?.let { return "https://trakt.tv/search/imdb/$it?id_type=$type" }
+        return meta.tmdbIdOrNull()?.let { "https://trakt.tv/search/tmdb/$it?id_type=$type" }
+    }
 }
