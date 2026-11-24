@@ -146,6 +146,20 @@ internal fun shelfTitle(key: SearchShelfKey, selection: SearchDiscovery? = null)
 private val SearchTagHeroViewport = 640.dp
 
 /**
+ * True while a tag/service hero animates its height. Rows animate their placement over 260 ms, so
+ * while the hero grew frame by frame they kept chasing their new position and the Top 10 row ran
+ * under it; callers' item modifiers drop the placement animation while this is set, so rows move
+ * with the hero instead. Only one tag hero resizes at a time.
+ */
+internal object TagHeroResize {
+    var active by mutableStateOf(false)
+}
+
+/** The rows' placement spec: animated, except while a tag hero resizes (see [TagHeroResize]). */
+internal fun tagRowPlacementSpec(): androidx.compose.animation.core.FiniteAnimationSpec<androidx.compose.ui.unit.IntOffset>? =
+    if (TagHeroResize.active) null else tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+
+/**
  * The tag page hero rotates through the service's Top 10 (shows and movies interleaved) or, for
  * genre-style tags and services without a chart, the most popular titles. The first item also
  * drives the ambient backdrop.
@@ -255,25 +269,50 @@ internal fun LazyListScope.streamingProviderPage(
                     // Home's rotating hero (auto-advance, progress dots, logo, ratings row), as a card in the column.
                     HomeHeroMetaLoadEffect(heroItems, heroMeta)
                     val hero = rememberHomeHeroState(heroItems, heroMeta)
-                    Box(itemModifier().padding(horizontal = gutter).padding(top = 22.dp).clip(RoundedCornerShape(18.dp))) {
-                        HomeHeroSection(
-                            items = hero.items,
-                            viewportHeight = SearchTagHeroViewport,
-                            sectionPadding = 28.dp,
-                            showImdbRating = hero.showImdbRating,
-                            showMdbListRatings = hero.showMdbListRatings,
-                            onItemClick = onPosterClick,
-                        )
+                    // The corner control expands the card and plays the title's trailer, as on Home's
+                    // board. Without these the hero fell back to its old window-fullscreen toggle.
+                    var heroExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+                    com.nuvio.app.OverlayEscapeHandler(enabled = heroExpanded) { heroExpanded = false }
+                    // Home's board heights: the card starts at My lists' size and expands like it. The
+                    // card is held at that height like the board's featured tile (the section alone ran 20 dp taller).
+                    val windowHeight = with(LocalDensity.current) {
+                        androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height.toDp()
+                    }
+                    val heroTarget = com.nuvio.app.features.home.homeBoardHeroHeight(windowHeight, heroExpanded)
+                    val heroHeight by animateDpAsState(
+                        targetValue = heroTarget,
+                        animationSpec = tween(360, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        label = "tag_hero_height",
+                    )
+                    // Rows follow the hero without their own placement animation while it resizes.
+                    val resizing = heroHeight != heroTarget
+                    androidx.compose.runtime.SideEffect { if (TagHeroResize.active != resizing) TagHeroResize.active = resizing }
+                    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { TagHeroResize.active = false } }
+                    Box(
+                        itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth().height(heroHeight)
+                            .clip(RoundedCornerShape(18.dp)).testTag("tag-hero"),
+                    ) {
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            com.nuvio.app.features.home.components.LocalHomeHeroHeightCap provides heroHeight,
+                        ) {
+                            HomeHeroSection(
+                                items = hero.items,
+                                viewportHeight = SearchTagHeroViewport,
+                                sectionPadding = 28.dp,
+                                showImdbRating = hero.showImdbRating,
+                                showMdbListRatings = hero.showMdbListRatings,
+                                onItemClick = onPosterClick,
+                                expanded = heroExpanded,
+                                onToggleExpanded = { heroExpanded = !heroExpanded },
+                            )
+                        }
                     }
                 } else {
-                    androidx.compose.foundation.layout.BoxWithConstraints(
-                        itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth(),
-                    ) {
-                        val height = com.nuvio.app.features.home.components.homeHeroLayout(
-                            maxWidthDp = maxWidth.value,
-                            viewportHeightDp = SearchTagHeroViewport.value,
-                            preferDesktopLayout = true,
-                        ).heroHeight
+                    Box(itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth()) {
+                        val height = com.nuvio.app.features.home.homeBoardHeroHeight(
+                            with(LocalDensity.current) { androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height.toDp() },
+                            expanded = false,
+                        )
                         Box(
                             Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(18.dp))
                                 .background(RedesignColors.fill).testTag("tag-skeleton-spotlight"),

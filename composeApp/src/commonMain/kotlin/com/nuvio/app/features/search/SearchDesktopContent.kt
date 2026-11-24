@@ -779,7 +779,7 @@ internal fun LazyListScope.searchDesktopList(
     val showResults = discovery == null && normalizedQuery.isNotBlank() && uiState.hasContent
     // Every scrolling item is a blur source for the pinned bar, and fades/slides when the layout changes.
     val itemModifier: LazyItemScope.() -> Modifier = {
-        Modifier.animateItem(fadeInSpec = tween(220), placementSpec = tween(260, easing = FastOutSlowInEasing), fadeOutSpec = tween(160))
+        Modifier.animateItem(fadeInSpec = tween(220), placementSpec = tagRowPlacementSpec(), fadeOutSpec = tween(160))
             .hazeSource(hazeState)
     }
 

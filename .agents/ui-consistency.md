@@ -77,7 +77,11 @@ Person Details opening with no transition). Apply these to every redesigned scre
   control used to be the window-fullscreen button, which read as "expand this card". It now expands
   the tile over the whole board and plays the current title's trailer with sound
   (`HomeHeroSection(expanded, onToggleExpanded)`); the carousel holds while expanded. Window
-  fullscreen stays on its shortcut and the system control. A row's lead card plays its trailer in
+  fullscreen stays on its shortcut and the system control. Every redesigned caller passes both:
+  the service and tag pages' hero (`streamingProviderPage`) left them out and fell back to the old
+  window toggle; it now grows the card through `LocalHomeHeroHeightCap`, and Esc collapses it
+  (`TagHeroExpandUiTest`). It also uses Home's heights (`homeBoardHeroHeight`): starting at its old
+  640 dp, expanding added only a few pixels and read as a glitch. A row's lead card plays its trailer in
   place on hover under the poster hover-preview settings; ordinary posters keep their overlay card.
 - **The top-bar layout has one bar** (`DesktopMergedTopBar`): Home's tabs (For you, Movies, Shows,
   My lists) lead it in place of a Home item, the other destinations follow on the right, and one

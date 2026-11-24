@@ -1120,10 +1120,9 @@ fun HomeScreen(
         }
         val screenMaxHeight = maxHeight
         // The board: featured title beside Resume and Up next. Its resume items leave the Continue Watching row.
-        val collapsedBoardHeight = (screenMaxHeight * HOME_BOARD_VIEWPORT_FRACTION).coerceIn(430.dp, 540.dp)
         // Expanding the featured tile gives it the whole board and most of the window for its trailer.
         val boardHeight by animateDpAsState(
-            targetValue = if (heroExpanded) (screenMaxHeight - HOME_BOARD_EXPANDED_MARGIN).coerceAtLeast(collapsedBoardHeight) else collapsedBoardHeight,
+            targetValue = homeBoardHeroHeight(screenMaxHeight, heroExpanded),
             animationSpec = tween(360, easing = FastOutSlowInEasing),
             label = "home_board_height",
         )
@@ -1494,6 +1493,16 @@ private const val HOME_BOARD_VIEWPORT_FRACTION = 0.56f
 
 /** What an expanded board leaves of the window for the tabs above it and a hint of the row below. */
 private val HOME_BOARD_EXPANDED_MARGIN = 150.dp
+
+/**
+ * The featured hero's height on Home's board, collapsed or expanded. Service and tag pages use the
+ * same heights, so their hero starts at My lists' size and expanding grows it as clearly as on Home
+ * (from 640 dp, expanding added only a few pixels).
+ */
+internal fun homeBoardHeroHeight(screenHeight: Dp, expanded: Boolean): Dp {
+    val collapsed = (screenHeight * HOME_BOARD_VIEWPORT_FRACTION).coerceIn(430.dp, 540.dp)
+    return if (expanded) (screenHeight - HOME_BOARD_EXPANDED_MARGIN).coerceAtLeast(collapsed) else collapsed
+}
 
 /** Inner padding of the hero's text inside the board's featured tile. */
 private val HOME_BOARD_FEATURED_PADDING = 26.dp

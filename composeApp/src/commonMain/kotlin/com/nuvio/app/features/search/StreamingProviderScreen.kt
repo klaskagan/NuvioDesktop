@@ -255,7 +255,7 @@ internal fun StreamingProviderScreen(
                     val itemModifier: LazyItemScope.() -> Modifier = {
                         Modifier.animateItem(
                             fadeInSpec = tween(220),
-                            placementSpec = tween(260, easing = FastOutSlowInEasing),
+                            placementSpec = tagRowPlacementSpec(),
                             fadeOutSpec = tween(160),
                         ).hazeSource(hazeState)
                     }
