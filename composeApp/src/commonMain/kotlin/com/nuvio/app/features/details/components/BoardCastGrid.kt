@@ -154,31 +154,37 @@ private fun PortraitTile(
             .then(if (click != null) Modifier.clickable(interactionSource = interaction, indication = null, role = Role.Button) { click(person, null) } else Modifier)
             .testTag("detail_board_cast_tile"),
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(PortraitShape).background(RedesignColors.fill).border(1.dp, border, PortraitShape)) {
-            if (!person.photo.isNullOrBlank()) {
-                NuvioAsyncImage(model = person.photo, contentDescription = person.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            } else {
-                Text(
-                    person.name.portraitInitials(),
-                    style = redesignText(26.sp, FontWeight.Bold, RedesignColors.textSecondary),
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }
-            val episodes = person.episodeCount?.takeIf { isSeries && it > 0 }
-            if (episodes != null) {
-                Text(
-                    stringResource(Res.string.detail_board_cast_eps, episodes),
-                    style = redesignText(11.sp, FontWeight.SemiBold, Color.White),
-                    modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).clip(RoundedCornerShape(6.dp))
-                        .background(Color.Black.copy(alpha = 0.62f)).padding(horizontal = 6.dp, vertical = 2.dp),
-                )
-            }
-        }
+        PersonPortrait(person, isSeries, Modifier.fillMaxWidth(), border)
         Spacer(Modifier.height(8.dp))
         // Never cut: a long name wraps onto more lines, and the row grows to its tallest tile.
         Text(person.name, style = redesignText(13.sp, FontWeight.SemiBold, lineHeight = 17.sp), softWrap = true)
         person.role?.takeIf { it.isNotBlank() }?.let { role ->
             Text(role, style = redesignText(12.sp, color = RedesignColors.textMuted, lineHeight = 16.sp), softWrap = true, modifier = Modifier.padding(top = 2.dp))
+        }
+    }
+}
+
+/** A person's 2:3 headshot with 12 dp corners, initials without a photo and an "N eps." badge on series. */
+@Composable
+internal fun PersonPortrait(person: MetaPerson, isSeries: Boolean, modifier: Modifier, border: Color = RedesignColors.hairline) {
+    Box(modifier.aspectRatio(2f / 3f).clip(PortraitShape).background(RedesignColors.fill).border(1.dp, border, PortraitShape)) {
+        if (!person.photo.isNullOrBlank()) {
+            NuvioAsyncImage(model = person.photo, contentDescription = person.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else {
+            Text(
+                person.name.portraitInitials(),
+                style = redesignText(26.sp, FontWeight.Bold, RedesignColors.textSecondary),
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+        val episodes = person.episodeCount?.takeIf { isSeries && it > 0 }
+        if (episodes != null) {
+            Text(
+                stringResource(Res.string.detail_board_cast_eps, episodes),
+                style = redesignText(11.sp, FontWeight.SemiBold, Color.White),
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).clip(RoundedCornerShape(6.dp))
+                    .background(Color.Black.copy(alpha = 0.62f)).padding(horizontal = 6.dp, vertical = 2.dp),
+            )
         }
     }
 }

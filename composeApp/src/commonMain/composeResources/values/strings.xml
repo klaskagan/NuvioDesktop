@@ -1180,6 +1180,8 @@
     <string name="detail_board_cast_cast">Cast</string>
     <string name="detail_board_cast_crew">Crew</string>
     <string name="detail_board_cast_eps">%1$d eps.</string>
+    <string name="detail_board_credit_episodes">%1$d episodes</string>
+    <string name="detail_board_credit_open">Click to open their page</string>
     <string name="detail_board_unwatched_only">Unwatched only</string>
     <string name="detail_board_seen_everything">You&apos;ve seen everything here</string>
     <string name="detail_board_show_watched">Show watched</string>

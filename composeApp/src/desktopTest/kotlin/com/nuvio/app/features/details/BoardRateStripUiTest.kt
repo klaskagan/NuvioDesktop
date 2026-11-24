@@ -80,4 +80,33 @@ class BoardRateStripUiTest {
         assertEquals(false, layout.hasVisualOverflow, "lines=${layout.lineCount}")
         kotlin.test.assertTrue(layout.lineCount >= 2)
     }
+
+    /** Resting on a name opens its portrait card; moving off the line closes it again. */
+    @Test fun creditNameShowsAPortraitCardOnHover() = runDesktopComposeUiTest(width = 900, height = 500) {
+        setContent {
+            AppEnvironment {
+                BoardCreditLine(
+                    BoardCredits(lead = listOf(MetaPerson("Dan Erickson", "Creator")), starring = listOf(MetaPerson("Adam Scott", "Mark S.", episodeCount = 19))),
+                    isSeries = true,
+                    onPerson = {},
+                )
+            }
+        }
+        val node = onNodeWithTag("detail_board_credit_line")
+        val layout = node.fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!.let { get ->
+                val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>(); get(results); results.first()
+            }
+        val start = layout.layoutInput.text.text.indexOf("Adam Scott")
+        val box = layout.getBoundingBox(start + 3)
+        onNodeWithTag("detail_board_credit_card").assertDoesNotExist()
+        node.performMouseInput { moveTo(box.center) }
+        mainClock.advanceTimeBy(600); waitForIdle()
+        onNodeWithTag("detail_board_credit_card").assertExists()
+        onNodeWithText("Mark S.").assertExists()
+        onNodeWithText("19 episodes").assertExists()
+        node.performMouseInput { moveTo(androidx.compose.ui.geometry.Offset(box.center.x, box.bottom + 400f)) }
+        mainClock.advanceTimeBy(600); waitForIdle()
+        onNodeWithTag("detail_board_credit_card").assertDoesNotExist()
+    }
 }

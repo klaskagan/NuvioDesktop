@@ -54,6 +54,17 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import nuvio.composeapp.generated.resources.detail_board_credit_open
+import nuvio.composeapp.generated.resources.detail_board_credit_episodes
+import com.nuvio.app.core.ui.RedesignMenuSurface
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -837,8 +848,8 @@ internal fun boardCredits(meta: MetaDetails, isSeries: Boolean, creatorRole: Str
 
 /**
  * Between the ratings and the overview: who made it and who is in it, as one line of prose that
- * wraps at word boundaries. Every name opens that person; nothing is ever cut off. Hidden when
- * there is no one to name.
+ * wraps at word boundaries. Every name opens that person; nothing is ever cut off. Resting on a name
+ * shows a small card with their portrait and role. Hidden when there is no one to name.
  */
 @Composable
 internal fun BoardCreditLine(
@@ -852,17 +863,20 @@ internal fun BoardCreditLine(
     val starringLabel = stringResource(Res.string.detail_board_starring)
     val nameStyle = SpanStyle(color = Color(0xFFDFE3E7), fontWeight = FontWeight.SemiBold)
     val hoverStyle = TextLinkStyles(style = nameStyle, hoveredStyle = SpanStyle(color = RedesignColors.textPrimary, textDecoration = TextDecoration.Underline))
-    val text = remember(credits, leadLabel, starringLabel, onPerson) {
-        buildAnnotatedString {
+    val names = remember(credits, leadLabel, starringLabel, onPerson) {
+        val spans = mutableListOf<CreditNameSpan>()
+        val text = buildAnnotatedString {
             fun group(label: String, people: List<MetaPerson>) {
                 append(label)
                 append(' ')
                 people.forEachIndexed { index, person ->
+                    val start = length
                     if (onPerson != null) {
                         withLink(LinkAnnotation.Clickable(tag = person.name, styles = hoverStyle) { onPerson(person) }) { append(person.name) }
                     } else {
                         withStyle(nameStyle) { append(person.name) }
                     }
+                    spans += CreditNameSpan(start, length, person)
                     if (index < people.lastIndex) append(", ")
                 }
             }
@@ -870,10 +884,106 @@ internal fun BoardCreditLine(
             if (credits.lead.isNotEmpty() && credits.starring.isNotEmpty()) append("  ·  ")
             if (credits.starring.isNotEmpty()) group(starringLabel, credits.starring)
         }
+        text to spans.toList()
     }
-    Text(
-        text,
-        style = redesignText(13.5.sp, color = RedesignColors.textMuted, lineHeight = 19.sp),
-        modifier = modifier.widthIn(max = 620.dp).testTag("detail_board_credit_line"),
-    )
+    val (text, spans) = names
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // The name under the pointer and the box of its last line, where the card hangs from.
+    var pointed by remember { mutableStateOf<Pair<MetaPerson, Rect>?>(null) }
+    var card by remember { mutableStateOf<Pair<MetaPerson, Rect>?>(null) }
+    val cardState = remember { MutableTransitionState(false) }
+    LaunchedEffect(pointed?.first) {
+        val target = pointed
+        if (target == null) {
+            cardState.targetState = false
+        } else {
+            // A short rest before it opens, so sweeping across the line doesn't flash cards.
+            delay(if (cardState.currentState) 80 else 420)
+            card = target
+            cardState.targetState = true
+        }
+    }
+    Box(modifier.widthIn(max = 620.dp)) {
+        Text(
+            text,
+            style = redesignText(13.5.sp, color = RedesignColors.textMuted, lineHeight = 19.sp),
+            onTextLayout = { layout = it },
+            modifier = Modifier.testTag("detail_board_credit_line").pointerInput(spans) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val position = event.changes.firstOrNull()?.position
+                        pointed = when {
+                            event.type == PointerEventType.Exit || position == null -> null
+                            else -> layout?.let { result -> creditNameAt(result, spans, position) }
+                        }
+                    }
+                }
+            },
+        )
+        val shown = card
+        if (shown != null && (cardState.currentState || cardState.targetState)) {
+            val density = LocalDensity.current
+            val gap = with(density) { 8.dp.roundToPx() }
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(shown.second.left.roundToInt(), shown.second.bottom.roundToInt() + gap),
+                properties = PopupProperties(focusable = false),
+            ) {
+                AnimatedVisibility(
+                    visibleState = cardState,
+                    enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = TransformOrigin(0f, 0f)),
+                    exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = TransformOrigin(0f, 0f)),
+                ) {
+                    CreditHoverCard(shown.first, isSeries, opens = onPerson != null)
+                }
+            }
+        }
+    }
+}
+
+private data class CreditNameSpan(val start: Int, val end: Int, val person: MetaPerson)
+
+/** The name at [position], with the box of the line it sits on there (a name can wrap). */
+private fun creditNameAt(layout: TextLayoutResult, spans: List<CreditNameSpan>, position: Offset): Pair<MetaPerson, Rect>? {
+    val line = layout.getLineForVerticalPosition(position.y)
+    if (position.y < layout.getLineTop(line) || position.y > layout.getLineBottom(line)) return null
+    if (position.x < layout.getLineLeft(line) || position.x > layout.getLineRight(line)) return null
+    val offset = layout.getOffsetForPosition(position)
+    val span = spans.firstOrNull { offset in it.start until it.end } ?: return null
+    // getOffsetForPosition snaps to the nearest character, so check the pointer is really on it.
+    val box = layout.getBoundingBox(offset.coerceAtMost(span.end - 1))
+    if (position.x < box.left - 2f && offset == span.start) return null
+    val first = maxOf(span.start, layout.getLineStart(line))
+    val last = minOf(span.end, layout.getLineEnd(line)) - 1
+    if (last < first) return null
+    val left = layout.getBoundingBox(first).left
+    val right = layout.getBoundingBox(last).right
+    return span.person to Rect(left, layout.getLineTop(line), right, layout.getLineBottom(line))
+}
+
+/** The credit line's card: the same 2:3 portrait as Cast & crew, the name, the role and the episode count. */
+@Composable
+private fun CreditHoverCard(person: MetaPerson, isSeries: Boolean, opens: Boolean) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        Modifier.width(300.dp).clip(shape).background(RedesignMenuSurface).border(1.dp, RedesignColors.hairline, shape)
+            .padding(12.dp).testTag("detail_board_credit_card"),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        PersonPortrait(person.copy(episodeCount = null), isSeries = false, modifier = Modifier.width(84.dp))
+        Column(Modifier.weight(1f).padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(person.name, style = redesignText(15.sp, FontWeight.Bold, lineHeight = 19.sp))
+            person.role?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = redesignText(13.sp, color = RedesignColors.textSecondary, lineHeight = 17.sp))
+            }
+            person.episodeCount?.takeIf { isSeries && it > 0 }?.let {
+                Text(stringResource(Res.string.detail_board_credit_episodes, it), style = redesignText(12.5.sp, color = RedesignColors.textMuted))
+            }
+            if (opens) {
+                Spacer(Modifier.height(6.dp))
+                Text(stringResource(Res.string.detail_board_credit_open), style = redesignText(12.sp, color = RedesignColors.textMuted))
+            }
+        }
+    }
 }
