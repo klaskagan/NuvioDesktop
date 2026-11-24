@@ -2,6 +2,7 @@ package com.nuvio.app.features.details
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.*
@@ -54,6 +55,85 @@ class BoardRateStripUiTest {
         waitForIdle()
         onNodeWithTag("detail_board_rate_idle").assertIsDisplayed()
         assertEquals(false, opened.last())
+    }
+
+    /**
+     * Without a rating source only ♥ ✕ open, in Rate's place: the row must not collapse its other
+     * buttons, or the narrow strip slides out from under the pointer and flickers open and shut.
+     */
+    @Test fun favoriteOnlyStripOpensInPlaceWithoutCollapsingTheRow() = runDesktopComposeUiTest(width = 900, height = 300) {
+        val opened = mutableListOf<Boolean>()
+        setContent {
+            AppEnvironment {
+                BoardRateControl(
+                    media = media,
+                    rating = TrackingRatingState(),
+                    favorite = TrackingFavoriteState(TrackingProviderId.TRAKT, false),
+                    onOpenChange = { opened += it },
+                )
+            }
+        }
+        onNodeWithTag("detail_board_rate_idle").performMouseInput { moveTo(center) }
+        mainClock.advanceTimeBy(500); waitForIdle()
+        onNodeWithTag("detail_board_rate_strip").assertIsDisplayed()
+        onNodeWithTag("detail_board_rate_favorite").assertExists()
+        onNodeWithTag("detail_board_rate_star_1").assertDoesNotExist()
+        kotlin.test.assertTrue(opened.none { it }, "the row collapsed for a favorite-only strip: $opened")
+    }
+
+    /** A pointer that leaves for a moment (the row shifting as it opens) doesn't close the strip; leaving for good does. */
+    @Test fun hoverOpenedStripSurvivesABriefExit() = runDesktopComposeUiTest(width = 900, height = 300) {
+        setContent {
+            AppEnvironment {
+                BoardRateControl(
+                    media = media,
+                    rating = TrackingRatingState(TrackingProviderId.TRAKT, null),
+                    favorite = TrackingFavoriteState(TrackingProviderId.TRAKT, false),
+                    onOpenChange = {},
+                )
+            }
+        }
+        val root = onRoot()
+        onNodeWithTag("detail_board_rate_idle").performMouseInput { moveTo(center) }
+        mainClock.advanceTimeBy(500); waitForIdle()
+        onNodeWithTag("detail_board_rate_strip").assertExists()
+        root.performMouseInput { moveTo(androidx.compose.ui.geometry.Offset(5f, 295f)) }
+        mainClock.advanceTimeBy(150); waitForIdle()
+        onNodeWithTag("detail_board_rate_strip").assertExists()
+        mainClock.advanceTimeBy(800); waitForIdle()
+        onNodeWithTag("detail_board_rate_strip").assertDoesNotExist()
+    }
+
+    /**
+     * With the strip open beside Play and three icon-only buttons, ✕ and ✓ sit inside the title
+     * column's bounds. Overflowing the column clipped their semantics bounds, which the hand cursor
+     * reads, so hovering them showed an arrow.
+     */
+    @Test fun openStripFitsInsideTheTitleColumn() = runDesktopComposeUiTest(width = 1200, height = 300) {
+        setContent {
+            AppEnvironment {
+                androidx.compose.foundation.layout.Column(Modifier.widthIn(max = com.nuvio.app.features.details.components.BoardTitleColumnMaxWidth)) {
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+                        // Play (~185dp) and Library, Watched, Trailer as 44dp icons.
+                        Box(Modifier.width(185.dp))
+                        repeat(3) { Box(Modifier.width(44.dp)) }
+                        BoardRateControl(
+                            media = media,
+                            rating = TrackingRatingState(TrackingProviderId.TRAKT, 8.0),
+                            favorite = TrackingFavoriteState(TrackingProviderId.TRAKT, true),
+                            onOpenChange = {},
+                            alwaysOpen = true,
+                        )
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        onNodeWithTag("detail_board_rate_remove").assertIsDisplayed()
+        onNodeWithTag("detail_board_rate_save").assertIsDisplayed()
+        val column = onRoot().fetchSemanticsNode().boundsInWindow
+        val save = onNodeWithTag("detail_board_rate_save").fetchSemanticsNode().boundsInWindow
+        kotlin.test.assertTrue(save.width > 30f, "✓ is clipped: $save in $column")
     }
 
     /** People names wrap onto another line instead of being cut off. */

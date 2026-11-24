@@ -47,6 +47,10 @@ Person Details opening with no transition). Apply these to every redesigned scre
   Popular's first title and swapping it (`tagHeroItems`, `StreamingRowLayoutTest`).
 - **Controls ease:** hover and selection colours tween (~140–220 ms), and tab indicators slide
   (`SearchScopeTabs`). Avoid default grey indication boxes on redesigned surfaces.
+- **Hover that reshapes its row must not move away from the pointer:** if opening on hover
+  resizes neighbours, the opened control must still cover the pointer, and hover-out closes only
+  after a grace longer than the resize (Rate strip flickered open/shut when a narrow ♥ strip slid
+  left; `BoardRateControl`, `hoverOpenedStripSurvivesABriefExit`).
 - **Chrome reacts to real state:** a sticky bar fades its dim and blur in only once actually
   pinned.
 - **The tabs shell owns the one ambient backdrop** (`MainTabsDestination.kt`, `ShellBackdrop`). A
@@ -189,10 +193,16 @@ Person Details opening with no transition). Apply these to every redesigned scre
     Quick pick opens beside the card. Right-click opens the frosted board menu, which ends with
     that episode's Rate strip. A season pill's menu ends with the season's strip when the rating
     source rates seasons (`TrackingRatingProvider.ratesSeasons`: WeTrakr, MDBList; a reference with
-    `wholeSeason`); with Simkl it stops at the actions.
+    `wholeSeason`; WeTrakr, MDBList, Trakt); with Simkl it stops at the actions.
   - Rate is option B, inline: hover or click opens the ten-star strip, Library/Watched/Trailer
-    collapse to icons, keys pick (handlers sit above the focus target), Esc/Cancel close even
-    with the pointer still over it. The ♥ is `TrackingFavorites` (Trakt, WeTrakr).
+    collapse to icons (only for the star strip; a ♥-only strip opens in Rate's place), keys pick
+    (handlers sit above the focus target), Esc/Cancel close even with the pointer still over it.
+    The title column is 920dp (`BoardTitleColumnMaxWidth`; text inside stays 760dp) so the open
+    strip keeps ✕ and ✓ inside it: never let a control overflow its parent, because the hand
+    cursor (`ClickableHandCursor`) finds targets by parent-clipped semantics bounds and an
+    overflowing button shows an arrow (`openStripFitsInsideTheTitleColumn`). An
+    unrated favorite idles as "☆ Rate ♥"; icon-only chips are padded evenly. The ♥ is
+    `TrackingFavorites` (Trakt, WeTrakr). Regression: `BoardRateStripUiTest`.
   - People names never truncate (credit line as one wrapping paragraph, portrait tiles with no
     `maxLines`); the redesign has no round avatars (cast tiles, the credit line's hover card and the
     person page all use `PersonPortrait`, 2:3). The hover card opens after a short rest on a name

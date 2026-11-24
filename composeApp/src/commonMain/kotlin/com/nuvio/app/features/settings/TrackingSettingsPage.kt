@@ -91,6 +91,7 @@ import nuvio.composeapp.generated.resources.settings_tracking_ratings_mdblist_de
 import nuvio.composeapp.generated.resources.settings_tracking_ratings_off_description
 import nuvio.composeapp.generated.resources.settings_tracking_ratings_picker_subtitle
 import nuvio.composeapp.generated.resources.settings_tracking_ratings_simkl_description
+import nuvio.composeapp.generated.resources.settings_tracking_ratings_trakt_description
 import nuvio.composeapp.generated.resources.settings_mdblist_library_lists
 import nuvio.composeapp.generated.resources.settings_mdblist_library_lists_description
 import nuvio.composeapp.generated.resources.settings_mdblist_library_lists_summary
@@ -317,7 +318,7 @@ private fun TrackingDataSources(
                 onClick = { activePickerName = TrackingDataPicker.MORE_LIKE_THIS.name },
             )
         }
-        if (wetrakrConnected || simklConnected || mdblistConnected) {
+        if (traktConnected || wetrakrConnected || simklConnected || mdblistConnected) {
             val effectiveRatingSource = settingsUiState.ratingSource?.takeIf { it in connectedProviders }
             val ratingsFallback = settingsUiState.ratingSource?.takeIf { effectiveRatingSource == null }?.let { source ->
                 stringResource(
@@ -413,7 +414,7 @@ private fun TrackingDataSources(
             title = stringResource(Res.string.settings_tracking_ratings),
             subtitle = stringResource(Res.string.settings_tracking_ratings_picker_subtitle),
             selectedValue = settingsUiState.ratingSource?.takeIf { it in connectedProviders },
-            options = ratingSourceOptions(simklConnected, mdblistConnected, wetrakrConnected),
+            options = ratingSourceOptions(traktConnected, simklConnected, mdblistConnected, wetrakrConnected),
             onSelected = TrackingRatings::setSource,
             onDismiss = { activePickerName = null },
         )
@@ -690,6 +691,7 @@ private fun recommendationsSourceOptions(
 
 @Composable
 private fun ratingSourceOptions(
+    traktConnected: Boolean,
     simklConnected: Boolean,
     mdblistConnected: Boolean,
     wetrakrConnected: Boolean,
@@ -698,6 +700,13 @@ private fun ratingSourceOptions(
         value = null,
         title = ratingSourceLabel(null),
         description = stringResource(Res.string.settings_tracking_ratings_off_description),
+    ),
+    TrackingPickerOption(
+        value = TrackingProviderId.TRAKT,
+        title = ratingSourceLabel(TrackingProviderId.TRAKT),
+        description = stringResource(Res.string.settings_tracking_ratings_trakt_description),
+        enabled = traktConnected,
+        unavailableReason = trackingUnavailableReason(TrackingBrand.TRAKT, traktConnected),
     ),
     TrackingPickerOption(
         value = TrackingProviderId.WETRAKR,

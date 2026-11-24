@@ -22,6 +22,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -78,6 +79,7 @@ import com.nuvio.app.features.tracking.TrackingFavorites
 import com.nuvio.app.features.tracking.TrackingMediaReference
 import com.nuvio.app.features.tracking.TrackingRatingState
 import com.nuvio.app.features.tracking.TrackingRatings
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.action_cancel
@@ -107,6 +109,7 @@ private val ratingWords: List<StringResource> = listOf(
     Res.string.rating_word_9, Res.string.rating_word_10,
 )
 
+private const val RateHoverCloseDelayMillis = 420L
 private val RatingGold = Color(0xFFF5C518)
 private val FavoriteRed = Color(0xFFFF6B6B)
 
@@ -158,9 +161,20 @@ internal fun BoardRateControl(
     var saving by remember { mutableStateOf(false) }
     // Hover opens the strip on the way in; Cancel or Esc closes it even while the pointer is still over it.
     var hoverOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(hovered) { hoverOpen = hovered }
+    // Leaving closes it only after the row's resize has settled: the row shifts while the strip
+    // opens, and a pointer that ends up just outside for a moment must not close it (it flickered).
+    LaunchedEffect(hovered) {
+        if (hovered) {
+            hoverOpen = true
+        } else {
+            delay(RateHoverCloseDelayMillis)
+            hoverOpen = false
+        }
+    }
     val open = alwaysOpen || pinned || hoverOpen || saving
-    LaunchedEffect(open) { onOpenChange(open) }
+    // Only the star strip needs the row's width; a favorite-only strip (♥ ✕) fits where Rate was,
+    // so the other buttons keep their labels and nothing moves under the pointer.
+    LaunchedEffect(open, rating.isAvailable) { onOpenChange(open && rating.isAvailable) }
     LaunchedEffect(media, favorite.provider) { if (favorite.isAvailable) TrackingFavorites.refresh(media) }
     val settle = remember { Animatable(1f) }
     val pulse = remember { Animatable(1f) }
@@ -227,7 +241,8 @@ internal fun BoardRateControl(
         AnimatedContent(
             targetState = when {
                 open -> 2
-                saved != null || favorite.isFavorite -> 1
+                // An unrated favorite keeps "Rate" visible (☆ Rate ♥); the bare chip is for a score, or ♥ alone without a rating source.
+                saved != null || (favorite.isFavorite && !rating.isAvailable) -> 1
                 else -> 0
             },
             transitionSpec = {
@@ -238,12 +253,22 @@ internal fun BoardRateControl(
             label = "rate_control",
         ) { state ->
             when (state) {
-                0 -> RatePill(height, onClick = { pinned = true }) {
+                // Without a rating source only favorites remain, so the idle button is a ♡ instead of "Rate".
+                0 -> if (!rating.isAvailable) {
+                    RatePill(height, onClick = { pinned = true }, padding = PaddingValues(horizontal = 14.dp)) {
+                        Icon(Icons.Rounded.FavoriteBorder, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(16.dp))
+                    }
+                } else RatePill(height, onClick = { pinned = true }) {
                     Icon(Icons.Rounded.StarBorder, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(Res.string.rating_rate), style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1)
+                    if (favorite.isFavorite) {
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.Rounded.Favorite, contentDescription = null, tint = FavoriteRed, modifier = Modifier.size(16.dp))
+                    }
                 }
-                1 -> RatePill(height, onClick = { pinned = true }, tag = "detail_board_rate_chip") {
+                // The chip starts and ends with an icon (★ 8 ♥, or ♥ alone), so it is padded evenly to stay centred.
+                1 -> RatePill(height, onClick = { pinned = true }, tag = "detail_board_rate_chip", padding = PaddingValues(horizontal = 14.dp)) {
                     if (saved != null) {
                         Icon(Icons.Rounded.Star, contentDescription = null, tint = RatingGold, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
@@ -326,7 +351,13 @@ internal fun BoardRateControl(
 }
 
 @Composable
-private fun RatePill(height: Dp, onClick: () -> Unit, tag: String = "detail_board_rate_idle", content: @Composable () -> Unit) {
+private fun RatePill(
+    height: Dp,
+    onClick: () -> Unit,
+    tag: String = "detail_board_rate_idle",
+    padding: PaddingValues = PaddingValues(start = 14.dp, end = 18.dp),
+    content: @Composable () -> Unit,
+) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val fill by animateColorAsState(if (hovered) RedesignColors.fillStrong else Color(0x33101114), tween(180), label = "rate_pill")
@@ -335,7 +366,7 @@ private fun RatePill(height: Dp, onClick: () -> Unit, tag: String = "detail_boar
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
             .testTag(tag)
-            .padding(start = 14.dp, end = 18.dp),
+            .padding(padding),
         verticalAlignment = Alignment.CenterVertically,
     ) { content() }
 }

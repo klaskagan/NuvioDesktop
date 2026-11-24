@@ -93,6 +93,11 @@ match the design".
   tab content both read those args (`detailBoardItems` takes no separate `hasContent`).
   Gallery once had a hidden or empty tab because the shared `sectionArgs` decided it.
   Check a new board tab in the running app, not only in component tests.
+- **Ratings:** Rate reads and saves through `TrackingRatings` to the one tracker picked in
+  Settings → Tracking → Ratings (`ratingTarget`; one tracker so scores never disagree).
+  A tracker that rates needs a registered `TrackingRatingProvider` (Trakt:
+  `TraktRatingsProvider`) and an option in `ratingSourceOptions`; Trakt was missing
+  both, so ratings never reached it. Regression: `RatingTargetTest`.
 - **Branch:** Details redesign work is on a worktree cut from `nuvio-redesign` and merges
   back there, never into develop.
 

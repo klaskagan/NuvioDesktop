@@ -77,6 +77,7 @@ object TraktAuthRepository : TrackingAuthProvider {
             TrackingCapability.SCROBBLE,
             TrackingCapability.COMMENTS,
             TrackingCapability.RECOMMENDATIONS,
+            TrackingCapability.RATINGS,
         ),
     )
 

@@ -68,6 +68,9 @@ import com.nuvio.app.core.format.formatLocalTime
 import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.redesignText
 import com.nuvio.app.features.details.components.BoardActionPill
+import com.nuvio.app.features.details.components.BoardTitleTextMaxWidth
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.widthIn
 import com.nuvio.app.features.details.components.BoardMetaLine
 import com.nuvio.app.features.details.components.BoardPlayButton
 import com.nuvio.app.features.details.components.BoardTitleLogo
@@ -404,6 +407,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
         ) {
             BoardTitleLogo(meta, height = 104.dp, maxWidth = 440.dp)
             Spacer(Modifier.height(14.dp))
+            Column(Modifier.widthIn(max = BoardTitleTextMaxWidth)) {
             BoardMetaLine(meta, stringResource(if (isSeries) Res.string.media_series else Res.string.media_movie))
             BoardRatings(meta, args.isMdbListActive, board.showOverallRatings)
             val creatorRole = stringResource(Res.string.person_role_creator)
@@ -413,6 +417,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
             if (credits.lead.isNotEmpty() || credits.starring.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
                 BoardCreditLine(credits, isSeries, onPerson = args.onCastClick?.let { open -> { person -> open(person, null) } })
+            }
             }
             meta.description?.takeIf { it.isNotBlank() }?.let { overview ->
                 Spacer(Modifier.height(10.dp))
@@ -428,6 +433,8 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
             // While the Rate strip is open, Library, Watched and Trailer give up their labels so the
             // row keeps its width.
             var rateOpen by remember(meta.id) { mutableStateOf(false) }
+            // The title column is wide enough for the open Rate strip (BoardTitleColumnMaxWidth), so ✕
+            // and ✓ fit inside it rather than overflowing (an overflow hides them from the hand cursor).
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 BoardPlayButton(
                     label = args.playButtonLabel,
