@@ -66,6 +66,9 @@ data class DetailSecondaryAction(
     val isActive: Boolean = false,
     val onClick: () -> Unit = {},
     val onLongClick: (() -> Unit)? = null,
+    val tag: String? = null,
+    /** A popover the board's Your-way cell opens under itself on click (On TV's device picker). */
+    val popup: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
 )
 
 @OptIn(ExperimentalFoundationApi::class)

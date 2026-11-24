@@ -534,12 +534,9 @@ private class TvHandoffPicker(
     }
 }
 
-internal data class TvHandoffPlaybackView(
-    val devices: List<com.nuvio.app.features.player.PlayerControlTvDevice>,
-    val ready: Boolean = false, val busy: Boolean = false, val canResume: Boolean = false, val status: String = "",
-)
+internal actual val tvHandoffSupported: Boolean = true
 
-internal fun tvHandoffPlaybackView(): TvHandoffPlaybackView {
+internal actual fun tvHandoffPlaybackView(): TvHandoffPlaybackView {
     TvPickerWindow.picker?.takeUnless { it.manageDevices }?.let { return it.playbackView() }
     // A picker is prepared asynchronously after account verification. Display names never include pairing credentials.
     val devices = runCatching {
@@ -550,18 +547,18 @@ internal fun tvHandoffPlaybackView(): TvHandoffPlaybackView {
     return TvHandoffPlaybackView(devices)
 }
 
-internal fun selectTvHandoffDevice(index: Int) { TvPickerWindow.picker?.selectDevice(index) }
+internal actual fun selectTvHandoffDevice(index: Int) { TvPickerWindow.picker?.selectDevice(index) }
 internal fun resumeTvHandoffPlayback() { TvPickerWindow.picker?.resumePlayback() }
 
-private var playbackObserverOwner: Any? = null
-private var playbackObserver: (() -> Unit)? = null
-internal fun observeTvHandoffPlayback(owner: Any, changed: () -> Unit) {
-    playbackObserverOwner = owner; playbackObserver = changed
+// The player and Details can both watch an open handoff (Details stays composed under the player).
+private val playbackObservers = java.util.concurrent.ConcurrentHashMap<Any, () -> Unit>()
+internal actual fun observeTvHandoffPlayback(owner: Any, changed: () -> Unit) {
+    playbackObservers[owner] = changed
 }
-internal fun stopObservingTvHandoffPlayback(owner: Any) {
-    if (playbackObserverOwner === owner) { playbackObserverOwner = null; playbackObserver = null }
+internal actual fun stopObservingTvHandoffPlayback(owner: Any) {
+    playbackObservers.remove(owner)
 }
-private fun notifyPlaybackHandoffChanged() { playbackObserver?.invoke() }
+private fun notifyPlaybackHandoffChanged() { playbackObservers.values.forEach { it() } }
 
 internal fun Throwable.hasLocalNetworkDenial(): Boolean =
     generateSequence(this) { it.cause }.take(8).any {

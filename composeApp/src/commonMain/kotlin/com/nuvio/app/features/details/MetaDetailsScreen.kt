@@ -1,5 +1,9 @@
 package com.nuvio.app.features.details
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.geometry.Rect
 import com.nuvio.app.features.streams.StreamQuickPickRequest
 import com.nuvio.app.features.streams.StreamPreselection
@@ -217,6 +221,13 @@ import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
+import com.nuvio.app.core.auth.AuthRepository
+import com.nuvio.app.core.auth.AuthState
+import com.nuvio.app.features.party.PartyRepository
+import com.nuvio.app.features.party.PartyMedia
+import com.nuvio.app.features.party.messageRes
+import com.nuvio.app.features.handoff.tvHandoffSupported
+import com.nuvio.app.features.handoff.detailsTvHandoffRequest
 
 private val watchedMarkerDiagnosticLog = Logger.withTag("WatchedMarkerDiag")
 private const val DetailScrolledBackgroundDefaultMaxAlpha = 0.86f
@@ -248,6 +259,8 @@ fun MetaDetailsScreen(
     onOpenMeta: ((MetaPreview) -> Unit)? = null,
     onCastClick: ((MetaPerson, String?) -> Unit)? = null,
     onCompanyClick: ((MetaCompany, String) -> Unit)? = null,
+    onOpenParty: ((code: String) -> Unit)? = null,
+    onManagePairedTvs: (() -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier,
@@ -280,6 +293,7 @@ fun MetaDetailsScreen(
         TraktAuthRepository.ensureLoaded()
         TraktAuthRepository.uiState
     }.collectAsStateWithLifecycle()
+    val authState by AuthRepository.state.collectAsStateWithLifecycle()
     val trackingSettingsUiState by remember {
         TrackingSettingsRepository.ensureLoaded()
         TrackingSettingsRepository.uiState
@@ -544,13 +558,29 @@ fun MetaDetailsScreen(
             val boardTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
                 if (detailTopBarState != null) DesktopMergedTopBarHeight + DesktopTopBarContentGap else 16.dp
             val boardStartInset = LocalBackdropContentStartInset.current
-            when {
-            displayedMeta == null && uiState.isLoading -> {
+            val detailsMaxWidth = maxWidth
+            // Loading, error and content crossfade, as Home's hero does; the backdrop above stays put.
+            val detailContentState = when {
+                displayedMeta == null && uiState.isLoading -> DetailContentState.Loading
+                displayedMeta == null && uiState.errorMessage != null -> DetailContentState.Error
+                displayedMeta != null -> DetailContentState.Content
+                else -> DetailContentState.Empty
+            }
+            AnimatedContent(
+                targetState = detailContentState,
+                transitionSpec = { fadeIn(tween(320)) togetherWith fadeOut(tween(200)) },
+                modifier = Modifier.fillMaxSize(),
+                label = "detail_content_state",
+            ) { contentState ->
+            Box(Modifier.fillMaxSize()) {
+            when (contentState) {
+            DetailContentState.Loading -> {
                 if (boardLayout) {
                     RedesignTypography {
                         DetailBoardSkeleton(
-                            horizontalPadding = desktopPageHorizontalPaddingForWidth((maxWidth - boardStartInset).value),
+                            horizontalPadding = desktopPageHorizontalPaddingForWidth((detailsMaxWidth - boardStartInset).value),
                             onBack = onBack,
+                            isSeries = type == "series",
                             modifier = Modifier.padding(start = boardStartInset, top = boardTopPadding),
                         )
                     }
@@ -561,7 +591,7 @@ fun MetaDetailsScreen(
                 }
             }
 
-            displayedMeta == null && uiState.errorMessage != null -> {
+            DetailContentState.Error -> {
                 Column(
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -595,8 +625,8 @@ fun MetaDetailsScreen(
                 }
             }
 
-            displayedMeta != null -> {
-                val meta = displayedMeta
+            DetailContentState.Content -> {
+                val meta = displayedMeta ?: return@Box
                 val metaPreview = remember(meta) { meta.toMetaPreview() }
                 val todayIsoDate = CurrentDateProvider.todayIsoDate()
                 val isSaved = remember(
@@ -738,6 +768,7 @@ fun MetaDetailsScreen(
                         )
                     }
                 }
+                val seriesActionState = rememberUpdatedState(seriesAction.takeIf { (meta.type == "series" || meta.videos.any { it.season != null || it.episode != null }) })
                 val seriesActionVideo = remember(seriesAction, meta.id, meta.videos) {
                     val action = seriesAction ?: return@remember null
                     meta.videos.firstOrNull { video ->
@@ -1213,6 +1244,83 @@ fun MetaDetailsScreen(
                     null
                 }
 
+                // ---- Watch it your way: what the primary button would play, sent to a TV or a party.
+                val yourWayIsSeries = (meta.type == "series" || hasEpisodes) && seriesAction != null
+                val yourWayVideoId = if (yourWayIsSeries) seriesStreamVideoId ?: seriesAction?.videoId else meta.id
+                val yourWayProgress = if (yourWayIsSeries) {
+                    watchProgressUiState.progressForVideo(
+                        videoId = yourWayVideoId ?: meta.id,
+                        parentMetaId = meta.id,
+                        seasonNumber = seriesAction?.seasonNumber,
+                        episodeNumber = seriesAction?.episodeNumber,
+                    )?.takeUnless { it.isCompleted }
+                } else {
+                    movieProgress?.takeUnless { it.isCompleted }
+                }
+                val yourWayRuntime = yourWayVideoId?.let { id -> meta.videos.firstOrNull { it.id == id }?.runtime }
+                    ?: parseRuntimeMinutes(meta.runtime)
+                val tvAccount = authState as? AuthState.Authenticated
+                val tvHandoffState = rememberUpdatedState(
+                    Triple(yourWayVideoId, yourWayProgress, yourWayRuntime),
+                )
+                val detailTvHandoff = remember(meta.id, onManagePairedTvs, detailsScope) {
+                    onManagePairedTvs?.let { manage ->
+                        DetailTvHandoff(detailsScope, manage) { target, sender, accountId ->
+                            val (videoId, progress, runtime) = tvHandoffState.value
+                            val action = seriesActionState.value
+                            detailsTvHandoffRequest(
+                                senderDeviceId = sender,
+                                targetDeviceId = target,
+                                accountId = accountId,
+                                profileId = ProfileRepository.activeProfileId,
+                                isSeries = action != null,
+                                contentId = meta.id,
+                                videoId = videoId ?: meta.id,
+                                title = meta.name,
+                                season = action?.seasonNumber,
+                                episode = action?.episodeNumber,
+                                savedPositionMs = progress?.lastPositionMs,
+                                savedDurationMs = progress?.durationMs,
+                                runtimeMinutes = runtime,
+                                nowEpochMs = WatchProgressClock.nowEpochMs(),
+                            )
+                        }
+                    }
+                }?.takeIf {
+                    tvHandoffSupported && tvAccount != null && !tvAccount.isAnonymous && yourWayVideoId != null &&
+                        ((yourWayProgress?.durationMs ?: 0L) > 0L || (yourWayRuntime ?: 0) > 0)
+                }
+                val partyAvailable by PartyRepository.available.collectAsStateWithLifecycle()
+                val startWatchParty: (() -> Unit)? = onOpenParty?.takeIf { partyAvailable && PartyRepository.canUse && yourWayVideoId != null }?.let { openParty ->
+                    {
+                        detailsScope.launch {
+                            // An open party is reopened, never replaced by a second one.
+                            PartyRepository.state.value.party?.let { openParty(it.code); return@launch }
+                            val action = seriesActionState.value
+                            val error = PartyRepository.create(
+                                PartyMedia(
+                                    type = meta.type,
+                                    metaId = meta.id,
+                                    metaType = meta.type,
+                                    videoId = yourWayVideoId,
+                                    season = action?.seasonNumber,
+                                    episode = action?.episodeNumber,
+                                    title = meta.name,
+                                    episodeTitle = action?.episodeTitle,
+                                    description = (if (action != null) seriesPauseDescription else meta.description)?.take(500),
+                                    poster = meta.poster,
+                                    background = meta.background,
+                                    logo = meta.logo,
+                                ),
+                            )
+                            when {
+                                error != null -> NuvioToastController.show(getString(error.messageRes))
+                                else -> PartyRepository.state.value.party?.let { openParty(it.code) }
+                            }
+                        }
+                    }
+                }
+
                 val sectionArgs = DetailSectionArgs(
                     isMdbListActive = mdbListSettings.isActive,
                     meta = meta,
@@ -1300,6 +1408,8 @@ fun MetaDetailsScreen(
                     onCompanyClick = onCompanyClick,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                    tvHandoff = detailTvHandoff,
+                    onWatchPartyClick = startWatchParty,
                 )
 
                 BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(start = boardStartInset)) {
@@ -2071,6 +2181,9 @@ fun MetaDetailsScreen(
                     }
                 }
             }
+            DetailContentState.Empty -> Unit
+            }
+            }
         }
 
         if (displayedMeta == null) {
@@ -2354,6 +2467,9 @@ private fun MetaDetails.toMetaPreview(): MetaPreview =
 
 /** Desktop windows at least this wide show the Details board. */
 internal val DetailBoardMinWidth = 1000.dp
+
+/** What the Details page shows; the states crossfade. */
+private enum class DetailContentState { Loading, Error, Content, Empty }
 
 private val tabletHeroSectionKeys = setOf(
     MetaScreenSectionKey.ACTIONS,

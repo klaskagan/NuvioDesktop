@@ -1,5 +1,15 @@
 package com.nuvio.app.features.details.components
 
+import com.nuvio.app.OverlayEscapeHandler
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -102,6 +112,8 @@ import nuvio.composeapp.generated.resources.detail_mute_trailer
 import nuvio.composeapp.generated.resources.detail_unmute_trailer
 import nuvio.composeapp.generated.resources.playback_unavailable
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 
 /** The board's height; the loading skeleton uses the same value so nothing moves when data arrives. */
 internal val DetailBoardHeight = 440.dp
@@ -441,7 +453,7 @@ internal fun DetailProgressTile(
     onOpenSeason: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.boardTile().padding(horizontal = 16.dp, vertical = 14.dp).testTag("detail_board_progress")) {
+    Column(modifier.boardTile().testTag("detail_board_progress").padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = DetailBoardTileBottomPadding + 4.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             BoardKicker(stringResource(Res.string.detail_board_progress), modifier = Modifier.weight(1f))
             Text(
@@ -452,6 +464,8 @@ internal fun DetailProgressTile(
             )
         }
         Spacer(Modifier.height(6.dp))
+        // Long-running shows scroll their seasons inside the tile instead of running past its padding.
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
         progress?.seasons?.forEach { season ->
             val interaction = remember(season.season) { MutableInteractionSource() }
             val hovered by interaction.collectIsHoveredAsState()
@@ -474,37 +488,102 @@ internal fun DetailProgressTile(
                 )
             }
         }
+    }}
+}
+
+/**
+ * Side-tile heights inside the 440 dp board (design doc "Side-column heights"). The first tile in
+ * the column takes the spare height instead of its own, so the column always ends flush.
+ */
+internal object DetailBoardTileHeights {
+    val UpNext = 132.dp
+    val Progress = 136.dp
+    val YourWay = 144.dp
+    val Collection = 138.dp
+    val Tonight = 130.dp
+}
+
+/** Least space between a side tile's content and its bottom edge. */
+internal val DetailBoardTileBottomPadding = 10.dp
+
+private const val YourWayColumns = 3
+private const val YourWayMaxActions = 6
+private val YourWayCellHeight = 46.dp
+private val YourWayCellGap = 6.dp
+
+/**
+ * Watch it your way: other ways into the title (On TV, Watch party, Download, Shuffle, Choose
+ * source, Lists) as a three-column grid of up to six. Unavailable actions are left out by the caller
+ * and the grid reflows; an action with a [DetailSecondaryAction.popup] opens it under its cell.
+ */
+@Composable
+internal fun DetailYourWayTile(actions: List<DetailSecondaryAction>, modifier: Modifier = Modifier) {
+    val shown = actions.take(YourWayMaxActions)
+    Column(
+        modifier.boardTile().animateContentSize(tween(BoardMotionMillis, easing = FastOutSlowInEasing))
+            .testTag("detail_board_your_way").padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+    ) {
+        BoardKicker(stringResource(Res.string.detail_board_your_way), modifier = Modifier.padding(horizontal = 4.dp))
+        Spacer(Modifier.height(8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(YourWayCellGap)) {
+            shown.chunked(YourWayColumns).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(YourWayCellGap)) {
+                    row.forEach { action -> YourWayCell(action, Modifier.weight(1f)) }
+                    repeat(YourWayColumns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
     }
 }
 
-/** Watch it your way: other ways into the title (shuffle, choosing a source, lists). */
 @Composable
-internal fun DetailYourWayTile(actions: List<DetailSecondaryAction>, modifier: Modifier = Modifier) {
-    Column(modifier.boardTile().padding(horizontal = 12.dp, vertical = 12.dp).testTag("detail_board_your_way")) {
-        BoardKicker(stringResource(Res.string.detail_board_your_way), modifier = Modifier.padding(horizontal = 4.dp))
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            actions.take(3).forEach { action ->
-                val interaction = remember(action.label) { MutableInteractionSource() }
-                val hovered by interaction.collectIsHoveredAsState()
-                val fill by animateColorAsState(
-                    when {
-                        action.isActive -> RedesignColors.textPrimary
-                        hovered -> RedesignColors.fillStrong
-                        else -> RedesignColors.fill
-                    },
-                    tween(160),
-                    label = "your_way_fill",
-                )
-                val content = if (action.isActive) RedesignOnLight else RedesignColors.textPrimary
-                Column(
-                    Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(fill)
-                        .boardClickable(interaction, action.onClick, action.onLongClick)
-                        .padding(horizontal = 10.dp, vertical = 9.dp),
+private fun YourWayCell(action: DetailSecondaryAction, modifier: Modifier) {
+    val interaction = remember(action.label) { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val popupState = remember { MutableTransitionState(false) }
+    val active = action.isActive || popupState.targetState
+    val fill by animateColorAsState(
+        when {
+            active -> RedesignColors.textPrimary
+            hovered -> RedesignColors.fillStrong
+            else -> RedesignColors.fill
+        },
+        tween(160),
+        label = "your_way_fill",
+    )
+    val content = if (active) RedesignOnLight else RedesignColors.textPrimary
+    Box(modifier) {
+        Column(
+            Modifier.fillMaxWidth().height(YourWayCellHeight).clip(RoundedCornerShape(12.dp)).background(fill)
+                .boardClickable(interaction, {
+                    action.onClick()
+                    if (action.popup != null) popupState.targetState = !popupState.targetState
+                }, action.onLongClick)
+                .then(action.tag?.let { Modifier.testTag(it) } ?: Modifier)
+                .padding(horizontal = 9.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(action.icon, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(action.label, style = redesignText(12.sp, FontWeight.SemiBold, content), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+        }
+        val popup = action.popup
+        if (popup != null && (popupState.currentState || popupState.targetState)) {
+            val dismiss = { popupState.targetState = false }
+            OverlayEscapeHandler { dismiss() }
+            val offsetY = with(LocalDensity.current) { (YourWayCellHeight + 6.dp).roundToPx() }
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(0, offsetY),
+                onDismissRequest = dismiss,
+                properties = PopupProperties(focusable = true),
+            ) {
+                AnimatedVisibility(
+                    visibleState = popupState,
+                    enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = TransformOrigin(0f, 0f)),
+                    exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = TransformOrigin(0f, 0f)),
                 ) {
-                    Icon(action.icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.height(6.dp))
-                    Text(action.label, style = redesignText(12.5.sp, FontWeight.SemiBold, content), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    popup(dismiss)
                 }
             }
         }
@@ -521,7 +600,7 @@ internal fun DetailCollectionTile(
     onShowAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.boardTile().padding(horizontal = 12.dp, vertical = 12.dp).testTag("detail_board_collection")) {
+    Column(modifier.boardTile().testTag("detail_board_collection").padding(horizontal = 12.dp, vertical = 12.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             BoardKicker("${stringResource(Res.string.detail_board_collection)} · $name", modifier = Modifier.weight(1f))
             if (items.size > 2) {
@@ -544,7 +623,7 @@ internal fun DetailCollectionTile(
                         .boardClickable(interaction, onOpen?.let { { it(item) } }).padding(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(Modifier.fillMaxHeight().width(52.dp).clip(RoundedCornerShape(8.dp)).background(RedesignColors.fill)) {
+                    Box(Modifier.size(width = 48.dp, height = 72.dp).clip(RoundedCornerShape(8.dp)).background(RedesignColors.fill)) {
                         NuvioAsyncImage(model = item.poster, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                         if (isWatched(item)) {
                             Box(
@@ -574,7 +653,7 @@ internal fun DetailTonightTile(
     progressFraction: Float?,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.boardTile().padding(horizontal = 16.dp, vertical = 14.dp).testTag("detail_board_tonight")) {
+    Column(modifier.boardTile().testTag("detail_board_tonight").padding(horizontal = 16.dp, vertical = 14.dp)) {
         BoardKicker(kicker)
         Spacer(Modifier.height(4.dp))
         Text(headline, style = redesignText(24.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking), maxLines = 1)
@@ -659,16 +738,18 @@ private fun SkeletonBar(width: Dp, height: Dp, modifier: Modifier = Modifier) {
  * with blank content, so nothing moves when the data arrives.
  */
 @Composable
-internal fun DetailBoardSkeleton(horizontalPadding: Dp, onBack: () -> Unit, modifier: Modifier = Modifier) {
+internal fun DetailBoardSkeleton(horizontalPadding: Dp, onBack: () -> Unit, isSeries: Boolean, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().testTag("detail_board_skeleton")) {
         DetailBoard(
             expanded = false,
             hasSide = true,
             modifier = Modifier.padding(horizontal = horizontalPadding),
+            // The same column the board builds: Up next, Your progress, Watch it your way for a
+            // series; Collection, Tonight, Watch it your way for a film.
             side = {
-                Box(Modifier.weight(1f).fillMaxWidth().boardTile())
-                Box(Modifier.height(118.dp).fillMaxWidth().boardTile())
-                Box(Modifier.height(104.dp).fillMaxWidth().boardTile())
+                Box(Modifier.weight(1f).fillMaxWidth().boardTile().testTag("detail_board_skeleton_tile"))
+                Box(Modifier.height(if (isSeries) DetailBoardTileHeights.Progress else DetailBoardTileHeights.Tonight).fillMaxWidth().boardTile().testTag("detail_board_skeleton_tile"))
+                Box(Modifier.height(DetailBoardTileHeights.YourWay).fillMaxWidth().boardTile().testTag("detail_board_skeleton_tile"))
             },
         ) {
             NuvioBackButton(

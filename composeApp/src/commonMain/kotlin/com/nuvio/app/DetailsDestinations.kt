@@ -24,6 +24,11 @@ import nuvio.composeapp.generated.resources.person_role_creator
 import nuvio.composeapp.generated.resources.person_role_director
 import nuvio.composeapp.generated.resources.person_role_writer
 import org.jetbrains.compose.resources.stringResource
+import com.nuvio.app.navigation.PartyRoute
+import com.nuvio.app.navigation.SettingsPageRoute
+import com.nuvio.app.features.settings.SettingsPage
+import nuvio.composeapp.generated.resources.party_title
+import nuvio.composeapp.generated.resources.settings_paired_tvs
 
 internal typealias ContentPlayAction = (
     type: String,
@@ -83,6 +88,8 @@ internal fun DetailsDestination(
     val directorRole = stringResource(Res.string.person_role_director)
     val writerRole = stringResource(Res.string.person_role_writer)
     val creatorRole = stringResource(Res.string.person_role_creator)
+    val watchPartyTitle = stringResource(Res.string.party_title)
+    val pairedTvsTitle = stringResource(Res.string.settings_paired_tvs)
     MetaDetailsScreen(
         type = route.type,
         id = route.id,
@@ -124,6 +131,8 @@ internal fun DetailsDestination(
                 )
             }
         },
+        onOpenParty = { code -> navController.navigate(PartyRoute(code = code, title = watchPartyTitle)) },
+        onManagePairedTvs = { navController.navigate(SettingsPageRoute(pageName = SettingsPage.PairedTvs.name, title = pairedTvsTitle)) },
         sharedTransitionScope = sharedTransitionScope,
         animatedVisibilityScope = animatedVisibilityScope,
         modifier = Modifier.fillMaxSize(),

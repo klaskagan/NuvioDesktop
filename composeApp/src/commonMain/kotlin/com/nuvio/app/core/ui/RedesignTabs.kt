@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.animateContentSize
 
 /**
  * The redesign's text tabs: one underline slides between the labels and colours ease on hover
@@ -61,7 +62,8 @@ internal fun <T : Any> RedesignTabs(
     val indicatorX by animateDpAsState(target?.first ?: 0.dp, tween(260, easing = FastOutSlowInEasing), label = "tab_x")
     val indicatorW by animateDpAsState(target?.second ?: 0.dp, tween(260, easing = FastOutSlowInEasing), label = "tab_w")
     Box(modifier) {
-        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+        // A tab that arrives late (Reviews once comments load) widens the row smoothly instead of popping in.
+        Row(Modifier.animateContentSize(tween(260, easing = FastOutSlowInEasing)), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             items.forEach { item ->
                 val interaction = remember { MutableInteractionSource() }
                 val hovered by interaction.collectIsHoveredAsState()

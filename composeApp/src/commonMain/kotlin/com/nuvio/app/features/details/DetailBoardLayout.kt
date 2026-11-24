@@ -106,6 +106,14 @@ import nuvio.composeapp.generated.resources.media_series
 import nuvio.composeapp.generated.resources.random_episode_title
 import nuvio.composeapp.generated.resources.shuffle_stop
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Download
+import com.nuvio.app.features.details.components.DetailTvPicker
+import com.nuvio.app.features.details.components.DetailBoardTileHeights
+import nuvio.composeapp.generated.resources.detail_board_on_tv
+import nuvio.composeapp.generated.resources.detail_board_watch_party
+import nuvio.composeapp.generated.resources.detail_board_download
 
 /** The episode the primary button would play, as the Up next tile shows it. */
 internal data class DetailBoardUpNext(
@@ -265,7 +273,25 @@ private fun LazyListScope.detailBoardFillItem(args: DetailSectionArgs) {
 private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
     val meta = args.meta
     val isSeries = args.hasEpisodes || meta.type == "series"
+    // On TV is used most, then Watch party (the user's order); unavailable actions are left out.
     val yourWay = buildList {
+        args.tvHandoff?.let { handoff ->
+            add(
+                DetailSecondaryAction(
+                    label = stringResource(Res.string.detail_board_on_tv),
+                    icon = Icons.Rounded.Tv,
+                    onClick = handoff::open,
+                    tag = "detail_your_way_tv",
+                    popup = { dismiss -> DetailTvPicker(handoff, dismiss) },
+                ),
+            )
+        }
+        args.onWatchPartyClick?.let { party ->
+            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_watch_party), icon = Icons.Rounded.Groups, onClick = party, tag = "detail_your_way_party"))
+        }
+        args.onDownloadClick?.let { download ->
+            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_download), icon = Icons.Rounded.Download, onClick = download, tag = "detail_your_way_download"))
+        }
         args.onShuffleClick?.let { onShuffle ->
             add(
                 DetailSecondaryAction(
@@ -273,14 +299,15 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                     icon = Icons.Rounded.Shuffle,
                     isActive = args.shuffleEnabled,
                     onClick = onShuffle,
+                    tag = "detail_your_way_shuffle",
                 ),
             )
         }
         args.onPrimaryPlayLongClick?.takeIf { args.showManualPlayOption && args.isPrimaryPlayEnabled }?.let { choose ->
-            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_choose_source), icon = Icons.Rounded.Tune, onClick = choose))
+            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_choose_source), icon = Icons.Rounded.Tune, onClick = choose, tag = "detail_your_way_choose"))
         }
         args.onSaveLongClick?.let { lists ->
-            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_lists), icon = Icons.AutoMirrored.Rounded.PlaylistAdd, onClick = lists))
+            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_lists), icon = Icons.AutoMirrored.Rounded.PlaylistAdd, onClick = lists, tag = "detail_your_way_lists"))
         }
     }
     val collection = meta.collectionItems.takeIf { !isSeries && args.hasCollectionSection }
@@ -296,7 +323,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
         side = {
             // The first tile present takes the spare height, so the column always ends flush with the board.
             var filled = false
-            fun fill(): Modifier = if (filled) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().weight(1f).also { filled = true }
+            fun fill(height: Dp): Modifier = if (filled) Modifier.fillMaxWidth().height(height) else Modifier.fillMaxWidth().weight(1f).also { filled = true }
             if (upNext != null) {
                 DetailUpNextTile(
                     kicker = upNext.kicker,
@@ -306,7 +333,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                     actionLabel = upNext.actionLabel,
                     onClick = args.onPrimaryPlayClick.takeIf { args.isPrimaryPlayEnabled },
                     onLongClick = args.onPrimaryPlayLongClick.takeIf { args.showManualPlayOption },
-                    modifier = fill(),
+                    modifier = fill(DetailBoardTileHeights.UpNext),
                 )
             }
             if (collection != null) {
@@ -316,7 +343,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                     isWatched = board.isCollectionItemWatched,
                     onOpen = args.onOpenMeta,
                     onShowAll = { board.onSelectTab(DetailBoardTab.More) },
-                    modifier = fill(),
+                    modifier = fill(DetailBoardTileHeights.Collection),
                 )
             }
             if (showProgress) {
@@ -326,7 +353,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                         args.onEpisodeListSeasonSelect(it)
                         board.onSelectTab(DetailBoardTab.Episodes)
                     },
-                    modifier = fill(),
+                    modifier = fill(DetailBoardTileHeights.Progress),
                 )
             }
             if (remainingMs != null) {
@@ -339,10 +366,11 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                     headline = if (resumed) stringResource(Res.string.detail_board_left, runtime) else runtime,
                     line = stringResource(Res.string.detail_board_ends_at, endsAt),
                     progressFraction = if (resumed && totalMs > 0) (board.movieResumePositionMs ?: 0L).toFloat() / totalMs else null,
-                    modifier = fill(),
+                    modifier = fill(DetailBoardTileHeights.Tonight),
                 )
             }
-            if (yourWay.isNotEmpty()) DetailYourWayTile(yourWay, fill())
+            // Your way sizes to its rows, so two actions don't leave an empty second row.
+            if (yourWay.isNotEmpty()) DetailYourWayTile(yourWay, if (filled) Modifier.fillMaxWidth() else fill(DetailBoardTileHeights.YourWay))
         },
     ) {
         DetailFeatureTile(

@@ -1155,6 +1155,16 @@
     <string name="detail_board_ends_at">Ends at %1$s if you start now</string>
     <string name="detail_board_expand_trailer">Expand trailer</string>
     <string name="detail_board_collapse_trailer">Collapse trailer</string>
+    <string name="detail_board_on_tv">On TV</string>
+    <string name="detail_board_watch_party">Watch party</string>
+    <string name="detail_board_download">Download</string>
+    <string name="detail_board_tv_picker_title">Play on a TV</string>
+    <string name="detail_board_tv_send">Send to %1$s</string>
+    <string name="detail_board_tv_none">No paired TVs yet.</string>
+    <string name="detail_board_tv_preparing">Getting ready…</string>
+    <string name="detail_board_tv_manage">Manage TVs</string>
+    <string name="detail_board_tv_account_failed">Could not verify your Nuvio account. Check your connection and try again.</string>
+    <string name="detail_board_party_starting">Starting a watch party…</string>
     <string name="detail_mute_trailer">Mute trailer</string>
     <string name="detail_unmute_trailer">Unmute trailer</string>
     <string name="settings_meta_episode_cards">Episode Cards</string>

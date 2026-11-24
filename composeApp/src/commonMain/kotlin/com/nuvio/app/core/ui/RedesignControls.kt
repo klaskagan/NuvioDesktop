@@ -475,7 +475,7 @@ private fun RedesignActionMenuPopup(
 internal val RedesignDanger = Color(0xFFFF8A80)
 
 /** Opaque enough that menu rows stay legible over posters (no blur source under a popup). */
-private val RedesignMenuSurface = Color(0xFF1C1E22).copy(alpha = 0.97f)
+internal val RedesignMenuSurface = Color(0xFF1C1E22).copy(alpha = 0.97f)
 
 /** Frosted board tile shape shared with Home's board. */
 internal val RedesignTileShape = RoundedCornerShape(18.dp)

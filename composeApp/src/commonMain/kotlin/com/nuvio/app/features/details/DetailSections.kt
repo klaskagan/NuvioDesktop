@@ -259,6 +259,10 @@ internal data class DetailSectionArgs(
     val onCompanyClick: ((MetaCompany, String) -> Unit)?,
     val sharedTransitionScope: SharedTransitionScope?,
     val animatedVisibilityScope: AnimatedVisibilityScope?,
+    // Watch it your way. Null hides the action.
+    val tvHandoff: DetailTvHandoff? = null,
+    val onWatchPartyClick: (() -> Unit)? = null,
+    val onDownloadClick: (() -> Unit)? = null,
 ) {
     /** Whether [key] has anything to show for this title. */
     fun hasContent(key: MetaScreenSectionKey): Boolean =
