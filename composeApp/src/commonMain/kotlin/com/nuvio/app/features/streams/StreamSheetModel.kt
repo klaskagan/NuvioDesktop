@@ -270,18 +270,22 @@ internal fun streamRowInfo(stream: StreamItem): StreamRowInfo {
 }
 
 /**
- * Merges exact copies an addon lists more than once (same torrent file, or else the same link) into
- * the best-seeded one with a [StreamRowInfo.duplicateCount]. Rows that remain with the same release
- * name get a [StreamRowInfo.distinguisher]. Different addons' copies stay separate.
+ * Merges exact copies into the best-seeded one with a [StreamRowInfo.duplicateCount] (the design's
+ * "×3"): the same torrent file from any addon, the same file name at the same byte size from any
+ * addon (debrid links differ per copy), or else the same link from one addon. Rows that remain with
+ * the same release name get a [StreamRowInfo.distinguisher].
  */
 internal fun mergeDuplicateStreams(rows: List<StreamRowInfo>): List<StreamRowInfo> {
     fun key(row: StreamRowInfo): String? {
         val stream = row.stream
-        val source = stream.infoHash?.takeIf { it.isNotBlank() }?.let { "${it.lowercase()}:${stream.fileIdx ?: -1}" }
-            ?: stream.url?.takeIf { it.isNotBlank() }
+        stream.infoHash?.takeIf { it.isNotBlank() }?.let { return "torrent|${it.lowercase()}:${stream.fileIdx ?: -1}" }
+        val file = stream.behaviorHints.filename?.trim()?.takeIf { it.isNotBlank() }
+        val size = row.sizeBytes?.takeIf { it > 0L }
+        if (file != null && size != null) return "file|${file.lowercase()}|$size"
+        val link = stream.url?.takeIf { it.isNotBlank() }
             ?: stream.externalUrl?.takeIf { it.isNotBlank() }
             ?: return null
-        return "${stream.addonId}|$source"
+        return "${stream.addonId}|$link"
     }
     val merged = LinkedHashMap<Any, StreamRowInfo>()
     rows.forEachIndexed { index, row ->

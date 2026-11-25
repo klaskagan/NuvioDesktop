@@ -220,6 +220,49 @@ class StreamsSheetUiTest {
 
     /** The status row, the resume switch, a row opened in place, merged copies and download mode. */
     @Test
+    fun aPercentageResumeShowsItsTimeFromTheRuntime() = runDesktopComposeUiTest(width = 1360, height = 850) {
+        check(System.getProperty("nuvio.test.isolatedHome") == "true")
+        setContent {
+            AppEnvironment {
+                StreamsSheetLayout(
+                    isEpisode = true,
+                    title = "Severance",
+                    background = null,
+                    poster = null,
+                    episodeThumbnail = null,
+                    seasonNumber = 2,
+                    episodeNumber = 3,
+                    episodeTitle = "Who Is Alive?",
+                    uiState = state,
+                    debridEnabled = true,
+                    // Trakt progress: a percentage only; the time comes from the runtime.
+                    resumePositionMs = null,
+                    resumeProgressFraction = 0.38f,
+                    resumeDisplayMs = 1_102_000,
+                    onStreamSelected = { _, _, _ -> },
+                    onStreamSelectedFromStart = {},
+                    onStreamSecondaryClick = { _, _ -> },
+                    onRefresh = {},
+                    onBack = {},
+                    actions = StreamSheetActions(onDownload = {}, onCopyLink = {}),
+                )
+            }
+        }
+        waitForIdle()
+        onNodeWithText("Resume from 18:22", useUnmergedTree = true).assertIsDisplayed()
+
+        // Hovering a row fades its Download / Copy link in without moving anything (they keep their space).
+        val row = onAllNodesWithTag("stream_sheet_row")[0]
+        val before = row.getUnclippedBoundsInRoot()
+        val sizeBefore = onAllNodesWithTag("stream_sheet_row_size", useUnmergedTree = true)[0].getUnclippedBoundsInRoot()
+        row.performMouseInput { moveTo(center) }
+        mainClock.advanceTimeBy(400)
+        waitForIdle()
+        assertEquals(before, row.getUnclippedBoundsInRoot())
+        assertEquals(sizeBefore, onAllNodesWithTag("stream_sheet_row_size", useUnmergedTree = true)[0].getUnclippedBoundsInRoot())
+    }
+
+    @Test
     fun sheetShowsAddonStatusResumeSwitchOpenRowsAndDownloadMode() = runDesktopComposeUiTest(width = 1360, height = 850) {
         check(System.getProperty("nuvio.test.isolatedHome") == "true")
         val withStatus = state.copy(
@@ -291,6 +334,12 @@ class StreamsSheetUiTest {
         assertEquals(2, fromStart.size)
         onNodeWithTag("stream_row_download_full").performClick()
         assertEquals(1, downloaded.size)
+        // Esc closes the open row first and leaves the sheet up (frame "Sources · row clicked").
+        runOnIdle { assertEquals(true, com.nuvio.app.AppKeyboardShortcuts.overlayEscape?.invoke()) }
+        waitForIdle()
+        onNodeWithTag("stream_sheet_row_details", useUnmergedTree = true).assertDoesNotExist()
+        onNodeWithTag("streams_sheet_play_best").assertExists()
+        runOnIdle { assertEquals(null, com.nuvio.app.AppKeyboardShortcuts.overlayEscape) }
 
         // Opened from Download: the sheet says so, and its primary actions download.
         runOnIdle { downloadMode = true }

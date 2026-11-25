@@ -173,27 +173,37 @@ object TraktCommentsRepository {
     internal suspend fun post(meta: MetaDetails, season: Int?, episode: Int?, text: String, spoiler: Boolean): Pair<Int, String?> {
         val headers = TraktAuthRepository.authorizedHeaders() ?: return 401 to null
         val target = resolveCommentsTarget(meta) ?: return 404 to null
-        val body = when {
-            target.type == TraktCommentsType.MOVIE -> """{"movie":{"ids":${idsJson(target.pathId)}}"""
+        // Trakt refuses a bare {"ids":{"imdb":…}} item with 400 invalid_request_body: it wants the
+        // item as its API returns it (title, year and ids), so the show or film is looked up first.
+        val item = when {
+            target.type == TraktCommentsType.MOVIE ->
+                "movie" to (traktItem(headers, "https://api.trakt.tv/movies/${target.pathId}") ?: return 404 to null)
             season != null && episode != null -> {
                 val id = traktChildId(headers, "https://api.trakt.tv/shows/${target.pathId}/seasons/$season/episodes/$episode") ?: return 404 to null
-                """{"episode":{"ids":{"trakt":$id}}"""
+                "episode" to """{"ids":{"trakt":$id}}"""
             }
             season != null -> {
                 val id = traktSeasonId(headers, target.pathId, season) ?: return 404 to null
-                """{"season":{"ids":{"trakt":$id}}"""
+                "season" to """{"ids":{"trakt":$id}}"""
             }
-            else -> """{"show":{"ids":${idsJson(target.pathId)}}"""
-        } + ""","comment":${kotlinx.serialization.json.JsonPrimitive(text)},"spoiler":$spoiler}"""
+            else -> "show" to (traktItem(headers, "https://api.trakt.tv/shows/${target.pathId}") ?: return 404 to null)
+        }
+        val body = traktCommentBody(item.first, item.second, text, spoiler)
         val response = runCatching {
             httpRequestRaw("POST", "https://api.trakt.tv/comments", mapOf("Content-Type" to "application/json") + headers, body)
-        }.getOrNull() ?: return 0 to null
+        }.onFailure { error -> log.w { "Trakt comment post failed to send: ${error.message}" } }.getOrNull() ?: return 0 to null
         if (response.status in 200..299) cacheMutex.withLock { cache.clear() }
+        else log.w { "Trakt comment post refused: ${response.status} ${response.body.take(300)}" }
         return response.status to response.body.takeIf { response.status !in 200..299 }
     }
 
-    private fun idsJson(pathId: String): String =
-        if (pathId.startsWith("tt")) """{"imdb":"$pathId"}""" else pathId.toLongOrNull()?.let { """{"trakt":$it}""" } ?: """{"slug":"$pathId"}"""
+    /** The item as Trakt's summary returns it, cut to title, year and ids (the shape /comments expects). */
+    private suspend fun traktItem(headers: Map<String, String>, url: String): String? = runCatching {
+        val response = httpRequestRaw("GET", url, headers, "")
+        if (response.status !in 200..299) return@runCatching null
+        traktCommentItem(response.body)
+    }.getOrNull()
+
 
     private suspend fun traktChildId(headers: Map<String, String>, url: String): Long? = runCatching {
         val response = httpRequestRaw("GET", url, headers, "")
@@ -402,3 +412,16 @@ internal fun TraktCommentReview.toTrackingComment(likedByMe: Boolean = false) = 
     createdAt = createdAt,
     webUrl = "https://trakt.tv/comments/$id",
 )
+
+/** Keeps title, year and ids from a Trakt summary: the item object POST /comments accepts. */
+internal fun traktCommentItem(summaryJson: String): String? {
+    val summary = commentsJson.parseToJsonElement(summaryJson) as? kotlinx.serialization.json.JsonObject ?: return null
+    val ids = summary["ids"] as? kotlinx.serialization.json.JsonObject ?: return null
+    return kotlinx.serialization.json.JsonObject(
+        listOfNotNull(summary["title"]?.let { "title" to it }, summary["year"]?.let { "year" to it }, "ids" to ids).toMap(),
+    ).toString()
+}
+
+/** The POST /comments body: the item under its type key, the text and the spoiler flag. */
+internal fun traktCommentBody(type: String, itemJson: String, text: String, spoiler: Boolean): String =
+    """{"$type":$itemJson,"comment":${kotlinx.serialization.json.JsonPrimitive(text)},"spoiler":$spoiler}"""

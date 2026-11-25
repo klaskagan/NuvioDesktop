@@ -89,6 +89,8 @@ import com.nuvio.app.core.ui.RedesignMenuSurface
 import com.nuvio.app.core.ui.RedesignOnLight
 import com.nuvio.app.core.ui.RedesignPillButton
 import com.nuvio.app.core.ui.RedesignPillGroup
+import com.nuvio.app.core.ui.RedesignSwitchPill
+import com.nuvio.app.core.format.formatReleaseDateForDisplay
 import com.nuvio.app.core.ui.RedesignTileShape
 import com.nuvio.app.core.ui.redesignText
 import com.nuvio.app.features.details.MetaDetails
@@ -128,7 +130,12 @@ import nuvio.composeapp.generated.resources.detail_reviews_words_review
 import nuvio.composeapp.generated.resources.detail_reviews_write
 import nuvio.composeapp.generated.resources.detail_reviews_write_placeholder
 import nuvio.composeapp.generated.resources.detail_reviews_write_title
-import nuvio.composeapp.generated.resources.detail_board_tab_reviews
+import nuvio.composeapp.generated.resources.detail_reviews_likes
+import nuvio.composeapp.generated.resources.detail_reviews_only
+import nuvio.composeapp.generated.resources.detail_reviews_reader_hint
+import nuvio.composeapp.generated.resources.detail_reviews_your_rating
+import kotlin.math.roundToInt
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
@@ -151,9 +158,13 @@ internal fun BoardReviews(
     provider: TrackingCommentsProvider,
     episodes: List<Pair<Int, Int>>,
     modifier: Modifier = Modifier,
+    /** The episode the board is on (its play target), which the composer offers as Season / episode. */
+    currentEpisode: Pair<Int, Int>? = null,
 ) {
     val scope = rememberCoroutineScope()
-    var sort by remember(meta.id, provider.providerId) { mutableStateOf(TrackingCommentsSort.MostLiked) }
+    var view by remember(meta.id, provider.providerId) { mutableStateOf(ReviewsView.MostLiked) }
+    // Reviews only reads the Most liked pages, so switching between them keeps what is loaded.
+    val sort = if (view == ReviewsView.Newest) TrackingCommentsSort.Newest else TrackingCommentsSort.MostLiked
     val comments = remember(meta.id, provider.providerId, sort) { mutableStateListOf<TrackingComment>() }
     var page by remember(meta.id, provider.providerId, sort) { mutableIntStateOf(0) }
     var pageCount by remember(meta.id, provider.providerId, sort) { mutableIntStateOf(1) }
@@ -161,6 +172,7 @@ internal fun BoardReviews(
     var loading by remember(meta.id, provider.providerId, sort) { mutableStateOf(true) }
     var failed by remember(meta.id, provider.providerId, sort) { mutableStateOf(false) }
     var hideSpoilers by remember { mutableStateOf(true) }
+    val shown = if (view == ReviewsView.ReviewsOnly) comments.filter { it.review } else comments.toList()
     var readerIndex by remember { mutableStateOf<Int?>(null) }
     var composing by remember { mutableStateOf(false) }
     var reloadToken by remember { mutableIntStateOf(0) }
@@ -187,6 +199,11 @@ internal fun BoardReviews(
         comments.clear(); page = 0
         loadNext()
     }
+    // Reviews only: a few more pages when the loaded ones hold fewer reviews than a row.
+    LaunchedEffect(view, page, loading) {
+        if (view != ReviewsView.ReviewsOnly || loading || failed || page >= pageCount || page >= ReviewsOnlyAutoPages) return@LaunchedEffect
+        if (shown.size < ReviewColumns) loadNext()
+    }
     val like: (TrackingComment) -> Unit = { comment ->
         val index = comments.indexOfFirst { it.id == comment.id }
         if (index >= 0) {
@@ -203,22 +220,27 @@ internal fun BoardReviews(
     }
 
     Column(modifier.fillMaxWidth().testTag("detail_board_reviews"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(Res.string.detail_board_tab_reviews), style = redesignText(18.sp, FontWeight.Bold))
-                Text(stringResource(Res.string.detail_reviews_from, provider.providerId.displayName), style = redesignText(12.sp, color = RedesignColors.textMuted))
-            }
+        // The tab names it: "<source> · Most liked", Newest and Reviews only on the left (frame "Reviews").
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val mostLiked = stringResource(Res.string.detail_reviews_most_liked)
             RedesignPillGroup(
-                options = TrackingCommentsSort.entries.toList(),
-                selected = sort,
-                label = { stringResource(if (it == TrackingCommentsSort.Newest) Res.string.detail_reviews_newest else Res.string.detail_reviews_most_liked) },
-                onSelect = { sort = it },
+                options = ReviewsView.entries.toList(),
+                selected = view,
+                label = {
+                    when (it) {
+                        ReviewsView.MostLiked -> "${provider.providerId.displayName} · $mostLiked"
+                        ReviewsView.Newest -> stringResource(Res.string.detail_reviews_newest)
+                        ReviewsView.ReviewsOnly -> stringResource(Res.string.detail_reviews_only)
+                    }
+                },
+                onSelect = { view = it },
                 optionTag = { "detail_reviews_sort_${it.name}" },
             )
-            RedesignPillButton(
+            Spacer(Modifier.weight(1f))
+            RedesignSwitchPill(
                 label = stringResource(Res.string.detail_reviews_hide_spoilers),
-                onClick = { hideSpoilers = !hideSpoilers },
-                active = hideSpoilers,
+                checked = hideSpoilers,
+                onCheckedChange = { hideSpoilers = it },
                 modifier = Modifier.testTag("detail_reviews_hide_spoilers"),
             )
             if (provider.capabilities.canPost) {
@@ -233,9 +255,9 @@ internal fun BoardReviews(
         }
         AnimatedContent(
             targetState = when {
-                comments.isEmpty() && loading -> 0
-                comments.isEmpty() && failed -> 1
-                comments.isEmpty() -> 2
+                shown.isEmpty() && loading -> 0
+                shown.isEmpty() && failed -> 1
+                shown.isEmpty() -> 2
                 else -> 3
             },
             transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) },
@@ -249,7 +271,7 @@ internal fun BoardReviews(
                 }
                 2 -> Text(stringResource(Res.string.detail_comments_empty), style = redesignText(14.sp, color = RedesignColors.textSecondary))
                 else -> Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    ReviewGrid(comments.toList(), hideSpoilers, provider.capabilities.canLike, onOpen = { readerIndex = it }, onLike = like)
+                    ReviewGrid(shown, hideSpoilers, provider.capabilities.canLike, onOpen = { readerIndex = it }, onLike = like)
                     if (page < pageCount) {
                         RedesignPillButton(
                             label = stringResource(Res.string.detail_reviews_load_more),
@@ -263,10 +285,11 @@ internal fun BoardReviews(
     }
 
     readerIndex?.let { start ->
+        // The reader walks the list as shown, so Reviews only opens the review that was clicked.
         ReviewReader(
-            comments = comments,
+            comments = shown,
             start = start,
-            total = total.coerceAtLeast(comments.size),
+            total = if (view == ReviewsView.ReviewsOnly) shown.size else total.coerceAtLeast(comments.size),
             providerName = provider.providerId.displayName,
             canLike = provider.capabilities.canLike,
             onLike = like,
@@ -279,14 +302,21 @@ internal fun BoardReviews(
             meta = meta,
             provider = provider,
             episodes = episodes,
+            currentEpisode = currentEpisode,
             onClose = { composing = false },
             onPosted = {
                 composing = false
-                if (sort != TrackingCommentsSort.Newest) sort = TrackingCommentsSort.Newest else reloadToken++
+                if (view != ReviewsView.Newest) view = ReviewsView.Newest else reloadToken++
             },
         )
     }
 }
+
+/** The joined track's choices: two sorts, and Most liked limited to long reviews. */
+private enum class ReviewsView { MostLiked, Newest, ReviewsOnly }
+
+/** Pages Reviews only may load on its own to fill a row. */
+private const val ReviewsOnlyAutoPages = 5
 
 @Composable
 private fun ReviewGrid(
@@ -351,21 +381,63 @@ private fun ReviewCard(
 
 @Composable
 private fun ReviewHeader(comment: TrackingComment) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(comment.authorName, style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        // Imported comments credit where they were written (a tracker's attribution rules).
-        comment.origin?.let { Text(it, style = redesignText(12.sp, color = RedesignColors.textMuted), maxLines = 1) }
-        if (comment.review) {
-            Text(
-                stringResource(Res.string.detail_comments_badge_review),
-                style = redesignText(11.sp, FontWeight.Bold, RedesignOnLight),
-                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(RedesignColors.textPrimary).padding(horizontal = 6.dp, vertical = 1.dp),
-            )
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Author, origin and the Review tag take the free width, so the score sits at the card's right edge.
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(comment.authorName, style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            // Imported comments credit where they were written (a tracker's attribution rules).
+            comment.origin?.let { Text(it, style = redesignText(12.sp, color = RedesignColors.textMuted), maxLines = 1) }
+            if (comment.review) {
+                Text(
+                    stringResource(Res.string.detail_comments_badge_review),
+                    style = redesignText(11.sp, FontWeight.Bold, RedesignOnLight),
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(RedesignColors.textPrimary).padding(horizontal = 6.dp, vertical = 1.dp),
+                )
+            }
         }
         comment.rating?.let { rating ->
-            Icon(Icons.Rounded.Star, contentDescription = null, tint = Color(0xFFF5C518), modifier = Modifier.size(14.dp))
-            Text(rating.toString(), style = redesignText(12.5.sp, FontWeight.SemiBold))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("detail_review_score")) {
+                Icon(Icons.Rounded.Star, contentDescription = null, tint = Color(0xFFF5C518), modifier = Modifier.size(14.dp))
+                Text(rating.toString(), style = redesignText(12.5.sp, FontWeight.SemiBold))
+            }
         }
+    }
+}
+
+/** The reader's header: an initials avatar, the author, and "Review · 9/10 · 52 likes · 12 Mar 2025". */
+@Composable
+private fun ReaderHeader(comment: TrackingComment) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).background(RedesignColors.fillStrong).border(1.dp, RedesignColors.hairline, CircleShape)
+                .testTag("detail_review_reader_avatar"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(comment.authorName.reviewInitials(), style = redesignText(14.sp, FontWeight.Bold, RedesignColors.textSecondary))
+        }
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(comment.authorName, style = redesignText(15.sp, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                comment.origin?.let { Text(it, style = redesignText(12.sp, color = RedesignColors.textMuted), maxLines = 1) }
+            }
+            val parts = listOfNotNull(
+                if (comment.review) stringResource(Res.string.detail_comments_badge_review) else null,
+                comment.rating?.let { "$it/10" },
+                pluralStringResource(Res.plurals.detail_reviews_likes, comment.likes, comment.likes),
+                comment.createdAt?.take(10)?.takeIf { it.length == 10 }?.let(::formatReleaseDateForDisplay),
+            )
+            Text(parts.joinToString(" · "), style = redesignText(12.5.sp, color = RedesignColors.textMuted), maxLines = 1, modifier = Modifier.testTag("detail_review_reader_meta"))
+        }
+    }
+}
+
+/** "GT Connects" → "GC"; one word → its first letter. */
+private fun String.reviewInitials(): String {
+    val words = trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    return when {
+        words.isEmpty() -> "?"
+        words.size == 1 -> words.first().take(1).uppercase()
+        else -> (words.first().take(1) + words.last().take(1)).uppercase()
     }
 }
 
@@ -434,7 +506,7 @@ private fun ReviewReader(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f)) { ReviewHeader(comment) }
+                        Box(Modifier.weight(1f)) { ReaderHeader(comment) }
                         Text(
                             stringResource(Res.string.detail_reviews_count_of, index + 1, total),
                             style = redesignText(12.5.sp, color = RedesignColors.textMuted),
@@ -470,6 +542,11 @@ private fun ReviewReader(
                             )
                         }
                     }
+                    Text(
+                        stringResource(Res.string.detail_reviews_reader_hint),
+                        style = redesignText(12.sp, color = RedesignColors.textMuted),
+                        modifier = Modifier.testTag("detail_review_reader_hint"),
+                    )
                 }
             }
         }
@@ -486,6 +563,7 @@ private fun ReviewComposer(
     meta: MetaDetails,
     provider: TrackingCommentsProvider,
     episodes: List<Pair<Int, Int>>,
+    currentEpisode: Pair<Int, Int>?,
     onClose: () -> Unit,
     onPosted: () -> Unit,
 ) {
@@ -526,8 +604,11 @@ private fun ReviewComposer(
                         RedesignIconButton("close", close, vector = Icons.Rounded.Close, size = 36.dp)
                     }
                     if (isSeries) {
-                        val selectedSeason = target.season ?: seasons.firstOrNull() ?: 1
-                        val firstEpisode = episodes.firstOrNull { it.first == selectedSeason }?.second ?: 1
+                        // Season and episode are the ones the board is on (its play target), else the first.
+                        val current = currentEpisode?.takeIf { it in episodes }
+                        val selectedSeason = target.season ?: current?.first ?: seasons.firstOrNull() ?: 1
+                        val firstEpisode = current?.second?.takeIf { current.first == selectedSeason }
+                            ?: episodes.firstOrNull { it.first == selectedSeason }?.second ?: 1
                         RedesignPillGroup(
                             options = listOf(0, 1, 2),
                             selected = when { target.episode != null -> 2; target.season != null -> 1; else -> 0 },
@@ -577,6 +658,26 @@ private fun ReviewComposer(
                             style = redesignText(12.5.sp, color = if (words < caps.minWords) RedesignColors.textMuted else RedesignColors.textSecondary),
                             modifier = Modifier.weight(1f).testTag("detail_review_word_count"),
                         )
+                        // Your score comes from Rate, for whatever the review is about.
+                        val ratingTarget = remember(meta, target) {
+                            val season = target.season
+                            val episode = target.episode
+                            when {
+                                season != null && episode != null ->
+                                    meta.videos.firstOrNull { it.season == season && it.episode == episode }?.let { meta.ratingReference(it) }
+                                season != null -> meta.seasonRatingReference(season)
+                                else -> meta.ratingReference()
+                            } ?: meta.ratingReference()
+                        }
+                        val yourRating by rememberRatingState(ratingTarget)
+                        yourRating.rating?.let { score ->
+                            Text(
+                                stringResource(Res.string.detail_reviews_your_rating, score.roundToInt()),
+                                style = redesignText(12.5.sp, FontWeight.SemiBold, RedesignColors.textSecondary),
+                                modifier = Modifier.clip(CircleShape).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, CircleShape)
+                                    .padding(horizontal = 12.dp, vertical = 7.dp).testTag("detail_review_your_rating"),
+                            )
+                        }
                         RedesignPillButton(label = stringResource(Res.string.action_cancel), onClick = close)
                         RedesignPillButton(
                             label = stringResource(Res.string.detail_reviews_post),

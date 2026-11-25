@@ -118,6 +118,16 @@ match the design".
   `openDesktopSettings(page, leavePage = true)`. A bare `SettingsPageRoute`, or the call without
   `leavePage`, kept Details on screen or dropped the top bar. Regression:
   `DesktopNavigationHistoryTest.manageTvsFromDetailsLeavesDetailsAndBackReturns`.
+- **Trakt comments:** POST /comments wants the item as Trakt returns it (title, year, ids); a bare
+  `{"ids":{"imdb":…}}` show was refused with 400 invalid_request_body, so posting never worked.
+  `TraktCommentsRepository.post` looks the show/film up first. Regression: `TraktCommentBodyTest`.
+- **More like this / watched filters:** a filter that hides watched titles must use the same rule as
+  the poster ✓ (`MovieRecommendationRules.isWatched`, which counts `fullyWatchedSeriesKeys`). Filtering
+  on watched keys alone kept fully watched series, ✓ and all, under "Unwatched only". Cards use the
+  clean `rawPosterUrl` (no custom-poster badges). Regression:
+  `MovieRecommendationRulesTest.fullyWatchedSeriesAreFilteredLikeThePosterCheckmark`.
+- **"This title" in lists from TMDB** (Collection tile): items carry `tmdb:` ids while the page has the
+  IMDb one, so match on `alternateIds`, the IMDb id, or name and year, not `item.id == meta.id`.
 - **Library button state** reads `LibraryRepository.isSavedByDefault`: in the list its toggle
   adds to (Trakt's watchlist), not in any list. Status trackers (WeTrakr, Simkl) count any status,
   because their toggle clears every status.

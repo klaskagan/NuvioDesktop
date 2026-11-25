@@ -292,17 +292,27 @@ class StreamSheetModelTest {
     }
 
     @Test
-    fun exactCopiesFromOneAddonMergeIntoTheBestSeededRow() {
+    fun exactCopiesMergeIntoTheBestSeededRowAcrossAddons() {
         val a = torrent("Torrentio\n1080p", "Show.S01E01.1080p.WEB.h264\n👤 12 💾 1.4 GB", hash = "abc")
         val b = torrent("Torrentio\n1080p", "Show.S01E01.1080p.WEB.h264\n👤 80 💾 1.4 GB", hash = "abc")
         val c = torrent("Torrentio\n1080p", "Show.S01E01.1080p.WEB.h264\n👤 5 💾 1.4 GB", hash = "abc")
-        val otherAddon = b.copy(addonId = "addon:other", addonName = "Other")
+        // The same torrent file from another addon is the same copy (frame "Sources, resume on": ×3).
+        val otherAddon = b.copy(addonId = "addon:other", addonName = "Other", description = "Show.S01E01.1080p.WEB.h264\n👤 90 💾 1.4 GB")
         val merged = mergeDuplicateStreams(listOf(a, b, c, otherAddon).map(::streamRowInfo))
-        assertEquals(2, merged.size)
-        val kept = merged.first { it.stream.addonId == "addon:torrentio" }
-        assertEquals(3, kept.duplicateCount)
-        assertEquals(80, kept.seeds)
-        assertEquals(1, merged.first { it.stream.addonId == "addon:other" }.duplicateCount)
+        val kept = merged.single()
+        assertEquals(4, kept.duplicateCount)
+        assertEquals(90, kept.seeds)
+    }
+
+    @Test
+    fun theSameFileAtTheSameSizeMergesEvenWithDifferentLinks() {
+        fun copy(addon: String, size: Long) = direct("Comet\n4k", "Show.S02E03.2160p.mkv\n💾 ${size / 1_000_000} MB").copy(
+            url = "https://example.test/$addon/$size.mkv",
+            addonId = "addon:$addon",
+            behaviorHints = StreamBehaviorHints(filename = "Show.S02E03.2160p.mkv", videoSize = size),
+        )
+        val merged = mergeDuplicateStreams(listOf(copy("comet", 11_596_411_699), copy("mediafusion", 11_596_411_699), copy("torbox", 11_596_411_699), copy("comet", 9_000_000_000)).map(::streamRowInfo))
+        assertEquals(listOf(3, 1), merged.map { it.duplicateCount })
     }
 
     @Test

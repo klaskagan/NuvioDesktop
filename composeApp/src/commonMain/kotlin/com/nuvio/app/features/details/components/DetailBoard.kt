@@ -65,6 +65,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import nuvio.composeapp.generated.resources.detail_board_credit_open
+import nuvio.composeapp.generated.resources.detail_board_this_film
+import nuvio.composeapp.generated.resources.detail_board_watched
 import nuvio.composeapp.generated.resources.detail_board_credit_episodes
 import com.nuvio.app.core.ui.RedesignMenuSurface
 import kotlin.math.roundToInt
@@ -927,6 +929,8 @@ internal fun DetailCollectionTile(
     onOpen: ((MetaPreview) -> Unit)?,
     onShowAll: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Whether an item is this title: its row reads "This film", and the two rows shown always include it. */
+    isCurrent: (MetaPreview) -> Boolean = { false },
 ) {
     Column(modifier.boardTile().testTag("detail_board_collection").padding(horizontal = 12.dp, vertical = 12.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -942,7 +946,9 @@ internal fun DetailCollectionTile(
         }
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items.take(2).forEach { item ->
+            val current = items.indexOfFirst(isCurrent)
+            val shown = if (current >= 2) listOf(items[current - 1], items[current]) else items.take(2)
+            shown.forEach { item ->
                 val interaction = remember(item.id) { MutableInteractionSource() }
                 val hovered by interaction.collectIsHoveredAsState()
                 val fill by animateColorAsState(if (hovered) RedesignColors.fill else Color.Transparent, tween(160), label = "collection_row")
@@ -962,8 +968,15 @@ internal fun DetailCollectionTile(
                     }
                     Column(Modifier.weight(1f).padding(start = 10.dp)) {
                         Text(item.name, style = redesignText(13.sp, FontWeight.SemiBold, lineHeight = 17.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        item.releaseInfo?.takeIf { it.isNotBlank() }?.let {
-                            Text(it, style = redesignText(12.sp, color = RedesignColors.textMuted), maxLines = 1)
+                        // "2021 · Watched", "2024 · This film" (the movie frame's Collection tile).
+                        val mark = when {
+                            isCurrent(item) -> stringResource(Res.string.detail_board_this_film)
+                            isWatched(item) -> stringResource(Res.string.detail_board_watched)
+                            else -> null
+                        }
+                        listOfNotNull(item.releaseInfo?.takeIf { it.isNotBlank() }, mark).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
+                            // Wraps rather than cutting "This film" in the narrow column; it fits beside the 72 dp poster.
+                            Text(it, style = redesignText(12.sp, color = RedesignColors.textMuted, lineHeight = 15.sp), maxLines = 2, modifier = Modifier.testTag("detail_board_collection_line"))
                         }
                     }
                 }
@@ -980,12 +993,23 @@ internal fun DetailTonightTile(
     line: String?,
     progressFraction: Float?,
     modifier: Modifier = Modifier,
+    /** "Not started · Sources ready from 3 addons": where you are with the film, and its sources. */
+    status: String? = null,
 ) {
     Column(modifier.boardTile().testTag("detail_board_tonight").padding(horizontal = 16.dp, vertical = 14.dp)) {
         BoardKicker(kicker)
         Spacer(Modifier.height(4.dp))
         Text(headline, style = redesignText(24.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking), maxLines = 1)
         if (line != null) Text(line, style = redesignText(12.5.sp, color = RedesignColors.textSecondary), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (status != null) {
+            Text(
+                status,
+                style = redesignText(12.5.sp, color = RedesignColors.textMuted),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp).testTag("detail_board_tonight_status"),
+            )
+        }
         if (progressFraction != null && progressFraction > 0f) {
             Spacer(Modifier.height(10.dp))
             BoardProgressBar(progressFraction, Modifier.fillMaxWidth())

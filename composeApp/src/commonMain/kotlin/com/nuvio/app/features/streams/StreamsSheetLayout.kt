@@ -177,6 +177,8 @@ internal fun StreamsSheetLayout(
     debridEnabled: Boolean,
     resumePositionMs: Long?,
     resumeProgressFraction: Float?,
+    /** The time to show for a resume (a percentage's share of the runtime); display only. */
+    resumeDisplayMs: Long? = null,
     onStreamSelected: (stream: StreamItem, resumePositionMs: Long?, resumeProgressFraction: Float?) -> Unit,
     onStreamSecondaryClick: (StreamItem, Offset) -> Unit,
     onRefresh: () -> Unit,
@@ -234,9 +236,13 @@ internal fun StreamsSheetLayout(
             stream.needsLocalDebridResolve && !AppFeaturePolicy.p2pEnabled -> NuvioToastController.show(torrentNotSupported)
         }
     }
-    val resumeLabel = resumePositionMs?.takeIf { hasResume && resumeOn && it > 0L }?.toPlaybackClock()
+    // The time to show: the saved position, or a percentage's share of the runtime ("from 18:22").
+    val shownResumeMs = resumePositionMs?.takeIf { it > 0L } ?: resumeDisplayMs?.takeIf { it > 0L }
+    val resumeLabel = shownResumeMs?.takeIf { hasResume && resumeOn }?.toPlaybackClock()
     // One row is open in place at a time; Best match dims while it is.
     var expandedKey by remember { mutableStateOf<String?>(null) }
+    // Esc closes an open row first (frame "Sources · row clicked"), then the sheet.
+    com.nuvio.app.OverlayEscapeHandler(enabled = expandedKey != null) { expandedKey = null }
 
     RedesignTypography {
         Box(modifier.fillMaxSize()) {
@@ -263,7 +269,7 @@ internal fun StreamsSheetLayout(
                     if (downloadMode) {
                         DownloadModeCard()
                     } else if (hasResume) {
-                        ResumeToggleCard(positionMs = resumePositionMs, progressFraction = resumeProgressFraction, on = resumeOn, onToggle = { resumeOn = !resumeOn })
+                        ResumeToggleCard(positionMs = shownResumeMs, progressFraction = resumeProgressFraction, on = resumeOn, onToggle = { resumeOn = !resumeOn })
                     }
                     val bestAlpha by animateFloatAsState(if (expandedKey != null) 0.45f else 1f, tween(200), label = "best_match_dim")
                     BestMatchCard(
@@ -835,7 +841,7 @@ private fun SheetList(
             if (shared != null && sharedRow != null) {
                 item(key = "shared") {
                     Column(Modifier.animateItem()) {
-                        GroupHeader(shared.label, null)
+                        GroupHeader(shared.label)
                         StreamSheetRow(sharedRow, enabled = true, highlight = null, preferredLanguages = preferredLanguages, onClick = { onPlay(shared.stream) }, onSecondaryClick = {})
                     }
                 }
@@ -852,7 +858,7 @@ private fun SheetList(
                 }
                 else -> grouped.forEach { (resolution, rows) ->
                     item(key = "group-${resolution.name}") {
-                        Box(Modifier.animateItem()) { GroupHeader(streamQualityLabel(resolution), rows.size) }
+                        Box(Modifier.animateItem()) { GroupHeader(streamQualityLabel(resolution)) }
                     }
                     items(rows.size, key = { index -> "row-${resolution.name}-$index-${streamSheetRowKey(rows[index].stream)}" }) { index ->
                         val row = rows[index]
@@ -894,10 +900,8 @@ private enum class AddonStatus { Results, Searching, Empty, Failed }
 private fun streamSheetRowKey(stream: StreamItem): String =
     listOf(stream.addonId, stream.url ?: stream.infoHash ?: stream.clientResolve?.infoHash ?: stream.streamLabel, stream.fileIdx).joinToString("|")
 
+/** A quality group's title ("4K"). No row count: it told nothing the rows below don't (user, 25 Nov). */
 @Composable
-private fun GroupHeader(title: String, count: Int?) {
-    Row(Modifier.padding(start = 10.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = redesignText(14.sp, FontWeight.Bold), maxLines = 1)
-        if (count != null) Text(count.toString(), style = redesignText(12.sp, color = RedesignColors.textMuted))
-    }
+private fun GroupHeader(title: String) {
+    Text(title, style = redesignText(14.sp, FontWeight.Bold), maxLines = 1, modifier = Modifier.padding(start = 10.dp, top = 14.dp, bottom = 6.dp))
 }

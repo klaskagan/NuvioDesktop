@@ -94,6 +94,10 @@ import com.nuvio.app.features.details.components.rememberRatingState
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.watchprogress.WatchProgressClock
 import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.detail_board_not_started
+import nuvio.composeapp.generated.resources.detail_board_percent_watched
+import nuvio.composeapp.generated.resources.detail_board_sources_ready
+import org.jetbrains.compose.resources.pluralStringResource
 import nuvio.composeapp.generated.resources.detail_board_choose_source
 import nuvio.composeapp.generated.resources.detail_board_ends_at
 import nuvio.composeapp.generated.resources.detail_board_left
@@ -188,6 +192,10 @@ internal class DetailBoardArgs(
     val showProgress: Boolean,
     val movieResumePositionMs: Long?,
     val isCollectionItemWatched: (MetaPreview) -> Boolean,
+    /** The film is watched (Tonight reads "Watched" instead of "Not started"). */
+    val movieWatched: Boolean = false,
+    /** How many addons have sources for the film already loaded (Tonight's "Sources ready"); null if none. */
+    val movieSourcesReadyAddons: Int? = null,
     val showOverallRatings: Boolean,
     val tint: Color?,
     val onBack: () -> Unit,
@@ -370,7 +378,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
             )
         }
         args.onPrimaryPlayLongClick?.takeIf { args.showManualPlayOption && args.isPrimaryPlayEnabled }?.let { choose ->
-            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_sources), icon = Icons.Rounded.Tune, onClick = choose, onClickAt = args.onSourcesAt, tag = "detail_your_way_choose"))
+            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_sources), icon = Icons.Rounded.Tune, onClick = choose, onClickAt = args.onSourcesAt, onLongClick = args.onAllSources, tag = "detail_your_way_choose"))
         }
         args.onSaveLongClick?.let { lists ->
             add(
@@ -420,6 +428,12 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                     onOpen = args.onOpenMeta,
                     onShowAll = { board.onSelectTab(DetailBoardTab.More) },
                     modifier = fill(DetailBoardTileHeights.Collection),
+                    // Collection items often carry TMDB ids while the page has the IMDb one.
+                    isCurrent = { item ->
+                        val ids = item.alternateIds + item.id
+                        meta.id in ids || (meta.imdbId != null && meta.imdbId in ids) ||
+                            (item.name.equals(meta.name, ignoreCase = true) && item.releaseInfo?.take(4) == meta.releaseInfo?.take(4))
+                    },
                 )
             }
             if (showProgress) {
@@ -443,6 +457,18 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                     line = stringResource(Res.string.detail_board_ends_at, endsAt),
                     progressFraction = if (resumed && totalMs > 0) (board.movieResumePositionMs ?: 0L).toFloat() / totalMs else null,
                     modifier = fill(DetailBoardTileHeights.Tonight),
+                    status = listOfNotNull(
+                        when {
+                            resumed && totalMs > 0 -> stringResource(
+                                Res.string.detail_board_percent_watched,
+                                ((board.movieResumePositionMs ?: 0L) * 100 / totalMs).toInt().coerceIn(1, 99),
+                            )
+                            board.movieWatched -> stringResource(Res.string.detail_board_watched)
+                            resumed -> null
+                            else -> stringResource(Res.string.detail_board_not_started)
+                        },
+                        board.movieSourcesReadyAddons?.takeIf { it > 0 }?.let { pluralStringResource(Res.plurals.detail_board_sources_ready, it, it) },
+                    ).joinToString(" · ").takeIf { it.isNotEmpty() },
                 )
             }
             // Your way sizes to its rows, so two actions don't leave an empty second row.

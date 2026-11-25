@@ -197,6 +197,10 @@ import com.nuvio.app.features.tracking.TrackingLibraryTab
 import com.nuvio.app.features.tracking.TrackingMembershipApplyResult
 import com.nuvio.app.features.tracking.toggleTrackingLibraryMembership
 import com.nuvio.app.features.tracking.TrackingSettingsRepository
+import com.nuvio.app.features.streams.StreamsRepository
+import com.nuvio.app.features.trakt.MoreLikeThisSourcePreference
+import com.nuvio.app.features.player.MovieRecommendationRules
+import com.nuvio.app.features.details.components.BoardMoreLikeThisState
 import com.nuvio.app.features.tracking.TrackingProviderId
 import com.nuvio.app.features.trailer.TrailerPlaybackRequest
 import com.nuvio.app.features.trailer.TrailerPlaybackTarget
@@ -1447,20 +1451,59 @@ fun MetaDetailsScreen(
                         )
                     }
                 }
-                // More like this, unwatched: the pool loads once per title and Trakt connection; until it
-                // arrives the title's own recommendations stand in, filtered by local watch history.
+                // More like this on the board: the source pills pick the pool (TMDB, Trakt when connected,
+                // Simkl when it is the chosen source), written to the same setting as Settings → Tracking.
+                // The pool loads once per title, connection and source; until it arrives the title's own
+                // recommendations stand in when they came from that source.
                 val traktConnectedForPool = traktAuthUiState.mode == TraktConnectionMode.CONNECTED
-                var recommendationPool by remember(meta.id, traktConnectedForPool) { mutableStateOf<RecommendationPool?>(null) }
-                LaunchedEffect(meta.id, traktConnectedForPool, metaScreenSettingsUiState.moreLikeThisUnwatchedOnly, isDesktop) {
-                    if (!isDesktop || !metaScreenSettingsUiState.moreLikeThisUnwatchedOnly || recommendationPool != null) return@LaunchedEffect
+                val moreLikeThisSources = remember(tmdbSettingsUiState.enabled, tmdbSettingsUiState.useMoreLikeThis, traktConnectedForPool, trackingSettingsUiState.moreLikeThisSource, meta.moreLikeThisSource) {
+                    buildList {
+                        if (tmdbSettingsUiState.enabled && tmdbSettingsUiState.useMoreLikeThis) add(MoreLikeThisSource.TMDB)
+                        if (traktConnectedForPool) add(MoreLikeThisSource.TRAKT)
+                        if (meta.moreLikeThisSource == MoreLikeThisSource.SIMKL) add(MoreLikeThisSource.SIMKL)
+                    }
+                }
+                val moreLikeThisSource = remember(moreLikeThisSources, trackingSettingsUiState.moreLikeThisSource, meta.moreLikeThisSource) {
+                    val preferred = MoreLikeThisSource.entries.firstOrNull { it.name == trackingSettingsUiState.moreLikeThisSource.name }
+                    preferred?.takeIf { it in moreLikeThisSources }
+                        ?: meta.moreLikeThisSource?.takeIf { it in moreLikeThisSources }
+                        ?: moreLikeThisSources.firstOrNull()
+                }
+                var recommendationPool by remember(meta.id, traktConnectedForPool, moreLikeThisSource) { mutableStateOf<RecommendationPool?>(null) }
+                LaunchedEffect(meta.id, traktConnectedForPool, moreLikeThisSource, isDesktop) {
+                    if (!isDesktop || recommendationPool != null) return@LaunchedEffect
                     recommendationPool = runCatching {
-                        UnwatchedRecommendations.load(meta, traktConnectedForPool, watchedUiState.watchedKeys, ProfileRepository.activeProfileId)
-                    }.getOrNull()
+                        UnwatchedRecommendations.load(meta, traktConnectedForPool, watchedUiState.watchedKeys, ProfileRepository.activeProfileId, moreLikeThisSource)
+                    }.getOrElse { RecommendationPool(emptyList(), setOfNotNull(meta.imdbId), emptySet()) }
                 }
-                val moreLikeThisUnwatched = remember(recommendationPool, meta, watchedUiState.watchedKeys) {
-                    val pool = recommendationPool ?: RecommendationPool(meta.moreLikeThis, setOfNotNull(meta.imdbId), emptySet())
-                    UnwatchedRecommendations.unwatched(pool, meta, watchedUiState.watchedKeys)
+                val shownRecommendationPool = recommendationPool
+                    ?: RecommendationPool(
+                        meta.moreLikeThis.takeIf { meta.moreLikeThisSource == moreLikeThisSource }.orEmpty(),
+                        setOfNotNull(meta.imdbId),
+                        emptySet(),
+                    )
+                val moreLikeThisUnwatched = remember(shownRecommendationPool, meta, watchedUiState.watchedKeys, fullyWatchedSeriesKeys) {
+                    UnwatchedRecommendations.unwatched(shownRecommendationPool, meta, watchedUiState.watchedKeys, fullyWatchedSeriesKeys)
                 }
+                val moreLikeThisAll = remember(shownRecommendationPool, meta) { UnwatchedRecommendations.all(shownRecommendationPool, meta) }
+                val boardMoreLikeThis = BoardMoreLikeThisState(
+                    unwatched = moreLikeThisUnwatched,
+                    all = moreLikeThisAll,
+                    sources = moreLikeThisSources,
+                    source = moreLikeThisSource,
+                    loading = recommendationPool == null,
+                    unwatchedOnly = metaScreenSettingsUiState.moreLikeThisUnwatchedOnly,
+                    posters = metaScreenSettingsUiState.moreLikeThisPosters,
+                    isWatched = { item ->
+                        MovieRecommendationRules.isWatched(item, watchedUiState.watchedKeys + shownRecommendationPool.extraWatchedKeys, fullyWatchedSeriesKeys)
+                    },
+                    onSourceChange = { source ->
+                        MoreLikeThisSourcePreference.entries.firstOrNull { it.name == source.name }
+                            ?.let(TrackingSettingsRepository::setMoreLikeThisSource)
+                    },
+                    onUnwatchedOnlyChange = MetaScreenSettingsRepository::setMoreLikeThisUnwatchedOnly,
+                    onPostersChange = MetaScreenSettingsRepository::setMoreLikeThisPosters,
+                )
                 // Reviews come from the reviews source (Settings → Tracking), whichever tracker that is.
                 val connectedTrackers by TrackingProviderRegistry.connectedProviderIds.collectAsStateWithLifecycle()
                 val registeredReviewSources by TrackingComments.registered.collectAsStateWithLifecycle()
@@ -1836,7 +1879,14 @@ fun MetaDetailsScreen(
                     val boardProgress = remember(seasonProgress, currentEpisodeListSeason) {
                         seasonProgress?.let { detailBoardProgress(it, currentEpisodeListSeason) }
                     }
-                    // ---- Quick pick: choose how to play from the board, with the full sheet one click away.
+                        // Tonight's "Sources ready": only what a Sources or Quick pick visit already loaded for
+                    // this film; Details never queries the addons on its own for it.
+                    val streamsState by StreamsRepository.uiState.collectAsStateWithLifecycle()
+                    val movieSourcesReadyAddons = if (meta.type != "movie") null else streamsState.takeIf { state ->
+                        val token = state.requestToken.orEmpty()
+                        !state.isAnyLoading && (token.startsWith("${meta.type}::$primaryVideoId::") || token.startsWith("${meta.type}::${meta.id}::"))
+                    }?.groups?.count { it.streams.isNotEmpty() }?.takeIf { it > 0 }
+                // ---- Quick pick: choose how to play from the board, with the full sheet one click away.
                     var quickPickOpen by remember(meta.id, primaryVideoId) { mutableStateOf(false) }
                     // Where Quick pick opens when not under Play: Watch it your way's Sources cell.
                     var quickPickAnchor by remember(meta.id) { mutableStateOf<Rect?>(null) }
@@ -1915,6 +1965,7 @@ fun MetaDetailsScreen(
                         onPrimaryPlayClick = if (showManualPlayOption || hasPlayableDownload) onPrimaryPlayClick else openQuickPick,
                         onPrimaryPlayLongClick = openQuickPick.takeIf { showManualPlayOption },
                         onSourcesAt = openQuickPick?.takeIf { showManualPlayOption }?.let { { cell: Rect -> openQuickPick(); quickPickAnchor = cell } },
+                        onAllSources = onPrimaryPlayLongClick,
                     )).copy(
                         onEpisodeCardStyleChange = MetaScreenSettingsRepository::setEpisodeCardStyle,
                         onEpisodeClickAt = onBoardEpisodeClick,
@@ -1925,9 +1976,7 @@ fun MetaDetailsScreen(
                         onEpisodeWatchedToggle = { video, watched ->
                             WatchingActions.toggleEpisodeWatched(meta = meta, episode = video, isCurrentlyWatched = watched)
                         },
-                        moreLikeThisUnwatched =moreLikeThisUnwatched,
-                        moreLikeThisUnwatchedOnly = metaScreenSettingsUiState.moreLikeThisUnwatchedOnly,
-                        onMoreLikeThisUnwatchedOnlyChange = MetaScreenSettingsRepository::setMoreLikeThisUnwatchedOnly,
+                        boardMoreLikeThis = boardMoreLikeThis.takeIf { isDesktop },
                         onSetBackground = { url -> boardBackgroundOverride = url },
                         onTrailerClick = boardTrailerPlay,
                         boardPlayingTrailer = boardPickedTrailer?.takeIf { boardExpanded && pickedTrailerFailed == null },
@@ -1974,6 +2023,12 @@ fun MetaDetailsScreen(
                         showProgress = meta.type == "series" && DetailBoardTab.Episodes in boardTabs &&
                             (seasonProgress == null || boardProgress != null),
                         movieResumePositionMs = movieProgress?.lastPositionMs,
+                        movieWatched = meta.type == "movie" && WatchingState.isPosterWatched(
+                            watchedKeys = watchedUiState.watchedKeys,
+                            item = metaPreview,
+                            fullyWatchedSeriesKeys = emptySet(),
+                        ),
+                        movieSourcesReadyAddons = movieSourcesReadyAddons,
                         isCollectionItemWatched = { item ->
                             WatchingState.isPosterWatched(
                                 watchedKeys = watchedUiState.watchedKeys,

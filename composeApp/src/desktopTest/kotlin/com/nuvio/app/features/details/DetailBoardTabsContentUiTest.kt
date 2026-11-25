@@ -13,6 +13,10 @@ import com.nuvio.app.AppEnvironment
 import com.nuvio.app.features.details.components.BoardCastGrid
 import com.nuvio.app.features.details.components.BoardGallery
 import com.nuvio.app.features.details.components.BoardMoreLikeThis
+import com.nuvio.app.features.details.components.BoardMoreLikeThisState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.nuvio.app.features.details.components.BoardTrailers
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.GalleryKind
@@ -46,25 +50,87 @@ class DetailBoardTabsContentUiTest {
         assertTrue(layout.lineCount >= 2)
     }
 
+    private fun moreState(
+        unwatched: List<MetaPreview> = emptyList(),
+        all: List<MetaPreview> = unwatched,
+        unwatchedOnly: Boolean = true,
+        posters: Boolean = true,
+        watched: Set<String> = emptySet(),
+        onSource: (MoreLikeThisSource) -> Unit = {},
+        onUnwatchedOnly: (Boolean) -> Unit = {},
+        onPosters: (Boolean) -> Unit = {},
+    ) = BoardMoreLikeThisState(
+        unwatched = unwatched,
+        all = all,
+        sources = listOf(MoreLikeThisSource.TMDB, MoreLikeThisSource.TRAKT),
+        source = MoreLikeThisSource.TMDB,
+        loading = false,
+        unwatchedOnly = unwatchedOnly,
+        posters = posters,
+        isWatched = { it.id in watched },
+        onSourceChange = onSource,
+        onUnwatchedOnlyChange = onUnwatchedOnly,
+        onPostersChange = onPosters,
+    )
+
     @Test fun unwatchedOnlySaysWhenEverythingIsWatchedAndOffersShowWatched() = runDesktopComposeUiTest(width = 1300, height = 600) {
         val toggled = mutableListOf<Boolean>()
+        setContent { AppEnvironment { BoardMoreLikeThis(moreState(onUnwatchedOnly = { toggled += it }), onPosterClick = null) } }
+        onNodeWithTag("detail_board_seen_everything").assertIsDisplayed()
+        onNodeWithText("Show watched").performClick()
+        assertEquals(listOf(false), toggled)
+    }
+
+    /**
+     * Frame "More like this": TMDB | Trakt pills, Unwatched only as a switch, the Posters toggle,
+     * and 2:3 posters with the title and "year · Series" under each; Posters switches to wide cards.
+     */
+    @Test fun moreLikeThisFollowsTheFrame() = runDesktopComposeUiTest(width = 1400, height = 900) {
+        val titles = listOf(
+            MetaPreview("tt1", "series", "Silo", releaseInfo = "2023"),
+            MetaPreview("tt2", "series", "Dark", releaseInfo = "2017"),
+        )
+        var posters by mutableStateOf(true)
+        var unwatchedOnly by mutableStateOf(true)
+        val sources = mutableListOf<MoreLikeThisSource>()
         setContent {
             AppEnvironment {
                 BoardMoreLikeThis(
-                    items = emptyList<MetaPreview>(),
-                    unwatchedOnly = true,
-                    onUnwatchedOnlyChange = { toggled += it },
-                    watchedKeys = emptySet(),
-                    fullyWatchedSeriesKeys = emptySet(),
-                    sourceLabel = null,
-                    horizontalScrollPadding = 0.dp,
+                    moreState(
+                        unwatched = titles.take(1),
+                        all = titles,
+                        unwatchedOnly = unwatchedOnly,
+                        posters = posters,
+                        watched = setOf("tt2"),
+                        onSource = { sources += it },
+                        onUnwatchedOnly = { unwatchedOnly = it },
+                        onPosters = { posters = it },
+                    ),
                     onPosterClick = null,
                 )
             }
         }
-        onNodeWithTag("detail_board_seen_everything").assertIsDisplayed()
-        onNodeWithText("Show watched").performClick()
-        assertEquals(listOf(false), toggled)
+        onNodeWithTag("detail_board_more_source_TRAKT").performClick()
+        assertEquals(listOf(MoreLikeThisSource.TRAKT), sources)
+        onNodeWithTag("detail_board_unwatched_only").assertIsOn()
+        onAllNodesWithTag("detail_board_more_poster_card").assertCountEquals(1)
+        onNodeWithText("2023 · Series", useUnmergedTree = true).assertIsDisplayed()
+        onAllNodesWithTag("detail_board_more_watched", useUnmergedTree = true).assertCountEquals(0)
+
+        // Off: the watched title comes back with its ✓.
+        onNodeWithTag("detail_board_unwatched_only").performClick()
+        waitForIdle()
+        onNodeWithTag("detail_board_unwatched_only").assertIsOff()
+        onAllNodesWithTag("detail_board_more_poster_card").assertCountEquals(2)
+        onAllNodesWithTag("detail_board_more_watched", useUnmergedTree = true).assertCountEquals(1)
+
+        val poster = onAllNodesWithTag("detail_board_more_poster_card")[0].fetchSemanticsNode().boundsInRoot
+        onNodeWithTag("detail_board_more_layout").performClick()
+        waitForIdle()
+        assertEquals(false, posters)
+        onAllNodesWithTag("detail_board_more_wide_card").assertCountEquals(2)
+        val wide = onAllNodesWithTag("detail_board_more_wide_card")[0].fetchSemanticsNode().boundsInRoot
+        assertTrue(wide.width > poster.width * 1.5f, "wide=${wide.width} poster=${poster.width}")
     }
 
     @Test fun galleryOpensItsViewerStepsWithArrowsAndClosesWithEsc() = runDesktopComposeUiTest(width = 1360, height = 850) {

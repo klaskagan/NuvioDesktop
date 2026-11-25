@@ -286,6 +286,10 @@ for that reason, and the user rejected it.
 - Loading must not move controls, resize content, or change a scroll anchor.
   Reserve a predictable indicator slot or use an overlay that preserves readable
   content. Removing an indicator must preserve the same geometry as showing it.
+- Hover-revealed actions keep their space while hidden (fade with `graphicsLayer` alpha, don't
+  add them to the layout). The Sources rows added Download / Copy link on hover, which narrowed
+  the chip column, re-wrapped the chips and moved the size column. Reference: `StreamSheetRow`;
+  regression `StreamsSheetUiTest.aPercentageResumeShowsItsTimeFromTheRuntime` (hover keeps bounds).
 - A sticky header's own focusable controls can trigger parent scrolling: the
   framework's sticky-header focus adjustment also applies to those descendants.
   Test dropdown opening as well as selection. `PinnedFilterBringIntoViewSpec` in

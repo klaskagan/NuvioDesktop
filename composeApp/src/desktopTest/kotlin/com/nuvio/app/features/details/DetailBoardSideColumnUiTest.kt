@@ -28,6 +28,32 @@ import androidx.compose.ui.semantics.getOrNull
 /** The board's side column: the Your-way grid, and tiles that never run past their bottom padding. */
 @OptIn(ExperimentalTestApi::class)
 class DetailBoardSideColumnUiTest {
+    /** Sources: a click opens Quick pick under the cell; right-click opens every source (the full sheet). */
+    @Test
+    fun sourcesClickOpensQuickPickAndRightClickOpensAllSources() = runDesktopComposeUiTest(width = 600, height = 300) {
+        val opened = mutableListOf<String>()
+        setContent {
+            AppEnvironment {
+                DetailYourWayTile(
+                    listOf(
+                        DetailSecondaryAction(
+                            label = "Sources",
+                            icon = Icons.Rounded.Star,
+                            onClickAt = { opened += "quick pick" },
+                            onLongClick = { opened += "all sources" },
+                            tag = "detail_your_way_choose",
+                        ),
+                    ),
+                    Modifier.width(352.dp),
+                )
+            }
+        }
+        onNodeWithTag("detail_your_way_choose").performClick()
+        onNodeWithTag("detail_your_way_choose").performMouseInput { rightClick(center) }
+        waitForIdle()
+        assertEquals(listOf("quick pick", "all sources"), opened)
+    }
+
     @Test
     fun yourWayIsAThreeColumnGridInTheGivenOrderThatReflows() = runDesktopComposeUiTest(width = 600, height = 400) {
         val labels = listOf("On TV", "Watch party", "Download", "Shuffle", "Sources", "Lists")
@@ -124,9 +150,13 @@ class DetailBoardSideColumnUiTest {
             ),
         ),
         listOf("detail_board_collection", "detail_board_tonight", "detail_board_your_way"),
-    )
+    ) {
+        // Movie frame: the Collection rows read "2021 · This film"; Tonight says "Not started".
+        onNodeWithText("2021 · This film", useUnmergedTree = true).assertExists()
+        onNodeWithTag("detail_board_tonight_status", useUnmergedTree = true).assertTextEquals("Not started")
+    }
 
-    private fun checkSideTiles(meta: MetaDetails, tiles: List<String>) = runDesktopComposeUiTest(width = 1360, height = 850) {
+    private fun checkSideTiles(meta: MetaDetails, tiles: List<String>, extra: ComposeUiTest.() -> Unit = {}) = runDesktopComposeUiTest(width = 1360, height = 850) {
         check(System.getProperty("nuvio.test.isolatedHome") == "true")
         MetaDetailsRepository.clear()
         seedDetails(meta)
@@ -155,6 +185,7 @@ class DetailBoardSideColumnUiTest {
                     )
                 }
             }
+            extra()
         } finally {
             MetaDetailsRepository.clear()
         }

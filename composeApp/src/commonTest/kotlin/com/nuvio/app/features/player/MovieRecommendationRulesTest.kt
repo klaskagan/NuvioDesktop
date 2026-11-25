@@ -29,6 +29,18 @@ class MovieRecommendationRulesTest {
         assertEquals(1, MovieRecommendationRules.candidates(listOf(items[1], items[1]), "tt0", emptySet()).size)
     }
 
+    /**
+     * More like this showed fully watched series with their ✓ while "Unwatched only" was on: the
+     * filter read only watched keys, the poster ✓ also counts fully watched series.
+     */
+    @Test fun fullyWatchedSeriesAreFilteredLikeThePosterCheckmark() {
+        val items = listOf(MetaPreview("tt1", "series", "Done"), MetaPreview("tt2", "series", "Open"))
+        val fullyWatched = watchedItemKeys("series", "tt1").toSet()
+        assertEquals(listOf("tt2"), MovieRecommendationRules.candidates(items, "tt0", emptySet(), type = "series", fullyWatchedSeriesKeys = fullyWatched).map { it.id })
+        assertEquals(listOf("tt1", "tt2"), MovieRecommendationRules.candidates(items, "tt0", emptySet(), type = "series", fullyWatchedSeriesKeys = fullyWatched, includeWatched = true).map { it.id })
+        assertTrue(MovieRecommendationRules.isWatched(items[0], emptySet(), fullyWatched))
+    }
+
     @Test fun readsAllReportedTraktPagesBeforeSelectingUnwatched() = runTest {
         val items = (1..120).map { MetaPreview("tt$it", "movie", "Title $it") }
         val watched = (1..16).flatMap { watchedItemKeys("movie", "tt$it") }.toSet()

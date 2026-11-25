@@ -88,6 +88,8 @@ data class MetaScreenSettingsUiState(
     val blurUnwatchedEpisodes: Boolean = false,
     /** Details' More like this lists only titles the user hasn't watched. On by default. */
     val moreLikeThisUnwatchedOnly: Boolean = true,
+    /** More like this shows 2:3 posters (true) or wide backdrop cards. Remembered. */
+    val moreLikeThisPosters: Boolean = true,
     val posterTransitionEnabled: Boolean = false,
     val showOverallRatings: Boolean = true,
     val episodeRatingsVisibility: EpisodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL,
@@ -147,6 +149,8 @@ private data class StoredMetaScreenSettingsPayload(
     val blurUnwatchedEpisodes: Boolean = false,
     @SerialName("more_like_this_unwatched_only")
     val moreLikeThisUnwatchedOnly: Boolean = true,
+    @SerialName("more_like_this_posters")
+    val moreLikeThisPosters: Boolean = true,
     @SerialName("poster_transition_enabled")
     val posterTransitionEnabled: Boolean = false,
     @SerialName("show_overall_ratings")
@@ -237,6 +241,7 @@ object MetaScreenSettingsRepository {
     private var episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal
     private var blurUnwatchedEpisodes: Boolean = false
     private var moreLikeThisUnwatchedOnly: Boolean = true
+    private var moreLikeThisPosters: Boolean = true
     private var showOverallRatings: Boolean = true
     private var episodeRatingsVisibility: EpisodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
     private var posterTransitionEnabled: Boolean = false
@@ -261,6 +266,7 @@ object MetaScreenSettingsRepository {
                     ?: MetaEpisodeCardStyle.Horizontal
                 blurUnwatchedEpisodes = parsed.blurUnwatchedEpisodes
                 moreLikeThisUnwatchedOnly = parsed.moreLikeThisUnwatchedOnly
+                moreLikeThisPosters = parsed.moreLikeThisPosters
                 posterTransitionEnabled = parsed.posterTransitionEnabled
                 showOverallRatings = parsed.showOverallRatings
                 episodeRatingsVisibility = EpisodeRatingsVisibility.parse(parsed.episodeRatingsVisibility)
@@ -286,6 +292,7 @@ object MetaScreenSettingsRepository {
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
         moreLikeThisUnwatchedOnly = true
+        moreLikeThisPosters = true
         posterTransitionEnabled = false
         showOverallRatings = true
         episodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
@@ -335,6 +342,13 @@ object MetaScreenSettingsRepository {
     fun setMoreLikeThisUnwatchedOnly(enabled: Boolean) {
         ensureLoaded()
         moreLikeThisUnwatchedOnly = enabled
+        publish()
+        persist()
+    }
+
+    fun setMoreLikeThisPosters(posters: Boolean) {
+        ensureLoaded()
+        moreLikeThisPosters = posters
         publish()
         persist()
     }
@@ -390,6 +404,7 @@ object MetaScreenSettingsRepository {
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
         moreLikeThisUnwatchedOnly = true
+        moreLikeThisPosters = true
         posterTransitionEnabled = false
         showOverallRatings = true
         episodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
@@ -446,6 +461,7 @@ object MetaScreenSettingsRepository {
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
         moreLikeThisUnwatchedOnly = true
+        moreLikeThisPosters = true
         posterTransitionEnabled = false
         showOverallRatings = true
         episodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
@@ -526,6 +542,7 @@ object MetaScreenSettingsRepository {
             episodeCardStyle = episodeCardStyle,
             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
             moreLikeThisUnwatchedOnly = moreLikeThisUnwatchedOnly,
+            moreLikeThisPosters = moreLikeThisPosters,
             posterTransitionEnabled = posterTransitionEnabled,
             showOverallRatings = showOverallRatings,
             episodeRatingsVisibility = episodeRatingsVisibility,
@@ -545,6 +562,7 @@ object MetaScreenSettingsRepository {
                     episodeCardStyle = MetaEpisodeCardStyle.persist(episodeCardStyle),
                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                     moreLikeThisUnwatchedOnly = moreLikeThisUnwatchedOnly,
+                    moreLikeThisPosters = moreLikeThisPosters,
                     posterTransitionEnabled = posterTransitionEnabled,
                     showOverallRatings = showOverallRatings,
                     episodeRatingsVisibility = episodeRatingsVisibility.name,

@@ -48,7 +48,6 @@ import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.navigation.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import com.nuvio.app.features.streams.StreamBadgeSettingsRepository
 import com.nuvio.app.features.streams.pickPreference
 import com.nuvio.app.features.streams.streamRowInfo
@@ -105,7 +104,6 @@ internal fun StreamDestination(
     // The source being started from the desktop sheet, shown as its "starting" card until the player opens.
     var startingStream by remember(route.launchId) { mutableStateOf<StreamItem?>(null) }
     // A direct link opens at once; the starting card is held for a moment first so the pick reads.
-    var holdingStart by remember(route.launchId) { mutableStateOf(false) }
     val shouldResolveEpisodeVideoId =
         launch.parentMetaId != null &&
             launch.seasonNumber != null &&
@@ -882,11 +880,6 @@ internal fun StreamDestination(
                     // A pick from the sheet teaches Best match (design doc, Sources · confirmed).
                     StreamBadgeSettingsRepository.learnPick(streamRowInfo(stream).pickPreference(streamsUiState.groups.flatMap { it.streams }.map(::streamRowInfo)))
                     streamRouteScope.launch {
-                        if (isDesktop) {
-                            holdingStart = true
-                            delay(StartingCardHoldMs)
-                            holdingStart = false
-                        }
                         openSelectedStream(
                             stream = stream,
                             resolvedResumePositionMs = resolvedResumePositionMs,
@@ -903,11 +896,6 @@ internal fun StreamDestination(
                     startingStream = stream
                     StreamBadgeSettingsRepository.learnPick(streamRowInfo(stream).pickPreference(streamsUiState.groups.flatMap { it.streams }.map(::streamRowInfo)))
                     streamRouteScope.launch {
-                        if (isDesktop) {
-                            holdingStart = true
-                            delay(StartingCardHoldMs)
-                            holdingStart = false
-                        }
                         openSelectedStream(
                             stream = stream,
                             resolvedResumePositionMs = null,
@@ -921,7 +909,10 @@ internal fun StreamDestination(
                     }
                 },
                 downloadMode = launch.downloadMode,
-                startingStream = startingStream.takeIf { holdingStart || resolvingDebridStream || preparingServerStream || resolvingYouTubeStream },
+                // The card shows only while something real happens before the player (a debrid resolve, a
+                // server or YouTube preparation). Instant links go straight to the player: a fixed hold
+                // flashed the card for half a second, too short to read (user, 25 Nov).
+                startingStream = startingStream.takeIf { resolvingDebridStream || preparingServerStream || resolvingYouTubeStream },
                 startingPreparing = resolvingDebridStream || preparingServerStream || resolvingYouTubeStream,
                 onCancelStarting = {
                     // Stops the resolve or preparation in flight; the sheet comes back as it was.
@@ -929,7 +920,6 @@ internal fun StreamDestination(
                     resolvingDebridStream = false
                     preparingServerStream = false
                     resolvingYouTubeStream = false
-                    holdingStart = false
                     startingStream = null
                 },
                 onStreamActionOpen = { stream, openExternally, resolvedResumePositionMs, resolvedResumeProgressFraction ->
@@ -981,4 +971,3 @@ internal fun StreamDestination(
 }
 
 /** How long the starting card shows for a direct link before the player opens (its fold-in is ~260 ms). */
-private const val StartingCardHoldMs = 450L

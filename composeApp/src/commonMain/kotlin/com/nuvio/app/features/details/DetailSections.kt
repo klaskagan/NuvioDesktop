@@ -280,6 +280,8 @@ internal data class DetailSectionArgs(
     val yourWayLine: String? = null,
     /** Sources in Watch it your way on the board: opens Quick pick under the cell (its bounds in the window). */
     val onSourcesAt: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
+    /** Right-click or press-and-hold on that Sources cell: the full Sources sheet (all sources). */
+    val onAllSources: (() -> Unit)? = null,
     /** The board's Shuffle popover; null keeps the Shuffle sheet. */
     val shufflePopup: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
     /** The board's Save to list popover; null keeps the list dialog. */
@@ -292,10 +294,8 @@ internal data class DetailSectionArgs(
     val onEpisodeMenuAt: ((MetaVideo, androidx.compose.ui.geometry.Rect?) -> Unit)? = null,
     /** Board List rows' round ✓: marks an episode watched or unwatched (its current state passed). */
     val onEpisodeWatchedToggle: ((MetaVideo, Boolean) -> Unit)? = null,
-    // More like this on the board: the unwatched titles (shared fill logic) and the remembered switch.
-    val moreLikeThisUnwatched: List<MetaPreview>? = null,
-    val moreLikeThisUnwatchedOnly: Boolean = true,
-    val onMoreLikeThisUnwatchedOnlyChange: ((Boolean) -> Unit)? = null,
+    /** More like this on the board: the chosen source's titles, the remembered switch and layout. */
+    val boardMoreLikeThis: com.nuvio.app.features.details.components.BoardMoreLikeThisState? = null,
     /** The Details tab's "Behind the film" tile (Wikidata), once looked up. */
     val behindTheFilm: BehindTheFilm? = null,
     /** The gallery's images (desktop board); the tab shows from [GalleryMinimumImages]. */
@@ -704,6 +704,7 @@ internal fun ConfiguredMetaSections(
                         meta = meta,
                         provider = reviewsProvider,
                         episodes = remember(meta.videos) { meta.videos.mapNotNull { v -> v.season?.let { s -> v.episode?.let { e -> s to e } } } },
+                        currentEpisode = preferredEpisodeSeasonNumber?.let { s -> preferredEpisodeNumber?.let { e -> s to e } },
                     )
                 } else {
                     if (shouldShowComments && (isCommentsLoading || comments.isNotEmpty() || !commentsError.isNullOrBlank())) {
@@ -813,17 +814,9 @@ internal fun ConfiguredMetaSections(
                             MoreLikeThisSource.SIMKL -> stringResource(Res.string.detail_more_like_this_powered_by_simkl)
                             null -> null
                         }
-                        if (boardStyle && onMoreLikeThisUnwatchedOnlyChange != null) {
-                            BoardMoreLikeThis(
-                                items = if (moreLikeThisUnwatchedOnly) moreLikeThisUnwatched.orEmpty() else meta.moreLikeThis,
-                                unwatchedOnly = moreLikeThisUnwatchedOnly,
-                                onUnwatchedOnlyChange = onMoreLikeThisUnwatchedOnlyChange,
-                                watchedKeys = watchedKeys,
-                                fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                                sourceLabel = sourceLabel,
-                                horizontalScrollPadding = horizontalScrollPadding,
-                                onPosterClick = onOpenMeta,
-                            )
+                        val boardState = boardMoreLikeThis
+                        if (boardStyle && boardState != null) {
+                            BoardMoreLikeThis(state = boardState, onPosterClick = onOpenMeta)
                         } else DetailPosterRailSection(
                             title = stringResource(Res.string.details_more_like_this),
                             items = meta.moreLikeThis,

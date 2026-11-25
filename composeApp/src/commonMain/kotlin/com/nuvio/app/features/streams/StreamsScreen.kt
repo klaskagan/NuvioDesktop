@@ -218,6 +218,18 @@ fun StreamsScreen(
     )
     val effectiveResumePositionMs = resumeState.positionMs
     val effectiveResumeProgressFraction = resumeState.progressFraction
+    // Shown only ("Resume from 18:22"): a percentage resumes by percentage, so the time is the
+    // fraction of the duration (or the episode's runtime from Details, for Trakt progress).
+    val resumeDisplayMs = remember(effectiveResumePositionMs, effectiveResumeProgressFraction, episodeProgress, parentMetaId, videoId) {
+        val runtimeMinutes = com.nuvio.app.features.details.MetaDetailsRepository.peek(parentMetaType, parentMetaId)?.let { meta ->
+            meta.videos.firstOrNull { it.id == videoId }?.runtime ?: com.nuvio.app.features.details.parseRuntimeMinutes(meta.runtime)
+        }
+        effectiveResumePositionMs?.takeIf { it > 0L }
+            ?: effectiveResumeProgressFraction?.takeIf { it > 0f && it < 1f }?.let { fraction ->
+                episodeProgress?.durationMs?.takeIf { it > 0L }?.let { (it * fraction).toLong() }
+                    ?: runtimeMinutes?.takeIf { it > 0 }?.let { (fraction * it * 60_000L).toLong() }
+            }
+    }
 
     LaunchedEffect(type, videoId, seasonNumber, episodeNumber, manualSelection) {
         StreamsRepository.load(
@@ -377,6 +389,7 @@ fun StreamsScreen(
                 debridEnabled = debridSettings.canResolvePlayableLinks,
                 resumePositionMs = effectiveResumePositionMs,
                 resumeProgressFraction = effectiveResumeProgressFraction,
+                resumeDisplayMs = resumeDisplayMs,
                 onStreamSelected = { stream, positionMs, progressFraction ->
                     onStreamSelected(stream, positionMs, progressFraction)
                 },

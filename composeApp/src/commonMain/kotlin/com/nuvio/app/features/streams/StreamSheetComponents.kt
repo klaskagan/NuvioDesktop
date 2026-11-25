@@ -69,6 +69,8 @@ import nuvio.composeapp.generated.resources.streams_status_torrent
 import nuvio.composeapp.generated.resources.streams_status_torrent_seeds
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
@@ -328,11 +330,17 @@ internal fun StreamSheetRow(
                 Text(row.stream.addonName, style = redesignText(11.5.sp, color = RedesignColors.textMuted), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.width(8.dp))
-            // Quick actions appear on hover; ▶ (or ↓ in download mode) is always there.
-            AnimatedVisibility(visible = active && enabled && !downloadMode, enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    download?.let { RowIconAction(Icons.Rounded.Download, stringResource(Res.string.streams_sheet_download), "stream_row_download") { it(row.stream) } }
-                    actions?.onCopyLink?.let { RowIconAction(Icons.Rounded.Link, stringResource(Res.string.streams_sheet_copy_link), "stream_row_copy") { it(row.stream) } }
+            // Quick actions fade in on hover; ▶ (or ↓ in download mode) is always there. Their space is
+            // kept while hidden, so hovering never re-wraps the chips or shifts the row.
+            if (enabled && !downloadMode && (download != null || actions?.onCopyLink != null)) {
+                val showActions = active
+                val actionsAlpha by animateFloatAsState(if (showActions) 1f else 0f, tween(if (showActions) 160 else 120), label = "stream_row_actions")
+                Row(
+                    Modifier.graphicsLayer { alpha = actionsAlpha }.testTag("stream_row_quick_actions"),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    download?.let { RowIconAction(Icons.Rounded.Download, stringResource(Res.string.streams_sheet_download), "stream_row_download", enabled = showActions) { it(row.stream) } }
+                    actions?.onCopyLink?.let { RowIconAction(Icons.Rounded.Link, stringResource(Res.string.streams_sheet_copy_link), "stream_row_copy", enabled = showActions) { it(row.stream) } }
                 }
             }
             Spacer(Modifier.width(6.dp))

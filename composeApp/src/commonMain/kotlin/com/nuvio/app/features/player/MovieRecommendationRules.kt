@@ -33,6 +33,11 @@ internal object MovieRecommendationRules {
         watchedKeys: Set<String>,
         currentAliases: Set<String> = emptySet(),
         type: String = "movie",
+        /** Series counted as watched once every episode is (the same set the poster ✓ reads). */
+        fullyWatchedSeriesKeys: Set<String> = emptySet(),
+        /** Keep watched titles too (More like this with Unwatched only off). */
+        includeWatched: Boolean = false,
+        limit: Int = LIMIT,
     ): List<MetaPreview> {
         val seen = (currentAliases + currentId).toMutableSet()
         return items.asSequence()
@@ -43,13 +48,15 @@ internal object MovieRecommendationRules {
                 seen.addAll(ids)
                 distinct
             }
-            .filter { item ->
-                (item.alternateIds + item.id).none { id ->
-                    WatchingState.isPosterWatched(watchedKeys, item.copy(id = id))
-                }
-            }
-            .take(LIMIT).toList()
+            .filter { item -> includeWatched || !isWatched(item, watchedKeys, fullyWatchedSeriesKeys) }
+            .take(limit).toList()
     }
+
+    /** Watched under any of its ids, or a series whose every episode is watched. */
+    fun isWatched(item: MetaPreview, watchedKeys: Set<String>, fullyWatchedSeriesKeys: Set<String> = emptySet()): Boolean =
+        (item.alternateIds + item.id).any { id ->
+            WatchingState.isPosterWatched(watchedKeys, item.copy(id = id), fullyWatchedSeriesKeys)
+        }
     suspend fun appendFallbackPages(
         primary: List<MetaPreview>,
         hasEnough: (List<MetaPreview>) -> Boolean,
