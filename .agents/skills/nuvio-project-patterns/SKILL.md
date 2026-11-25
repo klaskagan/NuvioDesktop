@@ -107,6 +107,16 @@ match the design".
   same airing; exact matching once mapped 0 of 899 Simpsons episodes and the tab always
   opened on Season 1. Regression: `SeriesAudienceTest.mapsEpisodesWhoseAirDateIsADayApart`.
   Test it on a long show (The Simpsons): picks, keyboard, wheel scroll and resize.
+- **Episode scores:** board episode cards show IMDb's ★ where it has one and Trakt's
+  (`audienceState` episodes via `mapAudienceEpisodes`) for the rest, loaded with the board so
+  Your stats reuses it. IMDb returned nothing for Severance, so the cards showed no score at
+  all until the Trakt fill-in. Check a score on a real show, not only the fixture.
+- **Trakt progress has no position:** with Trakt as the progress source, an episode in progress
+  is Trakt's playback entry: `progressPercent` only, `lastPositionMs` and `durationMs` 0. Read
+  `progressFraction` for bars and minutes left (runtime stands in for the duration), and let a
+  play with no saved position resume from `storedResumeFraction`. Cards gated on `durationMs`
+  lost their bar a moment after playback and Resume restarted at 0 (Severance S2 E1).
+  Regression: `WatchProgressRulesTest` ("a Trakt percentage resumes…").
 - **Branch:** Details redesign work is on a worktree cut from `nuvio-redesign` and merges
   back there, never into develop.
 

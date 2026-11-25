@@ -63,13 +63,29 @@ class DetailBoardEpisodesUiTest {
             onNodeWithTag("detail_board_season_1").performClick()
             waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Second episode").fetchSemanticsNodes().isNotEmpty() }
 
+            // Row cards (Series board frame): the title sits under the still, not over it.
+            val still = onNodeWithTag("detail_board_episode_still_board-episodes-fixture:1:2", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            val rowTitle = onNodeWithText("Second episode", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            assertTrue(rowTitle.top >= still.bottom, "title $rowTitle should sit under the still $still")
+            onNodeWithText("S1 E2", useUnmergedTree = true).assertExists()
+
             // Row / List switches the card style.
             onNodeWithTag("detail_board_card_style_List").performClick()
             waitForIdle()
             assertEquals(MetaEpisodeCardStyle.List, MetaScreenSettingsRepository.uiState.value.episodeCardStyle)
 
+            // List rows (Episodes as a list frame): "2 · Title" and a round watched button that marks it.
+            onNodeWithText("2 · Second episode", useUnmergedTree = true).assertExists()
+            // Flips the episode's watched state, then flips it back so the shared test profile is unchanged.
+            val watchedBefore = { WatchedRepository.uiState.value.watchedKeys.count { it.contains("board-episodes-fixture") } }
+            val before = watchedBefore()
+            onNodeWithTag("detail_board_episode_watched_board-episodes-fixture:1:2", useUnmergedTree = true).performClick()
+            waitUntil(timeoutMillis = 5_000) { watchedBefore() != before }
+            onNodeWithTag("detail_board_episode_watched_board-episodes-fixture:1:2", useUnmergedTree = true).performClick()
+            waitUntil(timeoutMillis = 5_000) { watchedBefore() == before }
+
             // An episode click: autoplay on plays it; off opens Quick pick beside the card.
-            onAllNodesWithText("Second episode")[0].performClick()
+            onAllNodesWithText("Second episode", substring = true)[0].performClick()
             waitForIdle()
             if (StreamAutoPlayPolicy.isEffectivelyEnabled(PlayerSettingsRepository.uiState.value)) {
                 assertEquals(1, played.size)
