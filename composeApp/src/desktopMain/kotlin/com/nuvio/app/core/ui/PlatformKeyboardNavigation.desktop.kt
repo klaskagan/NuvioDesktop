@@ -28,6 +28,8 @@ import java.awt.Toolkit
 import java.awt.event.AWTEventListener
 import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
+import com.nuvio.app.AppKeyboardShortcuts
+import androidx.compose.ui.input.key.Key
 
 /**
  * Route generation whose screen already received a seeded Compose focus. Compose keeps previous
@@ -40,6 +42,15 @@ private var seededComposeRouteGeneration = -1
 private val nativePlayerShortcutKeys = setOf(
     KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT, KeyEvent.VK_UP, KeyEvent.VK_DOWN,
     KeyEvent.VK_SPACE, KeyEvent.VK_ENTER,
+)
+
+/** Keys an in-page player can claim through [AppKeyboardShortcuts.handleMediaKey]. */
+private val trailerPlaybackKeys = mapOf(
+    KeyEvent.VK_SPACE to Key.Spacebar,
+    KeyEvent.VK_K to Key.K,
+    KeyEvent.VK_M to Key.M,
+    KeyEvent.VK_LEFT to Key.DirectionLeft,
+    KeyEvent.VK_RIGHT to Key.DirectionRight,
 )
 
 /** Seeds the incoming screen exactly once per route change and moves focus as requested. */
@@ -251,6 +262,13 @@ private fun InstallNavigationKeyDispatcher(
                 event.keyCode in nativePlayerShortcutKeys
             ) {
                 return@KeyEventDispatcher true
+            }
+
+            // An in-page player (the Details board's expanded trailer) claims its playback keys here,
+            // before the arrows below move focus; unmodified presses only.
+            if (!isPlayerActive && event.modifiersEx == 0) {
+                val key = trailerPlaybackKeys[event.keyCode]
+                if (key != null && AppKeyboardShortcuts.handleMediaKey(key)) return@KeyEventDispatcher true
             }
 
             // Inside the player the arrows are playback controls, not focus movement.

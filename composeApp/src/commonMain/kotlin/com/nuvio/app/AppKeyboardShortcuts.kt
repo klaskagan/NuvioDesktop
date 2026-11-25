@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.input.key.Key
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -45,6 +46,24 @@ object AppKeyboardShortcuts {
         overlayEscapes.remove(handler)
     }
 
+    // Like Esc: the innermost claim gets playback keys (Space, arrows, M) before the focused control.
+    private val mediaKeys = ArrayList<(Key) -> Boolean>()
+
+    internal fun claimMediaKeys(handler: (Key) -> Boolean) {
+        mediaKeys.remove(handler)
+        mediaKeys.add(handler)
+    }
+
+    internal fun releaseMediaKeys(handler: (Key) -> Boolean) {
+        mediaKeys.remove(handler)
+    }
+
+    /**
+     * An unmodified key press from the desktop key dispatcher, which calls this before arrows move
+     * focus; true when an open player layer took it.
+     */
+    fun handleMediaKey(key: Key): Boolean = mediaKeys.lastOrNull()?.invoke(key) == true
+
     private val focusSearch = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val focusSearchRequests: SharedFlow<Unit> = focusSearch.asSharedFlow()
 
@@ -67,5 +86,20 @@ internal fun OverlayEscapeHandler(enabled: Boolean = true, onEscape: () -> Unit)
         val handler: () -> Boolean = { current(); true }
         AppKeyboardShortcuts.claimOverlayEscape(handler)
         onDispose { AppKeyboardShortcuts.releaseOverlayEscape(handler) }
+    }
+}
+
+/**
+ * Claims the window's playback keys while [enabled] (an expanded trailer, say). [onKey] returns
+ * whether it used the key; unused keys go on to the focused control as usual.
+ */
+@Composable
+internal fun MediaKeysHandler(enabled: Boolean = true, onKey: (Key) -> Boolean) {
+    if (!enabled) return
+    val current by rememberUpdatedState(onKey)
+    DisposableEffect(Unit) {
+        val handler: (Key) -> Boolean = { current(it) }
+        AppKeyboardShortcuts.claimMediaKeys(handler)
+        onDispose { AppKeyboardShortcuts.releaseMediaKeys(handler) }
     }
 }

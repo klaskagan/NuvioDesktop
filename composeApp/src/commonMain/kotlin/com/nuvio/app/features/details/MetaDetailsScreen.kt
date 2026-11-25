@@ -19,6 +19,7 @@ import com.nuvio.app.core.ui.RedesignTypography
 import com.nuvio.app.core.ui.ShellBackdrop
 import com.nuvio.app.core.ui.ShellBackdropMode
 import com.nuvio.app.features.details.components.DetailBoardSkeleton
+import com.nuvio.app.features.details.components.handleExpandedTrailerKey
 import nuvio.composeapp.generated.resources.detail_board_episode_code
 import nuvio.composeapp.generated.resources.detail_board_minutes_left
 import nuvio.composeapp.generated.resources.detail_board_up_next
@@ -150,6 +151,7 @@ import com.nuvio.app.features.details.components.DetailPosterRailSection
 import com.nuvio.app.features.details.components.DetailProductionSection
 import com.nuvio.app.features.details.components.DetailSeriesContent
 import com.nuvio.app.features.details.components.DesktopHeroTrailerPreview
+import com.nuvio.app.features.details.components.DesktopHeroTrailerClock
 import com.nuvio.app.features.details.components.rememberDesktopHeroTrailer
 import com.nuvio.app.features.details.components.DesktopDetailBackdrop
 import com.nuvio.app.features.details.components.DetailSeriesListEpisode
@@ -254,6 +256,7 @@ import com.nuvio.app.core.ui.redesignText
 import nuvio.composeapp.generated.resources.detail_board_mark_previous_seasons
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.DetailGalleryRepository
+import com.nuvio.app.MediaKeysHandler
 import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.features.gallery.KinopoiskSettingsRepository
 import com.nuvio.app.features.tracking.TrackingProviderRegistry
@@ -939,6 +942,9 @@ fun MetaDetailsScreen(
                 var replayCount by remember(meta.id, heroTrailerCandidates) { mutableIntStateOf(0) }
                 // A trailer picked on the board (Trailers tab, Trailer button) that couldn't play in the tile.
                 var pickedTrailerFailed by remember(meta.id) { mutableStateOf<MetaTrailer?>(null) }
+                // A picked trailer's pause, from the expanded tile's play/pause button.
+                var boardTrailerPaused by remember(meta.id) { mutableStateOf(false) }
+                val desktopTrailerClock = remember(meta.id) { DesktopHeroTrailerClock() }
                 var fadingDesktopAttempt by remember(meta.id, heroTrailerCandidates) { mutableStateOf<DesktopHeroTrailerAttempt?>(null) }
                 val heroTrailerMuted by HeroTrailerAudioState.muted.collectAsStateWithLifecycle()
                 val fadingAttempt = fadingDesktopAttempt
@@ -1260,6 +1266,7 @@ fun MetaDetailsScreen(
                     ?.takeIf { heroTrailerSourceUrl != null && it.isNotBlank() }
                 val heroTrailerPlayWhenReady = heroTrailerSourceUrl != null &&
                     selectedTrailer == null &&
+                    !boardTrailerPaused &&
                     !isLeavingDetails &&
                     !isHeroCollapsed.value
                 val attempt = desktopHeroAttempt
@@ -1296,6 +1303,7 @@ fun MetaDetailsScreen(
                             }
                         }
                     },
+                    clock = desktopTrailerClock,
                 )
                 val headerTarget = if (isHeroCollapsed.value) 1f else 0f
                 val headerProgressState = animateFloatAsState(
@@ -1556,6 +1564,7 @@ fun MetaDetailsScreen(
                 BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(start = boardStartInset)) {
                     val colorScheme = MaterialTheme.colorScheme
                     val screenMaxWidth = maxWidth
+                    val screenMaxHeight = maxHeight
                     val useTabletLayout = !isDesktop && minOf(maxWidth, maxHeight) >= 600.dp
                     val isTablet = useTabletLayout || screenMaxWidth >= 720.dp
                     val isSectionEnabled = { key: MetaScreenSectionKey ->
@@ -1678,6 +1687,7 @@ fun MetaDetailsScreen(
                             }
                             boardPickedTrailer = trailer
                             pickedTrailerFailed = null
+                            boardTrailerPaused = false
                             replayDesktopTrailer = trailer
                             replayCount++
                             boardExpanded = true
@@ -1693,6 +1703,7 @@ fun MetaDetailsScreen(
                         }
                     }
                     LaunchedEffect(boardExpanded) {
+                        if (!boardExpanded) boardTrailerPaused = false
                         if (boardExpanded || boardPickedTrailer == null) return@LaunchedEffect
                         boardPickedTrailer = null
                         pickedTrailerFailed = null
@@ -1701,6 +1712,15 @@ fun MetaDetailsScreen(
                         boardReturnScroll = null
                     }
                     if (useBoard && boardExpanded) OverlayEscapeHandler { boardExpanded = false }
+                    // A clip picked from Trailers takes Space/K, ←/→ (10 s) and M while it plays expanded.
+                    MediaKeysHandler(enabled = useBoard && boardExpanded && boardPickedTrailer != null && pickedTrailerFailed == null) { key ->
+                        handleExpandedTrailerKey(
+                            key = key,
+                            clock = desktopTrailerClock,
+                            onPauseToggle = { boardTrailerPaused = !boardTrailerPaused },
+                            onMuteToggle = HeroTrailerAudioState::toggleMuted,
+                        )
+                    }
                     val boardScrolledPinned = remember(listState) { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
                     // A tab picked from the pinned row keeps the row pinned while the new tab lays out: the
                     // filler holds a window's room (see detailBoardSettlingFillPx) and the row is held at the
@@ -1878,8 +1898,14 @@ fun MetaDetailsScreen(
                         pinned = { boardPinned.value },
                         settling = { boardKeepPinned },
                         topGap = boardTopGap,
+                        viewportHeight = screenMaxHeight,
                         expanded = boardExpanded,
-                        expandedTitle = boardPickedTrailer?.let { it.displayName?.takeIf(String::isNotBlank) ?: it.name },
+                        // Only a picked clip gets the expanded tile's title, controls and times; the
+                        // hero trailer expanded from the corner keeps just Back, mute and collapse.
+                        expandedTrailer = boardPickedTrailer?.takeIf { boardExpanded },
+                        trailerClock = desktopTrailerClock,
+                        trailerPaused = boardTrailerPaused,
+                        onTrailerPauseToggle = { boardTrailerPaused = !boardTrailerPaused },
                         expandedFailure = pickedTrailerFailed?.takeIf { boardExpanded }?.let { failed ->
                             DetailBoardTrailerFailure(
                                 onOpenExternally = { runCatching { uriHandler.openUri(failed.youtubePlaybackUrl()) } },

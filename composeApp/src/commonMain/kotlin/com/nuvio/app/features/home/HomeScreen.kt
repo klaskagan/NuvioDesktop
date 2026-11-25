@@ -1492,7 +1492,7 @@ fun HomeScreen(
 private const val HOME_BOARD_VIEWPORT_FRACTION = 0.56f
 
 /** What an expanded board leaves of the window for the tabs above it and a hint of the row below. */
-private val HOME_BOARD_EXPANDED_MARGIN = 150.dp
+internal val HOME_BOARD_EXPANDED_MARGIN = 150.dp
 
 /**
  * The featured hero's height on Home's board, collapsed or expanded. Service and tag pages use the

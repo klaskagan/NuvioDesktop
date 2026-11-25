@@ -307,4 +307,5 @@ internal actual fun rememberDesktopHeroTrailer(
     muted: Boolean,
     onReady: () -> Unit,
     onTerminal: (DesktopHeroTrailerEnd) -> Unit,
+    clock: DesktopHeroTrailerClock?,
 ): (@Composable (Modifier, Boolean) -> Unit)? = null
