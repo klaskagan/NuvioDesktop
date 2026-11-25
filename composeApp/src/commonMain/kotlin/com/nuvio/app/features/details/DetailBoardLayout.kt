@@ -1,5 +1,6 @@
 package com.nuvio.app.features.details
 
+import androidx.compose.ui.layout.LocalPinnableContainer
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -147,6 +148,10 @@ internal class DetailBoardArgs(
     val selectedTab: DetailBoardTab,
     val onSelectTab: (DetailBoardTab) -> Unit,
     val pinned: () -> Boolean,
+    /** True while a tab picked from the pinned row settles; the filler then keeps room for the pin. */
+    val settling: () -> Boolean,
+    /** Space above the board. It lives in the board item, so the pinned row sits flush under the bar. */
+    val topGap: Dp,
     val expanded: Boolean,
     /** The picked trailer's title, shown in the expanded tile. */
     val expandedTitle: String? = null,
@@ -247,7 +252,7 @@ internal fun LazyListScope.detailBoardItems(
                 }
             }
         }
-        detailBoardFillItem(args)
+        detailBoardFillItem(args, board.settling)
         return
     }
     val sections = detailBoardTabSections(board.selectedTab, settings.items, args::hasContent)
@@ -261,7 +266,7 @@ internal fun LazyListScope.detailBoardItems(
         showAudience = false,
         animateItems = true,
     )
-    detailBoardFillItem(args)
+    detailBoardFillItem(args, board.settling)
 }
 
 private const val DetailBoardFillKey = "detail-board-fill"
@@ -269,18 +274,24 @@ private const val DetailBoardFillKey = "detail-board-fill"
 /** Board, tabs, then the gap: the first item of the selected tab's content. */
 private const val DetailBoardFirstContentIndex = 2
 
-private fun LazyListScope.detailBoardFillItem(args: DetailSectionArgs) {
+private fun LazyListScope.detailBoardFillItem(args: DetailSectionArgs, settling: () -> Boolean) {
     item(key = DetailBoardFillKey, contentType = "detail-spacer") {
         val density = LocalDensity.current
         val tabsPx = with(density) { DetailBoardTabsHeight.roundToPx() }
         val fillPx by remember(args.detailListState, tabsPx) {
             derivedStateOf {
                 val info = args.detailListState.layoutInfo
-                detailBoardFillPx(
-                    visible = info.visibleItemsInfo.map { DetailBoardVisibleItem(it.index, it.size, it.key == DetailBoardFillKey) },
-                    viewportPx = info.viewportEndOffset - info.viewportStartOffset,
+                val viewportPx = info.viewportEndOffset - info.viewportStartOffset
+                detailBoardSettlingFillPx(
+                    measuredPx = detailBoardFillPx(
+                        visible = info.visibleItemsInfo.map { DetailBoardVisibleItem(it.index, it.size, it.key == DetailBoardFillKey) },
+                        viewportPx = viewportPx,
+                        tabsPx = tabsPx,
+                        firstContentIndex = DetailBoardFirstContentIndex,
+                    ),
+                    viewportPx = viewportPx,
                     tabsPx = tabsPx,
-                    firstContentIndex = DetailBoardFirstContentIndex,
+                    settling = settling(),
                 )
             }
         }
@@ -290,6 +301,14 @@ private fun LazyListScope.detailBoardFillItem(args: DetailSectionArgs) {
 
 @Composable
 private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
+    // Keep the board composed while it is scrolled away under the pinned tabs. Otherwise the list
+    // drops it and rebuilds the whole board (artwork, trailer surface, tiles) the moment it scrolls
+    // back, which froze scrolling up from the pinned row.
+    val pinnable = LocalPinnableContainer.current
+    DisposableEffect(pinnable) {
+        val handle = pinnable?.pin()
+        onDispose { handle?.release() }
+    }
     val meta = args.meta
     val isSeries = args.hasEpisodes || meta.type == "series"
     // On TV is used most, then Watch party (the user's order); unavailable actions are left out.
@@ -338,7 +357,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
     DetailBoard(
         expanded = board.expanded,
         hasSide = hasSide,
-        modifier = Modifier.padding(horizontal = board.horizontalPadding).onSizeChanged { board.onHeightChanged(it.height) },
+        modifier = Modifier.padding(top = board.topGap).padding(horizontal = board.horizontalPadding).onSizeChanged { board.onHeightChanged(it.height) },
         side = {
             // The first tile present takes the spare height, so the column always ends flush with the board.
             var filled = false
