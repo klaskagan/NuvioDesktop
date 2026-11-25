@@ -132,6 +132,12 @@ internal data class DetailBoardUpNext(
     val artwork: String?,
     val progressFraction: Float?,
     val actionLabel: String,
+    /** Season and episode numbers, for Your stats' Next for you tile. */
+    val episode: Pair<Int, Int>? = null,
+    /** Minutes left of a started episode, else null. */
+    val minutesLeft: Int? = null,
+    /** The episode's runtime in minutes, when known. */
+    val runtimeMinutes: Int? = null,
 )
 
 /** What the desktop board needs beyond the shared [DetailSectionArgs]. */
@@ -242,6 +248,10 @@ internal fun LazyListScope.detailBoardItems(
                         onOpenSeason = {
                             args.onEpisodeListSeasonSelect(it)
                             board.onSelectTab(DetailBoardTab.Episodes)
+                        },
+                        board = true,
+                        next = board.upNext?.let { upNext ->
+                            StatsNextEpisode(upNext, args.onPrimaryPlayClick.takeIf { args.isPrimaryPlayEnabled })
                         },
                     )
                 }

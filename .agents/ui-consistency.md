@@ -291,6 +291,13 @@ for that reason, and the user rejected it.
   viewport space rather than item count. Current, neighboring, and settled pages
   must use the same geometry through drag, cancellation, and commit. Window
   resizing can recalculate it. The number of reserved slots is feature-specific.
+- Tiles that must end flush across columns: compose each tile once in a
+  `SubcomposeLayout`, measure the fixed-height ones, then give the flexible tile
+  the remaining height. A probe pass that composes a tile a second time to measure
+  it leaves a duplicate in the semantics tree (two nodes per text and test tag).
+  A scrolling grid inside a tile shows whole rows only, never a cut-off row at its
+  edge. Details' Your stats grid (`SeriesAudienceSection.kt`) is the reference;
+  `SeriesAudienceDetailsUiTest` checks the columns start and end together.
 
 Calendar's permanent loading strip, full-width selected-day shelf, and fixed
 month presentation in `CalendarScreen.kt` are references. Its six-row policy is
@@ -372,6 +379,10 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   alone isn't enough on desktop: a wheel the list can't use bubbles to the page as a raw pointer
   event, so the modifier consumes that too. Assert the page's scroll range, not a child's bounds.
   `LibraryDesktopUiTest.yourListsKeepsItsScrollFromThePage`.
+  Details' Ratings by episode adds it only while it has rows to scroll, so a grid that fits
+  lets the page scroll (`SeriesAudienceDetailsUiTest`). A grid's scroll-into-view follows
+  the keyboard cursor or selection, never hover: revealing the hovered cell made the
+  wheel fight the resting pointer.
 
 ## Styling, meaning, and settings
 

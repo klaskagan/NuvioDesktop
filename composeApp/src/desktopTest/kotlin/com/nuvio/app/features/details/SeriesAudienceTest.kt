@@ -4,6 +4,7 @@ import com.nuvio.app.features.trakt.AudienceEpisodeKey
 import com.nuvio.app.features.trakt.TraktAudienceEpisode
 import com.nuvio.app.features.trakt.TraktAudienceStats
 import com.nuvio.app.features.trakt.audienceRetryDeadline
+import androidx.compose.ui.graphics.toArgb
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -71,6 +72,23 @@ class SeriesAudienceTest {
         assertEquals("second", matched[second]?.id)
     }
 
+    /** Trakt's UTC air date is a day after the addon's local one for US evening premieres. */
+    @Test
+    fun mapsEpisodesWhoseAirDateIsADayApart() {
+        val key = AudienceEpisodeKey(36, 1)
+        val video = MetaVideo("tt0096697:36:1", "Bart's Birthday", "2024-09-29T00:00:00.000Z", season = 36, episode = 1)
+        val audience = mapOf(key to TraktAudienceEpisode(number = 1, title = "Bart's Birthday", firstAired = "2024-09-30T00:00:00.000Z"))
+        assertEquals("tt0096697:36:1", mapAudienceEpisodes(listOf(video), audience)[key]?.id)
+
+        // A renumbered episode is still found by its title and the shifted date.
+        val moved = video.copy(id = "moved", season = 35, episode = 22)
+        assertEquals("moved", mapAudienceEpisodes(listOf(moved), audience)[key]?.id)
+
+        // Two days apart with a different title is not the same episode.
+        val other = video.copy(id = "other", title = "Another", released = "2024-10-02")
+        assertTrue(mapAudienceEpisodes(listOf(other), audience).isEmpty())
+    }
+
     @Test
     fun leavesAmbiguousEpisodesAndUnknownSpecialsUnmapped() {
         val key = AudienceEpisodeKey(0, 1)
@@ -104,4 +122,34 @@ class SeriesAudienceTest {
         assertEquals(listOf(100, null, 100), relativeAudienceValues(listOf(3.0, null, 3.0)))
         assertEquals(listOf(0, 50, 100), relativeAudienceValues(listOf(0.0, 2.0, 4.0)))
     }
+
+    @Test
+    fun sumsWatchedRuntimeOncePerEpisode() {
+        val meta = MetaDetails(
+            "runtime", "series", "Runtime",
+            videos = listOf(
+                MetaVideo("a:1:1", "One", "2024-01-01", season = 1, episode = 1, runtime = 50),
+                MetaVideo("b:1:1", "One", "2024-01-01", season = 1, episode = 1, runtime = 50),
+                MetaVideo("a:1:2", "Two", "2024-01-08", season = 1, episode = 2, runtime = 50),
+                MetaVideo("a:1:3", "Three", "2024-01-15", season = 1, episode = 3),
+            ),
+        )
+        val counts = meta.seasonWatchedCounts("2025-01-01") { it.episode != 2 }
+        assertEquals(listOf(SeasonWatchedCount(1, 2, 3, 50)), counts)
+        assertEquals("1 h 40", formatWatchedMinutes(100))
+        assertEquals("2 h", formatWatchedMinutes(120))
+        assertEquals("40 min", formatWatchedMinutes(40))
+    }
+
+    @Test
+    fun ratingAndFingerprintColoursFollowTheDesignBands() {
+        assertEquals(0xffe8b27a.toInt(), audienceRatingColor(6.8).toArgb())
+        assertEquals(0xffdfe0a0.toInt(), audienceRatingColor(7.6).toArgb())
+        assertEquals(0xffc8e3a0.toInt(), audienceRatingColor(7.9).toArgb())
+        assertEquals(0xffa7e3a0.toInt(), audienceRatingColor(8.2).toArgb())
+        assertEquals(0xff7be0b0.toInt(), audienceRatingColor(8.9).toArgb())
+        assertEquals(0.35f, fingerprintAlpha(0))
+        assertEquals(1f, fingerprintAlpha(100))
+    }
+
 }
