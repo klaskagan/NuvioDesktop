@@ -98,6 +98,14 @@ internal fun detailBoardFillPx(
     return (viewportPx - tabsPx - content).coerceAtLeast(0)
 }
 
+/**
+ * The filler while a tab picked from the pinned row settles: at least a window less the tabs row,
+ * so the new tab's first frame can already keep the row pinned (the measured filler lags a frame
+ * behind). Once the tab settles the filler drops to [measuredPx], which still keeps the row pinned.
+ */
+internal fun detailBoardSettlingFillPx(measuredPx: Int, viewportPx: Int, tabsPx: Int, settling: Boolean): Int =
+    if (settling) maxOf(measuredPx, viewportPx - tabsPx, 0) else measuredPx
+
 /** Milliseconds of a film still to play: its runtime less where it was left. Null without a runtime. */
 internal fun detailBoardRemainingMs(runtime: String?, resumePositionMs: Long?): Long? {
     val minutes = parseRuntimeMinutes(runtime)?.takeIf { it > 0 } ?: return null

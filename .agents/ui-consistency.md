@@ -167,14 +167,29 @@ Person Details opening with no transition). Apply these to every redesigned scre
   progress; Collection and Tonight for films; Watch it your way), then section tabs that pin with
   Back, the logo and the primary button. It draws its own `ShellBackdrop` from the title's artwork
   behind loading, error and content, so the route provides `LocalShellBackdropMode` and a frosted
-  sidebar like Person. Its list starts below the merged bar (the bar reports `scrolled` only for its
-  surface), which is what lets a `stickyHeader` pin right under the bar.
+  sidebar like Person. Its list starts exactly at the merged bar's bottom edge (the bar reports
+  `scrolled` only for its surface), which is what lets a `stickyHeader` pin right under the bar.
+  The page's top gap (`DesktopTopBarContentGap`) lives in the board item (`DetailBoardArgs.topGap`),
+  not in the list padding: as padding it left a strip of backdrop between the bar and the pinned
+  row, which must read as one band with the bar.
   - Sections are not laid out by the board. Every layout renders them through
     `configuredMetaSectionItems` from one `DetailSectionArgs`; a tab is an entry in
     `DetailBoardTab` listing the section keys it owns, and Settings → Detail Page still decides order
     and visibility (`detailBoardTabs`). Add a section or a tab there, not in `MetaDetailsScreen`.
   - A tab shorter than the window gets a filler (`detailBoardFillPx`) so the pinned row stays pinned
     when it is selected. Without it the row dropped back down the page on every switch.
+  - Once pinned, the row stays pinned through every tab switch. The measured filler lags a frame,
+    so a tab picked from the pinned row settles with a window's room (`detailBoardSettlingFillPx`)
+    and the row is held at the top until the tab's heights stop changing; the shown pin state
+    includes that settling, so Back, the logo and Play never animate out. Clicking a tab also
+    focuses it, and focus's bring-into-view used to scroll the list to the row's place in it
+    (Episodes → Your stats lost the logo); the row drops its own bring-into-view requests while
+    pinned (`keepListStillWhilePinned` in `DetailBoard.kt`). A frame-count retry is not enough.
+    `DetailBoardPinnedTabsUiTest` checks every frame of each switch, flush under the bar.
+  - The board item pins itself in the list (`LocalPinnableContainer`), so it stays composed while
+    scrolled away under the pinned row. Unpinned, the list dropped it and rebuilt the whole board on
+    the way back up, which froze scrolling from the pinned row to the top. The same test checks it
+    stays composed; the trailer still pauses through `isHeroCollapsed`, not through disposal.
   - The audience cards moved to the Your stats tab, and the progress card became a tile; both hide
     with the Episodes section. `SeriesAudienceDetailsUiTest` and `DetailBoardModelTest` cover this.
   - Loading, error and content crossfade (`DetailContentState` in `MetaDetailsScreen`); the skeleton

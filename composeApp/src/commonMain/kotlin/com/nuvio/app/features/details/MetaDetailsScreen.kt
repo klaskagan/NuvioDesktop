@@ -586,8 +586,12 @@ fun MetaDetailsScreen(
             }
             val detailTopBarState = LocalDetailTopBarState.current
             // With the merged top bar the board starts under it; the sidebar layout has no bar to clear.
-            val boardTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
-                if (detailTopBarState != null) DesktopMergedTopBarHeight + DesktopTopBarContentGap else 16.dp
+            val boardTopGap = if (detailTopBarState != null) DesktopTopBarContentGap else 16.dp
+            // The list itself starts right at the bar's bottom edge, so its pinned tabs row meets the bar
+            // with no strip between them; the board item carries [boardTopGap] above itself.
+            val boardListTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+                if (detailTopBarState != null) DesktopMergedTopBarHeight else 0.dp
+            val boardTopPadding = boardListTopPadding + boardTopGap
             val boardStartInset = LocalBackdropContentStartInset.current
             val detailsMaxWidth = maxWidth
             // Loading, error and content crossfade, as Home's hero does; the backdrop above stays put.
@@ -1601,22 +1605,33 @@ fun MetaDetailsScreen(
                     var boardExpanded by remember(meta.id) { mutableStateOf(false) }
                     val boardTrailerShown = heroTrailerSourceUrl != null
                     LaunchedEffect(boardTrailerShown) { if (!boardTrailerShown) boardExpanded = false }
-                    val boardPinned = remember(listState) { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
+                    val boardScrolledPinned = remember(listState) { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
+                    // A tab picked from the pinned row keeps the row pinned while the new tab lays out: the
+                    // filler holds a window's room (see detailBoardSettlingFillPx) and the row is held at the
+                    // top until the tab's heights stop changing, so Back, the logo and Play never drop out.
                     var boardKeepPinned by remember(meta.id) { mutableStateOf(false) }
-                    LaunchedEffect(selectedBoardTab) {
+                    val boardPinned = remember(listState, meta.id) { derivedStateOf { boardScrolledPinned.value || boardKeepPinned } }
+                    LaunchedEffect(selectedBoardTab, boardKeepPinned) {
                         if (!boardKeepPinned) return@LaunchedEffect
-                        // The new tab's height (and the filler under a short one) settles over a few frames.
-                        repeat(4) {
+                        var lastSizes: List<Int>? = null
+                        var stableFrames = 0
+                        var frames = 0
+                        while (stableFrames < 2 && frames < 60) {
                             listState.scrollToItem(1)
                             withFrameNanos { }
+                            val sizes = listState.layoutInfo.visibleItemsInfo.filter { it.index >= 2 }.map { it.size }
+                            if (sizes == lastSizes) stableFrames++ else stableFrames = 0
+                            lastSizes = sizes
+                            frames++
                         }
+                        listState.scrollToItem(1)
                         boardKeepPinned = false
                     }
                     if (useBoard && detailTopBarState != null) {
                         // Content never runs under the bar here, but once the board scrolls the bar takes its
                         // pinned surface so it and the tabs row read as one band.
                         LaunchedEffect(listState, detailTopBarState) {
-                            snapshotFlow { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
+                            snapshotFlow { boardKeepPinned || listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
                                 .collect { detailTopBarState.scrolled = it }
                         }
                         LaunchedEffect(detailTopBarState, boardBackdrop?.tint) { detailTopBarState.tint = boardBackdrop?.tint }
@@ -1752,10 +1767,12 @@ fun MetaDetailsScreen(
                         selectedTab = selectedBoardTab,
                         onSelectTab = { tab ->
                             // A tab picked from the pinned row opens at its top, with the row still pinned.
-                            boardKeepPinned = boardPinned.value
+                            if (boardScrolledPinned.value) boardKeepPinned = true
                             selectedBoardTabName = tab.name
                         },
                         pinned = { boardPinned.value },
+                        settling = { boardKeepPinned },
+                        topGap = boardTopGap,
                         expanded = boardExpanded,
                         onToggleExpanded = {
                             boardExpanded = !boardExpanded
@@ -1836,7 +1853,7 @@ fun MetaDetailsScreen(
                                 state = listState,
                                 modifier = Modifier
                                     // The board's list starts under the top bar, so its tabs pin right below it.
-                                    .padding(top = if (useBoard) boardTopPadding else 0.dp)
+                                    .padding(top = if (useBoard) boardListTopPadding else 0.dp)
                                     .fillMaxSize()
                                     .nestedScroll(heroStretchState.nestedScrollConnection)
                                     .zIndex(1f),

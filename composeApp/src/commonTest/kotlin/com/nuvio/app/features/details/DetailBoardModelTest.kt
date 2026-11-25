@@ -102,4 +102,14 @@ class DetailBoardFillTest {
         // Content taller than the window never goes negative.
         assertEquals(0, detailBoardFillPx(listOf(item(2, 20), item(3, 900), item(4, 0, fill = true)), 800, 56, 2))
     }
+
+    @Test
+    fun settlingTabKeepsAWindowOfRoomForThePinnedRow() {
+        // A tab picked from the pinned row: its first frame still holds the row at the top.
+        assertEquals(800 - 56, detailBoardSettlingFillPx(measuredPx = 0, viewportPx = 800, tabsPx = 56, settling = true))
+        assertEquals(744, detailBoardSettlingFillPx(measuredPx = 300, viewportPx = 800, tabsPx = 56, settling = true))
+        // Settled: the measured filler, which still keeps the row pinned.
+        assertEquals(300, detailBoardSettlingFillPx(measuredPx = 300, viewportPx = 800, tabsPx = 56, settling = false))
+        assertEquals(0, detailBoardSettlingFillPx(measuredPx = 0, viewportPx = 800, tabsPx = 56, settling = false))
+    }
 }

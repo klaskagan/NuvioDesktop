@@ -1,5 +1,11 @@
 package com.nuvio.app.features.details.components
 
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.relocation.bringIntoView
+import androidx.compose.ui.relocation.BringIntoViewModifierNode
+import androidx.compose.ui.node.requireLayoutCoordinates
+import androidx.compose.ui.node.ModifierNodeElement
 import com.nuvio.app.OverlayEscapeHandler
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.Popup
@@ -735,7 +741,8 @@ internal fun DetailBoardTabsBar(
     modifier: Modifier = Modifier,
     onPlayAnchor: (androidx.compose.ui.geometry.Rect) -> Unit = {},
 ) {
-    Box(modifier.fillMaxWidth().height(DetailBoardTabsHeight).testTag("detail_board_tabs")) {
+    val pinnedNow by rememberUpdatedState(pinned)
+    Box(modifier.fillMaxWidth().height(DetailBoardTabsHeight).keepListStillWhilePinned { pinnedNow }.testTag("detail_board_tabs")) {
         PinnedBarBackground(scrolled = pinned, hazeState = null, tint = tint)
         val hairline by animateColorAsState(if (pinned) Color.Transparent else RedesignColors.hairline, tween(220), label = "board_tabs_hairline")
         Box(Modifier.align(Alignment.BottomStart).padding(horizontal = horizontalPadding).fillMaxWidth().height(1.dp).background(hairline))
@@ -992,6 +999,30 @@ private fun CreditHoverCard(person: MetaPerson, isSeries: Boolean, opens: Boolea
                 Spacer(Modifier.height(6.dp))
                 Text(stringResource(Res.string.detail_board_credit_open), style = redesignText(12.sp, color = RedesignColors.textMuted))
             }
+        }
+    }
+}
+
+/**
+ * Clicking a tab focuses it, and focus asks every scrolling parent to bring the tab into view. For
+ * the pinned row that request reaches the page list, which scrolls to the row's place in the list
+ * and drags the row (and the page) off the top. The row is always on screen while pinned, so its
+ * requests stop here; unpinned, they pass on as usual.
+ */
+private fun Modifier.keepListStillWhilePinned(pinned: () -> Boolean): Modifier = this then KeepListStillElement(pinned)
+
+private data class KeepListStillElement(val pinned: () -> Boolean) : ModifierNodeElement<KeepListStillNode>() {
+    override fun create() = KeepListStillNode(pinned)
+    override fun update(node: KeepListStillNode) { node.pinned = pinned }
+}
+
+private class KeepListStillNode(var pinned: () -> Boolean) : Modifier.Node(), BringIntoViewModifierNode {
+    override suspend fun bringIntoView(childCoordinates: LayoutCoordinates, boundsProvider: () -> Rect?) {
+        if (pinned()) return
+        val own = requireLayoutCoordinates()
+        bringIntoView {
+            if (!childCoordinates.isAttached || !own.isAttached) null
+            else boundsProvider()?.translate(own.localPositionOf(childCoordinates, Offset.Zero))
         }
     }
 }
