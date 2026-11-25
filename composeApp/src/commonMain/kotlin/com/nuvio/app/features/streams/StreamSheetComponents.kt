@@ -237,8 +237,8 @@ internal class StreamSheetActions(
  * One source in the sheet's list: resolution, the decoded labels and how soon it starts on the
  * first line, the addon's own release name underneath, then size, addon and languages.
  *
- * Hovering lifts the row, shows the addon's own text as a third line and reveals Download, Copy
- * link and ▶ (which plays at once). Clicking the row body opens it in place ([expanded]): the
+ * Hovering keeps the row flat and two lines tall (no fill, no extra line): it only reveals
+ * Download, Copy link and a solid ▶ (which plays at once). Clicking the row body opens it in place ([expanded]): the
  * decoded details, the full addon text, and every way to start it. In [downloadMode] the row's
  * primary action is Download.
  */
@@ -261,12 +261,11 @@ internal fun StreamSheetRow(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val lifted = hovered || expanded
+    val active = hovered || expanded
     val fill by animateColorAsState(
         when {
             expanded -> RedesignColors.fillStrong
             highlight != null -> RedesignColors.fillStrong
-            hovered -> RedesignColors.fill
             else -> Color.Transparent
         },
         tween(160),
@@ -276,9 +275,6 @@ internal fun StreamSheetRow(
     var positionInRoot by remember { mutableStateOf(Offset.Zero) }
     val download = actions?.onDownload
     val primary: () -> Unit = if (downloadMode && download != null) ({ download(row.stream) }) else onClick
-    val addonText = remember(row.stream) {
-        listOfNotNull(row.stream.name, row.stream.title, row.stream.description).joinToString("  ·  ") { it.replace('\n', ' ').trim() }
-    }
     Column(
         modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(fill).border(1.dp, border, RoundedCornerShape(12.dp))
             .animateContentSize(tween(220, easing = FastOutSlowInEasing))
@@ -318,9 +314,6 @@ internal fun StreamSheetRow(
                         modifier = Modifier.padding(top = 2.dp),
                     )
                 }
-                AnimatedVisibility(visible = hovered && !expanded && addonText.isNotBlank(), enter = fadeIn(tween(160)) + expandVertically(tween(180)), exit = fadeOut(tween(120)) + shrinkVertically(tween(160))) {
-                    Text(addonText, style = redesignText(11.5.sp, color = RedesignColors.textMuted.copy(alpha = 0.8f)), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                }
             }
             Column(Modifier.widthIn(min = 96.dp), horizontalAlignment = Alignment.End) {
                 Text(
@@ -336,7 +329,7 @@ internal fun StreamSheetRow(
             }
             Spacer(Modifier.width(8.dp))
             // Quick actions appear on hover; ▶ (or ↓ in download mode) is always there.
-            AnimatedVisibility(visible = lifted && enabled && !downloadMode, enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
+            AnimatedVisibility(visible = active && enabled && !downloadMode, enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     download?.let { RowIconAction(Icons.Rounded.Download, stringResource(Res.string.streams_sheet_download), "stream_row_download") { it(row.stream) } }
                     actions?.onCopyLink?.let { RowIconAction(Icons.Rounded.Link, stringResource(Res.string.streams_sheet_copy_link), "stream_row_copy") { it(row.stream) } }
@@ -347,7 +340,7 @@ internal fun StreamSheetRow(
                 if (downloadMode) Icons.Rounded.Download else Icons.Rounded.PlayArrow,
                 stringResource(if (downloadMode) Res.string.streams_sheet_download else Res.string.streams_sheet_play_from_start),
                 "stream_row_primary",
-                strong = lifted && enabled,
+                strong = active && enabled,
                 enabled = enabled,
                 onClick = primary,
             )
