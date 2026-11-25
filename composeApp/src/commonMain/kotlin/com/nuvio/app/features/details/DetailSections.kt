@@ -684,7 +684,7 @@ internal fun ConfiguredMetaSections(
                 }
                 MetaScreenSectionKey.PRODUCTION -> {
                     if (hasProductionSection) {
-                        DetailProductionSection(meta = meta, showHeader = showHeader, onCompanyClick = onCompanyClick)
+                        DetailProductionSection(meta = meta, showHeader = showHeader, onCompanyClick = onCompanyClick, boardStyle = boardStyle)
                     }
                 }
                 MetaScreenSectionKey.CAST -> if (boardStyle) {

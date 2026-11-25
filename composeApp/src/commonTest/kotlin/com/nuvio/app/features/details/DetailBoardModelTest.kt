@@ -39,6 +39,14 @@ class DetailBoardModelTest {
     }
 
     @Test
+    fun castTabPutsNetworksAboveTheCastWhateverTheConfiguredOrder() {
+        val items = listOf(MetaScreenSectionKey.CAST, MetaScreenSectionKey.PRODUCTION, MetaScreenSectionKey.DETAILS)
+            .mapIndexed { i, key -> MetaScreenSectionItem(key = key, title = key.name, description = "", enabled = true, order = i) }
+        val sections = detailBoardTabSections(DetailBoardTab.Cast, items, hasContent = { true })
+        assertEquals(listOf(MetaScreenSectionKey.PRODUCTION, MetaScreenSectionKey.CAST), sections.map { it.key })
+    }
+
+    @Test
     fun statsFollowsEpisodesAndHidesWithoutIt() {
         val withEpisodes = detailBoardTabs(
             listOf(MetaScreenSectionKey.CAST, MetaScreenSectionKey.EPISODES, MetaScreenSectionKey.DETAILS),

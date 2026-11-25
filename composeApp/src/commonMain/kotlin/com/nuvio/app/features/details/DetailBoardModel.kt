@@ -7,10 +7,15 @@ package com.nuvio.app.features.details
  * Adding a tab: add an entry with the sections it owns. Adding a section to a tab: list its key
  * here. Order and visibility still come from Settings → Detail Page.
  */
-internal enum class DetailBoardTab(val sections: List<MetaScreenSectionKey>) {
+internal enum class DetailBoardTab(
+    val sections: List<MetaScreenSectionKey>,
+    /** The tab lays its sections out in [sections] order, whatever order Settings gives them. */
+    val fixedOrder: Boolean = false,
+) {
     Episodes(listOf(MetaScreenSectionKey.EPISODES)),
     Stats(emptyList()),
-    Cast(listOf(MetaScreenSectionKey.CAST, MetaScreenSectionKey.PRODUCTION)),
+    // Networks / Production first, so a long cast never pushes the logos out of view.
+    Cast(listOf(MetaScreenSectionKey.PRODUCTION, MetaScreenSectionKey.CAST), fixedOrder = true),
     Reviews(listOf(MetaScreenSectionKey.COMMENTS)),
     Trailers(listOf(MetaScreenSectionKey.TRAILERS)),
     Gallery(listOf(MetaScreenSectionKey.GALLERY)),
@@ -42,13 +47,15 @@ internal fun detailBoardTabs(
     return ordered.toMutableList().apply { add(afterEpisodes, DetailBoardTab.Stats) }
 }
 
-/** The sections [tab] renders, in configured order. */
+/** The sections [tab] renders, in configured order (in the tab's own order when it is fixed). */
 internal fun detailBoardTabSections(
     tab: DetailBoardTab,
     items: List<MetaScreenSectionItem>,
     hasContent: (MetaScreenSectionKey) -> Boolean,
-): List<MetaScreenSectionItem> =
-    items.filter { it.enabled && it.key in tab.sections && hasContent(it.key) }
+): List<MetaScreenSectionItem> {
+    val shown = items.filter { it.enabled && it.key in tab.sections && hasContent(it.key) }
+    return if (tab.fixedOrder) shown.sortedBy { tab.sections.indexOf(it.key) } else shown
+}
 
 /** Watched and aired totals for the progress tile, with the seasons it has room to list. */
 internal data class DetailBoardProgress(

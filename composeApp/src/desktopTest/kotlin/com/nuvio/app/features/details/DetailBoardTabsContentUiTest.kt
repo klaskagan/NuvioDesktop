@@ -1,6 +1,7 @@
 package com.nuvio.app.features.details
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
@@ -18,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.nuvio.app.features.details.components.BoardTrailers
+import com.nuvio.app.features.details.components.DetailProductionSection
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.GalleryKind
 import com.nuvio.app.features.gallery.GallerySource
@@ -72,6 +74,43 @@ class DetailBoardTabsContentUiTest {
         onUnwatchedOnlyChange = onUnwatchedOnly,
         onPostersChange = onPosters,
     )
+
+    @Test fun castTabOpensWithTheNetworkLogosNamedByACaptionThenTheFilterThenTheCast() =
+        castTabOrder(MetaDetails(id = "tt1", type = "series", name = "Severance", networks = listOf(MetaCompany("Apple TV+"))), "Network")
+
+    @Test fun castTabSaysNetworksWithMoreThanOne() =
+        castTabOrder(MetaDetails(id = "tt3", type = "series", name = "Fargo", networks = listOf(MetaCompany("FX"), MetaCompany("Hulu"))), "Networks")
+
+    @Test fun movieCastTabNamesItsStudiosProduction() =
+        castTabOrder(MetaDetails(id = "tt2", type = "movie", name = "Dune", productionCompanies = listOf(MetaCompany("Legendary"))), "Production")
+
+    private fun castTabOrder(base: MetaDetails, label: String) = runDesktopComposeUiTest(width = 1300, height = 900) {
+        val meta = base.copy(cast = listOf(MetaPerson("Adam Scott", "Mark"), MetaPerson("Britt Lower", "Helly"), MetaPerson("Dan Erickson", "Creator")))
+        setContent {
+            AppEnvironment {
+                Column(Modifier.width(1200.dp)) {
+                    DetailProductionSection(meta = meta, showHeader = true, boardStyle = true)
+                    BoardCastGrid(cast = meta.cast, isSeries = meta.type == "series", onCastClick = null)
+                }
+            }
+        }
+        // A plain caption, not a pill: nothing selectable names the logos.
+        val caption = onNodeWithTag("detail_board_networks_label").assertTextEquals(label).getBoundsInRoot()
+        onNodeWithTag("detail_board_networks_pill").assertDoesNotExist()
+        val logo = onNodeWithText(meta.networks.ifEmpty { meta.productionCompanies }.first().name, useUnmergedTree = true).getBoundsInRoot()
+        val filter = onNodeWithTag("detail_board_cast_filter_All").assertIsDisplayed().getBoundsInRoot()
+        val tile = onAllNodesWithTag("detail_board_cast_tile")[0].getBoundsInRoot()
+        // The caption starts the logo row, on the same line as the logos.
+        assertTrue(caption.right < logo.left, "caption $caption before logos $logo")
+        assertTrue(caption.top < logo.bottom && logo.top < caption.bottom, "caption $caption on the logo row $logo")
+        assertTrue(logo.bottom <= filter.top, "logos $logo above filter $filter")
+        assertTrue(filter.bottom <= tile.top, "filter $filter above cast $tile")
+        // The row and the filter share the left edge, and the old "Cast" heading is gone (only the Cast pill says it).
+        // (the All option sits inside the pill group's 3 dp padding).
+        assertTrue((filter.left - caption.left).value in 0f..4f, "caption $caption and filter $filter share the left edge")
+        onAllNodesWithText("Cast", useUnmergedTree = true).assertCountEquals(1)
+        onNodeWithTag("detail_board_cast_filter_Cast").assertTextContains("2", substring = true)
+    }
 
     @Test fun unwatchedOnlySaysWhenEverythingIsWatchedAndOffersShowWatched() = runDesktopComposeUiTest(width = 1300, height = 600) {
         val toggled = mutableListOf<Boolean>()
