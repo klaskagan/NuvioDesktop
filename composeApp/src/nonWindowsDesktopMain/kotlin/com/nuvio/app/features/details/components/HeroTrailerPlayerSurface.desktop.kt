@@ -76,6 +76,7 @@ internal actual fun rememberDesktopHeroTrailer(
     muted: Boolean,
     onReady: () -> Unit,
     onTerminal: (DesktopHeroTrailerEnd) -> Unit,
+    clock: DesktopHeroTrailerClock?,
 ): (@Composable (Modifier, Boolean) -> Unit)? = if (preview == null) {
     null
 } else {
@@ -90,6 +91,7 @@ internal actual fun rememberDesktopHeroTrailer(
             onEnded = { onTerminal(DesktopHeroTrailerEnd.Completed) },
             onError = { onTerminal(DesktopHeroTrailerEnd.Failed) },
             preview = preview,
+            clock = clock,
         )
     }
 }
@@ -105,6 +107,7 @@ private fun rememberDesktopTrailerSession(
     onEnded: () -> Unit,
     onError: () -> Unit,
     preview: DesktopHeroTrailerPreview? = null,
+    clock: DesktopHeroTrailerClock? = null,
 ): @Composable (Modifier, Boolean) -> Unit {
     val player = rememberVideoPlayerState()
     val preparedSource = remember(sourceUrl, sourceAudioUrl, preview?.rendition) {
@@ -212,6 +215,27 @@ private fun rememberDesktopTrailerSession(
             snapshotFlow { player.hasMedia }.first { it }
         }
         if (playWhenReady) player.play() else player.pause()
+    }
+
+    if (clock != null) {
+        // Whole seconds are all the expanded tile's times show, so the clock moves once a second.
+        LaunchedEffect(player, clock) {
+            clock.reset()
+            snapshotFlow { (player.currentTime * 1_000).toLong() / 1_000 * 1_000 to (player.duration * 1_000).toLong() }
+                .collect { (position, duration) ->
+                    clock.positionMs = position.coerceAtLeast(0L)
+                    clock.durationMs = duration.coerceAtLeast(0L)
+                }
+        }
+        DisposableEffect(player, clock) {
+            // compose-media-player seeks on a 0..1000 scale of the clip's length.
+            val seeker: (Long) -> Unit = { ms ->
+                val durationMs = player.duration * 1_000.0
+                if (durationMs > 0.0) player.seekTo((ms / durationMs * 1_000.0).toFloat().coerceIn(0f, 1_000f))
+            }
+            clock.seeker = seeker
+            onDispose { if (clock.seeker === seeker) clock.seeker = null }
+        }
     }
 
     LaunchedEffect(player, muted) {
