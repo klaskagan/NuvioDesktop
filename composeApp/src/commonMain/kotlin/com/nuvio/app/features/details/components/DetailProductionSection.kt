@@ -19,10 +19,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nuvio.app.core.ui.NuvioAsyncImage as AsyncImage
+import com.nuvio.app.core.ui.RedesignPillGroup
 import com.nuvio.app.features.details.MetaCompany
 import com.nuvio.app.features.details.MetaDetails
 import nuvio.composeapp.generated.resources.*
@@ -35,6 +37,8 @@ fun DetailProductionSection(
     modifier: Modifier = Modifier,
     showHeader: Boolean = true,
     onCompanyClick: ((MetaCompany, String) -> Unit)? = null,
+    /** The board's Cast & crew tab: the label is a single pill, like All / Cast / Crew, without a count. */
+    boardStyle: Boolean = false,
 ) {
     val isSeriesLike = meta.type == "series" || meta.videos.any { it.season != null || it.episode != null }
     val isNetworkSource = isSeriesLike && meta.networks.isNotEmpty()
@@ -55,15 +59,25 @@ fun DetailProductionSection(
     }
     if (displayItems.isEmpty()) return
 
+    val title = if (isSeriesLike) {
+        stringResource(Res.string.details_networks)
+    } else {
+        stringResource(Res.string.meta_section_production_title)
+    }
     DetailSection(
-        title = if (isSeriesLike) {
-            stringResource(Res.string.details_networks)
-        } else {
-            stringResource(Res.string.meta_section_production_title)
-        },
-        modifier = modifier,
-        showHeader = showHeader,
+        title = title,
+        modifier = modifier.then(if (boardStyle) Modifier.testTag("detail_board_networks") else Modifier),
+        showHeader = showHeader && !boardStyle,
     ) {
+        if (boardStyle) {
+            RedesignPillGroup(
+                options = listOf(title),
+                selected = title,
+                label = { it },
+                onSelect = {},
+                optionTag = { "detail_board_networks_pill" },
+            )
+        }
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val chipHeight = when {
                 maxWidth >= 1024.dp -> 44.dp

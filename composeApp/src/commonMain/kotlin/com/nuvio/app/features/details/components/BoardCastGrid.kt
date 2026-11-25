@@ -55,7 +55,6 @@ import nuvio.composeapp.generated.resources.detail_board_cast_eps
 import nuvio.composeapp.generated.resources.person_role_creator
 import nuvio.composeapp.generated.resources.person_role_director
 import nuvio.composeapp.generated.resources.person_role_writer
-import nuvio.composeapp.generated.resources.settings_meta_cast
 import org.jetbrains.compose.resources.stringResource
 
 internal enum class CastFilter { All, Cast, Crew }
@@ -94,27 +93,27 @@ internal fun BoardCastGrid(
         stringResource(Res.string.person_role_writer), "Creator", "Director", "Writer",
     )
     var filter by rememberSaveable { mutableStateOf(CastFilter.All) }
-    val hasCrew = remember(cast, crewRoles) { castFilterPeople(cast, CastFilter.Crew, crewRoles).isNotEmpty() }
+    val counts = remember(cast, crewRoles) { CastFilter.entries.associateWith { castFilterPeople(cast, it, crewRoles).size } }
+    val hasCrew = (counts[CastFilter.Crew] ?: 0) > 0
     Column(modifier.fillMaxWidth().testTag("detail_board_cast"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(Res.string.settings_meta_cast), style = redesignText(18.sp, FontWeight.Bold), modifier = Modifier.weight(1f))
-            if (hasCrew) {
-                RedesignPillGroup(
-                    options = CastFilter.entries.toList(),
-                    selected = filter,
-                    label = {
-                        stringResource(
-                            when (it) {
-                                CastFilter.All -> Res.string.detail_board_cast_all
-                                CastFilter.Cast -> Res.string.detail_board_cast_cast
-                                CastFilter.Crew -> Res.string.detail_board_cast_crew
-                            },
-                        )
-                    },
-                    onSelect = { filter = it },
-                    optionTag = { "detail_board_cast_filter_${it.name}" },
-                )
-            }
+        // The filter sits on the left, between the Networks / Production logos and the cast.
+        if (hasCrew) {
+            RedesignPillGroup(
+                options = CastFilter.entries.toList(),
+                selected = filter,
+                label = {
+                    stringResource(
+                        when (it) {
+                            CastFilter.All -> Res.string.detail_board_cast_all
+                            CastFilter.Cast -> Res.string.detail_board_cast_cast
+                            CastFilter.Crew -> Res.string.detail_board_cast_crew
+                        },
+                    )
+                },
+                onSelect = { filter = it },
+                optionTag = { "detail_board_cast_filter_${it.name}" },
+                trailing = { counts[it]?.toString() },
+            )
         }
         AnimatedContent(
             targetState = filter,

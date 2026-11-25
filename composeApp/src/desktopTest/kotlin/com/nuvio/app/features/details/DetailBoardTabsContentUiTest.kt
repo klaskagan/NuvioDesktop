@@ -1,6 +1,7 @@
 package com.nuvio.app.features.details
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
@@ -14,6 +15,7 @@ import com.nuvio.app.features.details.components.BoardCastGrid
 import com.nuvio.app.features.details.components.BoardGallery
 import com.nuvio.app.features.details.components.BoardMoreLikeThis
 import com.nuvio.app.features.details.components.BoardTrailers
+import com.nuvio.app.features.details.components.DetailProductionSection
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.GalleryKind
 import com.nuvio.app.features.gallery.GallerySource
@@ -44,6 +46,37 @@ class DetailBoardTabsContentUiTest {
         val layout = textLayout(onNodeWithText(long, useUnmergedTree = true))
         assertEquals(false, layout.hasVisualOverflow, "lines=${layout.lineCount}")
         assertTrue(layout.lineCount >= 2)
+    }
+
+    @Test fun castTabOpensWithANetworksPillThenTheLogosThenTheFilterThenTheCast() =
+        castTabOrder(MetaDetails(id = "tt1", type = "series", name = "Severance", networks = listOf(MetaCompany("Apple TV+"))), "Networks")
+
+    @Test fun movieCastTabOpensWithAProductionPill() =
+        castTabOrder(MetaDetails(id = "tt2", type = "movie", name = "Dune", productionCompanies = listOf(MetaCompany("Legendary"))), "Production")
+
+    private fun castTabOrder(base: MetaDetails, label: String) = runDesktopComposeUiTest(width = 1300, height = 900) {
+        val meta = base.copy(cast = listOf(MetaPerson("Adam Scott", "Mark"), MetaPerson("Britt Lower", "Helly"), MetaPerson("Dan Erickson", "Creator")))
+        setContent {
+            AppEnvironment {
+                Column(Modifier.width(1200.dp)) {
+                    DetailProductionSection(meta = meta, showHeader = true, boardStyle = true)
+                    BoardCastGrid(cast = meta.cast, isSeries = meta.type == "series", onCastClick = null)
+                }
+            }
+        }
+        val networks = onNodeWithTag("detail_board_networks_pill").assertIsDisplayed().getBoundsInRoot()
+        // The label is a pill, not a heading, and has no count.
+        onNodeWithTag("detail_board_networks_pill").assertTextEquals(label)
+        val logo = onNodeWithText(meta.networks.ifEmpty { meta.productionCompanies }.first().name, useUnmergedTree = true).getBoundsInRoot()
+        val filter = onNodeWithTag("detail_board_cast_filter_All").assertIsDisplayed().getBoundsInRoot()
+        val tile = onAllNodesWithTag("detail_board_cast_tile")[0].getBoundsInRoot()
+        assertTrue(networks.bottom <= logo.top, "pill $networks above logos $logo")
+        assertTrue(logo.bottom <= filter.top, "logos $logo above filter $filter")
+        assertTrue(filter.bottom <= tile.top, "filter $filter above cast $tile")
+        // Both pills sit on the left edge, and the old "Cast" heading is gone (only the Cast pill says it).
+        assertEquals(networks.left, filter.left)
+        onAllNodesWithText("Cast", useUnmergedTree = true).assertCountEquals(1)
+        onNodeWithTag("detail_board_cast_filter_Cast").assertTextContains("2", substring = true)
     }
 
     @Test fun unwatchedOnlySaysWhenEverythingIsWatchedAndOffersShowWatched() = runDesktopComposeUiTest(width = 1300, height = 600) {
