@@ -1708,9 +1708,10 @@ fun MetaDetailsScreen(
                         } else {
                             null
                         }
-                        val left = entry?.takeIf { it.durationMs > it.lastPositionMs && it.lastPositionMs > 0L }?.let {
-                            stringResource(Res.string.detail_board_minutes_left, ((it.durationMs - it.lastPositionMs) / 60_000L).toInt().coerceAtLeast(1))
+                        val minutesLeft = entry?.takeIf { it.durationMs > it.lastPositionMs && it.lastPositionMs > 0L }?.let {
+                            ((it.durationMs - it.lastPositionMs) / 60_000L).toInt().coerceAtLeast(1)
                         }
+                        val left = minutesLeft?.let { stringResource(Res.string.detail_board_minutes_left, it) }
                         DetailBoardUpNext(
                             kicker = listOfNotNull(stringResource(Res.string.detail_board_up_next), code, left).joinToString(" · "),
                             title = seriesAction.episodeTitle?.takeIf { it.isNotBlank() } ?: seriesActionVideo?.title ?: seriesAction.label,
@@ -1721,6 +1722,9 @@ fun MetaDetailsScreen(
                             progressFraction = entry?.takeIf { it.durationMs > 0L }?.let { it.lastPositionMs.toFloat() / it.durationMs },
                             // The same verb as the primary button, which decides between resuming and playing.
                             actionLabel = if (seriesAction.label.contains(resumeText, ignoreCase = true)) resumeText else playText,
+                            episode = seriesAction.seasonNumber?.let { season -> seriesAction.episodeNumber?.let { season to it } },
+                            minutesLeft = minutesLeft,
+                            runtimeMinutes = seriesActionVideo?.runtime?.takeIf { it > 0 },
                         )
                     } else {
                         null

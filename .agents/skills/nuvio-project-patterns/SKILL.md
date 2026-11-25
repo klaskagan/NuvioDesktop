@@ -98,6 +98,12 @@ match the design".
   A tracker that rates needs a registered `TrackingRatingProvider` (Trakt:
   `TraktRatingsProvider`) and an option in `ratingSourceOptions`; Trakt was missing
   both, so ratings never reached it. Regression: `RatingTargetTest`.
+- **Your stats ↔ Episodes:** the stats follow the Episodes season through
+  `mapAudienceEpisodes` (addon episode ↔ Trakt episode). Trakt air dates are UTC, a day
+  after the addon's local date for US evening premieres, so dates one day apart are the
+  same airing; exact matching once mapped 0 of 899 Simpsons episodes and the tab always
+  opened on Season 1. Regression: `SeriesAudienceTest.mapsEpisodesWhoseAirDateIsADayApart`.
+  Test it on a long show (The Simpsons): picks, keyboard, wheel scroll and resize.
 - **Branch:** Details redesign work is on a worktree cut from `nuvio-redesign` and merges
   back there, never into develop.
 

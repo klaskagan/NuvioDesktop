@@ -14,6 +14,7 @@ import com.nuvio.app.features.trakt.TraktAudienceRepository
 import com.nuvio.app.features.trakt.TraktAudienceEpisode
 import com.nuvio.app.features.trakt.TraktAudienceSeason
 import com.nuvio.app.features.trakt.TraktAudienceStats
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import java.io.File
 import javax.imageio.ImageIO
@@ -48,36 +49,49 @@ class SeriesAudienceDetailsUiTest {
         seedAudience()
         setContent { AppEnvironment { MetaDetailsScreen("series", meta.id, onBack = {}) } }
         val list = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollToIndex)).onFirst()
-        // The audience cards live behind the board's Your stats tab.
+        // The audience tiles live behind the board's Your stats tab.
         onNodeWithTag("detail_board").assertIsDisplayed()
-        onAllNodesWithText("Season 1 by the numbers").assertCountEquals(0)
+        onAllNodesWithTag("detail_stats_retention").assertCountEquals(0)
         onNodeWithText("Your stats").performClick()
         waitForIdle()
-        list.performScrollToNode(hasText("Season 1 by the numbers"))
-        waitUntil(timeoutMillis = 10_000) {
-            onAllNodesWithText("E8 had 80% as many Trakt watchers as E1").fetchSemanticsNodes().isNotEmpty()
-        }
-        list.performScrollToNode(hasText("Ratings by episode"))
+        list.performScrollToNode(hasTestTag("detail_stats_retention"))
+        val summary = "E8 had 80% as many Trakt watchers as E1 (8,000 of 10,000). Biggest drop: E1 → E2, 6.0 points."
+        waitUntil(timeoutMillis = 10_000) { onAllNodesWithText(summary).fetchSemanticsNodes().isNotEmpty() }
+        // The design's grid: Retention with its total, then Ratings and the personal tiles beside it.
+        onNodeWithText("80%").assertExists()
+        onNodeWithText("SEASON 1 · 80,200 PLAYS · 10,000 TRAKT WATCHERS").assertExists()
+        onNodeWithText("Relative to this season").assertExists()
         onNodeWithText("Ratings by episode").assertIsDisplayed()
-        onNodeWithText("Whole show · 90,000 plays · 10,000 Trakt watchers · 9.0 plays per watcher").assertExists()
+        onNodeWithText("Your Audience preview").assertExists()
+        val retention = onNodeWithTag("detail_stats_retention").fetchSemanticsNode().boundsInRoot
+        val ratingsTile = onNodeWithTag("detail_stats_ratings").fetchSemanticsNode().boundsInRoot
+        val lastRight = (onAllNodesWithTag("detail_stats_next").fetchSemanticsNodes().firstOrNull()
+            ?: onNodeWithTag("detail_stats_you").fetchSemanticsNode()).boundsInRoot
+        assertTrue(ratingsTile.left > retention.right && retention.width > ratingsTile.width, "Retention is the wider left tile")
+        assertTrue(kotlin.math.abs(ratingsTile.top - retention.top) < 1f, "Both columns start together")
+        assertTrue(kotlin.math.abs(lastRight.bottom - retention.bottom) < 1f, "The right column ends flush with Retention")
         onNodeWithContentDescription("S1E2 · 8.2 out of 10", useUnmergedTree = true).performClick()
-        list.performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy -> scrollBy(0f, 560f) }
         waitUntil(timeoutMillis = 5_000) {
             onAllNodesWithText("Fingerprint · E2").fetchSemanticsNodes().isNotEmpty()
         }
         waitForIdle()
         val dir = File("build/reports/series-audience").apply { mkdirs() }
         ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(dir, "details-wide.png"))
-        onNodeWithText("S14").assertIsDisplayed()
-        onNodeWithText("E65").assertIsDisplayed()
-        onNodeWithText("E2").assertDoesNotExist()
-        onNodeWithText("S1E2 · 94.0% of E1 · 9,400 watchers").assertIsDisplayed()
+        // Ratings keeps only the rows in view (the S1 row, not all 31 seasons).
+        onNode(hasText("S1") and hasAnyAncestor(hasTestTag("detail_stats_ratings"))).assertExists()
+        onNodeWithText("S31").assertDoesNotExist()
+        onNodeWithText("E65").assertExists()
+        onNodeWithContentDescription("S1E2 · 94.0% of E1 · 9,400 watchers", substring = true).assertExists()
         onNodeWithContentDescription("S2E160 · 8.5 out of 10", useUnmergedTree = true).assertDoesNotExist()
-        onNodeWithText("Best · S1E8 8.8    Worst · S1E1 8.1").assertIsDisplayed()
-        list.performScrollToIndex(0)
-        list.performScrollToNode(hasText("Ratings by episode"))
-        onNodeWithText("E8 had 80% as many Trakt watchers as E1").assertExists()
-        onNodeWithText("Fingerprint · E2").assertExists()
+        // Wheel-scrolling Ratings reaches the last season without moving the page under it.
+        val pageBefore = onNodeWithTag("detail_stats_retention").fetchSemanticsNode().boundsInRoot.top
+        repeat(12) {
+            onNodeWithTag("detail_stats_ratings_grid").performMouseInput { moveTo(center); scroll(20f) }
+            waitForIdle()
+        }
+        onNode(hasText("S31") and hasAnyAncestor(hasTestTag("detail_stats_ratings"))).assertExists()
+        assertEquals(pageBefore, onNodeWithTag("detail_stats_retention").fetchSemanticsNode().boundsInRoot.top)
+        onNodeWithText("Best S1 E8 · 8.8   Lowest S1 E1 · 8.1").assertExists()
         MetaDetailsRepository.clear()
     }
 
@@ -109,7 +123,7 @@ class SeriesAudienceDetailsUiTest {
 
     /**
      * Wide desktop: the progress tile sits on the board and opens a season in the Episodes tab, Your
-     * stats holds the progress card, Cast & crew holds the networks, and all of it goes with the
+     * stats holds the Your <title> tile, Cast & crew holds the networks, and all of it goes with the
      * Episodes section.
      */
     private fun checkBoard(grouped: Boolean) = runDesktopComposeUiTest(width = 1280, height = 900) {
@@ -151,16 +165,11 @@ class SeriesAudienceDetailsUiTest {
             }
             onNodeWithText("Second season premiere").assertIsDisplayed()
 
-            // Your stats holds the progress card; its season action returns to Episodes.
+            // Your stats holds the personal tiles: episodes watched across the show.
             onNodeWithText("Your stats").performClick()
-            waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Your progress").fetchSemanticsNodes().isNotEmpty() }
+            waitUntil(timeoutMillis = 5_000) { onAllNodesWithTag("detail_stats_you").fetchSemanticsNodes().isNotEmpty() }
+            onNode(hasText("0 of 2") and hasAnyAncestor(hasTestTag("detail_stats_you"))).assertExists()
             onAllNodesWithText("Second season premiere").assertCountEquals(0)
-            onAllNodesWithText("First episode").assertCountEquals(1)
-            val openSeason = onNode(SemanticsMatcher("opens season one") {
-                it.config.getOrNull(SemanticsActions.OnClick)?.label == "Open Season 1"
-            })
-            openSeason.performSemanticsAction(SemanticsActions.OnClick) { activate -> activate() }
-            waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("First episode").fetchSemanticsNodes().size == 2 }
 
             onNodeWithText("Cast & crew").performClick()
             waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Fixture Network").fetchSemanticsNodes().isNotEmpty() }

@@ -165,7 +165,7 @@ private const val BoardMotionMillis = 360
 internal val BoardTitleColumnMaxWidth = 920.dp
 internal val BoardTitleTextMaxWidth = 760.dp
 
-private fun Modifier.boardTile(border: Color = RedesignColors.hairline): Modifier =
+internal fun Modifier.boardTile(border: Color = RedesignColors.hairline): Modifier =
     clip(RedesignTileShape).background(RedesignColors.fill).border(1.dp, border, RedesignTileShape)
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -183,7 +183,7 @@ private fun Modifier.boardClickable(
 ).secondaryClick(onLongClick)
 
 @Composable
-private fun BoardKicker(text: String, color: Color = RedesignColors.textMuted, modifier: Modifier = Modifier) {
+internal fun BoardKicker(text: String, color: Color = RedesignColors.textMuted, modifier: Modifier = Modifier) {
     Text(
         text = text.uppercase(),
         style = redesignText(11.sp, FontWeight.Medium, color, letterSpacing = 0.1.em),

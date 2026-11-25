@@ -6,9 +6,11 @@ import com.nuvio.app.features.trakt.TraktAudienceSeason
 import com.nuvio.app.features.trakt.TraktAudienceStats
 import com.nuvio.app.features.watched.episodePlaybackId
 import com.nuvio.app.features.watched.releasedPlayableEpisodes
+import com.nuvio.app.core.time.isoEpochDay
 import kotlin.math.roundToInt
 
-internal data class SeasonWatchedCount(val season: Int, val watched: Int, val aired: Int)
+/** Watched and aired episodes of one season, and how many minutes of it were watched (by runtime). */
+internal data class SeasonWatchedCount(val season: Int, val watched: Int, val aired: Int, val watchedMinutes: Int = 0)
 
 internal fun MetaDetails.seasonWatchedCounts(
     today: String,
@@ -18,7 +20,13 @@ internal fun MetaDetails.seasonWatchedCounts(
     .values.groupBy { normalizeSeasonNumber(it.first().season) }
     .entries.sortedBy { seasonSortKey(it.key) }
     .map { (season, entries) ->
-        SeasonWatchedCount(season, entries.count { duplicates -> duplicates.any(isWatched) }, entries.size)
+        val watched = entries.filter { duplicates -> duplicates.any(isWatched) }
+        SeasonWatchedCount(
+            season = season,
+            watched = watched.size,
+            aired = entries.size,
+            watchedMinutes = watched.sumOf { duplicates -> duplicates.firstNotNullOfOrNull { it.runtime?.takeIf { minutes -> minutes > 0 } } ?: 0 },
+        )
     }
 
 internal fun List<TraktAudienceSeason>.episodeMap(): Map<AudienceEpisodeKey, TraktAudienceEpisode> =
@@ -31,6 +39,16 @@ private fun String?.matchableTitle(): String? =
 
 private fun String?.airDate(): String? = this?.take(10)?.takeIf { it.length == 10 }
 
+/**
+ * Air dates a day apart are the same airing: Trakt stores the UTC date, addons usually the local
+ * one, so a US evening premiere is a day later on Trakt ("Bart's Birthday": 2024-09-30 vs 09-29).
+ */
+private fun sameAiring(a: String?, b: String?): Boolean {
+    if (a == null || b == null) return false
+    if (a == b) return true
+    return runCatching { kotlin.math.abs(isoEpochDay(a) - isoEpochDay(b)) <= 1 }.getOrDefault(false)
+}
+
 internal fun mapAudienceEpisodes(
     videos: List<MetaVideo>,
     audience: Map<AudienceEpisodeKey, TraktAudienceEpisode>,
@@ -38,7 +56,7 @@ internal fun mapAudienceEpisodes(
     val candidates = videos.filter { it.season != null && it.episode != null }.distinctBy { it.id }
     val byId = candidates.groupBy { it.id.lowercase() }
     val byNumber = candidates.groupBy { AudienceEpisodeKey(requireNotNull(it.season), requireNotNull(it.episode)) }
-    val byTitleAndDate = candidates.groupBy { it.title.matchableTitle() to it.released.airDate() }
+    val byTitle = candidates.groupBy { it.title.matchableTitle() }
     val matches = audience.mapNotNull { (key, episode) ->
         val ids = episode.ids
         val stable = (byId[ids?.imdb].orEmpty() + byId[ids?.trakt?.let { "trakt:$it" }].orEmpty()).distinct()
@@ -50,14 +68,18 @@ internal fun mapAudienceEpisodes(
             val otherTitle = video.title.matchableTitle()
             val otherDate = video.released.airDate()
             val titleMatches = title != null && title == otherTitle
-            val dateMatches = date != null && date == otherDate
+            val dateMatches = sameAiring(date, otherDate)
             (titleMatches || dateMatches) &&
                 (title == null || otherTitle == null || titleMatches) &&
                 (date == null || otherDate == null || dateMatches)
         }
         if (exact.isNotEmpty()) return@mapNotNull exact.singleOrNull()?.let { key to it }
 
-        val reordered = if (title != null && date != null) byTitleAndDate[title to date]?.singleOrNull() else null
+        val reordered = if (title != null && date != null) {
+            byTitle[title]?.filter { sameAiring(date, it.released.airDate()) }?.singleOrNull()
+        } else {
+            null
+        }
         reordered?.let { key to it }
     }
     return matches.groupBy { it.second.id }.values.mapNotNull { it.singleOrNull() }.toMap()
@@ -116,3 +138,28 @@ internal fun retentionAxisTicks(
     val endpoints = candidates.filter { it.index == 0 || it.index == last }
     return if (fits(endpoints)) endpoints else endpoints.firstOrNull { labelWidths[it.index] <= chartWidth }?.let(::listOf).orEmpty()
 }
+
+/** "1 h 40", "2 h" or "40 min": time watched as the Your stats tile shows it. */
+internal fun formatWatchedMinutes(minutes: Int): String {
+    val hours = minutes / 60
+    val rest = minutes % 60
+    return when {
+        hours == 0 -> "$rest min"
+        rest == 0 -> "$hours h"
+        else -> "$hours h ${rest.toString().padStart(2, '0')}"
+    }
+}
+
+/** Heatmap colour for a Trakt rating out of 10, in the design's five bands (amber to mint). */
+internal fun audienceRatingColor(rating: Double): androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color(
+    when {
+        rating < 7.0 -> 0xffe8b27a
+        rating < 7.7 -> 0xffdfe0a0
+        rating < 8.0 -> 0xffc8e3a0
+        rating < 8.4 -> 0xffa7e3a0
+        else -> 0xff7be0b0
+    },
+)
+
+/** A fingerprint cell's tint strength for a 0–100 value: faint at 0, full at 100. */
+internal fun fingerprintAlpha(value: Int): Float = 0.35f + 0.65f * value.coerceIn(0, 100) / 100f
