@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -24,7 +25,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nuvio.app.core.ui.NuvioAsyncImage as AsyncImage
-import com.nuvio.app.core.ui.RedesignPillGroup
+import com.nuvio.app.core.ui.RedesignColors
+import com.nuvio.app.core.ui.redesignText
 import com.nuvio.app.features.details.MetaCompany
 import com.nuvio.app.features.details.MetaDetails
 import nuvio.composeapp.generated.resources.*
@@ -37,7 +39,11 @@ fun DetailProductionSection(
     modifier: Modifier = Modifier,
     showHeader: Boolean = true,
     onCompanyClick: ((MetaCompany, String) -> Unit)? = null,
-    /** The board's Cast & crew tab: the label is a single pill, like All / Cast / Crew, without a count. */
+    /**
+     * The board's Cast & crew tab: the logos are named by a small muted caption at the start of
+     * their row ("Network", "Networks" with more than one, "Production" on a movie). Plain text,
+     * not a pill, so it never reads as a filter.
+     */
     boardStyle: Boolean = false,
 ) {
     val isSeriesLike = meta.type == "series" || meta.videos.any { it.season != null || it.episode != null }
@@ -64,20 +70,47 @@ fun DetailProductionSection(
     } else {
         stringResource(Res.string.meta_section_production_title)
     }
+    if (boardStyle) {
+        // Named by what the row shows: studios are "Production" even on a series without networks.
+        val caption = when {
+            !isNetworkSource -> stringResource(Res.string.meta_section_production_title)
+            displayItems.size == 1 -> stringResource(Res.string.detail_board_network)
+            else -> stringResource(Res.string.details_networks)
+        }
+        Row(
+            modifier = modifier.fillMaxWidth().testTag("detail_board_networks"),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = caption,
+                style = redesignText(13.sp, FontWeight.SemiBold, color = RedesignColors.textMuted, lineHeight = 16.sp),
+                modifier = Modifier.testTag("detail_board_networks_label"),
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                displayItems.forEach { item ->
+                    ProductionChip(
+                        item = item,
+                        chipHeight = 44.dp,
+                        logoWidth = 72.dp,
+                        logoHeight = 26.dp,
+                        onClick = if (onCompanyClick != null && item.tmdbId != null) {
+                            { onCompanyClick(item, entityKind) }
+                        } else null,
+                    )
+                }
+            }
+        }
+        return
+    }
     DetailSection(
         title = title,
-        modifier = modifier.then(if (boardStyle) Modifier.testTag("detail_board_networks") else Modifier),
-        showHeader = showHeader && !boardStyle,
+        modifier = modifier,
+        showHeader = showHeader,
     ) {
-        if (boardStyle) {
-            RedesignPillGroup(
-                options = listOf(title),
-                selected = title,
-                label = { it },
-                onSelect = {},
-                optionTag = { "detail_board_networks_pill" },
-            )
-        }
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val chipHeight = when {
                 maxWidth >= 1024.dp -> 44.dp

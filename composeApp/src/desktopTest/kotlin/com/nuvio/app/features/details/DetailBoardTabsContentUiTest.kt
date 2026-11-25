@@ -48,10 +48,13 @@ class DetailBoardTabsContentUiTest {
         assertTrue(layout.lineCount >= 2)
     }
 
-    @Test fun castTabOpensWithANetworksPillThenTheLogosThenTheFilterThenTheCast() =
-        castTabOrder(MetaDetails(id = "tt1", type = "series", name = "Severance", networks = listOf(MetaCompany("Apple TV+"))), "Networks")
+    @Test fun castTabOpensWithTheNetworkLogosNamedByACaptionThenTheFilterThenTheCast() =
+        castTabOrder(MetaDetails(id = "tt1", type = "series", name = "Severance", networks = listOf(MetaCompany("Apple TV+"))), "Network")
 
-    @Test fun movieCastTabOpensWithAProductionPill() =
+    @Test fun castTabSaysNetworksWithMoreThanOne() =
+        castTabOrder(MetaDetails(id = "tt3", type = "series", name = "Fargo", networks = listOf(MetaCompany("FX"), MetaCompany("Hulu"))), "Networks")
+
+    @Test fun movieCastTabNamesItsStudiosProduction() =
         castTabOrder(MetaDetails(id = "tt2", type = "movie", name = "Dune", productionCompanies = listOf(MetaCompany("Legendary"))), "Production")
 
     private fun castTabOrder(base: MetaDetails, label: String) = runDesktopComposeUiTest(width = 1300, height = 900) {
@@ -64,17 +67,20 @@ class DetailBoardTabsContentUiTest {
                 }
             }
         }
-        val networks = onNodeWithTag("detail_board_networks_pill").assertIsDisplayed().getBoundsInRoot()
-        // The label is a pill, not a heading, and has no count.
-        onNodeWithTag("detail_board_networks_pill").assertTextEquals(label)
+        // A plain caption, not a pill: nothing selectable names the logos.
+        val caption = onNodeWithTag("detail_board_networks_label").assertTextEquals(label).getBoundsInRoot()
+        onNodeWithTag("detail_board_networks_pill").assertDoesNotExist()
         val logo = onNodeWithText(meta.networks.ifEmpty { meta.productionCompanies }.first().name, useUnmergedTree = true).getBoundsInRoot()
         val filter = onNodeWithTag("detail_board_cast_filter_All").assertIsDisplayed().getBoundsInRoot()
         val tile = onAllNodesWithTag("detail_board_cast_tile")[0].getBoundsInRoot()
-        assertTrue(networks.bottom <= logo.top, "pill $networks above logos $logo")
+        // The caption starts the logo row, on the same line as the logos.
+        assertTrue(caption.right < logo.left, "caption $caption before logos $logo")
+        assertTrue(caption.top < logo.bottom && logo.top < caption.bottom, "caption $caption on the logo row $logo")
         assertTrue(logo.bottom <= filter.top, "logos $logo above filter $filter")
         assertTrue(filter.bottom <= tile.top, "filter $filter above cast $tile")
-        // Both pills sit on the left edge, and the old "Cast" heading is gone (only the Cast pill says it).
-        assertEquals(networks.left, filter.left)
+        // The row and the filter share the left edge, and the old "Cast" heading is gone (only the Cast pill says it).
+        // (the All option sits inside the pill group's 3 dp padding).
+        assertTrue((filter.left - caption.left).value in 0f..4f, "caption $caption and filter $filter share the left edge")
         onAllNodesWithText("Cast", useUnmergedTree = true).assertCountEquals(1)
         onNodeWithTag("detail_board_cast_filter_Cast").assertTextContains("2", substring = true)
     }
