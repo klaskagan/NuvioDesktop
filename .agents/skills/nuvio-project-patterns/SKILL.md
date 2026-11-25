@@ -77,6 +77,9 @@ match the design".
   markup: shared classes live in `art/base.html` (`.kv` is a two-column `1fr 1fr` grid, so
   Details facts sit two to a row). Reading only the `kv(...)` rows once shipped one column.
   Regression: `DetailBoardTabsContentUiTest.movieDetailsFollowTheFilmFrame`.
+  Don't trust a Build gap line to be complete: list every element of the frame yourself.
+  "A · Trailer expanded" said only the height was missing, but the picked-clip overlay
+  (title, play/pause, Play, times) was missing too. Regression: `DetailBoardExpandedTrailerUiTest`.
 - **Finish, every time:**
   1. Check the result in the running app against the frame.
   2. Update that frame's `V1_STATUS` entry: status, plus a note of what still differs.
@@ -90,7 +93,34 @@ match the design".
 - **Visual checks:** computer use with full-screen control (background `app_*` clicks
   don't reach MainKt). Hover and open only: never click Rate stars or ♥ (the strip opens
   under the pointer and saves), Play/Resume, or Watch party (it creates a real party).
-  Close layers with Esc.
+  Close layers with Esc. Every Nuvio dev app is the same `net.java.openjdk.java` bundle, so
+  computer use may only reach another session's window: front your own by process id
+  (`osascript -e 'tell application "System Events" to set frontmost of (first process whose
+  unix id is <pid>) to true'`, pid from `ps` with `-Dnuvio.desktop.devName=<task>`), and never
+  click another session's app. Running `desktopTest` while the review app is open rebuilds its
+  jar under it ("ZipFile invalid LOC header"): relaunch the app after tests.
+- **Watch it your way windows** (TV picker, Shuffle, Save to list) open through
+  `BoardAnchoredPopover` / `BoardPopoverPanel` (`BoardPopover.kt`): the frosted panel over the
+  lightly dimmed board, Esc or a click on the dim closes it, placed `Below` the tile, `Beside`
+  the action (just left of the cell itself, as in the frames; not left of the whole column) or
+  `Under` an action-row button. Sources opens Quick pick under its own cell (`onClickAt`). Quick pick has the arrow too
+  (`Modifier.popoverNub`, first in the panel's modifier, placed by `quickPickPlacement`). Give a new action `popup` +
+  `popupPlacement` on `DetailSecondaryAction`; don't hand-roll a `Popup`. The tile's action
+  subtitles are hidden in the design (`.wg6 span small{display:none}`): icon and name only.
+  The panel's arrow is drawn outside the caller's modifier, because `animateContentSize` clips
+  to bounds and hid it. Build popover content synchronously where it is cheap: an async load
+  opened Shuffle short, then it grew and re-centred.
+  Regressions: `DetailBoardSideColumnUiTest`, `WatchItYourWayPopoverTest`.
+- **Ambient backdrops** (`ShellBackdrop`): create the page's `BackdropFocusController(artwork)` with
+  the artwork it already knows. Without it the page opened on black and faded in (party page,
+  returning to Details), even with the blurred image cached.
+- **Settings from Details** (Manage TVs and the like): on desktop use
+  `openDesktopSettings(page, leavePage = true)`. A bare `SettingsPageRoute`, or the call without
+  `leavePage`, kept Details on screen or dropped the top bar. Regression:
+  `DesktopNavigationHistoryTest.manageTvsFromDetailsLeavesDetailsAndBackReturns`.
+- **Library button state** reads `LibraryRepository.isSavedByDefault`: in the list its toggle
+  adds to (Trakt's watchlist), not in any list. Status trackers (WeTrakr, Simkl) count any status,
+  because their toggle clears every status.
 - **Board-only tab inputs:** anything only the board has (gallery images, the reviews
   source) is added in `boardContentArgs` in `MetaDetailsScreen.kt`. Tab visibility and
   tab content both read those args (`detailBoardItems` takes no separate `hasContent`).
@@ -107,6 +137,16 @@ match the design".
   same airing; exact matching once mapped 0 of 899 Simpsons episodes and the tab always
   opened on Season 1. Regression: `SeriesAudienceTest.mapsEpisodesWhoseAirDateIsADayApart`.
   Test it on a long show (The Simpsons): picks, keyboard, wheel scroll and resize.
+- **Episode scores:** board episode cards show IMDb's ★ where it has one and Trakt's
+  (`audienceState` episodes via `mapAudienceEpisodes`) for the rest, loaded with the board so
+  Your stats reuses it. IMDb returned nothing for Severance, so the cards showed no score at
+  all until the Trakt fill-in. Check a score on a real show, not only the fixture.
+- **Trakt progress has no position:** with Trakt as the progress source, an episode in progress
+  is Trakt's playback entry: `progressPercent` only, `lastPositionMs` and `durationMs` 0. Read
+  `progressFraction` for bars and minutes left (runtime stands in for the duration), and let a
+  play with no saved position resume from `storedResumeFraction`. Cards gated on `durationMs`
+  lost their bar a moment after playback and Resume restarted at 0 (Severance S2 E1).
+  Regression: `WatchProgressRulesTest` ("a Trakt percentage resumes…").
 - **Branch:** Details redesign work is on a worktree cut from `nuvio-redesign` and merges
   back there, never into develop.
 
@@ -281,6 +321,12 @@ Handling both doubled every arrow skip (20 s). Relative seeks likewise call the
 engine's `seekBy` only when `seekFromNativeControls` returns false. Check
 `PlayerControllerSeekTest`, then press → in a real player: the log must show one
 `seekTo` 10 s ahead per `keyboardSeekForward`.
+In-page players (the Details board's expanded trailer) claim Space/K, ←/→ and M
+with `MediaKeysHandler`; the AWT dispatcher offers them to
+`AppKeyboardShortcuts.handleMediaKey` before arrows move focus. A Compose
+window `onPreviewKeyEvent` hook runs too late: the dispatcher already used the
+arrows for focus. Check `DetailBoardExpandedTrailerUiTest`, then press → on an
+expanded Trailers clip: the time jumps 10 s and focus stays put.
 
 When merging native player API changes, reconcile the Kotlin bridge, JNI exports,
 `NativePlayerCreate` callbacks, and embedded/staging adapters together. The RTX HDR

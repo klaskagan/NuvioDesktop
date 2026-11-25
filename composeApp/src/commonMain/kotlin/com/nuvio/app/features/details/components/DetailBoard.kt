@@ -57,6 +57,10 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.runtime.Stable
+import nuvio.composeapp.generated.resources.compose_action_pause
+import nuvio.composeapp.generated.resources.action_play
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -68,6 +72,12 @@ import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.layout.offset
+import nuvio.composeapp.generated.resources.player_seek_position
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.text.TextLayoutResult
@@ -85,6 +95,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -92,6 +104,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.isSpecified
+import com.nuvio.app.features.home.HOME_BOARD_EXPANDED_MARGIN
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -153,6 +167,18 @@ import androidx.compose.ui.text.style.TextDecoration
 /** The board's height; the loading skeleton uses the same value so nothing moves when data arrives. */
 internal val DetailBoardHeight = 440.dp
 
+/**
+ * The board's height: [DetailBoardHeight], or while [expanded] (the trailer) Home's expanded height,
+ * the viewport less [HOME_BOARD_EXPANDED_MARGIN], so the tabs wait below the fold. An unknown
+ * viewport keeps the collapsed height.
+ */
+internal fun detailBoardHeight(viewportHeight: Dp, expanded: Boolean): Dp =
+    if (expanded && viewportHeight.isSpecified) {
+        (viewportHeight - HOME_BOARD_EXPANDED_MARGIN).coerceAtLeast(DetailBoardHeight)
+    } else {
+        DetailBoardHeight
+    }
+
 /** The pinned tabs row's height. */
 internal val DetailBoardTabsHeight = 56.dp
 
@@ -210,10 +236,18 @@ internal fun DetailBoard(
     expanded: Boolean,
     hasSide: Boolean,
     modifier: Modifier = Modifier,
+    /** The page's viewport height, which an expanded board grows into. */
+    viewportHeight: Dp = Dp.Unspecified,
     side: @Composable ColumnScope.() -> Unit,
     featured: @Composable BoxScope.() -> Unit,
 ) {
-    Row(modifier.fillMaxWidth().height(DetailBoardHeight).testTag("detail_board")) {
+    // Grows with the side column's fold, on Home's timing, so the trailer opens in one movement.
+    val height by animateDpAsState(
+        detailBoardHeight(viewportHeight, expanded),
+        tween(BoardMotionMillis, easing = FastOutSlowInEasing),
+        label = "detail_board_height",
+    )
+    Row(modifier.fillMaxWidth().height(height).testTag("detail_board")) {
         Box(Modifier.weight(1f).fillMaxHeight().boardTile().testTag("detail_board_featured"), content = featured)
         AnimatedVisibility(
             visible = hasSide && !expanded,
@@ -239,6 +273,7 @@ internal fun BoardPlayButton(
     onLongClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    icon: ImageVector = Icons.Rounded.PlayArrow,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -267,7 +302,7 @@ internal fun BoardPlayButton(
             .padding(start = if (compact) 12.dp else 18.dp, end = if (compact) 16.dp else 24.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = content, modifier = Modifier.size(if (compact) 18.dp else 22.dp))
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(if (compact) 18.dp else 22.dp))
         Spacer(Modifier.width(6.dp))
         Text(
             text = if (enabled) label else stringResource(Res.string.playback_unavailable),
@@ -334,8 +369,8 @@ internal fun BoxScope.DetailFeatureTile(
     meta: MetaDetails,
     expanded: Boolean,
     trailer: (@Composable (Modifier, Boolean) -> Unit)?,
-    /** A picked trailer's title, shown while [expanded]. */
-    expandedTitle: String? = null,
+    /** A picked trailer: its title, controls and times show while [expanded]. */
+    expandedTrailer: DetailExpandedTrailer? = null,
     expandedFailure: com.nuvio.app.features.details.DetailBoardTrailerFailure? = null,
     trailerReady: Boolean,
     trailerMuted: Boolean,
@@ -438,22 +473,211 @@ internal fun BoxScope.DetailFeatureTile(
             }
         }
     }
+    // Keeps the last picked clip while the overlay fades out after collapse.
+    var shownTrailer by remember { mutableStateOf(expandedTrailer) }
+    if (expandedTrailer != null) shownTrailer = expandedTrailer
     AnimatedVisibility(
-        visible = expanded && expandedTitle != null,
+        visible = expanded && expandedTrailer != null && expandedFailure == null,
         enter = fadeIn(tween(BoardMotionMillis)),
         exit = fadeOut(tween(160)),
-        modifier = Modifier.align(Alignment.BottomStart).padding(start = 28.dp, end = 28.dp, bottom = 24.dp),
+        modifier = Modifier.matchParentSize(),
     ) {
-        Text(
-            expandedTitle.orEmpty(),
-            style = redesignText(18.sp, FontWeight.Bold),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.34f))
-                .padding(horizontal = 14.dp, vertical = 8.dp).testTag("detail_board_trailer_title"),
-        )
+        Box(Modifier.fillMaxSize()) { shownTrailer?.let { ExpandedTrailerOverlay(meta, it) } }
     }
 }
+
+/** A trailer picked from the Trailers tab or the Trailer button, as the expanded tile shows it. */
+@Stable
+internal class DetailExpandedTrailer(
+    val title: String,
+    /** "Severance · YouTube": the title and where the clip comes from. */
+    val source: String,
+    val clock: DesktopHeroTrailerClock?,
+    val paused: Boolean,
+    val onPauseToggle: () -> Unit,
+    val playLabel: String,
+    val playEnabled: Boolean,
+    val onPlay: () -> Unit,
+    val onPlayLongClick: (() -> Unit)?,
+)
+
+/** A clip time as the expanded tile shows it: 0:41, 2:24, 1:02:05. */
+internal fun trailerClockTime(ms: Long): String {
+    val total = (ms / 1_000L).coerceAtLeast(0L)
+    val seconds = (total % 60).toString().padStart(2, '0')
+    val hours = total / 3_600
+    val minutes = (total / 60) % 60
+    return if (hours > 0) "$hours:${minutes.toString().padStart(2, '0')}:$seconds" else "$minutes:$seconds"
+}
+
+/** The expanded tile's clip overlay: logo and clip title, play/pause and Play, and the clip's times. */
+@Composable
+private fun BoxScope.ExpandedTrailerOverlay(meta: MetaDetails, trailer: DetailExpandedTrailer) {
+    Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color(0xD9060708))))
+    Row(
+        Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 56.dp).testTag("detail_board_trailer_info"),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BoardTitleLogo(meta, height = 56.dp, maxWidth = 150.dp)
+        Column(Modifier.widthIn(max = 560.dp)) {
+            Text(
+                trailer.title,
+                style = redesignText(16.sp, FontWeight.Bold),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag("detail_board_trailer_title"),
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                trailer.source,
+                style = redesignText(12.5.sp, color = RedesignColors.textSecondary),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+    Row(
+        Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 50.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RedesignIconButton(
+            contentDescription = stringResource(if (trailer.paused) Res.string.action_play else Res.string.compose_action_pause),
+            onClick = trailer.onPauseToggle,
+            vector = if (trailer.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+            size = 38.dp,
+            modifier = Modifier.testTag("detail_board_trailer_pause"),
+        )
+        BoardPlayButton(
+            label = trailer.playLabel,
+            enabled = trailer.playEnabled,
+            onClick = trailer.onPlay,
+            onLongClick = trailer.onPlayLongClick,
+            compact = true,
+            modifier = Modifier.testTag("detail_board_trailer_play"),
+        )
+    }
+    val clock = trailer.clock
+    if (clock != null && clock.durationMs > 0L) {
+        Row(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 20.dp)
+                .testTag("detail_board_trailer_time"),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val timeStyle = redesignText(12.sp, color = RedesignColors.textSecondary)
+            Text(trailerClockTime(clock.positionMs), style = timeStyle)
+            BoardSeekBar(
+                positionMs = clock.positionMs,
+                durationMs = clock.durationMs,
+                onSeek = clock::seekTo.takeIf { clock.canSeek },
+                modifier = Modifier.weight(1f),
+            )
+            Text(trailerClockTime(clock.durationMs), style = timeStyle)
+        }
+    }
+}
+
+/**
+ * The expanded clip's progress bar. It stays the frame's quiet 3dp line until hovered; then, like
+ * the player's seek bar, it thickens, shows its handle and the time under the pointer, and a click
+ * or drag seeks there. Without [onSeek] it only shows progress.
+ */
+@Composable
+private fun BoardSeekBar(positionMs: Long, durationMs: Long, onSeek: ((Long) -> Unit)?, modifier: Modifier = Modifier) {
+    val latestOnSeek by rememberUpdatedState(onSeek)
+    var widthPx by remember { mutableStateOf(0) }
+    var pointerX by remember { mutableStateOf<Float?>(null) }
+    var dragMs by remember { mutableStateOf<Long?>(null) }
+    val seekable = onSeek != null && durationMs > 0L
+    fun msAt(x: Float): Long = if (widthPx <= 0) 0L else ((x / widthPx).coerceIn(0f, 1f) * durationMs).toLong()
+    val active = seekable && (pointerX != null || dragMs != null)
+    val trackHeight by animateDpAsState(if (active) 5.dp else 3.dp, tween(160))
+    val handleAlpha by animateFloatAsState(if (active) 1f else 0f, tween(160))
+    val shownMs = dragMs ?: positionMs
+    val fraction = if (durationMs > 0L) (shownMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+    val seekDescription = stringResource(Res.string.player_seek_position)
+    val density = LocalDensity.current
+    Box(
+        modifier.height(20.dp).onSizeChanged { widthPx = it.width }
+            .semantics { contentDescription = seekDescription }
+            .testTag("detail_board_trailer_seek")
+            .then(
+                if (!seekable) Modifier else Modifier.pointerHoverIcon(PointerIcon.Hand).pointerInput(durationMs) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: continue
+                            val x = change.position.x
+                            when (event.type) {
+                                PointerEventType.Enter, PointerEventType.Move -> {
+                                    pointerX = x
+                                    if (dragMs != null) { dragMs = msAt(x); change.consume() }
+                                }
+                                PointerEventType.Exit -> if (dragMs == null) pointerX = null
+                                PointerEventType.Press -> { dragMs = msAt(x); change.consume() }
+                                PointerEventType.Release -> {
+                                    dragMs?.let { latestOnSeek?.invoke(it) }
+                                    dragMs = null
+                                    if (x < 0f || x > size.width || change.position.y !in 0f..size.height.toFloat()) pointerX = null
+                                    change.consume()
+                                }
+                            }
+                        }
+                    }
+                },
+            ),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(Modifier.fillMaxWidth().height(trackHeight).clip(CircleShape).background(Color.White.copy(alpha = 0.28f))) {
+            Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(RedesignColors.textPrimary))
+        }
+        Box(
+            Modifier.offset { IntOffset((fraction * widthPx - 6.dp.toPx()).roundToInt(), 0) }
+                .size(12.dp).graphicsLayer { alpha = handleAlpha }.clip(CircleShape).background(RedesignColors.textPrimary),
+        )
+        val hoverX = pointerX
+        if (seekable && hoverX != null) {
+            var bubbleWidth by remember { mutableStateOf(0) }
+            Text(
+                trailerClockTime(dragMs ?: msAt(hoverX)),
+                style = redesignText(12.sp, FontWeight.SemiBold),
+                modifier = Modifier
+                    .offset {
+                        val x = (hoverX - bubbleWidth / 2f).coerceIn(0f, (widthPx - bubbleWidth).toFloat().coerceAtLeast(0f))
+                        IntOffset(x.roundToInt(), with(density) { -26.dp.roundToPx() })
+                    }
+                    .onSizeChanged { bubbleWidth = it.width }
+                    .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.72f))
+                    .padding(horizontal = 7.dp, vertical = 3.dp)
+                    .testTag("detail_board_trailer_seek_time"),
+            )
+        }
+    }
+}
+
+/**
+ * Playback keys for a clip picked from Trailers while it plays expanded: Space or K pauses, ← and →
+ * seek 10 seconds, M mutes. Returns false for any other key, so it reaches the focused control.
+ */
+internal fun handleExpandedTrailerKey(
+    key: Key,
+    clock: DesktopHeroTrailerClock?,
+    onPauseToggle: () -> Unit,
+    onMuteToggle: () -> Unit,
+): Boolean = when (key) {
+    Key.Spacebar, Key.K -> { onPauseToggle(); true }
+    Key.M -> { onMuteToggle(); true }
+    Key.DirectionLeft, Key.DirectionRight -> {
+        val seekable = clock?.takeIf { it.canSeek }
+        seekable?.seekBy(if (key == Key.DirectionLeft) -TrailerKeySeekMs else TrailerKeySeekMs)
+        seekable != null
+    }
+    else -> false
+}
+
+internal const val TrailerKeySeekMs = 10_000L
 
 /** The title's logo, or its name where there is none or it fails to load. */
 @Composable
@@ -620,8 +844,10 @@ private val YourWayCellGap = 6.dp
 @Composable
 internal fun DetailYourWayTile(actions: List<DetailSecondaryAction>, modifier: Modifier = Modifier) {
     val shown = actions.take(YourWayMaxActions)
+    var tileBounds by remember { mutableStateOf(Rect.Zero) }
     Column(
         modifier.boardTile().animateContentSize(tween(BoardMotionMillis, easing = FastOutSlowInEasing))
+            .onGloballyPositioned { tileBounds = it.boundsInWindow() }
             .testTag("detail_board_your_way").padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
     ) {
         BoardKicker(stringResource(Res.string.detail_board_your_way), modifier = Modifier.padding(horizontal = 4.dp))
@@ -629,7 +855,7 @@ internal fun DetailYourWayTile(actions: List<DetailSecondaryAction>, modifier: M
         Column(verticalArrangement = Arrangement.spacedBy(YourWayCellGap)) {
             shown.chunked(YourWayColumns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(YourWayCellGap)) {
-                    row.forEach { action -> YourWayCell(action, Modifier.weight(1f)) }
+                    row.forEach { action -> YourWayCell(action, { tileBounds }, Modifier.weight(1f)) }
                     repeat(YourWayColumns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -637,56 +863,57 @@ internal fun DetailYourWayTile(actions: List<DetailSecondaryAction>, modifier: M
     }
 }
 
+/** A Your-way action that is on (Shuffle on) or has its popover open: a lighter fill with a white edge, as in the design. */
+private val YourWayActiveFill = Color.White.copy(alpha = 0.16f)
+private val YourWayActiveEdge = Color.White.copy(alpha = 0.45f)
+
 @Composable
-private fun YourWayCell(action: DetailSecondaryAction, modifier: Modifier) {
+private fun YourWayCell(action: DetailSecondaryAction, tileBounds: () -> Rect, modifier: Modifier) {
     val interaction = remember(action.label) { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val popupState = remember { MutableTransitionState(false) }
+    var cellBounds by remember { mutableStateOf(Rect.Zero) }
     val active = action.isActive || popupState.targetState
     val fill by animateColorAsState(
         when {
-            active -> RedesignColors.textPrimary
+            active -> YourWayActiveFill
             hovered -> RedesignColors.fillStrong
             else -> RedesignColors.fill
         },
         tween(160),
         label = "your_way_fill",
     )
-    val content = if (active) RedesignOnLight else RedesignColors.textPrimary
+    val edge by animateColorAsState(if (active) YourWayActiveEdge else Color.Transparent, tween(160), label = "your_way_edge")
+    val shape = RoundedCornerShape(12.dp)
     Box(modifier) {
         Column(
-            Modifier.fillMaxWidth().height(YourWayCellHeight).clip(RoundedCornerShape(12.dp)).background(fill)
+            Modifier.fillMaxWidth().height(YourWayCellHeight).onGloballyPositioned { cellBounds = it.boundsInWindow() }
+                .clip(shape).background(fill).border(1.dp, edge, shape)
                 .boardClickable(interaction, {
-                    action.onClick()
+                    action.onClickAt?.invoke(cellBounds) ?: action.onClick()
                     if (action.popup != null) popupState.targetState = !popupState.targetState
                 }, action.onLongClick)
                 .then(action.tag?.let { Modifier.testTag(it) } ?: Modifier)
+                .semantics { selected = active }
                 .padding(horizontal = 9.dp),
             verticalArrangement = Arrangement.Center,
         ) {
-            Icon(action.icon, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+            Icon(action.icon, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(16.dp))
             Spacer(Modifier.height(4.dp))
-            Text(action.label, style = redesignText(12.sp, FontWeight.SemiBold, content), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+            Text(action.label, style = redesignText(12.sp, FontWeight.SemiBold), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         }
         val popup = action.popup
-        if (popup != null && (popupState.currentState || popupState.targetState)) {
+        // Shuffle drops its popover once it is on (clicking it then stops shuffling).
+        LaunchedEffect(popup == null) { if (popup == null) popupState.targetState = false }
+        if (popup != null) {
             val dismiss = { popupState.targetState = false }
-            OverlayEscapeHandler { dismiss() }
-            val offsetY = with(LocalDensity.current) { (YourWayCellHeight + 6.dp).roundToPx() }
-            Popup(
-                alignment = Alignment.TopStart,
-                offset = IntOffset(0, offsetY),
-                onDismissRequest = dismiss,
-                properties = PopupProperties(focusable = true),
-            ) {
-                AnimatedVisibility(
-                    visibleState = popupState,
-                    enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = TransformOrigin(0f, 0f)),
-                    exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = TransformOrigin(0f, 0f)),
-                ) {
-                    popup(dismiss)
-                }
-            }
+            BoardAnchoredPopover(
+                state = popupState,
+                anchor = cellBounds,
+                tile = tileBounds(),
+                placement = action.popupPlacement,
+                onDismiss = dismiss,
+            ) { popup(dismiss) }
         }
     }
 }

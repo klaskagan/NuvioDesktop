@@ -500,11 +500,13 @@ private class TvHandoffPicker(
     fun playbackView() = TvHandoffPlaybackView(
         devices.map { com.nuvio.app.features.player.PlayerControlTvDevice(it.name, it.platform) },
         ready = isOpen && !manageDevices, busy = working, canResume = canResume && !transferred, status = status,
+        lastUsed = lastUsedTvIndex(devices),
     )
 
     fun selectDevice(index: Int) {
         if (!isOpen || manageDevices || working || transferred) return
         val tv = devices.getOrNull(index) ?: return
+        rememberLastUsedTv(tv)
         selectedTv = tv; populate(tv); sendToTv()
     }
 
@@ -539,12 +541,26 @@ internal actual val tvHandoffSupported: Boolean = true
 internal actual fun tvHandoffPlaybackView(): TvHandoffPlaybackView {
     TvPickerWindow.picker?.takeUnless { it.manageDevices }?.let { return it.playbackView() }
     // A picker is prepared asynchronously after account verification. Display names never include pairing credentials.
-    val devices = runCatching {
+    val paired = runCatching {
         val path = Path.of(System.getProperty("user.home"), ".nuvio", "tv-handoff", "devices.json")
         Json { ignoreUnknownKeys = true }.decodeFromString<List<PairedTv>>(Files.readString(path))
-            .map { com.nuvio.app.features.player.PlayerControlTvDevice(it.name, it.platform) }
     }.getOrDefault(emptyList())
-    return TvHandoffPlaybackView(devices)
+    return TvHandoffPlaybackView(
+        paired.map { com.nuvio.app.features.player.PlayerControlTvDevice(it.name, it.platform) },
+        lastUsed = lastUsedTvIndex(paired),
+    )
+}
+
+// The TV last sent to (its id only, no credentials), so the picker can preselect it and say "last used".
+private val lastUsedTvFile: Path get() = Path.of(System.getProperty("user.home"), ".nuvio", "tv-handoff", "last-used")
+
+private fun lastUsedTvIndex(devices: List<PairedTv>): Int {
+    val id = runCatching { Files.readString(lastUsedTvFile).trim() }.getOrNull() ?: return -1
+    return devices.indexOfFirst { it.id == id }
+}
+
+private fun rememberLastUsedTv(tv: PairedTv) {
+    runCatching { privateWrite(lastUsedTvFile, tv.id.toByteArray()) }
 }
 
 internal actual fun selectTvHandoffDevice(index: Int) { TvPickerWindow.picker?.selectDevice(index) }

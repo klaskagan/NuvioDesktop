@@ -1,5 +1,15 @@
 package com.nuvio.app.features.streams
 
+import nuvio.composeapp.generated.resources.streams_sheet_download_quality_size
+import nuvio.composeapp.generated.resources.streams_sheet_download_folder_line_no_space
+import nuvio.composeapp.generated.resources.streams_sheet_download_folder_line
+import nuvio.composeapp.generated.resources.streams_sheet_download_count
+import nuvio.composeapp.generated.resources.streams_sheet_download_title_of
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Folder
+import com.nuvio.app.features.downloads.DownloadsPlatformDownloader
+import com.nuvio.app.features.downloads.DownloadsFolder
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -120,6 +130,7 @@ import androidx.compose.ui.state.ToggleableState
 import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import com.nuvio.app.core.ui.RedesignDanger
 import com.nuvio.app.core.ui.RedesignMenuSurface
+import com.nuvio.app.core.ui.RedesignSwitch
 import kotlin.math.roundToInt
 import nuvio.composeapp.generated.resources.action_cancel
 import nuvio.composeapp.generated.resources.streams_resume_from_time
@@ -266,7 +277,13 @@ internal fun StreamsSheetLayout(
                 }
                 Box(Modifier.width(1.dp).fillMaxHeight().background(RedesignColors.hairline))
                 Column(Modifier.weight(1f).fillMaxHeight().padding(start = 22.dp, end = 14.dp, top = 18.dp)) {
-                    SheetHeader(uiState = uiState, total = rows.size, downloadMode = downloadMode)
+                    // In download mode the header names what is saved: "Download S2 E3", or the film.
+                    val downloadWhat = if (isEpisode && seasonNumber != null && episodeNumber != null) {
+                        stringResource(Res.string.detail_board_episode_code, seasonNumber, episodeNumber)
+                    } else {
+                        title
+                    }
+                    SheetHeader(uiState = uiState, total = rows.size, downloadMode = downloadMode, downloadWhat = downloadWhat)
                     Spacer(Modifier.height(12.dp))
                     SheetFilters(
                         uiState = uiState,
@@ -361,32 +378,39 @@ private fun ResumeToggleCard(positionMs: Long?, progressFraction: Float?, on: Bo
     }
 }
 
-/** A small switch in the redesign's ink: a white track when on. */
-@Composable
-private fun RedesignSwitch(checked: Boolean) {
-    val track by animateColorAsState(if (checked) RedesignColors.textPrimary else RedesignColors.fillStrong, tween(180), label = "switch_track")
-    val knob by animateDpAsState(if (checked) 18.dp else 2.dp, tween(200, easing = FastOutSlowInEasing), label = "switch_knob")
-    val knobColor by animateColorAsState(if (checked) RedesignOnLight else RedesignColors.textSecondary, tween(180), label = "switch_knob_color")
-    Box(Modifier.size(width = 38.dp, height = 22.dp).clip(CircleShape).background(track)) {
-        Box(Modifier.padding(start = knob, top = 2.dp).size(18.dp).clip(CircleShape).background(knobColor))
-    }
-}
-
-/** In place of the resume card when the sheet was opened to download. */
+/**
+ * In place of the resume card when the sheet was opened to download: where the file goes, the free
+ * space there, and that it plays offline. Clicking it opens the folder.
+ */
 @Composable
 private fun DownloadModeCard() {
+    val path = remember { DownloadsFolder.displayPath() }
+    val free = remember { DownloadsFolder.freeBytes() }
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val fill by animateColorAsState(if (hovered) RedesignColors.fillStrong else RedesignColors.fill, tween(160), label = "download_card_fill")
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, RoundedCornerShape(16.dp))
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(fill).border(1.dp, RedesignColors.hairline, RoundedCornerShape(16.dp))
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, role = Role.Button) { DownloadsPlatformDownloader.openDownloadsDirectory() }
             .testTag("streams_sheet_download_card")
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(Icons.Rounded.Download, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(20.dp))
-        Column {
+        Icon(Icons.Outlined.Folder, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f)) {
             Text(stringResource(Res.string.streams_sheet_download_card), style = redesignText(14.sp, FontWeight.SemiBold), maxLines = 1)
-            Text(stringResource(Res.string.streams_sheet_download_card_line), style = redesignText(12.sp, color = RedesignColors.textMuted))
+            Text(
+                if (free != null) stringResource(Res.string.streams_sheet_download_folder_line, path, formatStreamSize(free))
+                else stringResource(Res.string.streams_sheet_download_folder_line_no_space, path),
+                style = redesignText(12.sp, color = RedesignColors.textMuted),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag("streams_sheet_download_folder"),
+            )
         }
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = RedesignColors.textMuted, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -560,7 +584,13 @@ private fun BestMatchCard(
             StreamStatusChip(best)
         }
         BoardPlayButton(
-            label = stringResource(if (downloadMode) Res.string.streams_sheet_download_quality else Res.string.streams_sheet_play_quality, streamQualityLabel(best.resolution)),
+            label = when {
+                downloadMode && best.sizeBytes != null ->
+                    stringResource(Res.string.streams_sheet_download_quality_size, streamQualityLabel(best.resolution), formatStreamSize(best.sizeBytes))
+                downloadMode -> stringResource(Res.string.streams_sheet_download_quality, streamQualityLabel(best.resolution))
+                else -> stringResource(Res.string.streams_sheet_play_quality, streamQualityLabel(best.resolution))
+            },
+            icon = if (downloadMode) Icons.Rounded.Download else Icons.Rounded.PlayArrow,
             enabled = true,
             onClick = { onPlay(best.stream) },
             onLongClick = null,
@@ -598,18 +628,32 @@ private fun AlternativeRow(label: String, row: StreamRowInfo, onPlay: (StreamIte
 }
 
 @Composable
-private fun SheetHeader(uiState: StreamsUiState, total: Int, downloadMode: Boolean = false) {
+private fun SheetHeader(uiState: StreamsUiState, total: Int, downloadMode: Boolean = false, downloadWhat: String? = null) {
     val loading = uiState.isAnyLoading || uiState.groups.any { it.isLoading }
     val addons = uiState.groups.count { it.streams.isNotEmpty() }
     val count = if (addons == 1) stringResource(Res.string.streams_sheet_count_one_addon, total) else stringResource(Res.string.streams_sheet_count, total, addons)
     Column {
-        Text(stringResource(if (downloadMode) Res.string.streams_sheet_download_title else Res.string.streams_sheet_title), style = redesignText(22.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking))
         Text(
             when {
-                total > 0 && loading -> "$count · ${stringResource(Res.string.streams_checking_more_addons)}"
-                total > 0 -> count
-                loading -> stringResource(Res.string.streams_sheet_searching)
-                else -> " "
+                downloadMode && downloadWhat != null -> stringResource(Res.string.streams_sheet_download_title_of, downloadWhat)
+                downloadMode -> stringResource(Res.string.streams_sheet_download_title)
+                else -> stringResource(Res.string.streams_sheet_title)
+            },
+            style = redesignText(22.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("streams_sheet_title"),
+        )
+        val line = when {
+            total > 0 && loading -> "$count · ${stringResource(Res.string.streams_checking_more_addons)}"
+            total > 0 -> count
+            loading -> stringResource(Res.string.streams_sheet_searching)
+            else -> null
+        }
+        Text(
+            when {
+                downloadMode && line != null -> stringResource(Res.string.streams_sheet_download_count, line)
+                else -> line ?: " "
             },
             style = redesignText(12.5.sp, color = RedesignColors.textMuted),
             maxLines = 1,

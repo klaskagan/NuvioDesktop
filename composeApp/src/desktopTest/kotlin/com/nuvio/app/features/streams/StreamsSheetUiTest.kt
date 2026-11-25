@@ -1,5 +1,7 @@
 package com.nuvio.app.features.streams
 
+import kotlin.test.assertTrue
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.test.*
 import com.nuvio.app.AppEnvironment
@@ -293,10 +295,13 @@ class StreamsSheetUiTest {
         // Opened from Download: the sheet says so, and its primary actions download.
         runOnIdle { downloadMode = true }
         waitForIdle()
-        onNodeWithText("Download a source").assertIsDisplayed()
+        // The header names the episode, the card where the file goes, and the button its quality (and size).
+        onNodeWithTag("streams_sheet_title").assertTextEquals("Download S2 E3")
         onNodeWithTag("streams_sheet_download_card").assertIsDisplayed()
+        assertTrue(onNodeWithTag("streams_sheet_download_folder", useUnmergedTree = true).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString().endsWith("watch offline"))
         onNodeWithTag("streams_sheet_resume_toggle").assertDoesNotExist()
-        onNodeWithText("Download 4K").performClick()
+        onNodeWithText("Download 4K", substring = true).assertTextContains("Download 4K", substring = true)
+        onNodeWithTag("streams_sheet_play_best").performClick()
         assertEquals(listOf<String?>("best4k", "best4k"), downloaded)
         assertEquals(1, resumed.size)
     }

@@ -109,12 +109,22 @@ import nuvio.composeapp.generated.resources.media_movie
 import nuvio.composeapp.generated.resources.media_series
 import nuvio.composeapp.generated.resources.random_episode_title
 import nuvio.composeapp.generated.resources.shuffle_stop
+import nuvio.composeapp.generated.resources.detail_board_shuffle_on
+import nuvio.composeapp.generated.resources.detail_board_sources
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Download
 import com.nuvio.app.features.details.components.DetailTvPicker
+import com.nuvio.app.features.details.components.BoardPopoverPlacement
+import com.nuvio.app.features.details.components.popoverNub
+import com.nuvio.app.features.details.components.PopoverNubEdge
+import com.nuvio.app.features.details.components.BoardAnchoredPopover
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.animation.core.MutableTransitionState
 import com.nuvio.app.features.details.components.DetailBoardTileHeights
+import com.nuvio.app.features.details.components.DesktopHeroTrailerClock
+import com.nuvio.app.features.details.components.DetailExpandedTrailer
 import nuvio.composeapp.generated.resources.detail_board_on_tv
 import nuvio.composeapp.generated.resources.detail_board_watch_party
 import nuvio.composeapp.generated.resources.detail_board_download
@@ -158,9 +168,14 @@ internal class DetailBoardArgs(
     val settling: () -> Boolean,
     /** Space above the board. It lives in the board item, so the pinned row sits flush under the bar. */
     val topGap: Dp,
+    /** The page's viewport height; the expanded board grows to Home's expanded height within it. */
+    val viewportHeight: Dp,
     val expanded: Boolean,
-    /** The picked trailer's title, shown in the expanded tile. */
-    val expandedTitle: String? = null,
+    /** The trailer picked from the Trailers tab or the Trailer button: its title, controls and times show in the expanded tile. */
+    val expandedTrailer: MetaTrailer? = null,
+    val trailerClock: DesktopHeroTrailerClock? = null,
+    val trailerPaused: Boolean = false,
+    val onTrailerPauseToggle: () -> Unit = {},
     /** The picked trailer couldn't play here: the expanded tile says so. */
     val expandedFailure: DetailBoardTrailerFailure? = null,
     val onToggleExpanded: () -> Unit,
@@ -330,7 +345,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                     icon = Icons.Rounded.Tv,
                     onClick = handoff::open,
                     tag = "detail_your_way_tv",
-                    popup = { dismiss -> DetailTvPicker(handoff, dismiss) },
+                    popup = { dismiss -> DetailTvPicker(handoff, args.yourWayLine, dismiss) },
                 ),
             )
         }
@@ -342,20 +357,32 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
         }
         args.onShuffleClick?.let { onShuffle ->
             add(
+                // Off, Shuffle opens its popover; on, it reads "Shuffle · On" and a click stops shuffling.
                 DetailSecondaryAction(
-                    label = stringResource(if (args.shuffleEnabled) Res.string.shuffle_stop else Res.string.random_episode_title),
+                    label = stringResource(if (args.shuffleEnabled) Res.string.detail_board_shuffle_on else Res.string.random_episode_title),
                     icon = Icons.Rounded.Shuffle,
                     isActive = args.shuffleEnabled,
-                    onClick = onShuffle,
+                    onClick = if (args.shuffleEnabled || args.shufflePopup == null) onShuffle else ({}),
                     tag = "detail_your_way_shuffle",
+                    popup = args.shufflePopup?.takeUnless { args.shuffleEnabled },
+                    popupPlacement = BoardPopoverPlacement.Beside,
                 ),
             )
         }
         args.onPrimaryPlayLongClick?.takeIf { args.showManualPlayOption && args.isPrimaryPlayEnabled }?.let { choose ->
-            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_choose_source), icon = Icons.Rounded.Tune, onClick = choose, tag = "detail_your_way_choose"))
+            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_sources), icon = Icons.Rounded.Tune, onClick = choose, onClickAt = args.onSourcesAt, tag = "detail_your_way_choose"))
         }
         args.onSaveLongClick?.let { lists ->
-            add(DetailSecondaryAction(label = stringResource(Res.string.detail_board_lists), icon = Icons.AutoMirrored.Rounded.PlaylistAdd, onClick = lists, tag = "detail_your_way_lists"))
+            add(
+                DetailSecondaryAction(
+                    label = stringResource(Res.string.detail_board_lists),
+                    icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                    onClick = if (args.listsPopup == null) lists else ({}),
+                    tag = "detail_your_way_lists",
+                    popup = args.listsPopup,
+                    popupPlacement = BoardPopoverPlacement.Beside,
+                ),
+            )
         }
     }
     val collection = meta.collectionItems.takeIf { !isSeries && args.hasCollectionSection }
@@ -367,6 +394,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
     DetailBoard(
         expanded = board.expanded,
         hasSide = hasSide,
+        viewportHeight = board.viewportHeight,
         modifier = Modifier.padding(top = board.topGap).padding(horizontal = board.horizontalPadding).onSizeChanged { board.onHeightChanged(it.height) },
         side = {
             // The first tile present takes the spare height, so the column always ends flush with the board.
@@ -424,7 +452,19 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
         DetailFeatureTile(
             meta = meta,
             expanded = board.expanded,
-            expandedTitle = board.expandedTitle,
+            expandedTrailer = board.expandedTrailer?.let { picked ->
+                DetailExpandedTrailer(
+                    title = picked.displayName?.takeIf(String::isNotBlank) ?: picked.name,
+                    source = listOf(meta.name, picked.site).filter(String::isNotBlank).joinToString(" · "),
+                    clock = board.trailerClock,
+                    paused = board.trailerPaused,
+                    onPauseToggle = board.onTrailerPauseToggle,
+                    playLabel = args.playButtonLabel,
+                    playEnabled = args.isPrimaryPlayEnabled,
+                    onPlay = args.onPrimaryPlayClick,
+                    onPlayLongClick = args.onPrimaryPlayLongClick.takeIf { args.showManualPlayOption },
+                )
+            },
             expandedFailure = board.expandedFailure,
             trailer = board.trailer,
             trailerReady = board.trailerReady,
@@ -472,15 +512,22 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
                     onLongClick = args.onPrimaryPlayLongClick.takeIf { args.showManualPlayOption },
                     modifier = Modifier.testTag("detail_board_play").onGloballyPositioned { board.onPlayAnchor(it.boundsInRoot()) },
                 )
+                // Long-click opens Save to list under Library, the same picker as Watch it your way's Lists.
+                val listsState = remember { MutableTransitionState(false) }
+                var libraryBounds by remember { mutableStateOf(Rect.Zero) }
                 BoardActionPill(
                     label = stringResource(Res.string.detail_board_library),
                     icon = if (args.isSaved) Icons.Rounded.Check else Icons.Rounded.Add,
                     active = args.isSaved,
                     onClick = args.onSaveClick,
-                    onLongClick = args.onSaveLongClick,
+                    onLongClick = if (args.listsPopup != null) ({ listsState.targetState = true }) else args.onSaveLongClick,
                     iconOnly = rateOpen,
-                    modifier = Modifier.testTag("detail_board_library"),
+                    modifier = Modifier.testTag("detail_board_library").onGloballyPositioned { libraryBounds = it.boundsInWindow() },
                 )
+                args.listsPopup?.let { lists ->
+                    val dismiss = { listsState.targetState = false }
+                    BoardAnchoredPopover(listsState, libraryBounds, libraryBounds, BoardPopoverPlacement.Under, dismiss) { lists(dismiss) }
+                }
                 BoardActionPill(
                     label = stringResource(Res.string.detail_board_watched),
                     icon = if (args.isWatched) Icons.Rounded.Check else Icons.Rounded.CheckCircleOutline,
@@ -531,6 +578,29 @@ private fun BoardRatings(meta: MetaDetails, isMdbListActive: Boolean, showOveral
     }
 }
 
+internal data class QuickPickPlacement(val offset: IntOffset, val edge: PopoverNubEdge?, val along: Float)
+
+/**
+ * Where Quick pick sits in its container: left-aligned under the button that opened it (above it
+ * when there is no room below), inside the margins; and its arrow on the edge facing the button.
+ */
+internal fun quickPickPlacement(anchor: Rect?, origin: Offset, container: IntSize, panel: IntSize, margin: Float, gap: Float, inset: Float): QuickPickPlacement {
+    val m = margin.roundToInt()
+    val left = (anchor?.left ?: 0f) - origin.x
+    val below = (anchor?.bottom ?: 0f) - origin.y + gap
+    val above = (anchor?.top ?: 0f) - origin.y - gap - panel.height
+    val x = left.roundToInt().coerceIn(m, (container.width - panel.width - m).coerceAtLeast(m))
+    val opensBelow = below + panel.height <= container.height - margin || above < margin
+    val y = (if (opensBelow) below else above).roundToInt().coerceAtLeast(m)
+    val edge = when {
+        anchor == null || panel.width == 0 -> null
+        opensBelow -> PopoverNubEdge.Top
+        else -> PopoverNubEdge.Bottom
+    }
+    val along = ((anchor?.center?.x ?: 0f) - origin.x - x).coerceIn(inset, (panel.width - inset).coerceAtLeast(inset))
+    return QuickPickPlacement(IntOffset(x, y), edge, along)
+}
+
 /**
  * Quick pick over the board: a scrim, and the panel under the button that opened it (above it when
  * there is no room below). Escape, the scrim and the close button all dismiss it.
@@ -558,6 +628,9 @@ internal fun BoxScope.DetailQuickPickOverlay(
     var container by remember { mutableStateOf(IntSize.Zero) }
     var panel by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current
+    val marginPx = with(density) { 16.dp.toPx() }
+    val gapPx = with(density) { 12.dp.toPx() }
+    val insetPx = with(density) { 24.dp.toPx() }
     Box(modifier.matchParentSize().onGloballyPositioned { origin = it.positionInRoot(); container = it.size }) {
         AnimatedVisibility(visible = open, enter = fadeIn(tween(180)), exit = fadeOut(tween(160))) {
             Box(
@@ -571,22 +644,22 @@ internal fun BoxScope.DetailQuickPickOverlay(
             enter = fadeIn(tween(200)) + slideInVertically(tween(260, easing = FastOutSlowInEasing)) { -it / 12 },
             exit = fadeOut(tween(140)),
             modifier = Modifier.offset {
-                val margin = with(density) { 16.dp.roundToPx() }
-                val gap = with(density) { 12.dp.roundToPx() }
-                val left = (anchor?.left ?: 0f) - origin.x
-                val below = (anchor?.bottom ?: 0f) - origin.y + gap
-                val above = (anchor?.top ?: 0f) - origin.y - gap - panel.height
-                val x = left.roundToInt().coerceIn(margin, (container.width - panel.width - margin).coerceAtLeast(margin))
-                val y = if (below + panel.height <= container.height - margin || above < margin) below.roundToInt() else above.roundToInt()
-                IntOffset(x, y.coerceAtLeast(margin))
+                quickPickPlacement(anchor, origin, container, panel, marginPx, gapPx, insetPx).offset
             },
         ) {
+            // The design's arrow, pointing at the button that opened it (Play, Sources, an episode).
             StreamQuickPickPanel(
                 request = request,
                 onPick = onPick,
                 onAllSources = onAllSources,
                 onDismiss = onDismiss,
-                modifier = Modifier.onSizeChanged { panel = it },
+                modifier = Modifier
+                    .popoverNub(
+                        edge = { quickPickPlacement(anchor, origin, container, panel, marginPx, gapPx, insetPx).edge },
+                        along = { quickPickPlacement(anchor, origin, container, panel, marginPx, gapPx, insetPx).along },
+                        fill = Color(0xFF16171B),
+                    )
+                    .onSizeChanged { panel = it },
             )
         }
     }

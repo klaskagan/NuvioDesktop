@@ -1,6 +1,11 @@
 package com.nuvio.app.features.details
 
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxSize
+import com.nuvio.app.features.details.components.BoardPopoverPlacement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.runtime.mutableStateOf
@@ -25,7 +30,7 @@ import androidx.compose.ui.semantics.getOrNull
 class DetailBoardSideColumnUiTest {
     @Test
     fun yourWayIsAThreeColumnGridInTheGivenOrderThatReflows() = runDesktopComposeUiTest(width = 600, height = 400) {
-        val labels = listOf("On TV", "Watch party", "Download", "Shuffle", "Choose source", "Lists")
+        val labels = listOf("On TV", "Watch party", "Download", "Shuffle", "Sources", "Lists")
         val shown = mutableStateOf(labels)
         setContent {
             AppEnvironment {
@@ -50,6 +55,43 @@ class DetailBoardSideColumnUiTest {
         mainClock.advanceTimeBy(600)
         onNodeWithTag("cell-On TV").assertDoesNotExist()
         assertTrue(onNodeWithTag("detail_board_your_way").getUnclippedBoundsInRoot().height < fullHeight)
+    }
+
+    @Test
+    fun aYourWayPopoverOpensBesideTheSideColumnAndClosesOnTheDim() = runDesktopComposeUiTest(width = 1360, height = 850) {
+        setContent {
+            AppEnvironment {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                    DetailYourWayTile(
+                        listOf(
+                            DetailSecondaryAction(
+                                label = "Lists",
+                                icon = Icons.Rounded.Star,
+                                tag = "cell-lists",
+                                popupPlacement = BoardPopoverPlacement.Beside,
+                                popup = { dismiss ->
+                                    androidx.compose.foundation.layout.Box(Modifier.size(400.dp, 300.dp).testTag("lists-popover"))
+                                },
+                            ),
+                        ),
+                        Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(top = 400.dp, end = 30.dp).width(352.dp),
+                    )
+                }
+            }
+        }
+        onNodeWithTag("lists-popover").assertDoesNotExist()
+        onNodeWithTag("cell-lists").performClick()
+        mainClock.advanceTimeBy(400)
+        val cell = onNodeWithTag("cell-lists").getUnclippedBoundsInRoot()
+        val popover = onNodeWithTag("lists-popover", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        // Just left of the action itself (as in the frame), not left of the whole column.
+        assertTrue(popover.right <= cell.left && popover.right >= cell.left - 16.dp, "popover ${popover.right} should end just left of Lists ${cell.left}")
+        onNodeWithTag("cell-lists").assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+
+        onNodeWithTag("detail_board_popover_dim", useUnmergedTree = true).performTouchInput { click(androidx.compose.ui.geometry.Offset(20f, 20f)) }
+        mainClock.advanceTimeBy(600)
+        waitForIdle()
+        onNodeWithTag("lists-popover", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test

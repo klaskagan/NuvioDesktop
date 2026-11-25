@@ -134,7 +134,15 @@ internal fun DetailsDestination(
             }
         },
         onOpenParty = { code -> navController.navigate(PartyRoute(code = code, title = watchPartyTitle)) },
-        onManagePairedTvs = { navController.navigate(SettingsPageRoute(pageName = SettingsPage.PairedTvs.name, title = pairedTvsTitle)) },
+        // Desktop opens Settings → Paired TVs as a tab page under the top bar (a bare route had no
+        // top bar, so the only way back was the trackpad swipe).
+        onManagePairedTvs = {
+            if (navController.desktopHistory != null) {
+                navController.openDesktopSettings(SettingsPage.PairedTvs.name, leavePage = true)
+            } else {
+                navController.navigate(SettingsPageRoute(pageName = SettingsPage.PairedTvs.name, title = pairedTvsTitle))
+            }
+        },
         sharedTransitionScope = sharedTransitionScope,
         animatedVisibilityScope = animatedVisibilityScope,
         modifier = Modifier.fillMaxSize(),

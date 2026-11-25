@@ -25,6 +25,9 @@ internal expect object DownloadsFolder {
     suspend fun choose(): DownloadsFolderChoice
 
     fun reset()
+
+    /** Free space where new downloads go, in bytes; null where the platform can't tell. */
+    fun freeBytes(): Long?
 }
 
 /** "~/Movies/Nuvio" for display; the full path when it isn't under [home]. */

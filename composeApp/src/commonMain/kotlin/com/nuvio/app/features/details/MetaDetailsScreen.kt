@@ -19,6 +19,7 @@ import com.nuvio.app.core.ui.RedesignTypography
 import com.nuvio.app.core.ui.ShellBackdrop
 import com.nuvio.app.core.ui.ShellBackdropMode
 import com.nuvio.app.features.details.components.DetailBoardSkeleton
+import com.nuvio.app.features.details.components.handleExpandedTrailerKey
 import nuvio.composeapp.generated.resources.detail_board_episode_code
 import nuvio.composeapp.generated.resources.detail_board_minutes_left
 import nuvio.composeapp.generated.resources.detail_board_up_next
@@ -150,6 +151,7 @@ import com.nuvio.app.features.details.components.DetailPosterRailSection
 import com.nuvio.app.features.details.components.DetailProductionSection
 import com.nuvio.app.features.details.components.DetailSeriesContent
 import com.nuvio.app.features.details.components.DesktopHeroTrailerPreview
+import com.nuvio.app.features.details.components.DesktopHeroTrailerClock
 import com.nuvio.app.features.details.components.rememberDesktopHeroTrailer
 import com.nuvio.app.features.details.components.DesktopDetailBackdrop
 import com.nuvio.app.features.details.components.DetailSeriesListEpisode
@@ -215,9 +217,14 @@ import com.nuvio.app.features.watchprogress.ContinueWatchingPreferencesRepositor
 import com.nuvio.app.features.watching.application.WatchingActions
 import com.nuvio.app.features.watching.application.WatchingState
 import com.nuvio.app.isDesktop
+import com.nuvio.app.features.details.components.BoardSaveToListPopover
+import com.nuvio.app.features.details.components.BoardShufflePopover
 import com.kmpalette.rememberDominantColorState
 import com.kmpalette.extensions.painter.rememberPainterDominantColorState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import com.nuvio.app.features.trakt.TraktAudienceRepository
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
@@ -251,6 +258,7 @@ import com.nuvio.app.core.ui.redesignText
 import nuvio.composeapp.generated.resources.detail_board_mark_previous_seasons
 import com.nuvio.app.features.gallery.GalleryImage
 import com.nuvio.app.features.gallery.DetailGalleryRepository
+import com.nuvio.app.MediaKeysHandler
 import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.features.gallery.KinopoiskSettingsRepository
 import com.nuvio.app.features.tracking.TrackingProviderRegistry
@@ -577,11 +585,12 @@ fun MetaDetailsScreen(
             // artwork. One backdrop sits behind loading, error and content, so it crossfades in.
             val boardLayout = isDesktop && maxWidth >= DetailBoardMinWidth
             val boardBackdropMode = LocalShellBackdropMode.current
+            val boardArt = boardBackgroundOverride ?: displayedMeta?.let { shown -> shown.background?.takeIf { it.isNotBlank() } ?: shown.poster }
+            // Created on the artwork when it is already known (coming back to Details), so it doesn't flash black.
             val boardBackdrop = remember(boardLayout, boardBackdropMode == ShellBackdropMode.Solid) {
-                if (boardLayout && boardBackdropMode != ShellBackdropMode.Solid) BackdropFocusController() else null
+                if (boardLayout && boardBackdropMode != ShellBackdropMode.Solid) BackdropFocusController(boardArt) else null
             }
             if (boardBackdrop != null) {
-                val boardArt = boardBackgroundOverride ?: displayedMeta?.let { shown -> shown.background?.takeIf { it.isNotBlank() } ?: shown.poster }
                 LaunchedEffect(boardBackdrop, boardArt) { boardBackdrop.base = boardArt }
                 ShellBackdrop(boardBackdrop, showArtwork = boardBackdropMode == ShellBackdropMode.Ambient)
             }
@@ -672,7 +681,7 @@ fun MetaDetailsScreen(
                     meta.id,
                     meta.type,
                 ) {
-                    LibraryRepository.isSaved(meta.id, meta.type)
+                    LibraryRepository.isSavedByDefault(meta.id, meta.type)
                 }
                 val isWatched = remember(watchedUiState.watchedKeys, fullyWatchedSeriesKeys, metaPreview) {
                     WatchingState.isPosterWatched(
@@ -845,6 +854,39 @@ fun MetaDetailsScreen(
                     ?.takeIf { it in episodeListGroupedEpisodes }
                     ?: defaultEpisodeListSeason
                 val audienceState = remember(meta.id, meta.imdbId) { SeriesAudienceState() }
+                // The board's episode cards show a ★ score on every episode; where IMDb has none
+                // (its episode ratings are often empty), use Trakt's, loaded into the same state
+                // Your stats reads so that tab doesn't fetch it again.
+                LaunchedEffect(meta.id, meta.videos, boardLayout, deferredMetaWorkAllowed, metaScreenSettingsUiState.episodeRatingsVisibility) {
+                    if (!boardLayout || !deferredMetaWorkAllowed || meta.type != "series") return@LaunchedEffect
+                    if (!metaScreenSettingsUiState.episodeRatingsVisibility.showRatings) return@LaunchedEffect
+                    try {
+                        val show = audienceState.show ?: TraktAudienceRepository.resolveShow(meta) ?: return@LaunchedEffect
+                        audienceState.show = show
+                        val catalog = audienceState.episodes ?: withContext(Dispatchers.Default) {
+                            TraktAudienceRepository.seasons(show).episodeMap()
+                        }
+                        if (audienceState.mappedVideos !== meta.videos) {
+                            audienceState.mappings = withContext(Dispatchers.Default) { mapAudienceEpisodes(meta.videos, catalog) }
+                            audienceState.mappedVideos = meta.videos
+                        }
+                        audienceState.episodes = catalog
+                    } catch (error: kotlin.coroutines.cancellation.CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        // No Trakt scores: the cards show IMDb's, or none.
+                    }
+                }
+                val boardEpisodeRatings = remember(episodeImdbRatings, audienceState.episodes, audienceState.mappings, boardLayout) {
+                    if (!boardLayout) return@remember episodeImdbRatings
+                    val episodes = audienceState.episodes.orEmpty()
+                    val trakt = audienceState.mappings.mapNotNull { (key, video) ->
+                        val season = video.season ?: return@mapNotNull null
+                        val number = video.episode ?: return@mapNotNull null
+                        episodes[key]?.rating?.takeIf { it > 0.0 }?.let { (season to number) to it }
+                    }.toMap()
+                    trakt + episodeImdbRatings
+                }
                 val seasonProgress = remember(meta, todayIsoDate, watchedUiState.isLoaded, watchedUiState.watchedKeys, progressByVideoId) {
                     if (!isDesktop || meta.type != "series" || !watchedUiState.isLoaded) null
                     else meta.seasonWatchedCounts(todayIsoDate) {
@@ -903,6 +945,9 @@ fun MetaDetailsScreen(
                 var replayCount by remember(meta.id, heroTrailerCandidates) { mutableIntStateOf(0) }
                 // A trailer picked on the board (Trailers tab, Trailer button) that couldn't play in the tile.
                 var pickedTrailerFailed by remember(meta.id) { mutableStateOf<MetaTrailer?>(null) }
+                // A picked trailer's pause, from the expanded tile's play/pause button.
+                var boardTrailerPaused by remember(meta.id) { mutableStateOf(false) }
+                val desktopTrailerClock = remember(meta.id) { DesktopHeroTrailerClock() }
                 var fadingDesktopAttempt by remember(meta.id, heroTrailerCandidates) { mutableStateOf<DesktopHeroTrailerAttempt?>(null) }
                 val heroTrailerMuted by HeroTrailerAudioState.muted.collectAsStateWithLifecycle()
                 val fadingAttempt = fadingDesktopAttempt
@@ -1224,6 +1269,7 @@ fun MetaDetailsScreen(
                     ?.takeIf { heroTrailerSourceUrl != null && it.isNotBlank() }
                 val heroTrailerPlayWhenReady = heroTrailerSourceUrl != null &&
                     selectedTrailer == null &&
+                    !boardTrailerPaused &&
                     !isLeavingDetails &&
                     !isHeroCollapsed.value
                 val attempt = desktopHeroAttempt
@@ -1260,6 +1306,7 @@ fun MetaDetailsScreen(
                             }
                         }
                     },
+                    clock = desktopTrailerClock,
                 )
                 val headerTarget = if (isHeroCollapsed.value) 1f else 0f
                 val headerProgressState = animateFloatAsState(
@@ -1338,6 +1385,45 @@ fun MetaDetailsScreen(
                 }?.takeIf {
                     tvHandoffSupported && tvAccount != null && !tvAccount.isAnonymous && yourWayVideoId != null &&
                         ((yourWayProgress?.durationMs ?: 0L) > 0L || (yourWayRuntime ?: 0) > 0)
+                }
+                // What On TV would send, for its picker: "S2 E3 · Who Is Alive? · from 18:22".
+                val yourWayHead = if (yourWayIsSeries) {
+                    listOfNotNull(
+                        localizedSeasonEpisodeCode(seriesAction?.seasonNumber, seriesAction?.episodeNumber),
+                        seriesAction?.episodeTitle?.takeIf { it.isNotBlank() },
+                    ).joinToString(" · ").ifBlank { meta.name }
+                } else {
+                    meta.name
+                }
+                val yourWayFrom = yourWayResumeMs(yourWayProgress?.lastPositionMs, yourWayProgress?.progressFraction, yourWayRuntime)
+                val yourWayLine = yourWayFrom?.let { stringResource(Res.string.detail_board_tv_from, yourWayHead, it.formatResumeClock()) } ?: yourWayHead
+                // The board's Shuffle and Save to list popovers (the sheet and dialog stay for the other layouts).
+                val boardShufflePopup: (@Composable (dismiss: () -> Unit) -> Unit)? = if (isDesktop && showShuffleButton) {
+                    { dismiss ->
+                        BoardShufflePopover(
+                            meta = meta,
+                            settings = shuffleSettings,
+                            onSave = saveShuffle,
+                            watchedKeys = watchedUiState.watchedKeys,
+                            progressEntries = watchProgressUiState.entries,
+                            blurUnwatchedEpisodes = metaScreenSettingsUiState.blurUnwatchedEpisodes,
+                            onPlay = onEpisodePlayClick,
+                            onPlayManually = onEpisodeManualPlayClick.takeIf { showManualPlayOption },
+                            onStartFromBeginning = { video ->
+                                onPlay?.invoke(meta.type, video.id, meta.id, meta.type, meta.name, meta.logo,
+                                    meta.poster, meta.background, video.season, video.episode, video.title,
+                                    video.thumbnail, video.overview, 0L)
+                            },
+                            dismiss = dismiss,
+                        )
+                    }
+                } else {
+                    null
+                }
+                val boardListsPopup: (@Composable (dismiss: () -> Unit) -> Unit)? = if (isDesktop) {
+                    { dismiss -> BoardSaveToListPopover(meta, dismiss) }
+                } else {
+                    null
                 }
                 // Download: the Sources sheet in download mode for the up-next episode or the film.
                 val downloadYourWay: (() -> Unit)? = onDownload?.takeIf { yourWayVideoId != null && playbackAvailability.canStream(meta.type, yourWayVideoId) }?.let { download ->
@@ -1457,7 +1543,7 @@ fun MetaDetailsScreen(
                     commentsCurrentPage = commentsCurrentPage,
                     commentsPageCount = commentsPageCount,
                     commentsError = commentsError,
-                    episodeImdbRatings = episodeImdbRatings,
+                    episodeImdbRatings = boardEpisodeRatings,
                     episodeListGroupedEpisodes = episodeListGroupedEpisodes,
                     episodeListSeasons = episodeListSeasons,
                     episodeListCurrentSeason = currentEpisodeListSeason,
@@ -1515,11 +1601,15 @@ fun MetaDetailsScreen(
                     tvHandoff = detailTvHandoff,
                     onWatchPartyClick = startWatchParty,
                     onDownloadClick = downloadYourWay,
+                    yourWayLine = yourWayLine,
+                    shufflePopup = boardShufflePopup,
+                    listsPopup = boardListsPopup,
                 )
 
                 BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(start = boardStartInset)) {
                     val colorScheme = MaterialTheme.colorScheme
                     val screenMaxWidth = maxWidth
+                    val screenMaxHeight = maxHeight
                     val useTabletLayout = !isDesktop && minOf(maxWidth, maxHeight) >= 600.dp
                     val isTablet = useTabletLayout || screenMaxWidth >= 720.dp
                     val isSectionEnabled = { key: MetaScreenSectionKey ->
@@ -1642,6 +1732,7 @@ fun MetaDetailsScreen(
                             }
                             boardPickedTrailer = trailer
                             pickedTrailerFailed = null
+                            boardTrailerPaused = false
                             replayDesktopTrailer = trailer
                             replayCount++
                             boardExpanded = true
@@ -1657,6 +1748,7 @@ fun MetaDetailsScreen(
                         }
                     }
                     LaunchedEffect(boardExpanded) {
+                        if (!boardExpanded) boardTrailerPaused = false
                         if (boardExpanded || boardPickedTrailer == null) return@LaunchedEffect
                         boardPickedTrailer = null
                         pickedTrailerFailed = null
@@ -1665,6 +1757,15 @@ fun MetaDetailsScreen(
                         boardReturnScroll = null
                     }
                     if (useBoard && boardExpanded) OverlayEscapeHandler { boardExpanded = false }
+                    // A clip picked from Trailers takes Space/K, ←/→ (10 s) and M while it plays expanded.
+                    MediaKeysHandler(enabled = useBoard && boardExpanded && boardPickedTrailer != null && pickedTrailerFailed == null) { key ->
+                        handleExpandedTrailerKey(
+                            key = key,
+                            clock = desktopTrailerClock,
+                            onPauseToggle = { boardTrailerPaused = !boardTrailerPaused },
+                            onMuteToggle = HeroTrailerAudioState::toggleMuted,
+                        )
+                    }
                     val boardScrolledPinned = remember(listState) { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
                     // A tab picked from the pinned row keeps the row pinned while the new tab lays out: the
                     // filler holds a window's room (see detailBoardSettlingFillPx) and the row is held at the
@@ -1708,8 +1809,11 @@ fun MetaDetailsScreen(
                         } else {
                             null
                         }
-                        val minutesLeft = entry?.takeIf { it.durationMs > it.lastPositionMs && it.lastPositionMs > 0L }?.let {
-                            ((it.durationMs - it.lastPositionMs) / 60_000L).toInt().coerceAtLeast(1)
+                        // Trakt's entries hold only a percentage, so the runtime stands in for the duration.
+                        val minutesLeft = entry?.takeIf { it.progressFraction > 0f }?.let {
+                            val totalMinutes = it.durationMs.takeIf { ms -> ms > 0L }?.let { ms -> ms / 60_000.0 }
+                                ?: seriesActionVideo?.runtime?.toDouble()
+                            totalMinutes?.let { total -> (total * (1f - it.progressFraction)).toInt().coerceAtLeast(1) }
                         }
                         val left = minutesLeft?.let { stringResource(Res.string.detail_board_minutes_left, it) }
                         DetailBoardUpNext(
@@ -1719,7 +1823,7 @@ fun MetaDetailsScreen(
                                 ?: seriesActionVideo?.thumbnail
                                 ?: meta.background
                                 ?: meta.poster,
-                            progressFraction = entry?.takeIf { it.durationMs > 0L }?.let { it.lastPositionMs.toFloat() / it.durationMs },
+                            progressFraction = entry?.progressFraction?.takeIf { it > 0f },
                             // The same verb as the primary button, which decides between resuming and playing.
                             actionLabel = if (seriesAction.label.contains(resumeText, ignoreCase = true)) resumeText else playText,
                             episode = seriesAction.seasonNumber?.let { season -> seriesAction.episodeNumber?.let { season to it } },
@@ -1734,6 +1838,8 @@ fun MetaDetailsScreen(
                     }
                     // ---- Quick pick: choose how to play from the board, with the full sheet one click away.
                     var quickPickOpen by remember(meta.id, primaryVideoId) { mutableStateOf(false) }
+                    // Where Quick pick opens when not under Play: Watch it your way's Sources cell.
+                    var quickPickAnchor by remember(meta.id) { mutableStateOf<Rect?>(null) }
                     var boardPlayAnchor by remember { mutableStateOf<Rect?>(null) }
                     var pinnedPlayAnchor by remember { mutableStateOf<Rect?>(null) }
                     val quickPickRequest = remember(meta.id, meta.type, primaryVideoId, seriesAction, meta.name) {
@@ -1759,7 +1865,7 @@ fun MetaDetailsScreen(
                             videoId = primaryVideoId,
                         ) != null
                     }
-                    val openQuickPick: (() -> Unit)? = openPrimarySources?.takeIf { useBoard }?.let { { quickPickOpen = true } }
+                    val openQuickPick: (() -> Unit)? = openPrimarySources?.takeIf { useBoard }?.let { { quickPickAnchor = null; quickPickOpen = true } }
                     // An episode card opens its own Quick pick beside the card, under the same rules as
                     // Resume: autoplay on plays, a downloaded copy plays, otherwise choose a source here.
                     var episodePick by remember(meta.id) { mutableStateOf<EpisodeQuickPick?>(null) }
@@ -1808,6 +1914,7 @@ fun MetaDetailsScreen(
                     val boardSectionArgs = (if (openQuickPick == null) boardContentArgs else boardContentArgs.copy(
                         onPrimaryPlayClick = if (showManualPlayOption || hasPlayableDownload) onPrimaryPlayClick else openQuickPick,
                         onPrimaryPlayLongClick = openQuickPick.takeIf { showManualPlayOption },
+                        onSourcesAt = openQuickPick?.takeIf { showManualPlayOption }?.let { { cell: Rect -> openQuickPick(); quickPickAnchor = cell } },
                     )).copy(
                         onEpisodeCardStyleChange = MetaScreenSettingsRepository::setEpisodeCardStyle,
                         onEpisodeClickAt = onBoardEpisodeClick,
@@ -1815,7 +1922,10 @@ fun MetaDetailsScreen(
                             episodeMenuAnchor = anchor
                             selectedEpisodeForActions = video
                         },
-                        moreLikeThisUnwatched = moreLikeThisUnwatched,
+                        onEpisodeWatchedToggle = { video, watched ->
+                            WatchingActions.toggleEpisodeWatched(meta = meta, episode = video, isCurrentlyWatched = watched)
+                        },
+                        moreLikeThisUnwatched =moreLikeThisUnwatched,
                         moreLikeThisUnwatchedOnly = metaScreenSettingsUiState.moreLikeThisUnwatchedOnly,
                         onMoreLikeThisUnwatchedOnlyChange = MetaScreenSettingsRepository::setMoreLikeThisUnwatchedOnly,
                         onSetBackground = { url -> boardBackgroundOverride = url },
@@ -1836,8 +1946,14 @@ fun MetaDetailsScreen(
                         pinned = { boardPinned.value },
                         settling = { boardKeepPinned },
                         topGap = boardTopGap,
+                        viewportHeight = screenMaxHeight,
                         expanded = boardExpanded,
-                        expandedTitle = boardPickedTrailer?.let { it.displayName?.takeIf(String::isNotBlank) ?: it.name },
+                        // Only a picked clip gets the expanded tile's title, controls and times; the
+                        // hero trailer expanded from the corner keeps just Back, mute and collapse.
+                        expandedTrailer = boardPickedTrailer?.takeIf { boardExpanded },
+                        trailerClock = desktopTrailerClock,
+                        trailerPaused = boardTrailerPaused,
+                        onTrailerPauseToggle = { boardTrailerPaused = !boardTrailerPaused },
                         expandedFailure = pickedTrailerFailed?.takeIf { boardExpanded }?.let { failed ->
                             DetailBoardTrailerFailure(
                                 onOpenExternally = { runCatching { uriHandler.openUri(failed.youtubePlaybackUrl()) } },
@@ -2045,7 +2161,7 @@ fun MetaDetailsScreen(
                                 val episodeOpen = episodePick
                                 DetailQuickPickOverlay(
                                     open = quickPickOpen || episodeOpen != null,
-                                    anchor = episodeOpen?.anchor ?: if (boardPinned.value) pinnedPlayAnchor ?: boardPlayAnchor else boardPlayAnchor,
+                                    anchor = episodeOpen?.anchor ?: quickPickAnchor ?: if (boardPinned.value) pinnedPlayAnchor ?: boardPlayAnchor else boardPlayAnchor,
                                     request = episodeOpen?.request ?: quickPickRequest.copy(resumeLine = primaryResumeLine),
                                     onPick = { stream ->
                                         quickPickOpen = false
@@ -2824,6 +2940,14 @@ internal fun quickPickResumeLine(entry: WatchProgressEntry?, template: String): 
     val percent = entry.durationMs.takeIf { it > 0L }?.let { (position * 100 / it).toInt() }
     return listOfNotNull(template.replace("{t}", position.formatResumeClock()), percent?.let { "$it%" }).joinToString(" · ")
 }
+
+/**
+ * Where On TV would pick up, in ms: the saved position, else Trakt's percentage of the runtime
+ * (Trakt progress has no position); null when nothing is in progress.
+ */
+internal fun yourWayResumeMs(positionMs: Long?, fraction: Float?, runtimeMinutes: Int?): Long? =
+    positionMs?.takeIf { it > 0L }
+        ?: fraction?.takeIf { it > 0f && it < 1f }?.let { f -> runtimeMinutes?.takeIf { it > 0 }?.let { (f * it * 60_000L).toLong() } }?.takeIf { it > 0L }
 
 private fun Long.formatResumeClock(): String {
     val total = this / 1000

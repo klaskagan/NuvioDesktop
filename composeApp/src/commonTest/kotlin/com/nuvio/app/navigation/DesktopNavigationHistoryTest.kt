@@ -92,6 +92,18 @@ class DesktopNavigationHistoryTest {
         assertEquals(SettingsPage.Root, history.current.settingsPage)
     }
 
+    /** Manage TVs from Details: Settings → Paired TVs replaces Details under the top bar; Back returns to Details. */
+    @Test fun manageTvsFromDetailsLeavesDetailsAndBackReturns() {
+        navigator.navigate(movie)
+        navigator.openDesktopSettings("PairedTvs", leavePage = true)
+        assertEquals(listOf(TabsRoute), navigator.routes)
+        assertEquals(AppScreenTab.Settings, history.current.tab)
+        assertEquals(SettingsPage.PairedTvs, history.current.settingsPage)
+        // Back walks the Settings parents first, then lands on Details.
+        repeat(4) { if (navigator.routes != listOf(TabsRoute, movie)) navigator.popBackStack() }
+        assertEquals(listOf(TabsRoute, movie), navigator.routes)
+    }
+
     @Test fun settingsBackUsesParentsAndSkipsSiblingVisits() {
         navigator.selectDesktopTab(AppScreenTab.Settings)
         navigator.openDesktopSettings("Appearance")

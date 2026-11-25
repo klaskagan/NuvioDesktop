@@ -266,6 +266,8 @@ internal fun RedesignPillButton(
             .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
             .padding(start = if (leading != null) 14.dp else 16.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
+        // Centred when a caller stretches the pill (a popover's main button).
+        horizontalArrangement = Arrangement.Center,
     ) {
         if (leading != null) Icon(leading, contentDescription = null, tint = iconInk, modifier = Modifier.padding(end = 6.dp).size(18.dp))
         if (prefix != null) {
@@ -310,6 +312,16 @@ internal fun RedesignSwitchPill(
         Box(Modifier.size(width = 28.dp, height = 16.dp).clip(CircleShape).background(track)) {
             Box(Modifier.padding(start = knob, top = 3.dp).size(10.dp).clip(CircleShape).background(Color.White))
         }
+    }
+}
+
+/** The design's switch (`.tgl`): green with a white knob when on, a faint track when off. */
+@Composable
+internal fun RedesignSwitch(checked: Boolean) {
+    val track by animateColorAsState(if (checked) RedesignSwitchOn else Color.White.copy(alpha = 0.18f), tween(180), label = "switch_track")
+    val knob by animateDpAsState(if (checked) 17.dp else 3.dp, tween(200, easing = FastOutSlowInEasing), label = "switch_knob")
+    Box(Modifier.size(width = 36.dp, height = 22.dp).clip(CircleShape).background(track)) {
+        Box(Modifier.padding(start = knob, top = 3.dp).size(16.dp).clip(CircleShape).background(Color.White))
     }
 }
 

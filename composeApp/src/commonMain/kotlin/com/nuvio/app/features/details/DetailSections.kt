@@ -276,12 +276,22 @@ internal data class DetailSectionArgs(
     val tvHandoff: DetailTvHandoff? = null,
     val onWatchPartyClick: (() -> Unit)? = null,
     val onDownloadClick: (() -> Unit)? = null,
+    /** What On TV would send: "S2 E3 · Who Is Alive? · from 18:22". */
+    val yourWayLine: String? = null,
+    /** Sources in Watch it your way on the board: opens Quick pick under the cell (its bounds in the window). */
+    val onSourcesAt: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
+    /** The board's Shuffle popover; null keeps the Shuffle sheet. */
+    val shufflePopup: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
+    /** The board's Save to list popover; null keeps the list dialog. */
+    val listsPopup: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
     // The desktop board's Episodes tab: season pills, the Row / List switch, and episode clicks with
     // the card's bounds so Quick pick opens beside it.
     val boardStyle: Boolean = false,
     val onEpisodeCardStyleChange: ((MetaEpisodeCardStyle) -> Unit)? = null,
     val onEpisodeClickAt: ((MetaVideo, androidx.compose.ui.geometry.Rect?) -> Unit)? = null,
     val onEpisodeMenuAt: ((MetaVideo, androidx.compose.ui.geometry.Rect?) -> Unit)? = null,
+    /** Board List rows' round ✓: marks an episode watched or unwatched (its current state passed). */
+    val onEpisodeWatchedToggle: ((MetaVideo, Boolean) -> Unit)? = null,
     // More like this on the board: the unwatched titles (shared fill logic) and the remembered switch.
     val moreLikeThisUnwatched: List<MetaPreview>? = null,
     val moreLikeThisUnwatchedOnly: Boolean = true,
@@ -442,7 +452,11 @@ internal fun LazyListScope.configuredMetaSectionItems(
                     modifier = if (animateItems) Modifier.animateItem() else Modifier,
                     horizontalPadding = contentHorizontalPadding,
                     contentMaxWidth = contentMaxWidth,
-                    bottomPadding = if (index == episodes.lastIndex) 20.dp else 12.dp,
+                    bottomPadding = when {
+                        index == episodes.lastIndex -> 20.dp
+                        boardStyle -> 6.dp
+                        else -> 12.dp
+                    },
                 ) {
                     DetailSeriesListEpisode(
                         meta = meta,
@@ -456,6 +470,10 @@ internal fun LazyListScope.configuredMetaSectionItems(
                         onEpisodeLongPress = onEpisodeLongPress,
                         onEpisodeClickAt = onEpisodeClickAt,
                         onEpisodeLongPressAt = onEpisodeMenuAt,
+                        boardStyle = boardStyle,
+                        isCurrent = preferredEpisodeNumber != null &&
+                            currentSeason == preferredEpisodeSeasonNumber && episode.episode == preferredEpisodeNumber,
+                        onEpisodeWatchedToggle = onEpisodeWatchedToggle,
                     )
                 }
             }
@@ -739,6 +757,7 @@ internal fun ConfiguredMetaSections(
                                 onEpisodeCardStyleChange = onEpisodeCardStyleChange,
                                 onEpisodeClickAt = onEpisodeClickAt,
                                 onEpisodeLongPressAt = onEpisodeMenuAt,
+                                onEpisodeWatchedToggle = onEpisodeWatchedToggle,
                             )
                             if (isDesktop && meta.type == "series") {
                                 Box(Modifier.padding(top = 18.dp)) { seriesAudience() }

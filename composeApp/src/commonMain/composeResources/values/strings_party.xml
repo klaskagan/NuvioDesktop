@@ -83,4 +83,10 @@
     <string name="party_chat_new_messages">New messages</string>
     <string name="party_companion_chatting_as">Chatting as %1$s</string>
     <string name="party_companion_seat_left">Your other device left the watch party.</string>
+    <string name="party_lobby_eyebrow">Watch party · %1$s</string>
+    <string name="party_lobby_members">In the party · %1$d of %2$d</string>
+    <string name="party_lobby_waiting">Waiting for others…</string>
+    <string name="party_lobby_starts_from">Starts from %1$s, where you left off</string>
+    <string name="party_lobby_starts_beginning">Starts from the beginning</string>
+    <string name="party_lobby_joins_host">You join where the host is</string>
 </resources>

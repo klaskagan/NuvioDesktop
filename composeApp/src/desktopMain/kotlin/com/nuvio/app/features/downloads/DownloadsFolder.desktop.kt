@@ -40,6 +40,11 @@ internal actual object DownloadsFolder {
 
     actual fun reset() = set(null)
 
+    actual fun freeBytes(): Long? = runCatching {
+        // The folder may not exist until the first download; ask the nearest existing parent.
+        generateSequence(File(currentPath())) { it.parentFile }.firstOrNull { it.exists() }?.usableSpace
+    }.getOrNull()?.takeIf { it > 0L }
+
     private fun set(path: String?) {
         if (path == null) store.remove(Key) else store.putString(Key, path)
         state.value = path

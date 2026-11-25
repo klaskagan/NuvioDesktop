@@ -11,4 +11,6 @@ internal actual object DownloadsFolder {
     actual fun displayPath(): String = ""
     actual suspend fun choose(): DownloadsFolderChoice = DownloadsFolderChoice.Cancelled
     actual fun reset() = Unit
+
+    actual fun freeBytes(): Long? = null
 }

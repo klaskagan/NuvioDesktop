@@ -20,6 +20,7 @@ class TraktLibraryListsTest {
                     {"name":"Whodunits","ids":{"trakt":1,"slug":"whodunits"}},
                     {"name":"Time Twisters","ids":{"trakt":3,"slug":"time-twisters"}}
                 ]"""
+                url.endsWith("/items/person?limit=1") -> "[]"
                 url.contains("page=1&") -> """[
                     {"list":{"name":"Mine","ids":{"trakt":1}}},
                     {"list":{"name":"Alien Invasion","ids":{"trakt":4},"user":{"username":"another-user"}}}
@@ -31,7 +32,8 @@ class TraktLibraryListsTest {
         }
         assertEquals(listOf("Mine", "Whodunits", "Time Twisters", "Alien Invasion", "Time Travel & Time Loops"), tabs.map { it.title })
         assertEquals(listOf(TraktListType.PERSONAL, TraktListType.SMART, TraktListType.SMART, TraktListType.LIKED, TraktListType.LIKED), tabs.map { it.type })
-        assertEquals(4, requests.size)
+        // Plus one check for people on "Mine", which has no item count.
+        assertEquals(5, requests.size)
         assertEquals("trakt:list:1", tabs.first().key)
     }
 
@@ -45,6 +47,32 @@ class TraktLibraryListsTest {
         for (kind in listOf(TraktListType.WATCHLIST, TraktListType.PERSONAL)) {
             assertTrue(TraktListTab("test", "Test", kind).toTrackingLibraryTab().isMembershipDestination)
         }
+    }
+
+    @Test
+    fun `a list holding only people is not a save destination`() = runBlocking {
+        val requests = mutableListOf<String>()
+        val tabs = fetchTraktLibraryListTabs { url ->
+            requests += url
+            val body = when {
+                // Trakt's item_count leaves people out, so a list of people reads 0.
+                url.endsWith("/users/me/lists") -> """[
+                    {"name":"Favorite People","item_count":0,"ids":{"trakt":7}},
+                    {"name":"Empty","item_count":0,"ids":{"trakt":8}},
+                    {"name":"For Nuvio","item_count":3,"ids":{"trakt":9}}
+                ]"""
+                url.endsWith("/lists/7/items/person?limit=1") -> """[{"type":"person","person":{"name":"Adam Scott"}}]"""
+                else -> "[]"
+            }
+            RawHttpResponse(200, "OK", url, body, emptyMap())
+        }
+        val people = tabs.first { it.title == "Favorite People" }
+        assertTrue(people.holdsOnlyPeople(titleCount = 0))
+        assertFalse(people.toTrackingLibraryTab(peopleOnly = true).isMembershipDestination)
+        // An empty list stays a place to save to, and a list with titles isn't asked about people.
+        assertFalse(tabs.first { it.title == "Empty" }.holdsOnlyPeople(titleCount = 0))
+        assertFalse(tabs.first { it.title == "For Nuvio" }.hasPeople)
+        assertFalse(requests.any { it.contains("/lists/9/items/person") })
     }
 
     @Test

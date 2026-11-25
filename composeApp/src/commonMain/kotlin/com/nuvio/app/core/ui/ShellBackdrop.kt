@@ -66,8 +66,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  * Null falls back to the theme mesh.
  */
 @Stable
-class BackdropFocusController {
-    var base by mutableStateOf<String?>(null)
+class BackdropFocusController(initialBase: String? = null) {
+    /** Pass the page's artwork as [initialBase] when it is known on entry, so the backdrop opens on it. */
+    var base by mutableStateOf(initialBase)
 
     /** The colour behind the top bar on the shown artwork, for [TopBarBackground.Tinted]; null without artwork. */
     var tint by mutableStateOf<Color?>(null)
@@ -158,8 +159,10 @@ fun ShellBackdrop(
     }
 
     val loaded = rememberArtworkBackdrop(settledUrl.takeIf { showArtwork })
-    // Hold the previous artwork while the next one loads, so focus changes crossfade art→art.
-    var shown by remember { mutableStateOf<ImageBitmap?>(null) }
+    // Hold the previous artwork while the next one loads, so focus changes crossfade art→art. A page
+    // opening on artwork already blurred and cached starts on it rather than fading in from black
+    // (entering the party page, or coming back to Details, flashed black first).
+    var shown by remember { mutableStateOf(loaded) }
     LaunchedEffect(settledUrl, loaded, showArtwork) {
         if (settledUrl == null || !showArtwork) shown = null else if (loaded != null) shown = loaded
     }

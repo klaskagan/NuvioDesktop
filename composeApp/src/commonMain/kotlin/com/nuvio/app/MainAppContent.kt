@@ -197,6 +197,7 @@ import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.features.watchprogress.WatchProgressSourceCoordinator
 import com.nuvio.app.features.watchprogress.continueWatchingItemKey
 import com.nuvio.app.features.watchprogress.nextUpDismissKey
+import com.nuvio.app.features.watchprogress.storedResumeFraction
 import com.nuvio.app.features.watchprogress.toContinueWatchingItem
 import com.nuvio.app.navigation.*
 import dev.chrisbanes.haze.hazeSource
@@ -1167,9 +1168,21 @@ internal fun MainAppContent(
 
         fun openPartyMedia(media: PartyMedia) {
             if (navController.currentRoute is PlayerRoute) navController.popBackStack()
-            val resumePositionMs = PartyRepository.playback.value
+            val partyPositionMs = PartyRepository.playback.value
                 ?.takeIf { it.mediaKey == null || it.mediaKey == media.key }
                 ?.let { PartySync.expectedPositionMs(it, PartyRepository.nowMs()) }
+            // Before anyone plays, the host starts from their own progress (the lobby says "Starts from
+            // 18:22") and through Quick pick or autoplay; guests keep the source list, which shows the
+            // host's shared stream.
+            val isHost = PartyRepository.state.value.party?.isHost == true
+            val ownProgress = if (partyPositionMs == null && isHost) {
+                WatchProgressRepository.progressForVideo(media.videoId ?: media.metaId, media.metaId, media.season, media.episode)
+                    ?.takeUnless { it.isEffectivelyCompleted }
+            } else {
+                null
+            }
+            val resumePositionMs = partyPositionMs ?: ownProgress?.lastPositionMs?.takeIf { it > 0L }
+            val resumeFraction = if (partyPositionMs == null) storedResumeFraction(resumePositionMs, ownProgress) else null
             launchPlaybackWithDownloadPreference(
                 type = media.type,
                 videoId = media.videoId ?: media.metaId,
@@ -1185,9 +1198,9 @@ internal fun MainAppContent(
                 episodeThumbnail = null,
                 pauseDescription = null,
                 resumePositionMs = resumePositionMs,
-                resumeProgressFraction = null,
-                manualSelection = true,
-                startFromBeginning = resumePositionMs == null,
+                resumeProgressFraction = resumeFraction,
+                manualSelection = !isHost,
+                startFromBeginning = resumePositionMs == null && resumeFraction == null,
             )
         }
 
@@ -1208,7 +1221,10 @@ internal fun MainAppContent(
                     episodeThumbnail = episodeThumbnail,
                     pauseDescription = pauseDescription,
                     resumePositionMs = resumePositionMs,
-                    resumeProgressFraction = null,
+                    resumeProgressFraction = storedResumeFraction(
+                        resumePositionMs,
+                        WatchProgressRepository.progressForVideo(videoId, parentMetaId, seasonNumber, episodeNumber),
+                    ),
                     manualSelection = false,
                     startFromBeginning = false,
                 )
@@ -1231,7 +1247,10 @@ internal fun MainAppContent(
                     episodeThumbnail = episodeThumbnail,
                     pauseDescription = pauseDescription,
                     resumePositionMs = resumePositionMs,
-                    resumeProgressFraction = null,
+                    resumeProgressFraction = storedResumeFraction(
+                        resumePositionMs,
+                        WatchProgressRepository.progressForVideo(videoId, parentMetaId, seasonNumber, episodeNumber),
+                    ),
                     manualSelection = true,
                     startFromBeginning = false,
                 )
@@ -2162,13 +2181,17 @@ internal fun MainAppContent(
                     }
                 }
                 entry<PartyRoute> { route ->
-                    SettingsDestination(route, navController) { onBack ->
-                        PartyScreen(
-                            initialCode = route.code,
-                            onBack = onBack,
-                            onWatch = ::openPartyMedia,
-                        )
+                    val party: @Composable () -> Unit = {
+                        SettingsDestination(route, navController) { onBack ->
+                            PartyScreen(
+                                initialCode = route.code,
+                                onBack = onBack,
+                                onWatch = ::openPartyMedia,
+                            )
+                        }
                     }
+                    // Desktop: the redesigned shell, under the merged top bar on the media's ambient backdrop.
+                    if (isDesktop) DownloadsFrame(route, party) else party()
                 }
                 entry<AccountSettingsRoute> { route ->
                     SettingsDestination(route, navController) { onBack ->

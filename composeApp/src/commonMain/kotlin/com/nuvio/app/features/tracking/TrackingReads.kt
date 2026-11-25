@@ -97,6 +97,12 @@ interface TrackingLibraryProvider {
     suspend fun refresh(intent: TrackingRefreshIntent)
     fun snapshot(): TrackingLibrarySnapshot
     fun contains(contentId: String, contentType: String? = null): Boolean
+
+    /**
+     * Whether Library shows the title as saved: in the list its toggle adds to. Trackers whose toggle
+     * clears every status (WeTrakr, Simkl) count any of them, as [contains] does.
+     */
+    fun isSavedByDefault(contentId: String, contentType: String): Boolean = contains(contentId, contentType)
     fun find(contentId: String): LibraryItem?
     suspend fun membership(item: LibraryItem): Map<String, Boolean>
     fun toggledDefaultMembership(currentMembership: Map<String, Boolean>): Map<String, Boolean>

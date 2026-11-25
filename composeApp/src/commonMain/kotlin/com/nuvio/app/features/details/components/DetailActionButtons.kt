@@ -65,10 +65,14 @@ data class DetailSecondaryAction(
     val icon: ImageVector,
     val isActive: Boolean = false,
     val onClick: () -> Unit = {},
+    /** In place of [onClick] where the action's own bounds matter (Quick pick opening under it). */
+    val onClickAt: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
     val onLongClick: (() -> Unit)? = null,
     val tag: String? = null,
-    /** A popover the board's Your-way cell opens under itself on click (On TV's device picker). */
+    /** A popover the board's Your-way cell opens on click (On TV's picker, Shuffle, Save to list). */
     val popup: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
+    /** Where [popup] opens: under the tile, or beside the side column. */
+    val popupPlacement: BoardPopoverPlacement = BoardPopoverPlacement.Below,
 )
 
 @OptIn(ExperimentalFoundationApi::class)

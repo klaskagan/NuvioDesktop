@@ -116,12 +116,19 @@ internal class NuvioNavigator(
         restoreDesktop(location)
     }
 
-    fun openDesktopSettings(pageName: String, categoryName: String? = null) {
+    /**
+     * Opens a Settings page on desktop. From a pushed page (Details), [leavePage] also returns to the
+     * tabs so Settings shows under the top bar; Back comes back to the page through the history.
+     */
+    fun openDesktopSettings(pageName: String, categoryName: String? = null, leavePage: Boolean = false) {
         val history = desktopHistory ?: return
         val page = SettingsPage.entries.firstOrNull { it.name == pageName } ?: return
         val category = if (page != SettingsPage.Root) page.category else
             categoryName?.let { com.nuvio.app.features.settings.settingsCategoryForName(it) } ?: history.current.settingsCategory
-        history.visit(history.current.copy(tab = AppScreenTab.Settings, settingsPage = page, settingsCategory = category))
+        val location = history.current.copy(tab = AppScreenTab.Settings, settingsPage = page, settingsCategory = category)
+            .let { if (leavePage) it.copy(routes = listOf(TabsRoute)) else it }
+        history.visit(location)
+        if (leavePage) restoreDesktop(location)
     }
 
     fun changeDesktopProfile(identity: Any?): Boolean = restoreDesktop(desktopHistory?.changeProfile(identity))

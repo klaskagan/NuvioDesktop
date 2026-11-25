@@ -54,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.nuvio.app.isDesktop
 import com.nuvio.app.core.ui.DialogButton
 import com.nuvio.app.core.ui.DialogButtonStyle
 import com.nuvio.app.core.ui.NuvioScreen
@@ -141,10 +142,12 @@ private fun PartyHome(
         modifier = Modifier.fillMaxSize(),
     ) { inParty ->
         if (inParty) {
-            PartyRoom(onBack = onBack, onWatch = onWatch)
+            if (isDesktop) PartyLobbyDesktop(onBack = onBack, onWatch = onWatch) else PartyRoom(onBack = onBack, onWatch = onWatch)
             return@AnimatedContent
         }
-        NuvioScreen(modifier = Modifier.fillMaxSize()) {
+        // On desktop the page sits under the merged top bar; its own header starts below it.
+        val topBarPad = if (com.nuvio.app.LocalDetailTopBarState.current != null) com.nuvio.app.core.ui.DesktopMergedTopBarHeight else 0.dp
+        NuvioScreen(modifier = Modifier.fillMaxSize().padding(top = topBarPad)) {
             stickyHeader {
                 NuvioScreenHeader(
                     title = stringResource(Res.string.party_title),
