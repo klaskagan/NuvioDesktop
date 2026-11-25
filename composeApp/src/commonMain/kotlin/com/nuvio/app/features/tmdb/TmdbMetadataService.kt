@@ -757,7 +757,9 @@ object TmdbMetadataService {
             logo = enrichment.logo,
             description = enrichment.description,
             releaseInfo = enrichment.releaseInfo,
+            releaseDate = enrichment.releaseInfo,
             lastAirDate = enrichment.lastAirDate,
+            metaSource = "TMDB",
             status = enrichment.status,
             imdbRating = enrichment.rating?.formatRating(),
             ageRating = enrichment.ageRating,
@@ -810,6 +812,7 @@ object TmdbMetadataService {
         if (enrichment != null && settings.useDetails) {
             updated = updated.copy(
                 status = enrichment.status ?: updated.status,
+                releaseDate = enrichment.releaseInfo?.takeIf { it.length >= 10 } ?: updated.releaseDate,
                 ageRating = enrichment.ageRating ?: updated.ageRating,
                 runtime = enrichment.runtimeMinutes?.formatRuntime() ?: updated.runtime,
                 country = enrichment.countries.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: updated.country,

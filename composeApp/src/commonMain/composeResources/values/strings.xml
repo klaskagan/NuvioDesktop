@@ -1181,6 +1181,16 @@
     <string name="detail_facts_seasons_value">%1$d · %2$d episodes</string>
     <string name="detail_facts_genres">Genres</string>
     <string name="detail_facts_awards">Awards</string>
+    <string name="detail_facts_rating">Rating</string>
+    <string name="detail_facts_country">Country</string>
+    <string name="detail_facts_language">Language</string>
+    <string name="detail_facts_collection">Collection</string>
+    <string name="detail_facts_box_office">Box office</string>
+    <string name="detail_facts_source">Source</string>
+    <string name="detail_facts_runtime_hours_minutes">%1$d h %2$d min</string>
+    <string name="detail_facts_runtime_hours">%1$d h</string>
+    <string name="detail_facts_runtime_minutes">%1$d min</string>
+    <string name="detail_facts_runtime_average">~%1$s</string>
     <string name="detail_board_directed_by">Directed by</string>
     <string name="detail_board_starring">Starring</string>
     <string name="detail_board_rate_episode">Rate %1$s</string>

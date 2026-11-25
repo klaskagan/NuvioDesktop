@@ -1,6 +1,9 @@
 package com.nuvio.app.features.details
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -746,18 +749,22 @@ internal fun ConfiguredMetaSections(
                 MetaScreenSectionKey.DETAILS -> {
                     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                         if (boardStyle) {
-                            BoardDetailsFacts(meta = meta, isSeries = meta.type == "series" || hasEpisodes)
+                            val isSeries = meta.type == "series" || hasEpisodes
+                            val wikidataAwards = behindTheFilm?.let { summarizeAwards(it.awardsWon, it.awardsNominated) }
+                            BoardDetailsFacts(meta = meta, isSeries = isSeries, fallbackAwards = wikidataAwards) {
+                                // Under About / More / Links and above the overview, once Wikidata has answered.
+                                AnimatedVisibility(visible = behindTheFilm?.hasTile == true, enter = fadeIn(tween(220)) + expandVertically(tween(220))) {
+                                    behindTheFilm?.takeIf { it.hasTile }?.let { behind ->
+                                        BehindTheFilmTile(
+                                            info = behind,
+                                            isSeries = isSeries,
+                                            onPerson = onCastClick?.let { open -> { person -> open(person, null) } },
+                                        )
+                                    }
+                                }
+                            }
                         } else if (hasAdditionalInfoSection) {
                             DetailAdditionalInfoSection(meta = meta, showHeader = showHeader)
-                        }
-                        // Under About / More / Links on the board, once Wikidata has answered.
-                        val behind = behindTheFilm
-                        if (boardStyle && behind != null) {
-                            BehindTheFilmTile(
-                                info = behind,
-                                isSeries = meta.type == "series" || hasEpisodes,
-                                onPerson = onCastClick?.let { open -> { person -> open(person, null) } },
-                            )
                         }
                     }
                 }

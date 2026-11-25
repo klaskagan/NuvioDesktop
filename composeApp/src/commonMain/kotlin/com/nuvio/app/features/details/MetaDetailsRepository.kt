@@ -293,7 +293,7 @@ object MetaDetailsRepository {
             log.d { "Fetching meta from: $url" }
             val payload = fetchAddonResponseText(url)
             log.d { "Raw payload length=${payload.length}, first 500 chars: ${payload.take(500)}" }
-            val result = MetaDetailsParser.parse(payload)
+            val result = MetaDetailsParser.parse(payload).copy(metaSource = manifest.name.takeIf { it.isNotBlank() })
             val tmdbEnriched = withTimeoutOrNull(TMDB_ENRICH_TIMEOUT_MS) {
                 TmdbMetadataService.enrichMeta(
                     meta = result,

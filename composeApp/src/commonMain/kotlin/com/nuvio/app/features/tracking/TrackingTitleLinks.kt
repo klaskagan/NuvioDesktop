@@ -11,6 +11,9 @@ interface TrackingTitleLinkProvider {
 
     /** The title's page on the tracker's website, or null when it can't be found. */
     suspend fun url(meta: MetaDetails): String?
+
+    /** The title's id on the tracker, listed under IMDb and TMDB in the Links tile (Trakt: its slug); null hides the row. */
+    suspend fun id(meta: MetaDetails): String? = null
 }
 
 /**
