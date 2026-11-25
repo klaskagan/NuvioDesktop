@@ -73,7 +73,10 @@ match the design".
   routine). Status per frame lives in `V1_STATUS` in `gen_gaps.py`; `gen_design.py`
   builds the design page from the same frames.
 - **Before coding:** name the frame(s) and list what differs, from the Build gap line and
-  your own look at the running app.
+  your own look at the running app. Read a frame's layout from its CSS too, not only its
+  markup: shared classes live in `art/base.html` (`.kv` is a two-column `1fr 1fr` grid, so
+  Details facts sit two to a row). Reading only the `kv(...)` rows once shipped one column.
+  Regression: `DetailBoardTabsContentUiTest.movieDetailsFollowTheFilmFrame`.
 - **Finish, every time:**
   1. Check the result in the running app against the frame.
   2. Update that frame's `V1_STATUS` entry: status, plus a note of what still differs.

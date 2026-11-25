@@ -123,13 +123,27 @@ internal object TraktFavoritesProvider : TrackingFavoritesProvider {
     private data class FavoriteEntry(val movie: FavoriteMedia? = null, val show: FavoriteMedia? = null)
 }
 
-/** Trakt's page for a title, through its id search ("trakt.tv/search/imdb/tt…" redirects to the title). */
+/**
+ * Trakt's page for a title: its slug page when Trakt resolves the title, else the id search
+ * ("trakt.tv/search/imdb/tt…" redirects to the title). The slug is also the Links tile's Trakt row.
+ */
 internal object TraktTitleLinks : com.nuvio.app.features.tracking.TrackingTitleLinkProvider {
     override val providerId = com.nuvio.app.features.tracking.TrackingProviderId.TRAKT
     override val label = "Trakt"
 
+    override suspend fun id(meta: com.nuvio.app.features.details.MetaDetails): String? =
+        if (!TraktAudienceRepository.available) null
+        else try {
+            TraktAudienceRepository.resolveSlug(meta)
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        }
+
     override suspend fun url(meta: com.nuvio.app.features.details.MetaDetails): String? {
         val type = if (meta.type == "movie") "movie" else "show"
+        id(meta)?.let { return "https://trakt.tv/${type}s/$it" }
         meta.imdbIdOrNull()?.let { return "https://trakt.tv/search/imdb/$it?id_type=$type" }
         return meta.tmdbIdOrNull()?.let { "https://trakt.tv/search/tmdb/$it?id_type=$type" }
     }

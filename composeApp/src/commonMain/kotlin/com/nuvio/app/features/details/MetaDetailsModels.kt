@@ -13,6 +13,10 @@ data class MetaDetails(
     val logo: String? = null,
     val description: String? = null,
     val releaseInfo: String? = null,
+    /** The full first release or air date (ISO), when the addon or TMDB gives one; [releaseInfo] is often a year. */
+    val releaseDate: String? = null,
+    /** The name of the addon (or service) the metadata came from, for the Details tab's Links tile. */
+    val metaSource: String? = null,
     /** TV: ISO last air date from TMDB (or addon) for year-range display. */
     val lastAirDate: String? = null,
     val status: String? = null,

@@ -47,6 +47,9 @@ private data class AudienceShow(val ids: TraktExternalIds)
 @Serializable
 private data class AudienceSearchResult(val show: AudienceShow? = null)
 
+@Serializable
+private data class AudienceMovieSearchResult(val movie: AudienceShow? = null)
+
 internal class AudienceRequestException(val status: Int) : Exception("Trakt audience request failed: $status")
 
 internal object TraktAudienceRepository {
@@ -69,6 +72,21 @@ internal object TraktAudienceRepository {
                 ?.mapNotNull { it.show?.ids?.trakt }?.distinct()?.singleOrNull()
             else -> null
         }
+    }
+
+    /** The title's Trakt slug ("dune-part-two-2024"), by IMDb id, else by TMDB id. */
+    suspend fun resolveSlug(meta: MetaDetails): String? {
+        val ids = parseTraktContentIds(meta.id)
+        val imdb = (meta.imdbId ?: ids.imdb)?.takeIf { it.matches(Regex("tt[0-9]+")) }
+        val movie = meta.type == "movie"
+        return when {
+            imdb != null -> get<AudienceShow>(if (movie) "/movies/$imdb" else "/shows/$imdb")?.ids?.slug
+            ids.tmdb != null && movie -> get<List<AudienceMovieSearchResult>>("/search/tmdb/${ids.tmdb}?type=movie")
+                ?.mapNotNull { it.movie?.ids?.slug }?.distinct()?.singleOrNull()
+            ids.tmdb != null -> get<List<AudienceSearchResult>>("/search/tmdb/${ids.tmdb}?type=show")
+                ?.mapNotNull { it.show?.ids?.slug }?.distinct()?.singleOrNull()
+            else -> null
+        }?.takeIf { it.isNotBlank() }
     }
 
     suspend fun seasons(show: Int): List<TraktAudienceSeason> =

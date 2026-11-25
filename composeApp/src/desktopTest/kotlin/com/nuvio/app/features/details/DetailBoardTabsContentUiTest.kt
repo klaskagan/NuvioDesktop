@@ -137,5 +137,59 @@ class DetailBoardTabsContentUiTest {
         onNodeWithTag("detail_board_link_TMDB").assertExists()
         onNodeWithText("95396").assertIsDisplayed()
         onNodeWithText("Mark leads a team of office workers.").assertIsDisplayed()
+        // A series keeps its status and averages its runtime; the first aired date is the full date.
+        onNodeWithText("Status").assertIsDisplayed()
+        onNodeWithText("18 February 2022").assertIsDisplayed()
+    }
+
+    /**
+     * A film's About (design frame "Details · Behind the film"): rating, compact budget and box
+     * office, no "Released" status; More names the country, language and collection; Links lists
+     * the source addon; Behind the film sits between the tiles and the overview.
+     */
+    @Test fun movieDetailsFollowTheFilmFrame() = runDesktopComposeUiTest(width = 1300, height = 1100) {
+        val meta = MetaDetails(
+            "tt15239678", "movie", "Dune: Part Two", imdbId = "tt15239678",
+            description = "Follow the mythic journey of Paul Atreides.",
+            status = "Released", releaseInfo = "2024", releaseDate = "2024-03-01T00:00:00.000Z",
+            ageRating = "PG-13", runtime = "166 min", country = "US", language = "en",
+            director = listOf("Denis Villeneuve"), collectionName = "Dune",
+            budgetUsd = 190_000_000L, revenueUsd = 714_844_358L, metaSource = "Cinemeta",
+        )
+        val behind = BehindTheFilm(
+            "Q109228991", listOf(BehindTheFilmWork("Dune", "novel", "Frank Herbert", 1965)),
+            emptyList(), listOf(BehindTheFilmPerson("Hans Zimmer", 947)), emptyList(), listOf("Italy", "Jordan"),
+        )
+        setContent {
+            AppEnvironment {
+                Box(Modifier.width(1200.dp)) {
+                    com.nuvio.app.features.details.components.BoardDetailsFacts(meta, isSeries = false) {
+                        com.nuvio.app.features.details.components.BehindTheFilmTile(behind, isSeries = false, onPerson = null)
+                    }
+                }
+            }
+        }
+        mainClock.advanceTimeBy(500); waitForIdle()
+        onNodeWithText("1 March 2024").assertIsDisplayed()
+        // Facts sit two to a row (the design's 1fr 1fr grid): Directed by beside Released.
+        val director = onNodeWithText("Denis Villeneuve").fetchSemanticsNode().boundsInRoot
+        val released = onNodeWithText("1 March 2024").fetchSemanticsNode().boundsInRoot
+        assertEquals(director.top, released.top)
+        assertTrue(released.left > director.right)
+        onNodeWithText("2 h 46 min").assertIsDisplayed()
+        onNodeWithText("PG-13").assertIsDisplayed()
+        onNodeWithText("$190M").assertIsDisplayed()
+        onNodeWithText("Box office").assertIsDisplayed()
+        onNodeWithText("$714.8M").assertIsDisplayed()
+        onNodeWithText("United States").assertIsDisplayed()
+        onNodeWithText("English").assertIsDisplayed()
+        onNodeWithText("Collection").assertIsDisplayed()
+        onNodeWithText("Cinemeta").assertIsDisplayed()
+        onNodeWithText("Status").assertDoesNotExist()
+        onNodeWithText("novel · Frank Herbert, 1965").assertIsDisplayed()
+        onAllNodesWithTag("detail_behind_place").assertCountEquals(2)
+        val behindBottom = onNodeWithTag("detail_behind_the_film").fetchSemanticsNode().boundsInRoot.bottom
+        val overviewTop = onNodeWithText("Follow the mythic journey of Paul Atreides.").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(behindBottom < overviewTop, "Behind the film sits above the overview")
     }
 }

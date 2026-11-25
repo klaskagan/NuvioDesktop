@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -35,6 +36,7 @@ import com.nuvio.app.core.ui.RedesignTileShape
 import com.nuvio.app.core.ui.redesignText
 import com.nuvio.app.features.details.BehindTheFilm
 import com.nuvio.app.features.details.BehindTheFilmPerson
+import com.nuvio.app.features.details.BehindTheFilmWork
 import com.nuvio.app.features.details.MetaPerson
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.detail_behind_based_on
@@ -50,7 +52,6 @@ import org.jetbrains.compose.resources.stringResource
  * The Details tab's "Behind the film" tile (Wikidata). A column shows only when Wikidata has that
  * field; people open their page; "Wikidata ↗" opens the item in the browser.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun BehindTheFilmTile(
     info: BehindTheFilm,
@@ -61,7 +62,7 @@ internal fun BehindTheFilmTile(
     val uriHandler = LocalUriHandler.current
     Column(
         modifier.fillMaxWidth().clip(RedesignTileShape).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, RedesignTileShape)
-            .padding(18.dp).testTag("detail_behind_the_film"),
+            .padding(horizontal = 20.dp, vertical = 18.dp).testTag("detail_behind_the_film"),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -81,13 +82,15 @@ internal fun BehindTheFilmTile(
                     .testTag("detail_behind_wikidata"),
             )
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(36.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (info.basedOn.isNotEmpty()) PlainColumn(stringResource(Res.string.detail_behind_based_on), info.basedOn)
+        // One equal column per field Wikidata has, as the design's grid.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            val column = Modifier.weight(1f)
+            if (info.basedOn.isNotEmpty()) WorksColumn(stringResource(Res.string.detail_behind_based_on), info.basedOn, column)
             // Films already name their director on the featured tile.
-            if (isSeries && info.directedBy.isNotEmpty()) PeopleColumn(stringResource(Res.string.detail_behind_directed_by), info.directedBy, "Director", onPerson)
-            if (info.music.isNotEmpty()) PeopleColumn(stringResource(Res.string.detail_behind_music), info.music, "Composer", onPerson)
-            if (info.cinematography.isNotEmpty()) PeopleColumn(stringResource(Res.string.detail_behind_cinematography), info.cinematography, "Cinematographer", onPerson)
-            if (info.filmedIn.isNotEmpty()) PlainColumn(stringResource(Res.string.detail_behind_filmed_in), listOf(info.filmedIn.joinToString(", ")))
+            if (isSeries && info.directedBy.isNotEmpty()) PeopleColumn(stringResource(Res.string.detail_behind_directed_by), info.directedBy, "Director", onPerson, column)
+            if (info.music.isNotEmpty()) PeopleColumn(stringResource(Res.string.detail_behind_music), info.music, "Composer", onPerson, column)
+            if (info.cinematography.isNotEmpty()) PeopleColumn(stringResource(Res.string.detail_behind_cinematography), info.cinematography, "Cinematographer", onPerson, column)
+            if (info.filmedIn.isNotEmpty()) PlacesColumn(stringResource(Res.string.detail_behind_filmed_in), info.filmedIn, column)
         }
     }
 }
@@ -97,17 +100,43 @@ private fun ColumnLabel(text: String) {
     Text(text, style = redesignText(12.sp, color = RedesignColors.textMuted))
 }
 
+/** "Dune" in italics, with "novel · Frank Herbert, 1965" muted under it. */
 @Composable
-private fun PlainColumn(label: String, values: List<String>) {
-    Column(Modifier.widthIn(max = 260.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+private fun WorksColumn(label: String, works: List<BehindTheFilmWork>, modifier: Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         ColumnLabel(label)
-        values.forEach { Text(it, style = redesignText(14.sp, FontWeight.SemiBold, lineHeight = 19.sp)) }
+        works.forEach { work ->
+            Text(work.title, style = redesignText(14.sp, FontWeight.SemiBold, lineHeight = 19.sp).copy(fontStyle = FontStyle.Italic))
+            work.detail?.let { Text(it, style = redesignText(12.sp, FontWeight.Medium, RedesignColors.textMuted, lineHeight = 16.sp)) }
+        }
+    }
+}
+
+/** Filming places as small chips. They are plain facts, so they don't click. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PlacesColumn(label: String, places: List<String>, modifier: Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        ColumnLabel(label)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            places.forEach { place ->
+                Text(
+                    place,
+                    style = redesignText(12.sp, FontWeight.SemiBold),
+                    maxLines = 1,
+                    modifier = Modifier.clip(CircleShape).background(RedesignColors.fill)
+                        .border(1.dp, RedesignColors.hairline, CircleShape)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .testTag("detail_behind_place"),
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun PeopleColumn(label: String, people: List<BehindTheFilmPerson>, role: String, onPerson: ((MetaPerson) -> Unit)?) {
-    Column(Modifier.widthIn(max = 260.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+private fun PeopleColumn(label: String, people: List<BehindTheFilmPerson>, role: String, onPerson: ((MetaPerson) -> Unit)?, modifier: Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         ColumnLabel(label)
         people.forEach { person ->
             val interaction = remember(person.name) { MutableInteractionSource() }
