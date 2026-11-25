@@ -197,6 +197,7 @@ import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.features.watchprogress.WatchProgressSourceCoordinator
 import com.nuvio.app.features.watchprogress.continueWatchingItemKey
 import com.nuvio.app.features.watchprogress.nextUpDismissKey
+import com.nuvio.app.features.watchprogress.storedResumeFraction
 import com.nuvio.app.features.watchprogress.toContinueWatchingItem
 import com.nuvio.app.navigation.*
 import dev.chrisbanes.haze.hazeSource
@@ -1208,7 +1209,10 @@ internal fun MainAppContent(
                     episodeThumbnail = episodeThumbnail,
                     pauseDescription = pauseDescription,
                     resumePositionMs = resumePositionMs,
-                    resumeProgressFraction = null,
+                    resumeProgressFraction = storedResumeFraction(
+                        resumePositionMs,
+                        WatchProgressRepository.progressForVideo(videoId, parentMetaId, seasonNumber, episodeNumber),
+                    ),
                     manualSelection = false,
                     startFromBeginning = false,
                 )
@@ -1231,7 +1235,10 @@ internal fun MainAppContent(
                     episodeThumbnail = episodeThumbnail,
                     pauseDescription = pauseDescription,
                     resumePositionMs = resumePositionMs,
-                    resumeProgressFraction = null,
+                    resumeProgressFraction = storedResumeFraction(
+                        resumePositionMs,
+                        WatchProgressRepository.progressForVideo(videoId, parentMetaId, seasonNumber, episodeNumber),
+                    ),
                     manualSelection = true,
                     startFromBeginning = false,
                 )

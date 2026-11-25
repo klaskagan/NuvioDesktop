@@ -93,6 +93,7 @@ import kotlinx.coroutines.runBlocking
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.vectorResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
@@ -140,6 +141,8 @@ fun DetailSeriesContent(
     onEpisodeClickAt: ((MetaVideo, Rect?) -> Unit)? = null,
     /** Right-click / press-and-hold with the card's bounds, for the board's context menu. Wins over [onEpisodeLongPress]. */
     onEpisodeLongPressAt: ((MetaVideo, Rect?) -> Unit)? = null,
+    /** Board List rows: the round ✓ button marks an episode watched or unwatched (current state passed). */
+    onEpisodeWatchedToggle: ((MetaVideo, Boolean) -> Unit)? = null,
 ) {
     val hasVideos = meta.videos.isNotEmpty()
     if (meta.type != "series" && !hasVideos) return
@@ -289,11 +292,17 @@ fun DetailSeriesContent(
                             onEpisodeClick = episodeClick,
                             onEpisodeLongPress = episodeLongPress,
                             episodeBounds = episodeBounds,
+                            boardStyle = boardStyle,
                         )
                     } else {
                         Column(
-                            verticalArrangement = Arrangement.spacedBy(sizing.cardGap),
+                            verticalArrangement = Arrangement.spacedBy(if (boardStyle) 6.dp else sizing.cardGap),
                         ) {
+                            val currentEpisode = preferredEpisodeNumberForSeason(
+                                displayedSeasonNumber = seasonForContent,
+                                preferredSeasonNumber = preferredSeasonNumber,
+                                preferredEpisodeNumber = preferredEpisodeNumber,
+                            )
                             seasonEpisodes.forEach { episode ->
                                 val episodeVideoId = buildPlaybackVideoId(
                                     parentMetaId = meta.id,
@@ -301,6 +310,26 @@ fun DetailSeriesContent(
                                     episodeNumber = episode.episode,
                                     fallbackVideoId = episode.id,
                                 )
+                                if (boardStyle) {
+                                    val watched = isBoardEpisodeWatched(meta, episode, progressByVideoId[episodeVideoId], watchedKeys)
+                                    BoardEpisodeRow(
+                                        info = rememberBoardEpisodeInfo(
+                                            video = episode,
+                                            fallbackImage = meta.background ?: meta.poster,
+                                            progressEntry = progressByVideoId[episodeVideoId],
+                                            rating = episode.seasonEpisodeKey()?.let { episodeRatings[it] } ?: episode.rating,
+                                            isWatched = watched,
+                                            isCurrent = currentEpisode != null && episode.episode == currentEpisode,
+                                            episodeRatingsVisibility = episodeRatingsVisibility,
+                                            blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                                        ),
+                                        modifier = Modifier.onGloballyPositioned { episodeBounds[episode.id] = it.boundsInRoot() },
+                                        onClick = { episodeClick?.invoke(episode) },
+                                        onLongPress = { episodeLongPress?.invoke(episode) },
+                                        onWatchedToggle = onEpisodeWatchedToggle?.let { toggle -> { toggle(episode, watched) } },
+                                    )
+                                    return@forEach
+                                }
                                 EpisodeListCard(
                                     video = episode,
                                     fallbackImage = meta.background ?: meta.poster,
@@ -399,6 +428,7 @@ private fun BoardSeasonBar(
                         SeasonViewModeStorage.save(next)
                     },
                     active = showPosters,
+                    leading = vectorResource(Res.drawable.calendar_posters_portrait),
                     modifier = Modifier.testTag("detail_board_season_posters"),
                 )
             }
@@ -502,8 +532,33 @@ internal fun DetailSeriesListEpisode(
     modifier: Modifier = Modifier,
     onEpisodeClickAt: ((MetaVideo, Rect?) -> Unit)? = null,
     onEpisodeLongPressAt: ((MetaVideo, Rect?) -> Unit)? = null,
+    boardStyle: Boolean = false,
+    isCurrent: Boolean = false,
+    onEpisodeWatchedToggle: ((MetaVideo, Boolean) -> Unit)? = null,
 ) {
     var bounds by remember { mutableStateOf<Rect?>(null) }
+    if (boardStyle) {
+        val videoId = buildPlaybackVideoId(parentMetaId = meta.id, seasonNumber = episode.season, episodeNumber = episode.episode, fallbackVideoId = episode.id)
+        val progress = progressByVideoId[videoId]
+        val watched = isBoardEpisodeWatched(meta, episode, progress, watchedKeys)
+        BoardEpisodeRow(
+            info = rememberBoardEpisodeInfo(
+                video = episode,
+                fallbackImage = meta.background ?: meta.poster,
+                progressEntry = progress,
+                rating = episode.seasonEpisodeKey()?.let { episodeRatings[it] } ?: episode.rating,
+                isWatched = watched,
+                isCurrent = isCurrent,
+                episodeRatingsVisibility = episodeRatingsVisibility,
+                blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+            ),
+            modifier = modifier.onGloballyPositioned { bounds = it.boundsInRoot() },
+            onClick = { onEpisodeClickAt?.invoke(episode, bounds) ?: onEpisodeClick?.invoke(episode) },
+            onLongPress = { onEpisodeLongPressAt?.invoke(episode, bounds) ?: onEpisodeLongPress?.invoke(episode) },
+            onWatchedToggle = onEpisodeWatchedToggle?.let { toggle -> { toggle(episode, watched) } },
+        )
+        return
+    }
     BoxWithConstraints(modifier = modifier.fillMaxWidth().onGloballyPositioned { bounds = it.boundsInRoot() }) {
         val sizing = seriesContentSizing(maxWidth.value)
         val episodeVideoId = buildPlaybackVideoId(
@@ -903,8 +958,10 @@ private fun EpisodeHorizontalRow(
     onEpisodeClick: ((MetaVideo) -> Unit)?,
     onEpisodeLongPress: ((MetaVideo) -> Unit)?,
     episodeBounds: MutableMap<String, Rect>? = null,
+    boardStyle: Boolean = false,
 ) {
     val rowMetrics = rememberEpisodeHorizontalCardMetrics(maxWidthDp)
+    val boardCardWidth = boardEpisodeCardWidth(maxWidthDp.dp)
     val listState = rememberLazyListState()
     var hasPositioned by remember(episodes) { mutableStateOf(false) }
 
@@ -934,7 +991,7 @@ private fun EpisodeHorizontalRow(
             horizontal = horizontalScrollPadding + rowMetrics.rowHorizontalPadding,
             vertical = rowMetrics.rowVerticalPadding,
         ),
-        horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
+        horizontalArrangement = Arrangement.spacedBy(if (boardStyle) BoardEpisodeCardGap else rowMetrics.itemSpacing),
     ) {
         itemsIndexed(
             items = episodes,
@@ -947,6 +1004,26 @@ private fun EpisodeHorizontalRow(
                 fallbackVideoId = episode.id,
             )
             Box(Modifier.onGloballyPositioned { coordinates -> episodeBounds?.set(episode.id, coordinates.boundsInRoot()) }) {
+            if (boardStyle) {
+                val progress = progressByVideoId[episodeVideoId]
+                BoardEpisodeCard(
+                    info = rememberBoardEpisodeInfo(
+                        video = episode,
+                        fallbackImage = fallbackImage,
+                        progressEntry = progress,
+                        rating = episode.seasonEpisodeKey()?.let { episodeRatings[it] } ?: episode.rating,
+                        isWatched = progress?.isEffectivelyCompleted == true ||
+                            WatchingState.isEpisodeWatched(watchedKeys = watchedKeys, metaType = metaType, metaId = parentMetaId, episode = episode),
+                        isCurrent = preferredEpisodeNumber != null && episode.episode == preferredEpisodeNumber,
+                        episodeRatingsVisibility = episodeRatingsVisibility,
+                        blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                    ),
+                    width = boardCardWidth,
+                    onClick = { onEpisodeClick?.invoke(episode) },
+                    onLongPress = { onEpisodeLongPress?.invoke(episode) },
+                )
+                return@Box
+            }
             EpisodeHorizontalCard(
                 video = episode,
                 fallbackImage = fallbackImage,
@@ -992,7 +1069,7 @@ private fun EpisodeHorizontalCard(
     val formattedDate = remember(video.released) { video.released?.let { formatReleaseDateForDisplay(it) } }
     val runtimeLabel = remember(video.runtime) { video.runtime?.takeIf { it > 0 }?.let(::formatEpisodeRuntime) }
     val imageUrl = video.thumbnail ?: fallbackImage
-    val visibleProgressEntry = progressEntry?.takeIf { it.durationMs > 0L && !it.isCompleted }
+    val visibleProgressEntry = progressEntry?.takeIf { it.progressFraction > 0f && !it.isEffectivelyCompleted }
     val progressBarHeight = 4.dp
     val progressBarContentSpacing = 6.dp
     val progressBarBottomSpacing = 8.dp
@@ -1288,7 +1365,7 @@ private fun rememberEpisodeHorizontalCardMetrics(maxWidthDp: Float): EpisodeHori
     }
 }
 
-private fun formatEpisodeRuntime(runtimeMinutes: Int): String {
+internal fun formatEpisodeRuntime(runtimeMinutes: Int): String {
     return formatRuntimeFromMinutes(runtimeMinutes)
 }
 
@@ -1462,7 +1539,7 @@ private fun EpisodeListCard(
                         .padding(
                             start = 8.dp,
                             end = 8.dp,
-                            bottom = if (progressEntry != null && progressEntry.durationMs > 0L && !progressEntry.isCompleted) {
+                            bottom = if (progressEntry != null && progressEntry.progressFraction > 0f && !progressEntry.isEffectivelyCompleted) {
                                 24.dp
                             } else {
                                 8.dp
@@ -1540,7 +1617,7 @@ private fun EpisodeListCard(
         }
 
         progressEntry
-            ?.takeIf { it.durationMs > 0L && !it.isCompleted }
+            ?.takeIf { it.progressFraction > 0f && !it.isEffectivelyCompleted }
             ?.let { entry ->
                 NuvioProgressBar(
                     progress = entry.progressFraction,
@@ -1713,12 +1790,20 @@ private fun Int.label(): String =
         runBlocking { getString(Res.string.episodes_season, this@label) }
     }
 
-private fun MetaVideo.episodeBadge(): String =
+internal fun MetaVideo.episodeBadge(): String =
     when {
         episode != null || season != null ->
             localizedSeasonEpisodeCode(seasonNumber = season, episodeNumber = episode).orEmpty()
         else -> runBlocking { getString(Res.string.details_episode_badge_file) }
     }
+
+private fun isBoardEpisodeWatched(
+    meta: MetaDetails,
+    episode: MetaVideo,
+    progress: WatchProgressEntry?,
+    watchedKeys: Set<String>,
+): Boolean = progress?.isEffectivelyCompleted == true ||
+    WatchingState.isEpisodeWatched(watchedKeys = watchedKeys, metaType = meta.type, metaId = meta.id, episode = episode)
 
 private fun MetaVideo.seasonEpisodeKey(): Pair<Int, Int>? {
     val seasonNumber = season ?: return null
@@ -1726,7 +1811,7 @@ private fun MetaVideo.seasonEpisodeKey(): Pair<Int, Int>? {
     return seasonNumber to episodeNumber
 }
 
-private fun formatEpisodeRating(rating: Double): String {
+internal fun formatEpisodeRating(rating: Double): String {
     val roundedTenths = (rating * 10.0).roundToInt()
     val whole = roundedTenths / 10
     val tenth = (roundedTenths % 10).absoluteValue

@@ -493,6 +493,27 @@ class WatchProgressRulesTest {
         assertNull(parseReleaseDateToEpochMs("invalid-date"))
     }
 
+    @Test
+    fun `a Trakt percentage resumes when the caller has no saved position`() {
+        // Trakt's playback entry: 38% with no position or duration (S2 E1 restarted at 0 before).
+        val trakt = entry(
+            videoId = "tt11280740:2:1",
+            seasonNumber = 2,
+            episodeNumber = 1,
+            lastPositionMs = 0L,
+            durationMs = 0L,
+            progressPercent = 38f,
+            source = WatchProgressSourceTraktPlayback,
+        )
+
+        assertEquals(0.38f, storedResumeFraction(resumePositionMs = 0L, entry = trakt))
+        assertEquals(0.38f, storedResumeFraction(resumePositionMs = null, entry = trakt))
+        // A saved position wins, and finished or missing progress starts from the beginning.
+        assertNull(storedResumeFraction(resumePositionMs = 600_000L, entry = trakt))
+        assertNull(storedResumeFraction(resumePositionMs = 0L, entry = trakt.copy(progressPercent = 95f)))
+        assertNull(storedResumeFraction(resumePositionMs = 0L, entry = null))
+    }
+
     private fun entry(
         videoId: String,
         parentMetaId: String = videoId.substringBefore(':'),

@@ -217,7 +217,10 @@ import com.nuvio.app.features.watching.application.WatchingState
 import com.nuvio.app.isDesktop
 import com.kmpalette.rememberDominantColorState
 import com.kmpalette.extensions.painter.rememberPainterDominantColorState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import com.nuvio.app.features.trakt.TraktAudienceRepository
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
@@ -845,6 +848,39 @@ fun MetaDetailsScreen(
                     ?.takeIf { it in episodeListGroupedEpisodes }
                     ?: defaultEpisodeListSeason
                 val audienceState = remember(meta.id, meta.imdbId) { SeriesAudienceState() }
+                // The board's episode cards show a ★ score on every episode; where IMDb has none
+                // (its episode ratings are often empty), use Trakt's, loaded into the same state
+                // Your stats reads so that tab doesn't fetch it again.
+                LaunchedEffect(meta.id, meta.videos, boardLayout, deferredMetaWorkAllowed, metaScreenSettingsUiState.episodeRatingsVisibility) {
+                    if (!boardLayout || !deferredMetaWorkAllowed || meta.type != "series") return@LaunchedEffect
+                    if (!metaScreenSettingsUiState.episodeRatingsVisibility.showRatings) return@LaunchedEffect
+                    try {
+                        val show = audienceState.show ?: TraktAudienceRepository.resolveShow(meta) ?: return@LaunchedEffect
+                        audienceState.show = show
+                        val catalog = audienceState.episodes ?: withContext(Dispatchers.Default) {
+                            TraktAudienceRepository.seasons(show).episodeMap()
+                        }
+                        if (audienceState.mappedVideos !== meta.videos) {
+                            audienceState.mappings = withContext(Dispatchers.Default) { mapAudienceEpisodes(meta.videos, catalog) }
+                            audienceState.mappedVideos = meta.videos
+                        }
+                        audienceState.episodes = catalog
+                    } catch (error: kotlin.coroutines.cancellation.CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        // No Trakt scores: the cards show IMDb's, or none.
+                    }
+                }
+                val boardEpisodeRatings = remember(episodeImdbRatings, audienceState.episodes, audienceState.mappings, boardLayout) {
+                    if (!boardLayout) return@remember episodeImdbRatings
+                    val episodes = audienceState.episodes.orEmpty()
+                    val trakt = audienceState.mappings.mapNotNull { (key, video) ->
+                        val season = video.season ?: return@mapNotNull null
+                        val number = video.episode ?: return@mapNotNull null
+                        episodes[key]?.rating?.takeIf { it > 0.0 }?.let { (season to number) to it }
+                    }.toMap()
+                    trakt + episodeImdbRatings
+                }
                 val seasonProgress = remember(meta, todayIsoDate, watchedUiState.isLoaded, watchedUiState.watchedKeys, progressByVideoId) {
                     if (!isDesktop || meta.type != "series" || !watchedUiState.isLoaded) null
                     else meta.seasonWatchedCounts(todayIsoDate) {
@@ -1457,7 +1493,7 @@ fun MetaDetailsScreen(
                     commentsCurrentPage = commentsCurrentPage,
                     commentsPageCount = commentsPageCount,
                     commentsError = commentsError,
-                    episodeImdbRatings = episodeImdbRatings,
+                    episodeImdbRatings = boardEpisodeRatings,
                     episodeListGroupedEpisodes = episodeListGroupedEpisodes,
                     episodeListSeasons = episodeListSeasons,
                     episodeListCurrentSeason = currentEpisodeListSeason,
@@ -1708,8 +1744,11 @@ fun MetaDetailsScreen(
                         } else {
                             null
                         }
-                        val minutesLeft = entry?.takeIf { it.durationMs > it.lastPositionMs && it.lastPositionMs > 0L }?.let {
-                            ((it.durationMs - it.lastPositionMs) / 60_000L).toInt().coerceAtLeast(1)
+                        // Trakt's entries hold only a percentage, so the runtime stands in for the duration.
+                        val minutesLeft = entry?.takeIf { it.progressFraction > 0f }?.let {
+                            val totalMinutes = it.durationMs.takeIf { ms -> ms > 0L }?.let { ms -> ms / 60_000.0 }
+                                ?: seriesActionVideo?.runtime?.toDouble()
+                            totalMinutes?.let { total -> (total * (1f - it.progressFraction)).toInt().coerceAtLeast(1) }
                         }
                         val left = minutesLeft?.let { stringResource(Res.string.detail_board_minutes_left, it) }
                         DetailBoardUpNext(
@@ -1719,7 +1758,7 @@ fun MetaDetailsScreen(
                                 ?: seriesActionVideo?.thumbnail
                                 ?: meta.background
                                 ?: meta.poster,
-                            progressFraction = entry?.takeIf { it.durationMs > 0L }?.let { it.lastPositionMs.toFloat() / it.durationMs },
+                            progressFraction = entry?.progressFraction?.takeIf { it > 0f },
                             // The same verb as the primary button, which decides between resuming and playing.
                             actionLabel = if (seriesAction.label.contains(resumeText, ignoreCase = true)) resumeText else playText,
                             episode = seriesAction.seasonNumber?.let { season -> seriesAction.episodeNumber?.let { season to it } },
@@ -1815,7 +1854,10 @@ fun MetaDetailsScreen(
                             episodeMenuAnchor = anchor
                             selectedEpisodeForActions = video
                         },
-                        moreLikeThisUnwatched = moreLikeThisUnwatched,
+                        onEpisodeWatchedToggle = { video, watched ->
+                            WatchingActions.toggleEpisodeWatched(meta = meta, episode = video, isCurrentlyWatched = watched)
+                        },
+                        moreLikeThisUnwatched =moreLikeThisUnwatched,
                         moreLikeThisUnwatchedOnly = metaScreenSettingsUiState.moreLikeThisUnwatchedOnly,
                         onMoreLikeThisUnwatchedOnlyChange = MetaScreenSettingsRepository::setMoreLikeThisUnwatchedOnly,
                         onSetBackground = { url -> boardBackgroundOverride = url },

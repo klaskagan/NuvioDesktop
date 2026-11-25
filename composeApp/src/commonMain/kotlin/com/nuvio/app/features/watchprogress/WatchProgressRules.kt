@@ -204,3 +204,14 @@ private fun WatchProgressEntry.toDomainProgressRecord(): WatchingProgressRecord 
             identityKey = entry.resolvedProgressKey(),
         )
     }
+
+/**
+ * Where to resume when a caller has no saved position. Trakt (and other trackers) keep only a
+ * percentage for an episode in progress, so its entry has no position; the player turns this
+ * fraction into a position once it knows the duration. Null when [resumePositionMs] is set, or the
+ * entry is finished or empty.
+ */
+internal fun storedResumeFraction(resumePositionMs: Long?, entry: WatchProgressEntry?): Float? {
+    if ((resumePositionMs ?: 0L) > 0L) return null
+    return entry?.takeUnless { it.isEffectivelyCompleted }?.progressFraction?.takeIf { it > 0f }
+}
