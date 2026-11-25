@@ -85,6 +85,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -239,6 +241,7 @@ internal fun BoardPlayButton(
     onLongClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    icon: ImageVector = Icons.Rounded.PlayArrow,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -267,7 +270,7 @@ internal fun BoardPlayButton(
             .padding(start = if (compact) 12.dp else 18.dp, end = if (compact) 16.dp else 24.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = content, modifier = Modifier.size(if (compact) 18.dp else 22.dp))
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(if (compact) 18.dp else 22.dp))
         Spacer(Modifier.width(6.dp))
         Text(
             text = if (enabled) label else stringResource(Res.string.playback_unavailable),
@@ -620,8 +623,10 @@ private val YourWayCellGap = 6.dp
 @Composable
 internal fun DetailYourWayTile(actions: List<DetailSecondaryAction>, modifier: Modifier = Modifier) {
     val shown = actions.take(YourWayMaxActions)
+    var tileBounds by remember { mutableStateOf(Rect.Zero) }
     Column(
         modifier.boardTile().animateContentSize(tween(BoardMotionMillis, easing = FastOutSlowInEasing))
+            .onGloballyPositioned { tileBounds = it.boundsInWindow() }
             .testTag("detail_board_your_way").padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
     ) {
         BoardKicker(stringResource(Res.string.detail_board_your_way), modifier = Modifier.padding(horizontal = 4.dp))
@@ -629,7 +634,7 @@ internal fun DetailYourWayTile(actions: List<DetailSecondaryAction>, modifier: M
         Column(verticalArrangement = Arrangement.spacedBy(YourWayCellGap)) {
             shown.chunked(YourWayColumns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(YourWayCellGap)) {
-                    row.forEach { action -> YourWayCell(action, Modifier.weight(1f)) }
+                    row.forEach { action -> YourWayCell(action, { tileBounds }, Modifier.weight(1f)) }
                     repeat(YourWayColumns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -637,56 +642,57 @@ internal fun DetailYourWayTile(actions: List<DetailSecondaryAction>, modifier: M
     }
 }
 
+/** A Your-way action that is on (Shuffle on) or has its popover open: a lighter fill with a white edge, as in the design. */
+private val YourWayActiveFill = Color.White.copy(alpha = 0.16f)
+private val YourWayActiveEdge = Color.White.copy(alpha = 0.45f)
+
 @Composable
-private fun YourWayCell(action: DetailSecondaryAction, modifier: Modifier) {
+private fun YourWayCell(action: DetailSecondaryAction, tileBounds: () -> Rect, modifier: Modifier) {
     val interaction = remember(action.label) { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val popupState = remember { MutableTransitionState(false) }
+    var cellBounds by remember { mutableStateOf(Rect.Zero) }
     val active = action.isActive || popupState.targetState
     val fill by animateColorAsState(
         when {
-            active -> RedesignColors.textPrimary
+            active -> YourWayActiveFill
             hovered -> RedesignColors.fillStrong
             else -> RedesignColors.fill
         },
         tween(160),
         label = "your_way_fill",
     )
-    val content = if (active) RedesignOnLight else RedesignColors.textPrimary
+    val edge by animateColorAsState(if (active) YourWayActiveEdge else Color.Transparent, tween(160), label = "your_way_edge")
+    val shape = RoundedCornerShape(12.dp)
     Box(modifier) {
         Column(
-            Modifier.fillMaxWidth().height(YourWayCellHeight).clip(RoundedCornerShape(12.dp)).background(fill)
+            Modifier.fillMaxWidth().height(YourWayCellHeight).onGloballyPositioned { cellBounds = it.boundsInWindow() }
+                .clip(shape).background(fill).border(1.dp, edge, shape)
                 .boardClickable(interaction, {
-                    action.onClick()
+                    action.onClickAt?.invoke(cellBounds) ?: action.onClick()
                     if (action.popup != null) popupState.targetState = !popupState.targetState
                 }, action.onLongClick)
                 .then(action.tag?.let { Modifier.testTag(it) } ?: Modifier)
+                .semantics { selected = active }
                 .padding(horizontal = 9.dp),
             verticalArrangement = Arrangement.Center,
         ) {
-            Icon(action.icon, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+            Icon(action.icon, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(16.dp))
             Spacer(Modifier.height(4.dp))
-            Text(action.label, style = redesignText(12.sp, FontWeight.SemiBold, content), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+            Text(action.label, style = redesignText(12.sp, FontWeight.SemiBold), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         }
         val popup = action.popup
-        if (popup != null && (popupState.currentState || popupState.targetState)) {
+        // Shuffle drops its popover once it is on (clicking it then stops shuffling).
+        LaunchedEffect(popup == null) { if (popup == null) popupState.targetState = false }
+        if (popup != null) {
             val dismiss = { popupState.targetState = false }
-            OverlayEscapeHandler { dismiss() }
-            val offsetY = with(LocalDensity.current) { (YourWayCellHeight + 6.dp).roundToPx() }
-            Popup(
-                alignment = Alignment.TopStart,
-                offset = IntOffset(0, offsetY),
-                onDismissRequest = dismiss,
-                properties = PopupProperties(focusable = true),
-            ) {
-                AnimatedVisibility(
-                    visibleState = popupState,
-                    enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = TransformOrigin(0f, 0f)),
-                    exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = TransformOrigin(0f, 0f)),
-                ) {
-                    popup(dismiss)
-                }
-            }
+            BoardAnchoredPopover(
+                state = popupState,
+                anchor = cellBounds,
+                tile = tileBounds(),
+                placement = action.popupPlacement,
+                onDismiss = dismiss,
+            ) { popup(dismiss) }
         }
     }
 }

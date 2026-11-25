@@ -87,6 +87,10 @@ data class TraktListTab(
     val privacy: TraktListPrivacy? = null,
     val sortBy: String? = null,
     val sortHow: String? = null,
+    /** Trakt's item_count; it leaves people out, so a list of people reads 0. */
+    val itemCount: Int? = null,
+    /** The list has people on it (checked only for lists with no films or shows). */
+    val hasPeople: Boolean = false,
 )
 
 internal val TraktListTab.isWritable: Boolean

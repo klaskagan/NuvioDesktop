@@ -411,6 +411,13 @@ object LibraryRepository {
         }
     }
 
+    /** Library's button state: in the list its toggle adds to (Trakt's watchlist), or saved locally. */
+    fun isSavedByDefault(id: String, type: String): Boolean {
+        ensureLoaded()
+        activeLibraryProvider()?.let { provider -> return provider.isSavedByDefault(id, type) }
+        return localState.contains(id, type)
+    }
+
     fun savedItem(id: String): LibraryItem? {
         ensureLoaded()
 

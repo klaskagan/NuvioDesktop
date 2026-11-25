@@ -43,7 +43,9 @@ object TraktTrackingLibraryProvider : TrackingLibraryProvider {
                     items = state.entriesByList[tab.key].orEmpty(),
                 )
             },
-            tabs = state.listTabs.map(TraktListTab::toTrackingLibraryTab),
+            tabs = state.listTabs.map { tab ->
+                tab.toTrackingLibraryTab(peopleOnly = tab.holdsOnlyPeople(state.entriesByList[tab.key].orEmpty().size))
+            },
             hasLoaded = state.hasLoaded,
             isLoading = state.isLoading,
             errorMessage = state.errorMessage,
@@ -55,6 +57,10 @@ object TraktTrackingLibraryProvider : TrackingLibraryProvider {
         val item = find(contentId) ?: return false
         return TraktLibraryRepository.isInAnyList(item.id, item.type)
     }
+
+    // Library adds to the watchlist only, so a title in another list (For Nuvio) isn't "in Library".
+    override fun isSavedByDefault(contentId: String, contentType: String): Boolean =
+        TraktLibraryRepository.isInWatchlist(contentId, contentType)
 
     override fun find(contentId: String): LibraryItem? =
         TraktLibraryRepository.uiState.value.allItems.firstOrNull { item -> item.id == contentId }
@@ -93,12 +99,19 @@ internal fun toggledTraktWatchlistMembership(
     this[watchlistKey] = currentMembership[watchlistKey] != true
 }
 
-internal fun TraktListTab.toTrackingLibraryTab(): TrackingLibraryTab =
+/**
+ * A personal list with items but no films or shows (Trakt's Favorite People) holds only people,
+ * so no title can be saved to it.
+ */
+internal fun TraktListTab.holdsOnlyPeople(titleCount: Int): Boolean =
+    type == TraktListType.PERSONAL && hasPeople && titleCount == 0
+
+internal fun TraktListTab.toTrackingLibraryTab(peopleOnly: Boolean = false): TrackingLibraryTab =
     TrackingLibraryTab(
         key = key,
         title = title,
         providerId = TrackingProviderId.TRAKT,
-        isMembershipDestination = isWritable,
+        isMembershipDestination = isWritable && !peopleOnly,
         kind = when (type) {
             TraktListType.WATCHLIST -> TrackingLibraryTabKind.WATCHLIST
             TraktListType.PERSONAL -> TrackingLibraryTabKind.PERSONAL

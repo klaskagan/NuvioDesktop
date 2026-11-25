@@ -53,35 +53,11 @@ fun TrackingMembershipRemovalConfirmationHost(
 ) {
     var isBusy by remember(pending) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val confirmations = pending?.confirmations.orEmpty()
-    val providerNames = confirmations
-        .map { confirmation ->
-            TrackingProviderRegistry.authProvider(confirmation.providerId)
-                ?.descriptor
-                ?.displayName
-                ?: confirmation.providerId.storageId.replaceFirstChar(Char::uppercase)
-        }
-        .distinct()
-        .joinToString()
-    val impacts = confirmations.flatMapTo(linkedSetOf()) { confirmation -> confirmation.impacts }
-    val impactLabel = when (impacts) {
-        setOf(TrackingMembershipRemovalImpact.WATCHED_HISTORY) ->
-            stringResource(Res.string.tracking_removal_impact_history)
-
-        setOf(TrackingMembershipRemovalImpact.RATING) ->
-            stringResource(Res.string.tracking_removal_impact_rating)
-
-        else -> stringResource(Res.string.tracking_removal_impact_history_and_rating)
-    }
+    val text = trackingRemovalText(pending?.itemTitle.orEmpty(), pending?.confirmations.orEmpty())
 
     NuvioStatusModal(
-        title = stringResource(Res.string.tracking_remove_confirmation_title, providerNames),
-        message = stringResource(
-            Res.string.tracking_remove_confirmation_message,
-            pending?.itemTitle.orEmpty(),
-            providerNames,
-            impactLabel,
-        ),
+        title = text.title,
+        message = text.message,
         isVisible = pending != null,
         isBusy = isBusy,
         destructive = true,
@@ -124,5 +100,38 @@ fun TrackingMembershipRemovalConfirmationHost(
         onDismiss = {
             if (!isBusy) onPendingChange(null)
         },
+    )
+}
+
+/** What removing [itemTitle] from a tracker would clear there, as a title and a message. */
+internal data class TrackingRemovalText(val title: String, val message: String)
+
+@Composable
+internal fun trackingRemovalText(
+    itemTitle: String,
+    confirmations: List<TrackingMembershipRemovalConfirmation>,
+): TrackingRemovalText {
+    val providerNames = confirmations
+        .map { confirmation ->
+            TrackingProviderRegistry.authProvider(confirmation.providerId)
+                ?.descriptor
+                ?.displayName
+                ?: confirmation.providerId.storageId.replaceFirstChar(Char::uppercase)
+        }
+        .distinct()
+        .joinToString()
+    val impacts = confirmations.flatMapTo(linkedSetOf()) { confirmation -> confirmation.impacts }
+    val impactLabel = when (impacts) {
+        setOf(TrackingMembershipRemovalImpact.WATCHED_HISTORY) ->
+            stringResource(Res.string.tracking_removal_impact_history)
+
+        setOf(TrackingMembershipRemovalImpact.RATING) ->
+            stringResource(Res.string.tracking_removal_impact_rating)
+
+        else -> stringResource(Res.string.tracking_removal_impact_history_and_rating)
+    }
+    return TrackingRemovalText(
+        title = stringResource(Res.string.tracking_remove_confirmation_title, providerNames),
+        message = stringResource(Res.string.tracking_remove_confirmation_message, itemTitle, providerNames, impactLabel),
     )
 }

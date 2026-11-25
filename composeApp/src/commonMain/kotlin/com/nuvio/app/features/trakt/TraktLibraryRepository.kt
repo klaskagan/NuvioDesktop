@@ -105,6 +105,10 @@ object TraktLibraryRepository {
 
     fun currentListTabs(): List<TraktListTab> = _uiState.value.listTabs
 
+    /** In the watchlist, the list Library adds to and removes from. */
+    fun isInWatchlist(itemId: String, itemType: String): Boolean =
+        WATCHLIST_KEY in _uiState.value.membershipByContent[contentKey(itemId, itemType)].orEmpty()
+
     fun isInAnyList(itemId: String, itemType: String): Boolean {
         val key = contentKey(itemId, itemType)
         return _uiState.value.membershipByContent[key].orEmpty().isNotEmpty()

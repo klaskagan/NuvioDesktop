@@ -276,6 +276,14 @@ internal data class DetailSectionArgs(
     val tvHandoff: DetailTvHandoff? = null,
     val onWatchPartyClick: (() -> Unit)? = null,
     val onDownloadClick: (() -> Unit)? = null,
+    /** What On TV would send: "S2 E3 · Who Is Alive? · from 18:22". */
+    val yourWayLine: String? = null,
+    /** Sources in Watch it your way on the board: opens Quick pick under the cell (its bounds in the window). */
+    val onSourcesAt: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
+    /** The board's Shuffle popover; null keeps the Shuffle sheet. */
+    val shufflePopup: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
+    /** The board's Save to list popover; null keeps the list dialog. */
+    val listsPopup: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
     // The desktop board's Episodes tab: season pills, the Row / List switch, and episode clicks with
     // the card's bounds so Quick pick opens beside it.
     val boardStyle: Boolean = false,

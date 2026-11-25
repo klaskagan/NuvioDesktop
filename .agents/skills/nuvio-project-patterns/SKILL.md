@@ -90,7 +90,34 @@ match the design".
 - **Visual checks:** computer use with full-screen control (background `app_*` clicks
   don't reach MainKt). Hover and open only: never click Rate stars or ♥ (the strip opens
   under the pointer and saves), Play/Resume, or Watch party (it creates a real party).
-  Close layers with Esc.
+  Close layers with Esc. Every Nuvio dev app is the same `net.java.openjdk.java` bundle, so
+  computer use may only reach another session's window: front your own by process id
+  (`osascript -e 'tell application "System Events" to set frontmost of (first process whose
+  unix id is <pid>) to true'`, pid from `ps` with `-Dnuvio.desktop.devName=<task>`), and never
+  click another session's app. Running `desktopTest` while the review app is open rebuilds its
+  jar under it ("ZipFile invalid LOC header"): relaunch the app after tests.
+- **Watch it your way windows** (TV picker, Shuffle, Save to list) open through
+  `BoardAnchoredPopover` / `BoardPopoverPanel` (`BoardPopover.kt`): the frosted panel over the
+  lightly dimmed board, Esc or a click on the dim closes it, placed `Below` the tile, `Beside`
+  the action (just left of the cell itself, as in the frames; not left of the whole column) or
+  `Under` an action-row button. Sources opens Quick pick under its own cell (`onClickAt`). Quick pick has the arrow too
+  (`Modifier.popoverNub`, first in the panel's modifier, placed by `quickPickPlacement`). Give a new action `popup` +
+  `popupPlacement` on `DetailSecondaryAction`; don't hand-roll a `Popup`. The tile's action
+  subtitles are hidden in the design (`.wg6 span small{display:none}`): icon and name only.
+  The panel's arrow is drawn outside the caller's modifier, because `animateContentSize` clips
+  to bounds and hid it. Build popover content synchronously where it is cheap: an async load
+  opened Shuffle short, then it grew and re-centred.
+  Regressions: `DetailBoardSideColumnUiTest`, `WatchItYourWayPopoverTest`.
+- **Ambient backdrops** (`ShellBackdrop`): create the page's `BackdropFocusController(artwork)` with
+  the artwork it already knows. Without it the page opened on black and faded in (party page,
+  returning to Details), even with the blurred image cached.
+- **Settings from Details** (Manage TVs and the like): on desktop use
+  `openDesktopSettings(page, leavePage = true)`. A bare `SettingsPageRoute`, or the call without
+  `leavePage`, kept Details on screen or dropped the top bar. Regression:
+  `DesktopNavigationHistoryTest.manageTvsFromDetailsLeavesDetailsAndBackReturns`.
+- **Library button state** reads `LibraryRepository.isSavedByDefault`: in the list its toggle
+  adds to (Trakt's watchlist), not in any list. Status trackers (WeTrakr, Simkl) count any status,
+  because their toggle clears every status.
 - **Board-only tab inputs:** anything only the board has (gallery images, the reviews
   source) is added in `boardContentArgs` in `MetaDetailsScreen.kt`. Tab visibility and
   tab content both read those args (`detailBoardItems` takes no separate `hasContent`).

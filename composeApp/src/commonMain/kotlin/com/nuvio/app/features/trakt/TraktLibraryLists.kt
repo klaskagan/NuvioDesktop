@@ -17,6 +17,11 @@ internal suspend fun fetchTraktLibraryListTabs(
         request("$API/users/me/lists").body,
     ).filter { it.type == null || it.type.equals("personal", ignoreCase = true) }
         .mapNotNull { it.toTab(TraktListType.PERSONAL) }
+        .map { tab ->
+            // item_count leaves people out. A list with no titles may hold people (Favorite People);
+            // one person item is enough to tell, and such a list can't take a title.
+            if ((tab.itemCount ?: 0) > 0) tab else tab.copy(hasPeople = hasTraktListPeople(tab, request))
+        }
     val smart = listJson.decodeFromString<List<LibraryListSummary>>(
         request("$API/users/me/smart-lists").body,
     ).mapNotNull { it.toTab(TraktListType.SMART) }
@@ -42,6 +47,7 @@ private data class LibraryListSummary(
     val type: String? = null,
     @SerialName("sort_by") val sortBy: String? = null,
     @SerialName("sort_how") val sortHow: String? = null,
+    @SerialName("item_count") val itemCount: Int? = null,
     val ids: LibraryListIds? = null,
 ) {
     fun toTab(kind: TraktListType): TraktListTab? {
@@ -65,12 +71,19 @@ private data class LibraryListSummary(
             privacy = TraktListPrivacy.fromApi(privacy),
             sortBy = sortBy,
             sortHow = sortHow,
+            itemCount = itemCount,
         )
     }
 }
 
 @Serializable
 private data class LibraryListIds(val trakt: Long? = null, val slug: String? = null)
+
+private suspend fun hasTraktListPeople(tab: TraktListTab, request: suspend (String) -> RawHttpResponse): Boolean =
+    runCatching {
+        val response = request("${traktLibraryListItemsUrl(tab)}/person?limit=1")
+        response.status in 200..299 && listJson.decodeFromString<List<kotlinx.serialization.json.JsonElement>>(response.body).isNotEmpty()
+    }.getOrDefault(false)
 
 internal fun traktLibraryListItemsUrl(tab: TraktListTab): String {
     val id = tab.traktListId?.toString() ?: tab.slug.orEmpty()

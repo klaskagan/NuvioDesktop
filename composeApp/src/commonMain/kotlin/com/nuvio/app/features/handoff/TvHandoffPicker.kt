@@ -17,6 +17,8 @@ internal data class TvHandoffPlaybackView(
     val busy: Boolean = false,
     val canResume: Boolean = false,
     val status: String = "",
+    /** The TV last sent to, as an index into [devices]; -1 when none of them was. */
+    val lastUsed: Int = -1,
 )
 
 /** Whether this platform can send playback to a paired TV (desktop only today). */
