@@ -123,6 +123,8 @@ import com.nuvio.app.features.details.components.BoardAnchoredPopover
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.animation.core.MutableTransitionState
 import com.nuvio.app.features.details.components.DetailBoardTileHeights
+import com.nuvio.app.features.details.components.DesktopHeroTrailerClock
+import com.nuvio.app.features.details.components.DetailExpandedTrailer
 import nuvio.composeapp.generated.resources.detail_board_on_tv
 import nuvio.composeapp.generated.resources.detail_board_watch_party
 import nuvio.composeapp.generated.resources.detail_board_download
@@ -166,9 +168,14 @@ internal class DetailBoardArgs(
     val settling: () -> Boolean,
     /** Space above the board. It lives in the board item, so the pinned row sits flush under the bar. */
     val topGap: Dp,
+    /** The page's viewport height; the expanded board grows to Home's expanded height within it. */
+    val viewportHeight: Dp,
     val expanded: Boolean,
-    /** The picked trailer's title, shown in the expanded tile. */
-    val expandedTitle: String? = null,
+    /** The trailer picked from the Trailers tab or the Trailer button: its title, controls and times show in the expanded tile. */
+    val expandedTrailer: MetaTrailer? = null,
+    val trailerClock: DesktopHeroTrailerClock? = null,
+    val trailerPaused: Boolean = false,
+    val onTrailerPauseToggle: () -> Unit = {},
     /** The picked trailer couldn't play here: the expanded tile says so. */
     val expandedFailure: DetailBoardTrailerFailure? = null,
     val onToggleExpanded: () -> Unit,
@@ -387,6 +394,7 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
     DetailBoard(
         expanded = board.expanded,
         hasSide = hasSide,
+        viewportHeight = board.viewportHeight,
         modifier = Modifier.padding(top = board.topGap).padding(horizontal = board.horizontalPadding).onSizeChanged { board.onHeightChanged(it.height) },
         side = {
             // The first tile present takes the spare height, so the column always ends flush with the board.
@@ -444,7 +452,19 @@ private fun DetailBoardItem(args: DetailSectionArgs, board: DetailBoardArgs) {
         DetailFeatureTile(
             meta = meta,
             expanded = board.expanded,
-            expandedTitle = board.expandedTitle,
+            expandedTrailer = board.expandedTrailer?.let { picked ->
+                DetailExpandedTrailer(
+                    title = picked.displayName?.takeIf(String::isNotBlank) ?: picked.name,
+                    source = listOf(meta.name, picked.site).filter(String::isNotBlank).joinToString(" · "),
+                    clock = board.trailerClock,
+                    paused = board.trailerPaused,
+                    onPauseToggle = board.onTrailerPauseToggle,
+                    playLabel = args.playButtonLabel,
+                    playEnabled = args.isPrimaryPlayEnabled,
+                    onPlay = args.onPrimaryPlayClick,
+                    onPlayLongClick = args.onPrimaryPlayLongClick.takeIf { args.showManualPlayOption },
+                )
+            },
             expandedFailure = board.expandedFailure,
             trailer = board.trailer,
             trailerReady = board.trailerReady,

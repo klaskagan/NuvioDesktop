@@ -77,6 +77,9 @@ match the design".
   markup: shared classes live in `art/base.html` (`.kv` is a two-column `1fr 1fr` grid, so
   Details facts sit two to a row). Reading only the `kv(...)` rows once shipped one column.
   Regression: `DetailBoardTabsContentUiTest.movieDetailsFollowTheFilmFrame`.
+  Don't trust a Build gap line to be complete: list every element of the frame yourself.
+  "A · Trailer expanded" said only the height was missing, but the picked-clip overlay
+  (title, play/pause, Play, times) was missing too. Regression: `DetailBoardExpandedTrailerUiTest`.
 - **Finish, every time:**
   1. Check the result in the running app against the frame.
   2. Update that frame's `V1_STATUS` entry: status, plus a note of what still differs.
@@ -318,6 +321,12 @@ Handling both doubled every arrow skip (20 s). Relative seeks likewise call the
 engine's `seekBy` only when `seekFromNativeControls` returns false. Check
 `PlayerControllerSeekTest`, then press → in a real player: the log must show one
 `seekTo` 10 s ahead per `keyboardSeekForward`.
+In-page players (the Details board's expanded trailer) claim Space/K, ←/→ and M
+with `MediaKeysHandler`; the AWT dispatcher offers them to
+`AppKeyboardShortcuts.handleMediaKey` before arrows move focus. A Compose
+window `onPreviewKeyEvent` hook runs too late: the dispatcher already used the
+arrows for focus. Check `DetailBoardExpandedTrailerUiTest`, then press → on an
+expanded Trailers clip: the time jumps 10 s and focus stays put.
 
 When merging native player API changes, reconcile the Kotlin bridge, JNI exports,
 `NativePlayerCreate` callbacks, and embedded/staging adapters together. The RTX HDR
