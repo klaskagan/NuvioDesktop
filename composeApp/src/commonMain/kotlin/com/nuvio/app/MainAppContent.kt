@@ -384,6 +384,7 @@ internal fun MainAppContent(
             }
         }
         var rowStyleShelfKey by remember(profileState.activeProfile?.id) { mutableStateOf<String?>(null) }
+        var rowStyleAnchor by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
         val desktopProfileIdentity = (authState as? AuthState.Authenticated)?.userId to profileState.activeProfile?.profileIndex
         LaunchedEffect(desktopProfileIdentity) {
             if (navController.changeDesktopProfile(desktopProfileIdentity)) {
@@ -2302,7 +2303,7 @@ internal fun MainAppContent(
             }
 
             rowStyleShelfKey?.let { shelfKey ->
-                HomeRowStylePicker(shelfKey, onDismiss = { rowStyleShelfKey = null })
+                HomeRowStylePicker(shelfKey, onDismiss = { rowStyleShelfKey = null }, anchor = rowStyleAnchor)
             }
 
             featurePosterOverlay.content?.invoke(posterOverlayHazeState)
@@ -2318,6 +2319,8 @@ internal fun MainAppContent(
                     )
                     val removesFromLibrary = isSaved &&
                         (posterActionTarget.libraryItem != null || !isRemoteLibrarySource)
+                    // Kept for Row style: the overlay clears its anchor before running the action.
+                    val posterBounds = remember { selectedPosterAnchor?.boundsInRoot }
                     NuvioPosterZoomActionOverlay(
                         imageUrl = selectedPosterAnchor?.imageUrl ?: preview.poster,
                         title = preview.name,
@@ -2464,7 +2467,10 @@ internal fun MainAppContent(
                             PosterZoomOverlayAction(
                                 icon = Icons.Rounded.Menu,
                                 label = stringResource(Res.string.home_row_style),
-                                onSelected = { rowStyleShelfKey = shelfKey },
+                                onSelected = {
+                                    rowStyleAnchor = posterBounds
+                                    rowStyleShelfKey = shelfKey
+                                },
                             )
                         }),
                         hazeState = posterOverlayHazeState,

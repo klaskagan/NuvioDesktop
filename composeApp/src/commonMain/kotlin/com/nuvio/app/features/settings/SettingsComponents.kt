@@ -52,6 +52,8 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -565,6 +567,7 @@ internal fun HomescreenCatalogRow(
 
         val showRowStyle = com.nuvio.app.isDesktop && supportsHomeRowStyle(item.key)
         var rowStylePickerOpen by remember(item.key) { mutableStateOf(false) }
+        var rowStyleButtonBounds by remember(item.key) { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
         AnimatedVisibility(visible = expanded && (!item.isCollection || showRowStyle)) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -585,14 +588,17 @@ internal fun HomescreenCatalogRow(
                     ),
                 )
                 if (showRowStyle) {
-                    androidx.compose.material3.TextButton(onClick = { rowStylePickerOpen = true }) {
+                    androidx.compose.material3.TextButton(
+                        onClick = { rowStylePickerOpen = true },
+                        modifier = Modifier.onGloballyPositioned { rowStyleButtonBounds = it.boundsInRoot() },
+                    ) {
                         Text(stringResource(Res.string.home_row_style) + " · " + homeRowStyleLabel(item.rowStyle))
                     }
                 }
             }
         }
         if (expanded && rowStylePickerOpen) {
-            HomeRowStylePicker(item.key, onDismiss = { rowStylePickerOpen = false })
+            HomeRowStylePicker(item.key, onDismiss = { rowStylePickerOpen = false }, anchor = rowStyleButtonBounds)
         }
     }
 }
