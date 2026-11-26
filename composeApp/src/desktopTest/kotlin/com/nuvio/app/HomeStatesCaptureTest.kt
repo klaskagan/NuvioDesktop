@@ -17,6 +17,7 @@ import com.nuvio.app.core.ui.LocalNuvioShelfHeaderStyle
 import com.nuvio.app.core.ui.PosterCardStyleRepository
 import com.nuvio.app.core.ui.NuvioShelfHeaderStyle
 import com.nuvio.app.core.ui.RedesignTypography
+import com.nuvio.app.features.collection.CollectionRepository
 import com.nuvio.app.features.home.components.HomeBoard
 import com.nuvio.app.features.home.components.HomeSkeletonHero
 import com.nuvio.app.features.home.components.HomeSkeletonRow
@@ -45,6 +46,9 @@ class HomeStatesCaptureTest {
     @Test
     fun emptyProfileShowsTheNoSourcesCardCentred() = runDesktopComposeUiTest(width = 1360, height = 850) {
         assumeTrue(System.getProperty("nuvio.test.isolatedHome") == "true")
+        // The isolated profile is shared by this test task: other UI tests leave collections in it,
+        // and collection rows rightly replace the no-sources card. Start from none.
+        CollectionRepository.setCollections(emptyList())
         setContent {
             AppEnvironment {
                 MainAppContent(initialTab = AppScreenTab.Home, ownsAppRuntime = false, showLaunchOverlay = false)
