@@ -13,6 +13,9 @@ skill is not in the session catalog, read that file directly.
 - Desktop Details work (board, tabs, Rate, Quick pick, Sources, Watch it your way
   windows) follows the skill's "Details redesign" section: the design artifact is the
   source of truth, and the build tracker is updated when done.
+- Desktop Home work (tabs, board, rows, row styles, poster hover, menus, Seasonal, and
+  the See all, folder and service pages rows open) follows the skill's "Home redesign"
+  section the same way.
 - Find the closest existing screen or interaction and reuse its components and
   theme tokens. Name that reference in the first implementation update.
 - Settings subpages belong in the existing Settings navigation. Playback selectors

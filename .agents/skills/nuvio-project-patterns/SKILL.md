@@ -161,6 +161,44 @@ match the design".
 - **Branch:** Details redesign work is on a worktree cut from `nuvio-redesign` and merges
   back there, never into develop.
 
+## Home redesign: design doc and build tracker
+
+This routine applies to any change or bug on desktop Home:
+- the shell's Home tabs (For you, Movies, Shows, My lists);
+- the board: featured tile, Resume tile, Up next;
+- Continue Watching, catalog rows and the lead card, posters and the poster hover (action strip, Quick look, inline expand setting);
+- collection rows, row styles and the Row style picker;
+- the right-click / press-and-hold menus;
+- the Seasonal spotlight;
+- the pages Home rows open: collection folders (with or without artwork, grid or rows), streaming service pages and their row grids, a catalog's See all, and the seasonal Explore folder.
+
+It applies even when the request only says "match the design".
+
+- **Source of truth:** the Home design artifact, https://claude.ai/artifact/NP89sU7XBeUyAr7Zbm79ig.
+  - Read the live artifact first. Find the frame by its name in the left table of contents; its caption is the spec.
+  - If the request names no frame, map it to one and say which. For example, "right-click on continue watching" → Continue Watching · menu, and "row style popup" → Row style · picker.
+- **Build status:** the Home build tracker, https://claude.ai/artifact/MQW5mYT6QKCSotiDAXV9LL. It is a status board with one row per frame: status, one-line build gap, code anchor, and the date last checked. Its "Next up" list is the build order.
+- **Sources:** `~/Documents/Nuvio/design/home-redesign/`. Its README has the edit routine.
+  - The frames, `STATUS`, `NEXT_UP` and `CHANGELOG` all live in `gen_home.py`.
+  - `crops.py` cuts the real artwork out of the app screenshots in `art/today/`.
+- **Before coding:** name the frame(s) and list what differs, from the tracker's gap and your own look at the running app. Read a frame's sizes from its CSS in `gen_home.py` too, not only its caption. Frames are dp at a 1360 × 850 window; the running app on a 1792 pt screen is 1.176 pt per dp.
+- **Pages a row opens:** See all and every folder open on Home's hero tile with only Back on it, then the grid; the name, catalog picker and filter menus live only in the shared pinned bar ("Pinned bar · spec") that slides in on scroll. Build one shared bar for all of them. Exceptions: the streaming service landing page (its own bar with Home-style tabs) and Seasonal Explore (theme artwork).
+- **Menus:** Home menus build on the Details menu (`BoardContextMenu`, or `RedesignContextMenu` / `RedesignActionMenuPopup` in `core/ui/RedesignControls.kt`), not on `NuvioPosterZoomActionOverlay`, `DialogSurface` or bottom sheets. A menu opens anchored to the clicked item, with the item lifted in place and the page dimmed, and Esc closes the innermost layer first.
+- **Poster art:** badges such as "Oscar Winner" and "#2 Today", and the genre · ★ line on posters, are part of the addon's poster image. Never build them as overlays.
+- **Finish, every time:**
+  1. Check the result in the running app against the frame.
+  2. Update that frame's `STATUS` row in `gen_home.py`: status, gap, and today's date as the date checked. Add a `CHANGELOG` line, and update `NEXT_UP`. Change only the frames you actually checked; never mark frames in bulk.
+  3. `cd ~/Documents/Nuvio/design/home-redesign && python3 -I gen_home.py art`, preview `art/design.html` and `art/page.html`, then republish both to their URLs as the README describes.
+  4. In the handoff, say what changed in the tracker.
+- **Design changes** (only when the user asks): change the frame in `gen_home.py` first, then build to it. The design doc holds design frames only. Never add build renders or test snapshots; the archived "before" screenshots are the only screenshots. Gaps are text in the tracker.
+- **Visual checks:** computer use with full-screen control (background `app_*` clicks don't reach MainKt).
+  - Run your own instance: `./gradlew :composeApp:run -Pnuvio.desktop.devName="<task>"`.
+  - Capture only your window with `screencapture -l<window id>`.
+  - Hover, right-click and open only. Never Play/Resume, Remove, Mark watched, Add to library or a row style pick, which all save.
+  - Close layers with Esc; the old Row style dialog needs a click outside.
+- **Tests:** `HomeBoardResumeTileTest`, `NumberedRankingShelfTest`, `SeasonalSpotlightSectionTest`, `LandscapeMediaCardTest`, `MainAppTabNavigationTest`, `SeasonalCollectionNavigationTest`, `PosterZoomNativeReturnTest` (for when the zoom overlay is replaced).
+- **Branch:** Home redesign work is on a worktree cut from `nuvio-redesign` and merges back there, never into develop.
+
 ## Integrate state and behavior
 
 Keep shared feature state and contracts in their existing commonMain layer;
