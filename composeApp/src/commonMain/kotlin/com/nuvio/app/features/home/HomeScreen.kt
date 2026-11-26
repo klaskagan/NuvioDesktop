@@ -85,7 +85,8 @@ import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 import com.nuvio.app.features.home.components.SeasonalSpotlightSection
 import com.nuvio.app.features.home.components.HomeCatalogRowSection
 import com.nuvio.app.features.home.components.HomeContinueWatchingSection
-import com.nuvio.app.features.home.components.HomeEmptyStateCard
+import com.nuvio.app.features.home.components.HomeStateCard
+import com.nuvio.app.features.home.components.HomeStateKind
 import com.nuvio.app.features.home.components.HomeHeroReservedSpace
 import com.nuvio.app.features.home.components.HomeHeroSection
 import com.nuvio.app.features.home.components.HomeSkeletonHero
@@ -169,6 +170,7 @@ fun HomeScreen(
     continueWatchingDisintegrationRequest: DisintegrationRequest<String>? = null,
     onFolderClick: ((collectionId: String, folderId: String) -> Unit)? = null,
     onFirstCatalogRendered: (() -> Unit)? = null,
+    onOpenAddons: (() -> Unit)? = null,
 ) {
     TraktCalendarHomeBinding()
     LaunchedEffect(Unit) {
@@ -1234,6 +1236,7 @@ fun HomeScreen(
                                 boardResumeItems.firstOrNull()?.isCloudLibraryContinueWatchingItem() != true
                             },
                             modifier = Modifier.padding(horizontal = homeSectionPadding).padding(top = 4.dp, bottom = 18.dp),
+                            sideLoading = showHeroSkeleton && boardHasSideColumn && continueWatchingPreferences.isVisible,
                             featured = featured,
                         )
                     } else {
@@ -1263,12 +1266,16 @@ fun HomeScreen(
                         contentType = { "skeleton" },
                     ) {
                         HomeSkeletonRow(
+                            modifier = homeItemModifier().padding(bottom = 12.dp),
                             horizontalPadding = if (isDesktop) homeSectionPadding else 16.dp,
                         )
                     }
                 }
 
-                !hasActiveAddons && !hasServerLibraries && !hasRenderableCollectionRows && visibleSeasonalSection == null -> {
+                // A seasonal spotlight with no titles doesn't count: with no sources Home asks for one
+                // (Home design "For you · empty") instead of showing a band that reads "No titles available".
+                !hasActiveAddons && !hasServerLibraries && !hasRenderableCollectionRows &&
+                    visibleSeasonalSection?.items.isNullOrEmpty() -> {
                     homeContinueWatchingSections(
                         preferences = continueWatchingPreferences,
                         continueWatchingItems = rowContinueWatchingItems,
@@ -1283,45 +1290,23 @@ fun HomeScreen(
                         disintegrationRequest = continueWatchingDisintegrationRequest,
                     )
                     item(key = "home_empty", contentType = "empty") {
-                        when {
-                            networkStatusUiState.isOfflineLike && addonManifestErrorMessage != null -> {
-                                NuvioNetworkOfflineCard(
-                                    condition = networkStatusUiState.condition,
-                                    modifier = Modifier.padding(
-                                        horizontal = if (isDesktop) homeSectionPadding else 16.dp,
-                                    ),
-                                    onRetry = {
-                                        NetworkStatusRepository.requestRefresh(force = true)
-                                        AddonRepository.refreshAll()
-                                    },
-                                )
-                            }
-
-                            addonManifestErrorMessage != null -> {
-                                HomeEmptyStateCard(
-                                    modifier = Modifier.padding(
-                                        horizontal = if (isDesktop) homeSectionPadding else 16.dp,
-                                    ),
-                                    title = stringResource(Res.string.home_load_failed_title),
-                                    message = addonManifestErrorMessage,
-                                    actionLabel = stringResource(Res.string.action_retry),
-                                    onActionClick = {
-                                        NetworkStatusRepository.requestRefresh(force = true)
-                                        AddonRepository.refreshAll()
-                                    },
-                                )
-                            }
-
-                            else -> {
-                                HomeEmptyStateCard(
-                                    modifier = Modifier.padding(
-                                        horizontal = if (isDesktop) homeSectionPadding else 16.dp,
-                                    ),
-                                    title = stringResource(Res.string.home_empty_no_sources_title),
-                                    message = stringResource(Res.string.home_empty_no_sources_message),
-                                )
-                            }
+                        val retryAddons = {
+                            NetworkStatusRepository.requestRefresh(force = true)
+                            AddonRepository.refreshAll()
                         }
+                        HomeStateCard(
+                            kind = when {
+                                networkStatusUiState.isOfflineLike && addonManifestErrorMessage != null -> HomeStateKind.Offline
+                                addonManifestErrorMessage != null -> HomeStateKind.LoadFailed
+                                else -> HomeStateKind.NoSources
+                            },
+                            horizontalPadding = if (isDesktop) homeSectionPadding else 16.dp,
+                            modifier = homeItemModifier().then(homeStateAreaModifier()),
+                            errorMessage = addonManifestErrorMessage,
+                            offlineCondition = networkStatusUiState.condition,
+                            onRetry = retryAddons,
+                            onOpenAddons = onOpenAddons,
+                        )
                     }
                 }
 
@@ -1330,42 +1315,22 @@ fun HomeScreen(
                     !hasRenderableCollectionRows && visibleSeasonalSection == null -> {
                     item(key = "home_empty", contentType = "empty") {
                         val loadFailed = !homeUiState.errorMessage.isNullOrBlank()
-                        if (networkStatusUiState.isOfflineLike && loadFailed) {
-                            NuvioNetworkOfflineCard(
-                                condition = networkStatusUiState.condition,
-                                modifier = Modifier.padding(
-                                    horizontal = if (isDesktop) homeSectionPadding else 16.dp,
-                                ),
-                                onRetry = {
-                                    NetworkStatusRepository.requestRefresh(force = true)
-                                    HomeRepository.refresh(AddonRepository.uiState.value.addons.enabledAddons(), force = true)
-                                },
-                            )
-                        } else {
-                            HomeEmptyStateCard(
-                                modifier = Modifier.padding(
-                                    horizontal = if (isDesktop) homeSectionPadding else 16.dp,
-                                ),
-                                title = stringResource(
-                                    if (loadFailed) {
-                                        Res.string.home_load_failed_title
-                                    } else {
-                                        Res.string.home_empty_no_rows_title
-                                    },
-                                ),
-                                message = homeUiState.errorMessage
-                                    ?: stringResource(Res.string.home_empty_no_rows_message),
-                                actionLabel = if (loadFailed) stringResource(Res.string.action_retry) else null,
-                                onActionClick = if (loadFailed) {
-                                    {
-                                        NetworkStatusRepository.requestRefresh(force = true)
-                                        HomeRepository.refresh(AddonRepository.uiState.value.addons.enabledAddons(), force = true)
-                                    }
-                                } else {
-                                    null
-                                },
-                            )
-                        }
+                        HomeStateCard(
+                            kind = when {
+                                networkStatusUiState.isOfflineLike && loadFailed -> HomeStateKind.Offline
+                                loadFailed -> HomeStateKind.LoadFailed
+                                else -> HomeStateKind.NoRows
+                            },
+                            horizontalPadding = if (isDesktop) homeSectionPadding else 16.dp,
+                            modifier = homeItemModifier().then(homeStateAreaModifier()),
+                            errorMessage = homeUiState.errorMessage,
+                            offlineCondition = networkStatusUiState.condition,
+                            onRetry = {
+                                NetworkStatusRepository.requestRefresh(force = true)
+                                HomeRepository.refresh(AddonRepository.uiState.value.addons.enabledAddons(), force = true)
+                            },
+                            onOpenAddons = onOpenAddons,
+                        )
                     }
                 }
 
@@ -1433,9 +1398,26 @@ fun HomeScreen(
                             val section = sectionsMap[settingsItem.key]
                             if (section != null && isDesktop && !section.belongsTo(homeTab)) {
                                 // Filtered out by the selected tab.
-                            } else if (section != null && (section.items.isNotEmpty() || section.calendarState != null)) {
-                                renderedRows++
+                            } else if (
+                                (section != null && (section.items.isNotEmpty() || section.calendarState != null)) ||
+                                (homeUiState.isLoading && !settingsItem.key.contains("airing-next", ignoreCase = true))
+                            ) {
+                                if (section != null && (section.items.isNotEmpty() || section.calendarState != null)) renderedRows++
                                 item(key = keyedSettingsItem.lazyKey, contentType = "catalog") {
+                                    // A pending row is its placeholder until the catalog arrives, then crossfades
+                                    // into it in the same slot (Home design "For you · loading").
+                                    val loadedSection = sectionsMap[settingsItem.key]
+                                        ?.takeIf { it.items.isNotEmpty() || it.calendarState != null }
+                                    Crossfade(
+                                        targetState = loadedSection != null,
+                                        modifier = homeItemModifier(),
+                                        animationSpec = tween(320),
+                                        label = "home_row_loading",
+                                    ) { loaded ->
+                                    val section = loadedSection?.takeIf { loaded } ?: run {
+                                        HomeSkeletonRow(modifier = Modifier.padding(bottom = 12.dp), horizontalPadding = homeSectionPadding)
+                                        return@Crossfade
+                                    }
                                     HomeCatalogRowSection(
                                         section = section,
                                         eyebrow = section.addonName.takeIf { isDesktop },
@@ -1448,7 +1430,7 @@ fun HomeScreen(
                                         } else {
                                             section.items.take(homeCatalogPreviewLimit)
                                         },
-                                        modifier = homeItemModifier().padding(bottom = 12.dp),
+                                        modifier = Modifier.padding(bottom = 12.dp),
                                         sectionPadding = homeSectionPadding,
                                         onViewAllClick = if (section.canOpenCatalog(homeCatalogPreviewLimit)) {
                                             onCatalogClick?.let { { it(section) } }
@@ -1463,20 +1445,17 @@ fun HomeScreen(
                                             ?.let { open -> { item -> open(section.key, item) } }
                                             ?: onPosterLongClick,
                                     )
-                                }
-                            } else if (homeUiState.isLoading && !settingsItem.key.contains("airing-next", ignoreCase = true)) {
-                                item(key = keyedSettingsItem.lazyKey, contentType = "catalog") {
-                                    HomeSkeletonRow(modifier = Modifier.padding(bottom = 12.dp), horizontalPadding = homeSectionPadding)
+                                    }
                                 }
                             }
                         }
                     }
                     if (isDesktop && renderedRows == 0) {
                         item(key = "home_tab_empty", contentType = "empty") {
-                            HomeEmptyStateCard(
-                                modifier = homeItemModifier().padding(horizontal = homeSectionPadding),
-                                title = stringResource(Res.string.home_tab_empty_title),
-                                message = stringResource(Res.string.home_tab_empty_message),
+                            HomeStateCard(
+                                kind = HomeStateKind.TabEmpty,
+                                horizontalPadding = homeSectionPadding,
+                                modifier = homeItemModifier().padding(top = 24.dp, bottom = 48.dp),
                             )
                         }
                     }
@@ -1487,6 +1466,10 @@ fun HomeScreen(
         }
     }
 }
+
+/** Home's empty / error / offline card sits centred in the space the rows would take (Home design). */
+private fun LazyItemScope.homeStateAreaModifier(): Modifier =
+    if (isDesktop) Modifier.fillParentMaxHeight(0.8f) else Modifier
 
 /** Desktop redesign: the board takes this share of the window so the first row shows without scrolling. */
 private const val HOME_BOARD_VIEWPORT_FRACTION = 0.56f
