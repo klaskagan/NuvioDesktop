@@ -254,6 +254,8 @@ internal fun LazyListScope.streamingProviderPage(
     onPosterLongClick: ((MetaPreview) -> Unit)?,
     onViewAll: (SearchShelfView) -> Unit,
     onCollectionRowViewAll: ((HomeCatalogSection) -> Unit)? = null,
+    /** The service's name over every row title, in Home's editorial header (only drawn where that style is provided). */
+    eyebrow: String? = null,
 ) {
     val heroItems = tagHeroItems(topTen, shelves, scope)
     if (heroItems.isNotEmpty() || shelves.loading || topTen.loading) {
@@ -335,6 +337,7 @@ internal fun LazyListScope.streamingProviderPage(
                     onPosterClick = onPosterClick,
                     onPosterLongClick = onPosterLongClick,
                     rowStyle = HomeRowStyle.NumberedRanking,
+                    eyebrow = eyebrow,
                 )
                 is TagPageRow.Rail -> DetailPosterRailSection(
                     title = shelfTitle(row.shelf, selection),
@@ -346,6 +349,7 @@ internal fun LazyListScope.streamingProviderPage(
                     onPosterLongClick = onPosterLongClick,
                     onViewAllClick = { onViewAll(SearchShelfView(row.shelf.sort, row.shelf.television)) },
                     viewAllPillSize = NuvioViewAllPillSize.Compact,
+                    eyebrow = eyebrow,
                     modifier = itemModifier().padding(top = 14.dp),
                 )
                 is TagPageRow.Collection -> DetailPosterRailSection(
@@ -358,6 +362,7 @@ internal fun LazyListScope.streamingProviderPage(
                     onPosterLongClick = onPosterLongClick,
                     onViewAllClick = onCollectionRowViewAll?.takeIf { row.section.hasMore }?.let { open -> { open(row.section) } },
                     viewAllPillSize = NuvioViewAllPillSize.Compact,
+                    eyebrow = eyebrow,
                     modifier = itemModifier().padding(top = 14.dp),
                 )
             }
@@ -453,21 +458,39 @@ internal fun TagPageControls(
     }
 }
 
+private val TagScopes = listOf(SearchScope.All, SearchScope.Movies, SearchScope.Shows)
+
+@Composable
+private fun tagScopeLabel(scope: SearchScope): String = stringResource(
+    when (scope) {
+        SearchScope.Movies -> Res.string.search_scope_movies
+        SearchScope.Shows -> Res.string.search_scope_shows
+        else -> Res.string.search_scope_all
+    },
+)
+
+/**
+ * All / Movies / Shows as Home's text tabs (the streaming service page's own bar): the same
+ * [com.nuvio.app.core.ui.RedesignTabs] as Home's tab strip, underline sliding between them.
+ */
+@Composable
+internal fun TagScopeTabs(scope: SearchScope, onScopeChange: (SearchScope) -> Unit, modifier: Modifier = Modifier) {
+    com.nuvio.app.core.ui.RedesignTabs(
+        items = TagScopes,
+        selected = scope,
+        label = { tagScopeLabel(it) },
+        onSelect = onScopeChange,
+        modifier = modifier.testTag("tag_scope_tabs"),
+    )
+}
+
 /** All / Movies / Shows on the redesign's shared pill group (as Calendar's toolbar uses). */
 @Composable
 internal fun TagScopePills(scope: SearchScope, onScopeChange: (SearchScope) -> Unit, modifier: Modifier = Modifier) {
     RedesignPillGroup(
-        options = listOf(SearchScope.All, SearchScope.Movies, SearchScope.Shows),
+        options = TagScopes,
         selected = scope,
-        label = {
-            stringResource(
-                when (it) {
-                    SearchScope.Movies -> Res.string.search_scope_movies
-                    SearchScope.Shows -> Res.string.search_scope_shows
-                    else -> Res.string.search_scope_all
-                },
-            )
-        },
+        label = { tagScopeLabel(it) },
         onSelect = onScopeChange,
         modifier = modifier.testTag("tag_scope_pills"),
     )
