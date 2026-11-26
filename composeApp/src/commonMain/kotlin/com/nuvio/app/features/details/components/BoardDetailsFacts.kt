@@ -233,7 +233,7 @@ internal fun BoardDetailsFacts(
 }
 
 @Composable
-private fun FactsTile(title: String, modifier: Modifier, content: @Composable () -> Unit) {
+internal fun FactsTile(title: String, modifier: Modifier, content: @Composable () -> Unit) {
     Column(
         modifier.fillMaxHeight().clip(RedesignTileShape).background(RedesignColors.fill).border(1.dp, RedesignColors.hairline, RedesignTileShape)
             .padding(horizontal = 20.dp, vertical = 18.dp),
@@ -246,7 +246,7 @@ private fun FactsTile(title: String, modifier: Modifier, content: @Composable ()
 
 /** Facts two to a row, as the design's 1fr 1fr grid; an odd last fact keeps its half. */
 @Composable
-private fun FactGrid(facts: List<Pair<String, String>>) {
+internal fun FactGrid(facts: List<Pair<String, String>>) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         facts.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

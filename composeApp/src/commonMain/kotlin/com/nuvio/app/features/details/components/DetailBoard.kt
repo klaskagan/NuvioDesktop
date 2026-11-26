@@ -222,7 +222,7 @@ internal fun BoardKicker(text: String, color: Color = RedesignColors.textMuted, 
 }
 
 @Composable
-private fun BoardProgressBar(fraction: Float, modifier: Modifier = Modifier) {
+internal fun BoardProgressBar(fraction: Float, modifier: Modifier = Modifier) {
     Box(modifier.height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.28f))) {
         Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).fillMaxHeight().background(RedesignColors.textPrimary))
     }

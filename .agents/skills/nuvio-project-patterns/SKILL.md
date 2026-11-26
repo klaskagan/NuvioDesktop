@@ -57,8 +57,9 @@ orientation setting, and navigation choices are feature-specific.
 ## Details redesign: design doc and build tracker
 
 Applies to any change or bug on the desktop Details page: the board, its tabs, Rate,
-Watch it your way and the windows it opens (TV picker, party lobby), Quick pick and the
-Sources sheet. It applies even when the request only says "match the design" or "doesn't
+Watch it your way and the windows it opens (TV picker, party lobby), Quick pick, the
+Sources sheet and the person (actor) page, whose board is the doc's "Person page" section
+(`PersonBoard.kt`; mobile and narrow windows keep the older layout). It applies even when the request only says "match the design" or "doesn't
 match the design".
 
 - **Source of truth:** the Details design artifact,

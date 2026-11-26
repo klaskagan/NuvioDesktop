@@ -24,6 +24,15 @@ interface TrackingFavoritesProvider {
 
     /** Adds or removes [media]; false when the tracker refused. */
     suspend fun setFavorite(profileId: Int, media: TrackingMediaReference, favorite: Boolean): Boolean
+
+    /** Whether this tracker keeps favorite people (WeTrakr does; Trakt's favorites are titles only). */
+    val supportsPeople: Boolean get() = false
+
+    /** Whether the person with this TMDB id is a favorite, or null when that is not known. */
+    suspend fun isPersonFavorite(profileId: Int, tmdbPersonId: Int): Boolean? = null
+
+    /** Adds or removes a favorite person; false when the tracker refused or keeps no people. */
+    suspend fun setPersonFavorite(profileId: Int, tmdbPersonId: Int, favorite: Boolean): Boolean = false
 }
 
 data class TrackingFavoriteState(
@@ -83,6 +92,57 @@ object TrackingFavorites {
         if (!saved) known.update { it + (key to before) }
         saved
     }
+
+    /**
+     * The person page's Favorite: offered while a tracker that keeps favorite people is connected
+     * (WeTrakr); without one the button is not shown.
+     */
+    fun observePerson(tmdbPersonId: Int): Flow<TrackingFavoriteState> =
+        combine(providers, TrackingProviderRegistry.connectedProviderIds, known) { _, _, _ -> currentPerson(tmdbPersonId) }
+            .distinctUntilChanged()
+
+    fun currentPerson(tmdbPersonId: Int): TrackingFavoriteState {
+        val provider = personProvider() ?: return TrackingFavoriteState()
+        return TrackingFavoriteState(provider.providerId, known.value[personKey(provider.providerId, tmdbPersonId)] == true)
+    }
+
+    suspend fun refreshPerson(tmdbPersonId: Int) {
+        val provider = personProvider() ?: return
+        val answer = try {
+            provider.isPersonFavorite(ProfileRepository.activeProfileId, tmdbPersonId)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        } ?: return
+        known.update { it + (personKey(provider.providerId, tmdbPersonId) to answer) }
+    }
+
+    suspend fun setPersonFavorite(tmdbPersonId: Int, favorite: Boolean): Boolean = withContext(NonCancellable) {
+        val provider = personProvider() ?: return@withContext false
+        val key = personKey(provider.providerId, tmdbPersonId)
+        val before = known.value[key] == true
+        known.update { it + (key to favorite) }
+        val saved = try {
+            provider.setPersonFavorite(ProfileRepository.activeProfileId, tmdbPersonId, favorite)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            false
+        }
+        if (!saved) known.update { it + (key to before) }
+        saved
+    }
+
+    private fun personProvider(): TrackingFavoritesProvider? {
+        val connected = TrackingProviderRegistry.connectedProviderIds.value
+        return providers.value.values
+            .filter { it.providerId in connected && it.supportsPeople }
+            .minByOrNull { it.providerId.ordinal }
+    }
+
+    private fun personKey(provider: TrackingProviderId, tmdbPersonId: Int) =
+        "${ProfileRepository.activeProfileId}:${provider.storageId}:person:$tmdbPersonId"
 
     private fun provider(media: TrackingMediaReference): TrackingFavoritesProvider? {
         val connected = TrackingProviderRegistry.connectedProviderIds.value

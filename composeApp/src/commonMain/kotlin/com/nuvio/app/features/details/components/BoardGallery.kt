@@ -192,7 +192,7 @@ private fun GalleryTile(image: GalleryImage, modifier: Modifier, onOpen: () -> U
 
 /** Full window: the image, ← → (keys too), a filmstrip, the caption with its source, and actions. */
 @Composable
-private fun GalleryViewer(
+internal fun GalleryViewer(
     images: List<GalleryImage>,
     start: Int,
     title: String,

@@ -99,7 +99,7 @@ internal fun DetailsDestination(
         onPlayManually = onPlayManually,
         onDownload = onDownload,
         onOpenMeta = onOpenMeta,
-        onCastClick = { person, avatarTransitionKey ->
+        onCastClickInTitle = { person, avatarTransitionKey, fromTitle ->
             val tmdbId = person.tmdbId
             if (tmdbId != null && tmdbId > 0) {
                 navController.navigate(
@@ -108,6 +108,7 @@ internal fun DetailsDestination(
                         personName = person.name,
                         personPhoto = person.photo,
                         castAvatarTransitionKey = avatarTransitionKey,
+                        fromTitle = fromTitle,
                         preferCrew = person.role?.let {
                             it.equals("Director", ignoreCase = true) ||
                                 it.equals(directorRole, ignoreCase = true) ||
@@ -165,6 +166,7 @@ internal fun PersonDestination(
         avatarTransitionKey = route.castAvatarTransitionKey,
         preferCrew = route.preferCrew,
         initialSubview = route.subview,
+        fromTitle = route.fromTitle,
         onOpenNativeSubview = if (LocalUseNativeNavigation.current) {
             { subview -> if (navController.currentRoute == route) navController.navigate(route.copy(subview = subview)) }
         } else null,

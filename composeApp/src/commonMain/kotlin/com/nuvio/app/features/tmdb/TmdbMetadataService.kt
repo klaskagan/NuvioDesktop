@@ -13,6 +13,7 @@ import com.nuvio.app.features.details.MetaTrailer
 import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.details.MoreLikeThisSource
 import com.nuvio.app.features.details.PersonDetail
+import com.nuvio.app.features.details.PersonTaggedImage
 import kotlinx.coroutines.CancellationException
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.PosterShape
@@ -141,7 +142,12 @@ object TmdbMetadataService {
                 val personDeferred = async {
                     fetch<TmdbPersonResponse>(
                         endpoint = "person/$personId",
-                        query = mapOf("language" to language),
+                        // The desktop person page's Photos and About tabs; one request either way.
+                        query = mapOf(
+                            "language" to language,
+                            "append_to_response" to "images,tagged_images",
+                            "include_image_language" to "null,en",
+                        ),
                     )
                 }
                 val creditsDeferred = async {
@@ -235,6 +241,21 @@ object TmdbMetadataService {
                 tvCredits = filmography.series,
                 directedKeys = filmography.directedKeys,
                 careerCredits = filmography.careerCredits,
+                imdbId = person.imdbId?.takeIf { it.startsWith("nm") },
+                alsoKnownAs = person.alsoKnownAs.map(String::trim).filter { it.isNotBlank() && it != person.name }.distinct(),
+                portraits = person.images?.profiles.orEmpty()
+                    .sortedByDescending { it.voteAverage ?: 0.0 }
+                    .mapNotNull { buildImageUrl(it.filePath, "original") },
+                taggedImages = person.taggedImages?.results.orEmpty().mapNotNull { image ->
+                    val url = buildImageUrl(image.filePath, "original") ?: return@mapNotNull null
+                    PersonTaggedImage(
+                        url = url,
+                        thumbnail = buildImageUrl(image.filePath, "w780") ?: url,
+                        title = (image.media?.title ?: image.media?.name)?.takeIf { it.isNotBlank() },
+                        aspectRatio = (image.aspectRatio ?: if (image.imageType == "poster") 0.667 else 1.778).toFloat(),
+                    )
+                },
+                taggedImageTotal = person.taggedImages?.totalResults ?: 0,
             )
             synchronized(personCacheLock) { personCache[cacheKey] = detail }
             detail
@@ -2161,7 +2182,38 @@ private data class TmdbPersonResponse(
     @SerialName("place_of_birth") val placeOfBirth: String? = null,
     @SerialName("profile_path") val profilePath: String? = null,
     @SerialName("known_for_department") val knownForDepartment: String? = null,
+    @SerialName("imdb_id") val imdbId: String? = null,
+    @SerialName("also_known_as") val alsoKnownAs: List<String> = emptyList(),
+    val images: TmdbPersonImages? = null,
+    @SerialName("tagged_images") val taggedImages: TmdbPersonTaggedImages? = null,
 )
+
+@Serializable
+private data class TmdbPersonImages(val profiles: List<TmdbPersonImage> = emptyList())
+
+@Serializable
+private data class TmdbPersonImage(
+    @SerialName("file_path") val filePath: String? = null,
+    @SerialName("aspect_ratio") val aspectRatio: Double? = null,
+    @SerialName("vote_average") val voteAverage: Double? = null,
+)
+
+@Serializable
+private data class TmdbPersonTaggedImages(
+    val results: List<TmdbPersonTaggedImage> = emptyList(),
+    @SerialName("total_results") val totalResults: Int? = null,
+)
+
+@Serializable
+private data class TmdbPersonTaggedImage(
+    @SerialName("file_path") val filePath: String? = null,
+    @SerialName("aspect_ratio") val aspectRatio: Double? = null,
+    @SerialName("image_type") val imageType: String? = null,
+    val media: TmdbPersonTaggedMedia? = null,
+)
+
+@Serializable
+private data class TmdbPersonTaggedMedia(val title: String? = null, val name: String? = null)
 
 // ─── Entity Browse (Company / Network) Models ───
 
