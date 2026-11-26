@@ -294,6 +294,8 @@ fun MetaDetailsScreen(
     onDownload: ((type: String, videoId: String, parentMetaId: String, parentMetaType: String, title: String, logo: String?, poster: String?, background: String?, seasonNumber: Int?, episodeNumber: Int?, episodeTitle: String?, episodeThumbnail: String?, pauseDescription: String?, resumePositionMs: Long?) -> Unit)? = null,
     onOpenMeta: ((MetaPreview) -> Unit)? = null,
     onCastClick: ((MetaPerson, String?) -> Unit)? = null,
+    /** Like [onCastClick], with the title the person was opened from (the person page's "In …" tile). */
+    onCastClickInTitle: ((MetaPerson, String?, PersonTitleContext) -> Unit)? = null,
     onCompanyClick: ((MetaCompany, String) -> Unit)? = null,
     onOpenParty: ((code: String) -> Unit)? = null,
     onManagePairedTvs: (() -> Unit)? = null,
@@ -1594,7 +1596,11 @@ fun MetaDetailsScreen(
                     },
                     onSeasonLongPress = { season -> selectedSeasonForActions = season },
                     onOpenMeta = onOpenMeta,
-                    onCastClick = onCastClick,
+                    onCastClick = onCastClickInTitle?.let { open ->
+                        { person: MetaPerson, key: String? ->
+                            open(person, key, PersonTitleContext(meta.name, meta.background?.takeIf { it.isNotBlank() } ?: meta.poster, person.role, person.episodeCount, meta.type == "series"))
+                        }
+                    } ?: onCastClick,
                     onCompanyClick = onCompanyClick,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,

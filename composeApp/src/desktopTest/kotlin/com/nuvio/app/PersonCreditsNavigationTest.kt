@@ -38,7 +38,9 @@ import kotlin.test.assertEquals
 
 @OptIn(ExperimentalTestApi::class, ExperimentalSharedTransitionApi::class)
 class PersonCreditsNavigationTest {
-    @Test fun moviesExpandWithPinnedProfileAndRestoreSortAndScrollAfterOpeningTitle() =
+    // Desktop at Details' board width: the person board (design doc "Person page"). The narrow test
+    // below keeps the header-and-rails layout, which mobile and small windows still use.
+    @Test fun wideOpensAsBoardAndMoviesTabFiltersAndKeepsItsPlaceAfterOpeningTitle() =
         runDesktopComposeUiTest(width = 1450, height = 900) {
             requireIsolation()
             val actor = actor(62, "Bruce Willis")
@@ -50,53 +52,37 @@ class PersonCreditsNavigationTest {
                     knownFor = { emptyList() },
                 ))
             }
-            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Movies").fetchSemanticsNodes().isNotEmpty() }
-            // Desktop redesign: the profile is a full-width header at the top of the overview.
-            val preview = onNodeWithTag("actor_preview_wide")
-            preview.assertIsDisplayed()
-            saveActorCapture("wide-overview")
-            val beforeScroll = preview.captureToImage().toAwtImage()
-            val shelf = onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
-            shelf.performSemanticsAction(SemanticsActions.ScrollBy) { it(675f, 0f) }
-            waitForIdle()
-            onNodeWithText("Fixture Movie 0").assertDoesNotExist()
-            val afterScroll = preview.captureToImage().toAwtImage()
-            assertContentEquals(
-                beforeScroll.getRGB(0, 0, beforeScroll.width, beforeScroll.height, null, 0, beforeScroll.width),
-                afterScroll.getRGB(0, 0, afterScroll.width, afterScroll.height, null, 0, afterScroll.width),
-                "A scrolling shelf must leave the actor header pixels untouched",
-            )
-            saveActorCapture("scrolled-shelf")
-            onAllNodesWithContentDescription("View All").onFirst().performClick()
-            // "View all" keeps who you're browsing on screen with a compact header above the grid.
-            onNodeWithTag("actor_header_compact").assertIsDisplayed()
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithTag("person_board_page").fetchSemanticsNodes().isNotEmpty() }
+            onNodeWithTag("detail_board_featured").assertIsDisplayed()
+            onNodeWithTag("person_board_name").assertIsDisplayed()
+            onNodeWithTag("person_board_you").assertIsDisplayed()
+            // No tracker that keeps favorite people is connected, so there is no Favorite button.
+            onNodeWithTag("person_board_favorite").assertDoesNotExist()
+            // Known for is empty, so the first tab is Movies, newest first.
+            onNodeWithText("Movies").assertIsSelected()
+            onNodeWithText("Newest").assertIsSelected()
+            onAllNodes(hasText("Fixture Movie 0") and hasClickAction()).onFirst().assertIsDisplayed()
+            saveActorCapture("board-movies")
+            onNodeWithText("Popular").performClick()
+            onNodeWithText("Popular").assertIsSelected()
             runOnIdle { assertEquals(1, loadCount) }
-            val firstCard = onNode(hasText("Fixture Movie 0") and hasClickAction()).fetchSemanticsNode().boundsInRoot
-            val fourthCard = onNode(hasText("Fixture Movie 3") and hasClickAction()).fetchSemanticsNode().boundsInRoot
-            assertEquals(firstCard.top, fourthCard.top, "The pane fits four landscape cards in its first row")
-            saveActorCapture("wide-catalog")
-            onNodeWithText("Most popular").performClick()
-            onNodeWithText("Latest").performClick()
-            onNodeWithText("Released").assertIsDisplayed()
-            val grid = onNodeWithTag("catalog_grid")
-            grid.performScrollToIndex(18)
-            val poster = onAllNodes(hasText("Fixture Movie 18") and hasClickAction()).onFirst()
-            poster.assertIsDisplayed().performClick()
-            onNodeWithText("Details for Fixture Movie 18").assertIsDisplayed()
+            val poster = onAllNodes(hasText("Fixture Movie 0") and hasClickAction()).onFirst()
+            poster.performClick()
+            onNodeWithText("Details for Fixture Movie 0").assertIsDisplayed()
             onNodeWithText("Back to credits").performClick()
-            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Latest").fetchSemanticsNodes().isNotEmpty() }
-            poster.assertIsDisplayed()
-            onNodeWithText("Any watch status").performClick()
-            onNodeWithText("Watched").performClick()
-            onNodeWithText("No credits match these filters.").assertIsDisplayed()
-            saveActorCapture("clear-filters")
-            onNodeWithContentDescription("Clear filters").performClick()
-            onNodeWithText("Latest").assertIsDisplayed()
-            onNodeWithContentDescription("Back").performClick()
-            onNodeWithText("Movies").assertIsDisplayed()
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithTag("person_board_page").fetchSemanticsNodes().isNotEmpty() }
+            // Coming back keeps the tab and its sort (the person comes from the service's cache again).
+            onNodeWithText("Movies").assertIsSelected()
+            onNodeWithText("Popular").assertIsSelected()
+            onNodeWithTag("person_board_credits_unwatched").performClick()
+            onAllNodes(hasText("Fixture Movie 0") and hasClickAction()).onFirst().assertIsDisplayed()
+            onNodeWithText("About").performClick()
+            onNodeWithTag("person_board_about").assertIsDisplayed()
+            onNodeWithTag("person_board_bio").assertTextEquals("Biography for Bruce Willis")
+            saveActorCapture("board-about")
         }
 
-    @Test fun wideOverviewStartsAtKnownForWhenItLoadsAfterMovies() =
+    @Test fun knownForTabHoldsItsPlaceWhileItLoads() =
         runDesktopComposeUiTest(width = 1450, height = 900) {
             requireIsolation()
             val actor = actor(62, "Bruce Willis")
@@ -108,20 +94,86 @@ class PersonCreditsNavigationTest {
                     knownFor = { knownFor.await() },
                 ))
             }
-            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Movies").fetchSemanticsNodes().isNotEmpty() }
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithTag("person_board_tabs").fetchSemanticsNodes().isNotEmpty() }
             waitForIdle()
-            // Desktop reserves the Known For row (real rail, blank cards) while it loads, so its arrival
-            // must not move anything below it: the shift read as motion starting from the top right.
-            val movieTopBefore = onAllNodesWithText("Movies").onFirst().fetchSemanticsNode().boundsInRoot.top
+            onNodeWithText("Known For").assertIsSelected()
+            val moviesTabBefore = onNodeWithText("Movies").fetchSemanticsNode().boundsInRoot
             knownFor.complete(listOf(actor.movieCredits.first().copy(name = "Known For fixture")))
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Known For fixture", substring = true).fetchSemanticsNodes().isNotEmpty() }
             waitForIdle()
-            onNodeWithText("Known For").assertIsDisplayed()
-            val knownTop = onNodeWithText("Known For").fetchSemanticsNode().boundsInRoot.top
-            val movieTop = onNodeWithText("Movies").fetchSemanticsNode().boundsInRoot.top
-            kotlin.test.assertTrue(knownTop < movieTop)
-            assertEquals(movieTopBefore, movieTop, 0.5f, "Rows below Known For must not move when it loads")
-            saveActorCapture("known-for-delayed")
+            assertEquals(moviesTabBefore, onNodeWithText("Movies").fetchSemanticsNode().boundsInRoot, "The tabs must not move when Known for loads")
+            saveActorCapture("board-known-for")
+        }
+
+    @Test fun shortTabStillScrollsTheBoardAwayAndPinsTheTabs() =
+        runDesktopComposeUiTest(width = 1450, height = 900) {
+            requireIsolation()
+            val actor = actor(62, "Bruce Willis")
+            setContent {
+                ActorNavigation(PersonDetailRoute(62, actor.name), PersonDetailLoaders(detail = { _, _ -> actor }, cachedKnownFor = { null }, knownFor = { emptyList() }))
+            }
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithTag("person_board_tabs").fetchSemanticsNodes().isNotEmpty() }
+            // About is shorter than the window; the filler under it still lets the board scroll away.
+            onNodeWithText("About").performClick()
+            waitForIdle()
+            repeat(6) {
+                onNodeWithTag("person_board_page").performMouseInput { scroll(400f) }
+                waitForIdle()
+            }
+            onNodeWithTag("person_board_pinned_back").assertIsDisplayed()
+            val tabsTop = onNodeWithTag("person_board_tabs").fetchSemanticsNode().boundsInRoot.top
+            kotlin.test.assertTrue(tabsTop < 80f, "The tabs row pins at the top, was at $tabsTop")
+            // ...and the short tab stops right under it rather than running under the row.
+            val aboutTop = onNodeWithTag("person_board_about").fetchSemanticsNode().boundsInRoot.top
+            val tabsBottom = onNodeWithTag("person_board_tabs").fetchSemanticsNode().boundsInRoot.bottom
+            kotlin.test.assertTrue(aboutTop >= tabsBottom - 1f, "About starts under the pinned row ($aboutTop < $tabsBottom)")
+            saveActorCapture("board-pinned")
+        }
+
+    @Test fun longCareerKeepsTheTabsPinned() =
+        runDesktopComposeUiTest(width = 1450, height = 900) {
+            requireIsolation()
+            val base = actor(62, "Bruce Willis")
+            val long = base.actingCredits + List(60) { i ->
+                ActingCredit(MetaPreview("fixture:career-$i", "movie", "Career Movie $i", rawReleaseDate = "${2020 - i}-01-01"), listOf("Role $i"))
+            }
+            val person = base.copy(actingCredits = long, careerCredits = mapOf(CareerDepartment.Acting to long))
+            setContent {
+                // Under the merged top bar, as in the app: the pinned row must stay below the bar.
+                CompositionLocalProvider(LocalDetailTopBarState provides remember { DetailTopBarState() }) {
+                    ActorNavigation(PersonDetailRoute(62, person.name), PersonDetailLoaders(detail = { _, _ -> person }, cachedKnownFor = { null }, knownFor = { emptyList() }))
+                }
+            }
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithTag("person_board_tabs").fetchSemanticsNodes().isNotEmpty() }
+            onNodeWithText("Career").performClick()
+            waitForIdle()
+            repeat(8) {
+                onNodeWithTag("person_board_page").performMouseInput { scroll(600f) }
+                waitForIdle()
+            }
+            saveActorCapture("board-career-pinned")
+            onNodeWithTag("person_board_pinned_back").assertIsDisplayed()
+            val tabsTop = onNodeWithTag("person_board_tabs").fetchSemanticsNode().boundsInRoot.top
+            // Pinned right under the 56 dp merged bar, not behind it.
+            kotlin.test.assertTrue(tabsTop in 55f..60f, "The tabs row pins under the top bar over a long career, was at $tabsTop")
+        }
+
+    @Test fun openedFromATitleShowsTheRoleThereAndBackReturns() =
+        runDesktopComposeUiTest(width = 1450, height = 900) {
+            requireIsolation()
+            val actor = actor(62, "Bruce Willis")
+            setContent {
+                ActorNavigation(
+                    PersonDetailRoute(62, actor.name, fromTitle = PersonTitleContext("Moonlighting", null, "David Addison", 66, isSeries = true)),
+                    PersonDetailLoaders(detail = { _, _ -> actor }, cachedKnownFor = { null }, knownFor = { emptyList() }),
+                )
+            }
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithTag("person_board_in_title").fetchSemanticsNodes().isNotEmpty() }
+            onNodeWithText("In Moonlighting", substring = true, ignoreCase = true).assertIsDisplayed()
+            onNodeWithText("David Addison").assertIsDisplayed()
+            onNodeWithText("66 episodes").assertIsDisplayed()
+            onNodeWithText("Back to Moonlighting").assertIsDisplayed()
+            saveActorCapture("board-from-title")
         }
 
     @Test fun narrowCrewFirstProfileShowsInlineMovieAndSeriesCreditsAndRetryWorks() =
@@ -204,7 +256,7 @@ class PersonCreditsNavigationTest {
             saveActorCapture("inline-timeline")
         }
 
-    @Test fun directorTimelineOpensOnDirectingAndSwitchesToActingInPlace() =
+    @Test fun directorCareerOpensOnDirectingAndSwitchesToActingInPlace() =
         runDesktopComposeUiTest(width = 1450, height = 900) {
             requireIsolation()
             val base = actor(525, "Director fixture")
@@ -227,28 +279,25 @@ class PersonCreditsNavigationTest {
                     knownFor = { emptyList() },
                 ))
             }
-            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Movies").fetchSemanticsNodes().isNotEmpty() }
-            onNodeWithTag("actor_overview").performScrollToNode(hasText("Director"))
-            val tabs = onNodeWithTag("person_career_tabs")
-            val tabsTop = tabs.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithTag("person_board_tabs").fetchSemanticsNodes().isNotEmpty() }
+            onNodeWithText("Career").performClick()
+            waitForIdle()
             // The department the person is known for comes first and is selected, not Acting.
-            onNodeWithText("Directing").assertIsSelected()
+            onNodeWithTag("person_career_Directing").assertIsSelected()
             onNodeWithText("Fixture Directed Movie").assertIsDisplayed()
-            onNodeWithText("Director").assertIsDisplayed()
-            onNodeWithText("2010, 1 title").assertIsDisplayed()
+            onNodeWithTag("person_career_span").assertTextEquals("2010")
             onNodeWithText("Fixture Acting Movie").assertDoesNotExist()
-            saveActorCapture("director-timeline")
-            onNodeWithText("Acting").performClick()
+            val pillsTop = onNodeWithTag("person_career_Directing").fetchSemanticsNode().boundsInRoot.top
+            saveActorCapture("board-director-career")
+            onNodeWithTag("person_career_Acting").performClick()
             waitForIdle()
-            onNodeWithText("Acting").assertIsSelected()
-            onNodeWithText("Actor role").assertIsDisplayed()
+            onNodeWithTag("person_career_Acting").assertIsSelected()
+            onNodeWithText("as Actor role", substring = true).assertIsDisplayed()
             onNodeWithText("Fixture Directed Movie").assertDoesNotExist()
-            onNodeWithText("1988, 2 titles").assertIsDisplayed()
-            assertEquals(tabsTop, tabs.fetchSemanticsNode().boundsInRoot.top, "Switching tabs must not move the tab row")
-            onNodeWithText("Writing").performClick()
+            assertEquals(pillsTop, onNodeWithTag("person_career_Acting").fetchSemanticsNode().boundsInRoot.top, "Switching departments must not move the pills")
+            onNodeWithTag("person_career_Writing").performClick()
             waitForIdle()
-            onNodeWithText("Screenplay · Story").assertIsDisplayed()
-            saveActorCapture("director-timeline-writing")
+            onNodeWithText("Screenplay · Story · Movie").assertIsDisplayed()
         }
 
     private fun ComposeUiTest.saveActorCapture(name: String) {

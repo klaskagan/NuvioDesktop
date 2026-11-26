@@ -177,6 +177,8 @@ fun PersonDetailScreen(
     modifier: Modifier = Modifier,
     initialSubview: PersonSubview? = null,
     onOpenNativeSubview: ((PersonSubview) -> Unit)? = null,
+    /** The title the page was opened from, for the board's "In …" tile. */
+    fromTitle: PersonTitleContext? = null,
 ) {
     val loaders = LocalPersonDetailLoaders.current
     var localSubview by rememberSaveable(personId, preferCrew) { mutableStateOf<String?>(null) }
@@ -206,7 +208,7 @@ fun PersonDetailScreen(
         }
     }
 
-    // Desktop redesign: ambient backdrop from the person's most popular credit, Inter type, and
+    // Desktop redesign: ambient backdrop from the person's most popular credit (personBackdropArt), Inter type, and
     // a crossfade between loading, error and content instead of a hard swap.
     val backdropMode = LocalShellBackdropMode.current
     val backdrop = remember(backdropMode == ShellBackdropMode.Solid) {
@@ -221,11 +223,14 @@ fun PersonDetailScreen(
         if (topBarState == null || backdrop == null) return@LaunchedEffect
         snapshotFlow { backdrop.tint }.collect { topBarState.tint = it }
     }
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .then(if (backdrop == null) Modifier.background(MaterialTheme.colorScheme.background) else Modifier),
     ) {
+        // Desktop at Details' board width: the person board (design doc "Person page"); narrower
+        // windows and mobile keep the header-and-rails layout.
+        val boardLayout = isDesktop && maxWidth - LocalBackdropContentStartInset.current >= DetailBoardMinWidth
         // Layers animate with the shared desktop nav transition (navTransitionLayer): Home hero's
         // layered parallax or a full slide, while the nav entry itself switches instantly.
         if (backdrop != null) {
@@ -243,7 +248,9 @@ fun PersonDetailScreen(
             label = "person_detail_state",
         ) { state ->
         when (state) {
-            is PersonDetailUiState.Loading -> PersonDetailSkeleton(
+            is PersonDetailUiState.Loading -> if (boardLayout) {
+                PersonBoardSkeleton(personName = personName, profilePhoto = initialProfilePhoto, onBack = goBack)
+            } else PersonDetailSkeleton(
                 personId = personId,
                 personName = personName,
                 profilePhoto = initialProfilePhoto,
@@ -265,7 +272,21 @@ fun PersonDetailScreen(
                 LaunchedEffect(person, loaders, pattern) {
                     if (knownFor == null) knownFor = loaders.knownFor(person).withCustomPosterUrls(pattern)
                 }
-                PersonDetailContent(
+                if (boardLayout && subview == null) PersonBoardPage(
+                    person = person,
+                    knownFor = knownFor,
+                    fromTitle = fromTitle,
+                    watchedKeys = watchedUiState.watchedKeys,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                    watchedItems = watchedUiState.items,
+                    tint = backdrop?.tint,
+                    initialProfilePhoto = initialProfilePhoto,
+                    avatarTransitionKey = resolvedAvatarTransitionKey,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    onOpenMeta = onOpenMeta,
+                    onBack = goBack,
+                ) else PersonDetailContent(
                     person = person,
                     knownFor = knownFor,
                     subview = subview,
@@ -286,7 +307,8 @@ fun PersonDetailScreen(
         }
 
 
-        if (!LocalUseNativeNavigation.current) {
+        // The board carries its own back button on the featured tile.
+        if (!LocalUseNativeNavigation.current && !boardLayout) {
             if (isDesktop) {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                     NuvioBackButton(
@@ -1386,7 +1408,7 @@ private fun personBirthLine(birthday: String, deathday: String?): String {
     }
 }
 
-private fun calculateAge(birthday: String, deathday: String?): Int? {
+internal fun calculateAge(birthday: String, deathday: String?): Int? {
     val birthParts = birthday.split("-").mapNotNull { it.toIntOrNull() }
     if (birthParts.size < 3) return null
     val birthYear = birthParts[0]
@@ -1403,10 +1425,12 @@ private fun calculateAge(birthday: String, deathday: String?): Int? {
         endMonth = endParts[1]
         endDay = endParts[2]
     } else {
-        // Approximate current date — this is good enough for age display
-        endYear = 2026
-        endMonth = 4
-        endDay = 3
+        // Today, from the app's date provider (a hard-coded date here made every age drift).
+        val today = CurrentDateProvider.todayIsoDate().split("-").mapNotNull { it.toIntOrNull() }
+        if (today.size < 3) return null
+        endYear = today[0]
+        endMonth = today[1]
+        endDay = today[2]
     }
 
     var age = endYear - birthYear
@@ -1416,7 +1440,7 @@ private fun calculateAge(birthday: String, deathday: String?): Int? {
     return age.takeIf { it >= 0 }
 }
 
-private fun formatDateForDisplay(date: String): String? {
+internal fun formatDateForDisplay(date: String): String? {
     val parts = date.split("-").mapNotNull { it.toIntOrNull() }
     if (parts.size < 3) return null
     val month = parts[1]
@@ -1430,12 +1454,18 @@ private fun formatDateForDisplay(date: String): String? {
 }
 
 
-/** Backdrop art for the person page: the banner of their most popular credit. */
-internal fun personBackdropArt(person: PersonDetail): String? =
-    (person.movieCredits + person.tvCredits)
-        .filter { !it.banner.isNullOrBlank() }
+/**
+ * Backdrop art for the person page: the banner of their most popular credit, leaving out series they
+ * only guested in or appeared in as themselves (a Family Guy voice spot once outranked Euphoria for
+ * Sydney Sweeney). Falls back to every credit when nothing else has a banner.
+ */
+internal fun personBackdropArt(person: PersonDetail): String? {
+    val guest = personGuestSeriesKeys(person.actingCredits)
+    val art = (person.movieCredits + person.tvCredits).filter { !it.banner.isNullOrBlank() }
+    return art.filter { it.stableKey() !in guest }.ifEmpty { art }
         .maxByOrNull { it.popularity ?: -1.0 }
         ?.banner
+}
 
 @Composable
 private fun PersonAvatarImage(person: PersonDetail, fallbackProfilePhoto: String?, avatarTransitionKey: String, modifier: Modifier) {

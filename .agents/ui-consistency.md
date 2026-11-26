@@ -178,6 +178,16 @@ Person Details opening with no transition). Apply these to every redesigned scre
     and visibility (`detailBoardTabs`). Add a section or a tab there, not in `MetaDetailsScreen`.
   - A tab shorter than the window gets a filler (`detailBoardFillPx`) so the pinned row stays pinned
     when it is selected. Without it the row dropped back down the page on every switch.
+    `detailBoardFillPx` only grows the filler once the filler item is visible, so the filler must
+    never be zero high: a zero-height last item never counts as visible, and the board could not
+    scroll away at all under a short tab (seen on the person board). Give it at least 1 dp, and
+    leave the list's own content padding out of the viewport you pass, or the tab overshoots under
+    the row. The person board (`PersonBoard.kt`) reuses this filler; regression:
+    `PersonCreditsNavigationTest.shortTabStillScrollsTheBoardAwayAndPinsTheTabs`.
+  - Put the list below the merged top bar with `Modifier.padding(top = …)`, never as top
+    `contentPadding`: a sticky header sticks to the list's own top, so with padding the pinned
+    tabs slid up behind the bar once a long tab scrolled on (person board, Career). Regression:
+    `PersonCreditsNavigationTest.longCareerKeepsTheTabsPinned` (under a `DetailTopBarState`).
   - Once pinned, the row stays pinned through every tab switch. The measured filler lags a frame,
     so a tab picked from the pinned row settles with a window's room (`detailBoardSettlingFillPx`)
     and the row is held at the top until the tab's heights stop changing; the shown pin state

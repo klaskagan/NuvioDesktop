@@ -77,8 +77,8 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-private fun CareerDepartment.label(): String = stringResource(
-    when (this) {
+internal fun careerDepartmentLabel(department: CareerDepartment): String = stringResource(
+    when (department) {
         CareerDepartment.Acting -> Res.string.person_career_acting
         CareerDepartment.Directing -> Res.string.person_career_directing
         CareerDepartment.Writing -> Res.string.person_career_writing
@@ -89,7 +89,7 @@ private fun CareerDepartment.label(): String = stringResource(
     },
 )
 
-private fun ActingCredit.period(today: LocalDate): ActingPeriod {
+internal fun ActingCredit.periodOf(today: LocalDate): ActingPeriod {
     val date = media.creditDate()
     return when {
         date == null -> ActingPeriod.Unknown
@@ -145,7 +145,7 @@ internal fun LazyListScope.personCareerTimeline(
                 RedesignTabs(
                     items = tabs,
                     selected = selected,
-                    label = { it.label() },
+                    label = { careerDepartmentLabel(it) },
                     onSelect = onSelect,
                     modifier = Modifier.padding(horizontal = padding).padding(top = 10.dp).testTag("person_career_tabs"),
                     count = { counts[it] },
@@ -160,11 +160,11 @@ internal fun LazyListScope.personCareerTimeline(
     // The department is part of the key, so switching tabs fades rows out and in instead of
     // sliding one title between two lists.
     itemsIndexed(credits, key = { _, credit -> "timeline:${selected.name}:${credit.media.stableKey()}" }) { index, credit ->
-        val period = credit.period(today)
+        val period = credit.periodOf(today)
         CareerRow(
             credit = credit,
             period = period,
-            showPeriod = index == 0 || credits[index - 1].period(today) != period,
+            showPeriod = index == 0 || credits[index - 1].periodOf(today) != period,
             first = index == 0,
             last = index == credits.lastIndex,
             padding = padding,
@@ -301,3 +301,4 @@ private fun CareerRow(
         }
     }
 }
+
