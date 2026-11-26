@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BookmarkAdd
@@ -28,7 +29,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Frosted empty / error state: icon, title, one line, optional pill action. */
+/**
+ * Frosted empty / error state: icon, title, one line, optional pill action. Sized to the Home design's
+ * state card (`.state`): a 48 dp round badge, 18 dp title, 14 dp text; Home, Library and Downloads share it.
+ */
 @Composable
 internal fun RedesignMessageTile(
     title: String,
@@ -73,27 +77,27 @@ internal fun RedesignMessageTile(
     Column(
         modifier.fillMaxWidth().clip(RedesignTileShape).background(RedesignColors.fill)
             .border(1.dp, RedesignColors.hairline, RedesignTileShape)
-            .padding(horizontal = 28.dp, vertical = 36.dp)
+            .padding(horizontal = 28.dp, vertical = 26.dp)
             .testTag(tag),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val glyph = icon ?: if (bookmark) Icons.Rounded.BookmarkAdd else null
         if (glyph != null) {
             Box(
-                Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(RedesignColors.fill),
+                Modifier.size(48.dp).clip(CircleShape).background(RedesignColors.fillStrong),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(glyph, contentDescription = null, tint = RedesignColors.textSecondary, modifier = Modifier.size(26.dp))
+                Icon(glyph, contentDescription = null, tint = RedesignColors.textSecondary, modifier = Modifier.size(22.dp))
             }
             Spacer(Modifier.height(14.dp))
         }
-        Text(title, style = redesignText(20.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking), textAlign = TextAlign.Center)
+        Text(title, style = redesignText(18.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking), textAlign = TextAlign.Center)
         if (message.isNotBlank()) {
             Text(
                 message,
                 style = redesignText(14.sp, color = RedesignColors.textSecondary, lineHeight = 21.sp),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
         val hasPrimary = actionLabel != null && onAction != null

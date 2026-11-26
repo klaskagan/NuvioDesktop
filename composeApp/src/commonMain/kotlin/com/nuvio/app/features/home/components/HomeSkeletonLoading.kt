@@ -25,6 +25,18 @@ import androidx.compose.ui.unit.dp
 import com.nuvio.app.isDesktop
 import com.nuvio.app.core.ui.SkeletonBlock
 import com.nuvio.app.core.ui.SkeletonPosterRow
+import com.nuvio.app.core.ui.SkeletonPoster
+import com.nuvio.app.core.ui.LocalNuvioShelfHeaderStyle
+import com.nuvio.app.core.ui.NuvioShelfHeaderStyle
+import com.nuvio.app.core.ui.NuvioShelfSectionHeader
+import com.nuvio.app.core.ui.NuvioTokens
+import com.nuvio.app.core.ui.NuvioViewAllPillSize
+import com.nuvio.app.core.ui.nuvio
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.nuvio.app.core.ui.desktopCatalogShelfPosterBaseWidthDp
 import com.nuvio.app.core.ui.landscapePosterHeightForWidth
 import com.nuvio.app.core.ui.landscapePosterWidth
@@ -38,6 +50,13 @@ fun HomeSkeletonHero(
     mobileBelowSectionHeightHint: Dp? = null,
     sectionPadding: Dp? = null,
 ) {
+    // Desktop board: the featured tile is a plain soft placeholder at the board's height (Home design
+    // "For you · loading"), so the board keeps its shape and the carousel crossfades in over it.
+    val boardHeight = LocalHomeHeroHeightCap.current
+    if (isDesktop && boardHeight != null) {
+        Box(modifier.fillMaxWidth().height(boardHeight).skeleton(RectangleShape).testTag("home_skeleton_featured"))
+        return
+    }
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
@@ -171,6 +190,21 @@ fun HomeSkeletonRow(
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val sectionPadding = horizontalPadding ?: homeSectionHorizontalPaddingForWidth(maxWidth.value)
+        if (isDesktop && LocalNuvioShelfHeaderStyle.current == NuvioShelfHeaderStyle.Editorial) {
+            HomeEditorialSkeletonRow(
+                sectionPadding = sectionPadding,
+                posterWidth = skeletonWidth,
+                posterHeight = skeletonHeight,
+                // Same rule and size as HomeCatalogRowSectionContent's lead card.
+                leadHeight = if (posterCardStyle.catalogLandscapeModeEnabled) null else {
+                    basePosterWidthDp.dp * (posterCardStyle.heightDp.toFloat() / posterCardStyle.widthDp.coerceAtLeast(1))
+                },
+                cornerRadius = posterCardStyle.cornerRadiusDp.dp,
+                showLabels = !posterCardStyle.hideLabelsEnabled,
+                showDetail = !posterCardStyle.catalogLandscapeModeEnabled,
+            )
+            return@BoxWithConstraints
+        }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(modifier = Modifier.padding(horizontal = sectionPadding).height(32.dp)) {
                 SkeletonBlock(
@@ -187,6 +221,65 @@ fun HomeSkeletonRow(
                 showLabels = !posterCardStyle.hideLabelsEnabled,
                 showDetail = !posterCardStyle.catalogLandscapeModeEnabled,
             )
+        }
+    }
+}
+
+/**
+ * Desktop Home row placeholder: the real Editorial shelf header (blank, invisible) with an eyebrow and
+ * title bar over it, then the lead card's 16:9 block and posters at their loaded sizes and gaps, so the
+ * row's content crossfades in without anything moving.
+ */
+@Composable
+private fun HomeEditorialSkeletonRow(
+    sectionPadding: Dp,
+    posterWidth: Dp,
+    posterHeight: Dp,
+    leadHeight: Dp?,
+    cornerRadius: Dp,
+    showLabels: Boolean,
+    showDetail: Boolean,
+) {
+    val tokens = MaterialTheme.nuvio
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("home_skeleton_row"),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap + NuvioTokens.Space.s2),
+    ) {
+        Box(Modifier.padding(horizontal = sectionPadding)) {
+            Box(Modifier.alpha(0f).clearAndSetSemantics { }) {
+                // Placeholder text, never shown: a blank eyebrow would be dropped (NBSP counts as blank).
+                NuvioShelfSectionHeader(title = "Row", eyebrow = "Row", viewAllPillSize = NuvioViewAllPillSize.Compact)
+            }
+            Column(Modifier.matchParentSize()) {
+                SkeletonBlock(modifier = Modifier.padding(top = 2.dp), width = 90.dp, height = 10.dp, cornerRadius = 5.dp)
+                Spacer(Modifier.weight(1f))
+                SkeletonBlock(modifier = Modifier.padding(bottom = 3.dp), width = 300.dp, height = 24.dp, cornerRadius = 8.dp)
+            }
+        }
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = sectionPadding),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            userScrollEnabled = false,
+        ) {
+            if (leadHeight != null) {
+                item {
+                    Box(
+                        Modifier.width(leadHeight * (16f / 9f)).height(leadHeight)
+                            .skeleton(RoundedCornerShape(14.dp)).testTag("home_skeleton_lead"),
+                    )
+                }
+            }
+            items(12) {
+                SkeletonPoster(
+                    modifier = Modifier.width(posterWidth).testTag("home_skeleton_poster"),
+                    aspectRatio = posterWidth / posterHeight,
+                    cornerRadius = cornerRadius,
+                    showLabels = showLabels,
+                    showDetail = showDetail,
+                    labelSpacing = 6.dp,
+                )
+            }
         }
     }
 }
