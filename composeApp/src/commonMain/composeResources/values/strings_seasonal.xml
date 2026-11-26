@@ -1,5 +1,6 @@
 <resources>
     <string name="seasonal_spotlight_label">Seasonal Spotlight</string>
+    <string name="seasonal_spotlight_until">Seasonal spotlight · until %1$s</string>
     <string name="seasonal_spotlight_setting">Show seasonal collections</string>
     <string name="seasonal_spotlight_setting_description">Automatically discover a new movie collection throughout the year.</string>
     <string name="seasonal_explore">Explore collection</string>
