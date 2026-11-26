@@ -86,7 +86,28 @@ Person Details opening with no transition). Apply these to every redesigned scre
   window toggle; it now grows the card through `LocalHomeHeroHeightCap`, and Esc collapses it
   (`TagHeroExpandUiTest`). It also uses Home's heights (`homeBoardHeroHeight`): starting at its old
   640 dp, expanding added only a few pixels and read as a glitch. A row's lead card plays its trailer in
-  place on hover under the poster hover-preview settings; ordinary posters keep their overlay card.
+  place on hover under the poster hover-preview settings. Ordinary posters have no popover: hover
+  lifts them with a white ring and shows an action strip at once (in the top corner on wide
+  cards, so the title stays readable); `HomePosterHoverPreview` hands the card a
+  `PosterHoverOverlay` to draw inside its artwork. Only something that moves the row waits for
+  the hover delay: the Inline expand style (`PosterInlineExpand`), which grids turn off because a
+  cell can't widen. ⓘ, Space or press-and-hold opens Quick look (`PosterQuickLook`, one host in
+  the shell; `LocalPosterPressAndHold`), and right-click keeps the poster menu. Quick look's
+  trailer uses the Details board's controls (mute and Fullscreen on a dark plate) and expands in
+  place, the same player continuing; Play trailer opens Quick look already expanded, and Esc or
+  Space step back one layer (expanded → Quick look → closed). Never the Details bottom sheet. A list of posters passes its items
+  (`quickLookRow` / `LocalPosterQuickLookRow`) so ← → can walk it, and any poster drawn outside
+  `HomePosterCard` (ranking rows) wraps itself in `HomePosterHoverPreview`. Their backdrops use
+  `HoverBackdrop`, which picks one image (the row's backdrop, else the details') and fades it in
+  once, never swapping it; their text prefers the row item's values so it is never rewritten.
+  Quick look never shifts while it loads: every late part (ratings, overview, the side column's
+  Next episode and Watch on, the Play label) has a fixed slot from the first frame with a
+  skeleton, the Play pill has a minimum width, and empty slots keep their size
+  (`quickLookContentDoesNotShiftWhileLoading`). A new poster card draws that overlay instead of building its own hover UI
+  (`PosterHoverStripTest`).
+- **Window key claims never take typing:** `MediaKeysHandler` claims (Space for Quick look, a
+  trailer's keys) are skipped while a text field marked `Modifier.typingField()` has focus. Mark
+  any field on a screen with hoverable posters or an in-page player (`TypingFieldMediaKeysTest`).
 - **The top-bar layout has one bar** (`DesktopMergedTopBar`): Home's tabs (For you, Movies, Shows,
   My lists) lead it in place of a Home item, the other destinations follow on the right, and one
   underline slides between all of them. It is the same bar on main tabs and detail pages, so a Home

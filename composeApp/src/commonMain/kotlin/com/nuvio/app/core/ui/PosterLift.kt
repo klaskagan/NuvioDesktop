@@ -28,6 +28,12 @@ import com.nuvio.app.isDesktop
 
 internal val LocalPosterClickAnchor = staticCompositionLocalOf<((PosterZoomAnchor) -> Unit)?> { null }
 
+/**
+ * Press-and-hold on a poster, when set: Home's hover wrapper sets it to open Quick look, and the
+ * poster's long-click action (its menu) then stays on right-click only.
+ */
+internal val LocalPosterPressAndHold = staticCompositionLocalOf<(() -> Unit)?> { null }
+
 private var nextPosterCardFocusId = 1L
 
 internal class PosterLiftSource(private val graphicsContext: GraphicsContext) : RememberObserver {
@@ -114,6 +120,7 @@ internal fun Modifier.posterCardClickable(
 ): Modifier {
     val source = liftSource ?: rememberPosterLiftSource(zoomImageUrl)
     val onPosterClickAnchor = LocalPosterClickAnchor.current
+    val pressAndHold = LocalPosterPressAndHold.current
     val controllerFocusId = remember(focusId, zoomImageUrl) {
         focusId ?: zoomImageUrl?.takeIf { it.isNotBlank() }?.let { "poster_${it.hashCode()}" }
             ?: "poster_card_${nextPosterCardFocusId++}"
@@ -176,7 +183,7 @@ internal fun Modifier.posterCardClickable(
             interactionSource = interactionSource,
             indication = if (!isDesktop && onPosterClickAnchor == null) LocalIndication.current else null,
             onClick = handleClick,
-            onLongClick = handleLongClick,
+            onLongClick = pressAndHold ?: handleLongClick,
         )
         .secondaryClick(handleLongClick)
 }

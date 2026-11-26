@@ -48,6 +48,8 @@ fun HomeCatalogRowSection(
 ) {
     val scope = rememberCoroutineScope()
     val calendar = section.calendarState
+    // Quick look's ← → walks this row.
+    androidx.compose.runtime.CompositionLocalProvider(LocalPosterQuickLookRow provides entries) {
     Column(modifier = modifier.fillMaxWidth()) {
     if (calendar != null && (calendar.problem != null || entries.isEmpty())) {
         if (calendar.loading && entries.isEmpty()) HomeSkeletonRow()
@@ -76,6 +78,7 @@ fun HomeCatalogRowSection(
             leadCard = leadCard,
             rankingLayout = if (rowStyle == HomeRowStyle.NumberedRanking) NumberedRankingLayout(maxWidth) else null,
         )
+    }
     }
     }
 }
@@ -141,21 +144,31 @@ private fun HomeCatalogRowSectionContent(
         if (rankingLayout != null && rankingFont != null) {
             val key = item.stableKey()
             NumberedRankingItem(ranks.getValue(key), rankingLayout, rankingFont) {
-                NuvioPosterCard(
-                    title = item.name,
-                    imageUrl = item.poster,
-                    fallbackImageUrl = item.rawPosterUrl,
-                    modifier = Modifier.width(rankingLayout.posterWidth),
-                    fillWidth = true,
-                    shape = NuvioPosterShape.Poster,
-                    artworkHeight = rankingLayout.posterHeight,
-                    artworkCornerRadius = rankingLayout.posterCorner,
-                    artworkFocusRing = rankingLayout.focusRing,
-                    showTitleBelow = false,
+                // The rank's lane has a fixed width, so the poster keeps the strip under Inline expand.
+                HomePosterHoverPreview(
+                    item = item,
                     isWatched = watched,
                     onClick = openItem,
                     onLongClick = openActions,
-                )
+                    allowInlineExpand = false,
+                ) { hoverModifier, hoverOverlay ->
+                    NuvioPosterCard(
+                        title = item.name,
+                        imageUrl = item.poster,
+                        fallbackImageUrl = item.rawPosterUrl,
+                        modifier = Modifier.width(rankingLayout.posterWidth).then(hoverModifier),
+                        fillWidth = true,
+                        shape = NuvioPosterShape.Poster,
+                        artworkHeight = rankingLayout.posterHeight,
+                        artworkCornerRadius = rankingLayout.posterCorner,
+                        artworkFocusRing = rankingLayout.focusRing,
+                        showTitleBelow = false,
+                        isWatched = watched,
+                        onClick = openItem,
+                        onLongClick = openActions,
+                        artworkOverlay = hoverOverlay,
+                    )
+                }
             }
         } else if (leadKey != null && item.stableKey() == leadKey) {
             HomeRowLeadCard(item = item, width = leadHeight * (16f / 9f), height = leadHeight, onClick = openItem, onLongClick = openActions)

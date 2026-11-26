@@ -190,7 +190,8 @@ internal fun ConfiguredFolderContent(
                         HomePosterCard(item = movie, modifier = Modifier.onSizeChanged {
                             if (mediaRowHeight == 0 || it.height < mediaRowHeight) mediaRowHeight = it.height
                         }, allowPortraitFallback = false, useLandscapeBackdropMode = true,
-                            isWatched = WatchingState.isPosterWatched(watchedKeys, movie), onClick = { onPosterClick(movie) })
+                            isWatched = WatchingState.isPosterWatched(watchedKeys, movie), onClick = { onPosterClick(movie) },
+                            allowInlineExpand = false, quickLookRow = selected?.items)
                 }
             }
             val empty = if (rows) sections.isEmpty() else selected?.items.isNullOrEmpty()

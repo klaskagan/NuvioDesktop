@@ -479,7 +479,9 @@ private fun TabbedGridContent(
                                     isWatched = isWatched,
                                     onClick = { onPosterClick(item) },
                                     onLongClick = null,
-                                ) { cardModifier ->
+                                    allowInlineExpand = false,
+                                    quickLookRow = selectedTab.items,
+                                ) { cardModifier, hoverOverlay ->
                                     NuvioPosterCard(
                                         title = item.name,
                                         imageUrl = item.poster,
@@ -490,6 +492,7 @@ private fun TabbedGridContent(
                                         detailLine = item.releaseInfo,
                                         isWatched = isWatched,
                                         onClick = { onPosterClick(item) },
+                                        artworkOverlay = hoverOverlay,
                                     )
                                 }
                             }

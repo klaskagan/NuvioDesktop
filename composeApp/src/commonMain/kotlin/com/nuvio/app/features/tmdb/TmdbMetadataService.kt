@@ -602,6 +602,35 @@ object TmdbMetadataService {
         return header
     }
 
+    private val streamingProvidersCache = mutableMapOf<String, List<String>>()
+    private val streamingProvidersMutex = Mutex()
+
+    /**
+     * The services that stream a title in [region] (subscription first, then free and with ads),
+     * by TMDB's display order. Empty when it streams nowhere there; null when TMDB can't say (no
+     * key, an id TMDB doesn't know, or a failed request), so callers can fall back.
+     */
+    internal suspend fun streamingProviders(id: String, type: String, region: String): List<String>? =
+        withContext(Dispatchers.Default) {
+            val mediaType = TmdbService.normalizeMediaType(type)
+            if (mediaType != "movie" && mediaType != "tv") return@withContext null
+            val tmdbId = TmdbService.ensureTmdbId(id, mediaType) ?: return@withContext null
+            val key = "$mediaType:$tmdbId:${region.uppercase()}"
+            streamingProvidersMutex.withLock { streamingProvidersCache[key] }?.let { return@withContext it }
+            val response = fetch<TmdbWatchProvidersResponse>(endpoint = "$mediaType/$tmdbId/watch/providers")
+                ?: return@withContext null
+            val country = response.results[region.uppercase()]
+            val names = country?.let { (it.flatrate + it.free + it.ads) }
+                .orEmpty()
+                .sortedBy { it.displayPriority }
+                .map { it.providerName }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .let(::primaryStreamingServices)
+            streamingProvidersMutex.withLock { streamingProvidersCache[key] = names }
+            names
+        }
+
     internal suspend fun watchRegions(): Map<String, String> =
         (fetch<TmdbWatchRegions>(endpoint = "watch/providers/regions", query = mapOf(
             "language" to normalizeTmdbLanguage(TmdbSettingsRepository.snapshot().language),
@@ -2291,6 +2320,41 @@ private data class TmdbNetworkDetailsResponse(
     val homepage: String? = null,
     @SerialName("logo_path") val logoPath: String? = null,
     @SerialName("origin_country") val originCountry: String? = null,
+)
+
+/**
+ * TMDB lists a service once per way to reach it ("Paramount Plus", "Paramount+ Amazon Channel",
+ * "Paramount Plus Apple TV Channel", "Netflix Standard with Ads"). Keep the services themselves:
+ * drop store channels and tiers of a service already listed, unless nothing else is left.
+ */
+internal fun primaryStreamingServices(names: List<String>): List<String> {
+    val direct = names.filter { !it.contains("Channel", ignoreCase = true) }.ifEmpty { names }
+    val kept = mutableListOf<String>()
+    direct.forEach { name ->
+        val key = name.lowercase().replace("+", " plus").replace(Regex("\\s+"), " ").trim()
+        val covered = kept.any { existing ->
+            val existingKey = existing.lowercase().replace("+", " plus").replace(Regex("\\s+"), " ").trim()
+            key.startsWith(existingKey) || existingKey.startsWith(key)
+        }
+        if (!covered) kept += name
+    }
+    return kept
+}
+
+@Serializable
+private data class TmdbWatchProvidersResponse(val results: Map<String, TmdbWatchProviderCountry> = emptyMap())
+
+@Serializable
+private data class TmdbWatchProviderCountry(
+    val flatrate: List<TmdbWatchProvider> = emptyList(),
+    val free: List<TmdbWatchProvider> = emptyList(),
+    val ads: List<TmdbWatchProvider> = emptyList(),
+)
+
+@Serializable
+private data class TmdbWatchProvider(
+    @SerialName("provider_name") val providerName: String = "",
+    @SerialName("display_priority") val displayPriority: Int = Int.MAX_VALUE,
 )
 
 @Serializable

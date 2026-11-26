@@ -302,6 +302,9 @@ internal fun BoardPlayButton(
             )
             .secondaryClick(onLongClick.takeIf { enabled })
             .padding(start = if (compact) 12.dp else 18.dp, end = if (compact) 16.dp else 24.dp),
+        // Centred when a caller gives the pill a minimum width (Quick look, so its label can change
+        // without moving the buttons beside it); a pill that hugs its label looks the same.
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(if (compact) 18.dp else 22.dp))

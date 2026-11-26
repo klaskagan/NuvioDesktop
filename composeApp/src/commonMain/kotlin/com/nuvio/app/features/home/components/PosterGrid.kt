@@ -63,6 +63,8 @@ internal fun PosterGridRow(
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
+    // Quick look's ← → walks this grid row.
+    androidx.compose.runtime.CompositionLocalProvider(LocalPosterQuickLookRow provides items) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -86,6 +88,7 @@ internal fun PosterGridRow(
         repeat(columns - items.size) {
             Spacer(modifier = Modifier.weight(1f))
         }
+    }
     }
 }
 
@@ -143,12 +146,13 @@ private fun PosterGridTile(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier,
-    ) {
+        allowInlineExpand = false,
+    ) { hoverModifier, hoverOverlay ->
         Column(
             modifier = Modifier
                 .desktopPosterHoverScale()
                 .fillMaxWidth()
-                .then(it),
+                .then(hoverModifier),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Box(
@@ -200,6 +204,7 @@ private fun PosterGridTile(
                     }
                 }
                 NuvioPosterWatchedOverlay(isWatched = isWatched)
+                hoverOverlay?.invoke(this, RoundedCornerShape(cornerRadiusDp.dp))
             }
             if (!hideLabels) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

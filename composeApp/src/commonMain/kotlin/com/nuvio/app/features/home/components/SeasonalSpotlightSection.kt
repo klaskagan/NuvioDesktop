@@ -132,6 +132,7 @@ internal fun SeasonalSpotlightSection(
                         allowPortraitFallback = false,
                         alwaysShowLandscapeTitle = true,
                         showTitleBelow = false,
+                        quickLookRow = section.items,
                     )
                 }
                 if (listState.canScrollForward) {

@@ -196,6 +196,11 @@ It applies even when the request only says "match the design".
   - Capture only your window with `screencapture -l<window id>`.
   - Hover, right-click and open only. Never Play/Resume, Remove, Mark watched, Add to library or a row style pick, which all save.
   - Close layers with Esc; the old Row style dialog needs a click outside.
+  - If hover never registers in one fixed screen area (clicks still work there), another app's
+    window is over it: computer-use screenshots hide other apps, and the Claude app's own floating
+    panel (top right, about 520 × 720 pt) caused a false "Home hover dead zone" (26 Nov). List the
+    on-screen windows (`CGWindowListCopyWindowInfo` from a short `swift` script) before debugging
+    the app, and test hover outside that area.
 - **Tests:** `HomeBoardResumeTileTest`, `NumberedRankingShelfTest`, `SeasonalSpotlightSectionTest`, `LandscapeMediaCardTest`, `MainAppTabNavigationTest`, `SeasonalCollectionNavigationTest`, `PosterZoomNativeReturnTest` (for when the zoom overlay is replaced).
 - **Branch:** Home redesign work is on a worktree cut from `nuvio-redesign` and merges back there, never into develop.
 
@@ -317,7 +322,10 @@ windows are distinguishable. `pkill -f "bin/java.*MainKt"` stops every agent's
 instance: when other tasks are running, stop only your own PID.
 
 Use `./gradlew :composeApp:desktopTest --tests '<affected test class>'` for focused
-JVM tests. See the repository's build scripts and `composeApp/build.gradle.kts`
+JVM tests. Run Compose UI test classes one per Gradle invocation: classes that wrap
+content in `AppEnvironment` share one JVM, and the second one fails in
+`SingletonImageLoader.setSafe` ("singleton image loader has already been created"),
+which is not a real failure (seen with `LandscapeMediaCardTest` + `NumberedRankingShelfTest`). See the repository's build scripts and `composeApp/build.gradle.kts`
 for the current JDK and packaging requirements. After implementation, launch the
 actual MainKt application with `./gradlew :composeApp:run` and leave its development
 window open for user review before handoff. Tests, screenshots and probe windows

@@ -1632,6 +1632,12 @@ internal fun MainAppContent(
                     )
                 }
 
+                // Home's poster Quick look and its strip's trailer, drawn above navigation.
+                com.nuvio.app.features.home.components.PosterQuickLookHost(
+                    onPlay = onPlay,
+                    openMeta = { item -> navController.navigate(DetailRoute(type = item.type, id = item.id, title = item.name)) },
+                )
+
                 PlatformEscapeShortcut {
                     if (AppKeyboardShortcuts.overlayEscape?.invoke() == true) return@PlatformEscapeShortcut
                     val handledBySearch = currentRoute is TabsRoute && selectedTab == AppScreenTab.Search &&

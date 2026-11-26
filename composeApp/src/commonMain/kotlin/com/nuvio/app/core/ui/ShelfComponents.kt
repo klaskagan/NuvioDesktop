@@ -291,6 +291,8 @@ fun NuvioPosterCard(
     artworkFocusRing: Dp? = null,
     circularArtwork: Boolean = false,
     bottomLeftDetail: String? = null,
+    /** Drawn over the artwork, last (Home's hover ring and action strip); gets the artwork's shape. */
+    artworkOverlay: (@Composable androidx.compose.foundation.layout.BoxScope.(androidx.compose.ui.graphics.Shape) -> Unit)? = null,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
     val tokens = MaterialTheme.nuvio
@@ -454,6 +456,7 @@ fun NuvioPosterCard(
                     )
                 }
                 NuvioPosterWatchedOverlay(isWatched = isWatched)
+                artworkOverlay?.invoke(this, cardShape)
             }
         }
         if (shouldShowTitleBelow) {

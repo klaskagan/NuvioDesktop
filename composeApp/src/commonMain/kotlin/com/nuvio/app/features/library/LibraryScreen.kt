@@ -1,5 +1,7 @@
 package com.nuvio.app.features.library
 
+import com.nuvio.app.typingField
+
 import com.nuvio.app.features.home.PosterShape
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -854,7 +856,7 @@ private fun CloudLibrarySearchField(
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().typingField(),
         singleLine = true,
         shape = RoundedCornerShape(12.dp),
         placeholder = { Text(stringResource(Res.string.cloud_library_search_label)) },

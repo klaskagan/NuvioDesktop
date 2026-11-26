@@ -30,6 +30,8 @@ import com.nuvio.app.core.ui.MinHoverPreviewOpenDelayMillis
 import com.nuvio.app.core.ui.MinHoverPreviewTrailerStartSeconds
 import com.nuvio.app.core.ui.PosterCardStyleRepository
 import com.nuvio.app.core.ui.PosterCardStyleUiState
+import com.nuvio.app.core.ui.PosterHoverStyle
+import com.nuvio.app.core.ui.Chip
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.settings_hover_preview_delay
 import nuvio.composeapp.generated.resources.settings_hover_preview_delay_description
@@ -45,6 +47,12 @@ import nuvio.composeapp.generated.resources.settings_hover_preview_trailer_sound
 import nuvio.composeapp.generated.resources.settings_hover_preview_trailer_start_time
 import nuvio.composeapp.generated.resources.settings_hover_preview_trailer_start_time_description
 import nuvio.composeapp.generated.resources.settings_hover_preview_trailer_start_time_value
+import nuvio.composeapp.generated.resources.settings_hover_style
+import nuvio.composeapp.generated.resources.settings_hover_style_actions
+import nuvio.composeapp.generated.resources.settings_hover_style_actions_footer
+import nuvio.composeapp.generated.resources.settings_hover_style_description
+import nuvio.composeapp.generated.resources.settings_hover_style_inline
+import nuvio.composeapp.generated.resources.settings_hover_style_inline_footer
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 
@@ -58,6 +66,27 @@ internal fun LazyListScope.hoverPreviewSettingsContent(
             isTablet = isTablet,
         ) {
             SettingsGroup(isTablet = isTablet) {
+                SettingsChipRow(
+                    title = stringResource(Res.string.settings_hover_style),
+                    description = stringResource(Res.string.settings_hover_style_description),
+                    isTablet = isTablet,
+                    footer = stringResource(
+                        if (uiState.hoverStyle == PosterHoverStyle.InlineExpand) Res.string.settings_hover_style_inline_footer
+                        else Res.string.settings_hover_style_actions_footer,
+                    ),
+                ) {
+                    PosterHoverStyle.entries.forEach { style ->
+                        Chip(
+                            label = stringResource(
+                                if (style == PosterHoverStyle.InlineExpand) Res.string.settings_hover_style_inline
+                                else Res.string.settings_hover_style_actions,
+                            ),
+                            selected = uiState.hoverStyle == style,
+                            onClick = { PosterCardStyleRepository.setHoverStyle(style) },
+                        )
+                    }
+                }
+                SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
                     title = stringResource(Res.string.settings_hover_preview_enabled),
                     description = stringResource(Res.string.settings_hover_preview_enabled_description),
@@ -66,9 +95,10 @@ internal fun LazyListScope.hoverPreviewSettingsContent(
                     onCheckedChange = PosterCardStyleRepository::setHoverPreviewEnabled,
                 )
                 SettingsGroupDivider(isTablet = isTablet)
+                // The delay only paces Inline expand: the action strip shows at once.
                 HoverPreviewDelaySlider(
                     isTablet = isTablet,
-                    enabled = uiState.hoverPreviewEnabled,
+                    enabled = uiState.hoverPreviewEnabled && uiState.hoverStyle == PosterHoverStyle.InlineExpand,
                     delayMillis = uiState.hoverPreviewOpenDelayMillis,
                 )
             }

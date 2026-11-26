@@ -21,6 +21,15 @@ internal const val MinHoverPreviewTrailerStartSeconds = 0
 internal const val MaxHoverPreviewTrailerStartSeconds = 5
 internal const val HoverPreviewTrailerStartStepSeconds = 1
 
+/**
+ * What hovering a desktop poster does (Home design, "Poster hover"): the ring and action strip
+ * at once, with Quick look on ⓘ / Space, or after the hover delay widening in place into a card.
+ */
+enum class PosterHoverStyle {
+    ActionsQuickLook,
+    InlineExpand,
+}
+
 /** How animated GIF / WebP posters and episode thumbnails play on desktop. */
 enum class AnimatedArtworkMode {
     Always,
@@ -45,6 +54,7 @@ private data class StoredPosterCardStylePreferences(
     val hideLabelsEnabled: Boolean = false,
     val hoverPreviewEnabled: Boolean = true,
     val hoverPreviewOpenDelayMillis: Int = DefaultHoverPreviewOpenDelayMillis,
+    val hoverStyle: String = PosterHoverStyle.ActionsQuickLook.name,
     val hoverPreviewTrailerEnabled: Boolean = false,
     val hoverPreviewTrailerSoundEnabled: Boolean = false,
     val hoverPreviewTrailerStartSeconds: Int = DefaultHoverPreviewTrailerStartSeconds,
@@ -62,6 +72,7 @@ data class PosterCardStyleUiState(
     val hideLabelsEnabled: Boolean = false,
     val hoverPreviewEnabled: Boolean = true,
     val hoverPreviewOpenDelayMillis: Int = DefaultHoverPreviewOpenDelayMillis,
+    val hoverStyle: PosterHoverStyle = PosterHoverStyle.ActionsQuickLook,
     val hoverPreviewTrailerEnabled: Boolean = false,
     val hoverPreviewTrailerSoundEnabled: Boolean = false,
     val hoverPreviewTrailerStartSeconds: Int = DefaultHoverPreviewTrailerStartSeconds,
@@ -156,6 +167,13 @@ object PosterCardStyleRepository {
         persist()
     }
 
+    fun setHoverStyle(style: PosterHoverStyle) {
+        ensureLoaded()
+        if (_uiState.value.hoverStyle == style) return
+        _uiState.value = _uiState.value.copy(hoverStyle = style)
+        persist()
+    }
+
     fun setHoverPreviewTrailerEnabled(enabled: Boolean) {
         ensureLoaded()
         if (_uiState.value.hoverPreviewTrailerEnabled == enabled) return
@@ -199,6 +217,7 @@ object PosterCardStyleRepository {
         val defaults = PosterCardStyleUiState(
             hoverPreviewEnabled = _uiState.value.hoverPreviewEnabled,
             hoverPreviewOpenDelayMillis = _uiState.value.hoverPreviewOpenDelayMillis,
+            hoverStyle = _uiState.value.hoverStyle,
             hoverPreviewTrailerEnabled = _uiState.value.hoverPreviewTrailerEnabled,
             hoverPreviewTrailerSoundEnabled = _uiState.value.hoverPreviewTrailerSoundEnabled,
             hoverPreviewTrailerStartSeconds = _uiState.value.hoverPreviewTrailerStartSeconds,
@@ -238,6 +257,8 @@ object PosterCardStyleRepository {
                 hoverPreviewOpenDelayMillis = normalizeHoverPreviewOpenDelayMillis(
                     stored.hoverPreviewOpenDelayMillis,
                 ),
+                hoverStyle = PosterHoverStyle.entries.firstOrNull { it.name == stored.hoverStyle }
+                    ?: PosterHoverStyle.ActionsQuickLook,
                 hoverPreviewTrailerEnabled = stored.hoverPreviewTrailerEnabled,
                 hoverPreviewTrailerSoundEnabled = stored.hoverPreviewTrailerSoundEnabled,
                 hoverPreviewTrailerStartSeconds = normalizeHoverPreviewTrailerStartSeconds(
@@ -266,6 +287,7 @@ object PosterCardStyleRepository {
                     hideLabelsEnabled = _uiState.value.hideLabelsEnabled,
                     hoverPreviewEnabled = _uiState.value.hoverPreviewEnabled,
                     hoverPreviewOpenDelayMillis = _uiState.value.hoverPreviewOpenDelayMillis,
+                    hoverStyle = _uiState.value.hoverStyle.name,
                     hoverPreviewTrailerEnabled = _uiState.value.hoverPreviewTrailerEnabled,
                     hoverPreviewTrailerSoundEnabled = _uiState.value.hoverPreviewTrailerSoundEnabled,
                     hoverPreviewTrailerStartSeconds = _uiState.value.hoverPreviewTrailerStartSeconds,

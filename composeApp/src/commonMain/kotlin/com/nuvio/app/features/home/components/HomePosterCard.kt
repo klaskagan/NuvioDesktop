@@ -31,6 +31,10 @@ fun HomePosterCard(
     rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
     basePosterWidthDp: Int? = null,
     placeholderTitle: String? = null,
+    /** False in grids, whose cells can't widen; true by default only for a row's fixed-width cards. */
+    allowInlineExpand: Boolean = !fillWidth,
+    /** The grid's items, for Quick look's ← → (a row provides its own). */
+    quickLookRow: List<MetaPreview>? = null,
 ) {
     val providerEvent = item.id.startsWith("go3:programme:")
     val calendar = item.calendarCard
@@ -69,7 +73,9 @@ fun HomePosterCard(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier,
-    ) { hoverModifier ->
+        allowInlineExpand = allowInlineExpand,
+        quickLookRow = quickLookRow,
+    ) { hoverModifier, hoverOverlay ->
         NuvioPosterCard(
             title = item.name,
             imageUrl = imageUrl,
@@ -101,6 +107,7 @@ fun HomePosterCard(
             isWatched = isWatched,
             onClick = onClick,
             onLongClick = onLongClick,
+            artworkOverlay = hoverOverlay,
         )
     }
 }

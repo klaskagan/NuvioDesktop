@@ -400,6 +400,8 @@ internal fun CatalogContent(
                                 isWatched = isWatched,
                                 onClick = onPosterClick?.let { { it(item) } },
                                 onLongClick = onPosterLongClick?.let { { it(item) } },
+                                allowInlineExpand = false,
+                                quickLookRow = uiState.items,
                             )
                         } else if (item.posterShape == PosterShape.Landscape || posterCardStyle.catalogLandscapeModeEnabled) {
                             HomePosterCard(item = item, fillWidth = true,

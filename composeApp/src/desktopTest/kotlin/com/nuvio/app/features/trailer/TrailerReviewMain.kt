@@ -50,8 +50,11 @@ fun main() {
                     if (page == "settings") LazyColumn(Modifier.weight(1f)) { metaScreenSettingsContent(isTablet = true, uiState = settings) }
                     else if (page == "details") MetaDetailsScreen("movie", meta.id, onBack = {}, modifier = Modifier.weight(1f))
                     else Box(Modifier.fillMaxSize().padding(100.dp)) {
-                        HomePosterHoverPreview(item = MetaPreview(meta.id, "movie", "Hope"), isWatched = false, onClick = {}, onLongClick = null) { modifier ->
-                            Box(modifier.width(240.dp).height(160.dp).background(Color.DarkGray)) { Text("Hover Hope", color = Color.White) }
+                        HomePosterHoverPreview(item = MetaPreview(meta.id, "movie", "Hope"), isWatched = false, onClick = {}, onLongClick = null) { modifier, overlay ->
+                            Box(modifier.width(240.dp).height(160.dp).background(Color.DarkGray)) {
+                                Text("Hover Hope", color = Color.White)
+                                overlay?.invoke(this, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                            }
                         }
                     }
                 }

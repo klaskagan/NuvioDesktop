@@ -3,7 +3,10 @@ package com.nuvio.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -62,7 +65,16 @@ object AppKeyboardShortcuts {
      * An unmodified key press from the desktop key dispatcher, which calls this before arrows move
      * focus; true when an open player layer took it.
      */
-    fun handleMediaKey(key: Key): Boolean = mediaKeys.lastOrNull()?.invoke(key) == true
+    fun handleMediaKey(key: Key): Boolean =
+        typingFields == 0 && mediaKeys.lastOrNull()?.invoke(key) == true
+
+    // Text fields that have focus. While one does, Space and the letters are typing, so no layer
+    // may claim them (Space over a hovered poster opened Quick look from Library's search field).
+    private var typingFields = 0
+
+    internal fun typingFieldFocused(focused: Boolean) {
+        typingFields = (typingFields + if (focused) 1 else -1).coerceAtLeast(0)
+    }
 
     private val focusSearch = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val focusSearchRequests: SharedFlow<Unit> = focusSearch.asSharedFlow()
@@ -101,5 +113,29 @@ internal fun MediaKeysHandler(enabled: Boolean = true, onKey: (Key) -> Boolean) 
         val handler: (Key) -> Boolean = { current(it) }
         AppKeyboardShortcuts.claimMediaKeys(handler)
         onDispose { AppKeyboardShortcuts.releaseMediaKeys(handler) }
+    }
+}
+
+/**
+ * Marks a text field so window-level key claims ([MediaKeysHandler]) leave its keys alone while it
+ * has focus. Use it on any field shown on a screen with hoverable posters or an in-page player.
+ */
+@Composable
+internal fun Modifier.typingField(): Modifier {
+    val focused = remember { booleanArrayOf(false) }
+    // A field removed while focused gets no focus change; release its claim when it leaves.
+    DisposableEffect(Unit) {
+        onDispose {
+            if (focused[0]) {
+                focused[0] = false
+                AppKeyboardShortcuts.typingFieldFocused(false)
+            }
+        }
+    }
+    return onFocusChanged { state ->
+        if (state.isFocused != focused[0]) {
+            focused[0] = state.isFocused
+            AppKeyboardShortcuts.typingFieldFocused(state.isFocused)
+        }
     }
 }
