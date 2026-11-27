@@ -52,6 +52,8 @@ data class HomeCatalogSettingsUiState(
     val hideUnreleasedContent: Boolean = false,
     val items: List<HomeCatalogSettingsItem> = emptyList(),
     val rowStyles: Map<String, HomeRowStyle> = emptyMap(),
+    /** A row's own line under its name (Editorial band), by row key. */
+    val rowDescriptions: Map<String, String> = emptyMap(),
     /** Hero catalogs picked for a Home tab, by [HomeTab.heroSourceId]. Empty means automatic. */
     val heroTabSources: Map<String, Set<String>> = emptyMap(),
 ) {
@@ -106,6 +108,7 @@ private data class StoredHomeCatalogSettingsPayload(
     val items: List<StoredHomeCatalogPreference> = emptyList(),
     val appliedCollectionOrder: List<String>? = null,
     val rowStyles: Map<String, String> = emptyMap(),
+    val rowDescriptions: Map<String, String> = emptyMap(),
     val heroTabSources: Map<String, List<String>> = emptyMap(),
 )
 
@@ -147,6 +150,7 @@ object HomeCatalogSettingsRepository {
             preferencesRef.value = value
         }
     private var rowStyles: Map<String, String> = emptyMap()
+    private var rowDescriptions: Map<String, String> = emptyMap()
     private var heroTabSources: Map<String, List<String>> = emptyMap()
     private var appliedCollectionOrder: List<String>? = null
     private var seasonalCollectionsEnabled = true
@@ -164,6 +168,7 @@ object HomeCatalogSettingsRepository {
 
     private fun resetState() {
         rowStyles = emptyMap()
+        rowDescriptions = emptyMap()
         heroTabSources = emptyMap()
         hasLoaded = false
         loadedProfileId = null
@@ -344,9 +349,20 @@ object HomeCatalogSettingsRepository {
         publish()
     }
 
+    /** The row's own line (Editorial band). Blank clears it. */
+    fun setRowDescription(key: String, description: String) {
+        ensureLoaded()
+        val text = description.trim()
+        if ((rowDescriptions[key] ?: "") == text) return
+        rowDescriptions = if (text.isEmpty()) rowDescriptions - key else rowDescriptions + (key to text)
+        persist()
+        publish()
+    }
+
     fun resetToDefaults() {
         ensureLoaded()
         rowStyles = emptyMap()
+        rowDescriptions = emptyMap()
         heroTabSources = emptyMap()
         appliedCollectionOrder = null
         seasonalCollectionsEnabled = true
@@ -463,6 +479,7 @@ object HomeCatalogSettingsRepository {
         if (parsedPayload != null) {
             lastPersistedPayload = payload
             rowStyles = parsedPayload.rowStyles
+            rowDescriptions = parsedPayload.rowDescriptions
             heroTabSources = parsedPayload.heroTabSources
             appliedCollectionOrder = parsedPayload.appliedCollectionOrder
             seasonalCollectionsEnabled = parsedPayload.seasonalCollectionsEnabled
@@ -589,6 +606,7 @@ object HomeCatalogSettingsRepository {
             hideUnreleasedContent = hideUnreleasedContent,
             items = items,
             rowStyles = rowStyles.mapValues { HomeRowStyle.fromId(it.value) },
+            rowDescriptions = rowDescriptions,
             heroTabSources = heroTabSources.mapValues { it.value.toSet() },
         )
         if (_uiState.value != nextState) _uiState.value = nextState
@@ -604,6 +622,7 @@ object HomeCatalogSettingsRepository {
                 items = preferences.values.sortedBy { it.order },
                 appliedCollectionOrder = appliedCollectionOrder,
                 rowStyles = rowStyles,
+                rowDescriptions = rowDescriptions,
                 heroTabSources = heroTabSources,
             ),
         )

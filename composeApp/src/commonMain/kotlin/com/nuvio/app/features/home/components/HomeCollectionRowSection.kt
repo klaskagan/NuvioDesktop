@@ -52,6 +52,10 @@ import com.nuvio.app.features.collection.Collection
 import com.nuvio.app.features.collection.CollectionFolder
 import com.nuvio.app.features.collection.usesConfiguredArtwork
 import com.nuvio.app.features.home.PosterShape
+import com.nuvio.app.features.home.HomeCatalogSettingsRepository
+import com.nuvio.app.features.home.collectionRowStyleSupplies
+import com.nuvio.app.isDesktop
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun HomeCollectionRowSection(
@@ -64,6 +68,38 @@ fun HomeCollectionRowSection(
     rowStyle: HomeRowStyle = HomeRowStyle.Automatic,
 ) {
     if (collection.folders.isEmpty()) return
+
+    if (rowStyleKey != null) {
+        val supplies = remember(collection.folders) { collectionRowStyleSupplies(collection.folders) }
+        PublishRowSupplies(rowStyleKey, supplies)
+    }
+    // Compact list, Mosaic, Logo wall and Editorial band have their own layouts (desktop only).
+    val styled = rowStyleKey != null && rowStyle.hasOwnLayout
+    if (styled && !isDesktop) {
+        HomeCollectionRowSection(collection, modifier, sectionPadding, animateGifs, onFolderClick, rowStyleKey, rowStyle.plainFallback)
+        return
+    }
+    if (styled && rowStyleKey != null) {
+        val settings by HomeCatalogSettingsRepository.uiState.collectAsStateWithLifecycle()
+        val description = rowDescription(rowStyleKey, settings.rowDescriptions[rowStyleKey])
+        var pickerOpen by remember(rowStyleKey) { mutableStateOf(false) }
+        BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+            HomeStyledCollectionRow(
+                title = collection.title,
+                folders = collection.folders,
+                rowStyle = rowStyle,
+                description = description,
+                sectionPadding = sectionPadding ?: homeSectionHorizontalPaddingForWidth(maxWidth.value),
+                keyOf = { folder -> "collection_${collection.id}_folder_${folder.id}" },
+                onFolderClick = onFolderClick?.let { open -> { folder -> open(collection.id, folder.id) } },
+                onFolderLongClick = { pickerOpen = true },
+            )
+        }
+        if (pickerOpen) {
+            HomeRowStylePicker(rowStyleKey, onDismiss = { pickerOpen = false }, title = collection.title)
+        }
+        return
+    }
 
     if (sectionPadding != null && rowStyleKey == null && rowStyle == HomeRowStyle.Automatic) {
         HomeCollectionRowSectionContent(

@@ -40,10 +40,14 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import nuvio.composeapp.generated.resources.home_row_style
+import nuvio.composeapp.generated.resources.home_row_description
+import nuvio.composeapp.generated.resources.home_row_description_placeholder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -588,6 +592,28 @@ internal fun HomescreenCatalogRow(
                     ),
                 )
                 if (showRowStyle) {
+                    // The row's own line, shown by Editorial band (also written in the Row style picker).
+                    val settings by com.nuvio.app.features.home.HomeCatalogSettingsRepository.uiState
+                        .collectAsStateWithLifecycle()
+                    var description by remember(item.key) { mutableStateOf(settings.rowDescriptions[item.key].orEmpty()) }
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = {
+                            description = it.replace('\n', ' ')
+                            com.nuvio.app.features.home.HomeCatalogSettingsRepository.setRowDescription(item.key, description)
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("settings_row_description"),
+                        singleLine = true,
+                        label = { Text(stringResource(Res.string.home_row_description)) },
+                        placeholder = { Text(stringResource(Res.string.home_row_description_placeholder)) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = tokens.colors.borderFocus.copy(alpha = tokens.opacity.strong),
+                            unfocusedBorderColor = tokens.colors.borderDefault.copy(alpha = tokens.opacity.medium),
+                            focusedContainerColor = tokens.colors.surface,
+                            unfocusedContainerColor = tokens.colors.surface,
+                            disabledContainerColor = tokens.colors.surface,
+                        ),
+                    )
                     androidx.compose.material3.TextButton(
                         onClick = { rowStylePickerOpen = true },
                         modifier = Modifier.onGloballyPositioned { rowStyleButtonBounds = it.boundsInRoot() },

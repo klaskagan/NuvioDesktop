@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
@@ -80,6 +82,7 @@ import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.watchprogress.ContinueWatchingItem
 import com.nuvio.app.features.watchprogress.continueWatchingItemKey
 import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.home_row_view_details
 import nuvio.composeapp.generated.resources.action_resume
 import nuvio.composeapp.generated.resources.compose_settings_page_continue_watching
 import nuvio.composeapp.generated.resources.cw_action_go_to_details
@@ -369,6 +372,8 @@ internal fun HomeRowLeadCard(
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    /** "Row styles · Spotlight": 600 × 338 with the logo, meta, overview, View Details and ▶ sound. */
+    spotlight: Boolean = false,
 ) {
     val shape = RoundedCornerShape(14.dp)
     val interaction = remember { MutableInteractionSource() }
@@ -376,7 +381,8 @@ internal fun HomeRowLeadCard(
     val border by animateColorAsState(if (hovered) RedesignColors.hairlineFocused else RedesignColors.hairline, tween(180), label = "lead_border")
     Box(
         modifier.width(width).height(height).clip(shape).background(RedesignColors.fill).border(1.dp, border, shape)
-            .boardClickable(interaction, onClick, onLongClick, item.banner ?: item.landscapePoster ?: item.poster, 14.dp).testTag("home_row_lead"),
+            .boardClickable(interaction, onClick, onLongClick, item.banner ?: item.landscapePoster ?: item.poster, 14.dp)
+            .testTag(if (spotlight) "home_row_spotlight" else "home_row_lead"),
     ) {
         val supplied = item.banner ?: item.landscapePoster
         val lookup = rememberLandscapeMediaArtwork(item.id, item.type, enabled = supplied.isNullOrBlank() && isTitleArtworkMedia(item.type))
@@ -409,12 +415,18 @@ internal fun HomeRowLeadCard(
             delay(posterCardStyle.hoverPreviewOpenDelayMillis.toLong() + LEAD_TRAILER_DEBOUNCE_MILLIS)
             trailer = resolveHomePosterHoverTrailerPlaybackSource(item)
         }
+        // Spotlight's ▶ corner turns the trailer's sound on for this card.
+        var soundOn by remember(item.type, item.id) { mutableStateOf(posterCardStyle.hoverPreviewTrailerSoundEnabled) }
         HomePosterHoverTrailer(
             playbackSource = trailer,
-            soundEnabled = posterCardStyle.hoverPreviewTrailerSoundEnabled,
+            soundEnabled = if (spotlight) soundOn else posterCardStyle.hoverPreviewTrailerSoundEnabled,
             startPositionSeconds = posterCardStyle.hoverPreviewTrailerStartSeconds,
             modifier = Modifier.fillMaxSize(),
         )
+        if (spotlight) {
+            SpotlightCopy(item, trailerPlaying = trailer != null, soundOn = soundOn, onSound = { soundOn = !soundOn }, onViewDetails = onClick)
+            return@Box
+        }
         Box(Modifier.fillMaxSize().background(tileScrim))
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(14.dp)) {
             val meta = listOfNotNull(
@@ -447,6 +459,74 @@ internal fun HomeRowLeadCard(
                     modifier = Modifier.padding(top = 2.dp).graphicsLayer { alpha = plotAlpha },
                 )
             }
+        }
+    }
+}
+
+private val spotlightScrimSide = Brush.horizontalGradient(0f to Color(0xD9060607), 0.7f to Color(0x33060607))
+private val spotlightScrimFoot = Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color(0x99060607))
+
+/** The copy over a Spotlight card: logo (or title), meta, two lines of plot and View Details. */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.SpotlightCopy(
+    item: MetaPreview,
+    trailerPlaying: Boolean,
+    soundOn: Boolean,
+    onSound: () -> Unit,
+    onViewDetails: (() -> Unit)?,
+) {
+    Box(Modifier.fillMaxSize().background(spotlightScrimSide))
+    Box(Modifier.fillMaxSize().background(spotlightScrimFoot))
+    com.nuvio.app.core.ui.RedesignIconButton(
+        contentDescription = item.name,
+        onClick = onSound,
+        vector = if (trailerPlaying && soundOn) androidx.compose.material.icons.Icons.AutoMirrored.Rounded.VolumeUp
+            else androidx.compose.material.icons.Icons.Rounded.PlayArrow,
+        size = 36.dp,
+        modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).testTag("home_row_spotlight_sound"),
+    )
+    Column(Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 20.dp).width(360.dp)) {
+        if (!item.logo.isNullOrBlank()) {
+            NuvioAsyncImage(
+                model = item.logo,
+                contentDescription = item.name,
+                modifier = Modifier.padding(bottom = 10.dp).width(220.dp).height(70.dp),
+                alignment = Alignment.BottomStart,
+                contentScale = ContentScale.Fit,
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White, androidx.compose.ui.graphics.BlendMode.SrcIn),
+            )
+        } else {
+            Text(
+                item.name,
+                style = redesignText(28.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        Text(
+            titleMetaLine(item, withGenre = true),
+            style = redesignText(13.5.sp, FontWeight.SemiBold, Color(0xFFF1F2F4)),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        item.description?.takeIf { it.isNotBlank() }?.let { plot ->
+            Text(
+                plot,
+                style = redesignText(13.5.sp, color = Color(0xFFE3E5E8), lineHeight = 19.5.sp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        if (onViewDetails != null) {
+            Spacer(Modifier.height(14.dp))
+            com.nuvio.app.core.ui.RedesignPillButton(
+                label = org.jetbrains.compose.resources.stringResource(Res.string.home_row_view_details),
+                onClick = onViewDetails,
+                primary = true,
+                trailing = androidx.compose.material.icons.Icons.AutoMirrored.Rounded.ArrowForward,
+            )
         }
     }
 }

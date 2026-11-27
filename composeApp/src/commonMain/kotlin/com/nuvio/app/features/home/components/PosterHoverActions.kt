@@ -103,7 +103,9 @@ internal fun WithPosterLibraryToggle(
         LibraryRepository.ensureLoaded()
         LibraryRepository.uiState
     }.collectAsStateWithLifecycle()
-    val isSaved = remember(library, item.id, item.type) { LibraryRepository.isSaved(item.id, item.type) }
+    // The button shows what it toggles: the default list (Trakt's watchlist), not "in any list".
+    // With isSaved a title in another Trakt list kept its ✓ whatever the button did.
+    val isSaved = remember(library, item.id, item.type) { LibraryRepository.isSavedByDefault(item.id, item.type) }
     var pending by remember(item.type, item.id) { mutableStateOf<PendingTrackingMembershipRemoval?>(null) }
     val scope = rememberCoroutineScope()
     val failedMessage = stringResource(Res.string.tracking_lists_update_failed)
@@ -170,6 +172,10 @@ internal fun BoxScope.PosterActionStrip(
     val ring by animateFloatAsState(if (ringVisible) 1f else 0f, tween(RingFadeMillis), label = "poster_ring")
     BoxWithConstraints(Modifier.matchParentSize()) {
         val wide = maxWidth > maxHeight
+        // Buttons shrink to fit small cards (Mosaic's 95 dp posters, Compact list thumbs); below
+        // 18 dp they would be unusable, so such a card keeps only the ring.
+        val count = if (onPlayTrailer != null) 4 else 3
+        fun fit(base: Dp, gap: Dp, inset: Dp): Dp = minOf(base, (maxWidth - inset * 2 - gap * (count - 1)) / count)
         val buttons: @Composable (Dp, Dp) -> Unit = { size, gap ->
             Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                 if (onPlayTrailer != null) {
@@ -188,16 +194,19 @@ internal fun BoxScope.PosterActionStrip(
                 StripButton(Icons.Outlined.Info, stringResource(Res.string.home_quick_look), size, onQuickLook, "poster_strip_quick_look")
             }
         }
-        if (wide) {
+        val wideSize = fit(28.dp, 5.dp, 8.dp)
+        val tallGap = if (maxWidth < 140.dp) 3.dp else 6.dp
+        val tallSize = fit(30.dp, tallGap, 4.dp)
+        if (wide && wideSize >= MinStripButton) {
             AnimatedVisibility(
                 visible = stripVisible,
                 modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).testTag("poster_action_strip"),
                 enter = fadeIn(tween(StripFadeMillis, easing = NuvioTokens.Motion.decelerate)),
                 exit = fadeOut(tween(StripFadeMillis - 60)),
             ) {
-                buttons(28.dp, 5.dp)
+                buttons(wideSize, 5.dp)
             }
-        } else {
+        } else if (!wide && tallSize >= MinStripButton) {
             AnimatedVisibility(
                 visible = stripVisible,
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
@@ -210,10 +219,9 @@ internal fun BoxScope.PosterActionStrip(
                         .background(Brush.verticalGradient(0f to Color.Transparent, 0.45f to StripScrim.copy(alpha = 0.92f), 1f to StripScrim.copy(alpha = 0.92f)))
                         .testTag("poster_action_strip"),
                 ) {
-                    // Four 30 dp buttons fit a 146 dp poster; narrower posters (a small poster size) get smaller ones.
-                    val narrow = this@BoxWithConstraints.maxWidth < 140.dp
-                    Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp)) {
-                        buttons(if (narrow) 26.dp else 30.dp, if (narrow) 4.dp else 6.dp)
+                    // Four 30 dp buttons fit a 146 dp poster; narrower posters get smaller ones.
+                    Box(Modifier.align(Alignment.BottomCenter).padding(bottom = if (tallSize < 26.dp) 6.dp else 10.dp)) {
+                        buttons(tallSize, tallGap)
                     }
                 }
             }
@@ -225,6 +233,7 @@ internal fun BoxScope.PosterActionStrip(
 }
 
 private val StripScrim = Color(0xFF060607)
+private val MinStripButton = 18.dp
 
 @Composable
 internal fun StripButton(icon: ImageVector, label: String, size: Dp, onClick: () -> Unit, tag: String) {
@@ -244,7 +253,7 @@ internal fun StripButton(icon: ImageVector, label: String, size: Dp, onClick: ()
             .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(minOf(16.dp, size * 0.56f)))
         RedesignTooltip(label, hovered)
     }
 }
