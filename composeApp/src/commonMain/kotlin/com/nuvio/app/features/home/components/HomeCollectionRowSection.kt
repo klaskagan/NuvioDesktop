@@ -104,6 +104,7 @@ private fun HomeCollectionRowSectionContent(
     var pickerOpen by remember(rowStyleKey) { mutableStateOf(false) }
     var pickerAnchor by remember(rowStyleKey) { mutableStateOf<Rect?>(null) }
     val shelfInset = rankingLayout?.inset ?: sectionPadding
+    val rowHeader = LocalHomeRowHeader.current
     NuvioShelfSection(
         title = collection.title,
         entries = collection.folders,
@@ -112,6 +113,11 @@ private fun HomeCollectionRowSectionContent(
         rowContentPadding = PaddingValues(horizontal = shelfInset),
         itemSpacing = rankingLayout?.gap ?: 10.dp,
         key = { folder -> "collection_${collection.id}_folder_${folder.id}" },
+        headerModifier = rowHeader?.modifier ?: Modifier,
+        rowOverlay = rowHeader?.rowOverlay,
+        headerLeading = rowHeader?.leading,
+        headerActions = rowHeader?.actions,
+        showViewAll = rowHeader?.showViewAll ?: true,
     ) { folder ->
         // Read on press-and-hold so the Row style panel opens under the pressed tile.
         val cardCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }

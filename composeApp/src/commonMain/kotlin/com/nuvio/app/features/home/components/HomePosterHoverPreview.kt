@@ -20,6 +20,7 @@ import com.nuvio.app.MediaKeysHandler
 import androidx.compose.runtime.CompositionLocalProvider
 import com.nuvio.app.core.ui.LocalPosterPressAndHold
 import com.nuvio.app.core.ui.PosterHoverStyle
+import com.nuvio.app.core.ui.LocalPosterHoverSuspended
 import com.nuvio.app.core.ui.PosterZoomOverlayCoordinator
 import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
 import com.nuvio.app.features.home.MetaPreview
@@ -49,7 +50,9 @@ internal fun HomePosterHoverPreview(
     content: @Composable (Modifier, PosterHoverOverlay?) -> Unit,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
-    if (!isDesktop || !posterCardStyle.hoverPreviewEnabled || PosterZoomOverlayCoordinator.isVisible) {
+    if (!isDesktop || !posterCardStyle.hoverPreviewEnabled || PosterZoomOverlayCoordinator.isVisible ||
+        LocalPosterHoverSuspended.current
+    ) {
         content(modifier, null)
         return
     }
