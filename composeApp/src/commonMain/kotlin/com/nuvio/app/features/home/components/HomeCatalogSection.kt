@@ -29,6 +29,13 @@ import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.HomeRowStyle
 import com.nuvio.app.features.home.stableKey
 import com.nuvio.app.features.watching.application.WatchingState
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.features.home.HomeCatalogSettingsRepository
+import com.nuvio.app.features.home.homeRowStyleSupplies
+import com.nuvio.app.features.home.supportsHomeRowStyle
+import com.nuvio.app.features.watchprogress.CurrentDateProvider
 
 @Composable
 fun HomeCatalogRowSection(
@@ -66,18 +73,59 @@ fun HomeCatalogRowSection(
             onActionClick = if (calendar.problem == CalendarProblem.NETWORK) ({ scope.launch { TraktCalendarRepository.load(force = true) }; Unit }) else null,
         )
     }
+    // What this row can fill, for the Row style picker (calendar rows keep their own look).
+    val styleable = calendar == null && supportsHomeRowStyle(section.key)
+    if (styleable) {
+        val today = remember { CurrentDateProvider.todayIsoDate() }
+        val supplies = remember(entries, today) { homeRowStyleSupplies(entries, today) }
+        PublishRowSupplies(section.key, supplies)
+    }
+    val settings by HomeCatalogSettingsRepository.uiState.collectAsStateWithLifecycle()
+    val description = rowDescription(section.key, settings.rowDescriptions[section.key])
+    // A style with its own layout draws only on desktop; Calendar strip with no upcoming dates left
+    // falls back to Landscape rather than an empty row.
+    val shownStyle = remember(rowStyle, entries) {
+        when {
+            !rowStyle.hasOwnLayout -> rowStyle
+            !isDesktop -> rowStyle.plainFallback
+            rowStyle == HomeRowStyle.CalendarStrip && calendarDays(entries, CurrentDateProvider.todayIsoDate()).isEmpty() -> HomeRowStyle.LandscapeMedium
+            else -> rowStyle
+        }
+    }
+    // The classic style last shown, so the shelf fading out keeps its shape.
+    val lastClassic = remember { arrayOf(HomeRowStyle.Automatic) }.also { if (!shownStyle.hasOwnLayout) it[0] = shownStyle }[0]
     if (entries.isNotEmpty()) BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        HomeCatalogRowSectionContent(
-            section = section, entries = entries, watchedKeys = watchedKeys,
-            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys, modifier = Modifier.fillMaxWidth(),
-            sectionPadding = sectionPadding ?: homeSectionHorizontalPaddingForWidth(maxWidth.value),
-            onViewAllClick = onViewAllClick, onPosterClick = onPosterClick,
-            onPosterLongClick = onPosterLongClick, allowPortraitFallback = allowPortraitFallback,
-            rowStyle = rowStyle,
-            eyebrow = eyebrow,
-            leadCard = leadCard,
-            rankingLayout = if (rowStyle == HomeRowStyle.NumberedRanking) NumberedRankingLayout(maxWidth) else null,
-        )
+        val padding = sectionPadding ?: homeSectionHorizontalPaddingForWidth(maxWidth.value)
+        val rowWidth = maxWidth
+        // The row crossfades into and out of the styles with their own layout; the classic styles
+        // share one shelf, which keeps its scroll position and animates its own cards.
+        Crossfade(targetState = shownStyle.takeIf { it.hasOwnLayout }, animationSpec = tween(260), label = "home_row_style") { own ->
+            val style = lastClassic
+            if (own != null) {
+                HomeStyledCatalogRow(
+                    section = section,
+                    entries = entries,
+                    rowStyle = own,
+                    eyebrow = eyebrow,
+                    description = description,
+                    sectionPadding = padding,
+                    onViewAllClick = onViewAllClick,
+                    actions = StyledRowActions(watchedKeys, fullyWatchedSeriesKeys, onPosterClick, onPosterLongClick),
+                )
+            } else {
+                HomeCatalogRowSectionContent(
+                    section = section, entries = entries, watchedKeys = watchedKeys,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys, modifier = Modifier.fillMaxWidth(),
+                    sectionPadding = padding,
+                    onViewAllClick = onViewAllClick, onPosterClick = onPosterClick,
+                    onPosterLongClick = onPosterLongClick, allowPortraitFallback = allowPortraitFallback,
+                    rowStyle = style,
+                    eyebrow = eyebrow,
+                    leadCard = leadCard,
+                    rankingLayout = if (style == HomeRowStyle.NumberedRanking) NumberedRankingLayout(rowWidth) else null,
+                )
+            }
+        }
     }
     }
     }

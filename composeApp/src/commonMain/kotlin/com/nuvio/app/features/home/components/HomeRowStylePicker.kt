@@ -87,6 +87,20 @@ import com.nuvio.app.features.home.homeRowStyleChoices
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.input.ImeAction
 
 @Composable
 internal fun homeRowStyleLabel(style: HomeRowStyle): String =
@@ -104,6 +118,14 @@ internal fun homeRowStyleLabel(style: HomeRowStyle): String =
                 HomeRowStyle.BannerWithTitle -> Res.string.home_row_style_banner_with_title
                 HomeRowStyle.NumberedRanking -> Res.string.home_row_style_numbered_ranking
                 HomeRowStyle.Round -> Res.string.home_row_style_round
+                HomeRowStyle.CompactList -> Res.string.home_row_style_compact_list
+                HomeRowStyle.Mosaic -> Res.string.home_row_style_mosaic
+                HomeRowStyle.Spotlight -> Res.string.home_row_style_spotlight
+                HomeRowStyle.LogoWall -> Res.string.home_row_style_logo_wall
+                HomeRowStyle.CalendarStrip -> Res.string.home_row_style_calendar_strip
+                HomeRowStyle.InfoCards -> Res.string.home_row_style_info_cards
+                HomeRowStyle.EditorialBand -> Res.string.home_row_style_editorial_band
+                HomeRowStyle.CollageBanner -> Res.string.home_row_style_collage_banner
                 else -> error("Landscape sizes have their own labels")
             },
         )
@@ -146,21 +168,33 @@ internal fun HomeRowStylePicker(
     onDismiss: () -> Unit,
     anchor: Rect? = null,
     title: String? = null,
-    rowSupplies: Set<HomeRowStyleNeed> = emptySet(),
+    rowSupplies: Set<HomeRowStyleNeed>? = null,
     dim: Boolean = true,
 ) {
-    val choices = remember(shelfKey, rowSupplies) { homeRowStyleChoices(shelfKey, rowSupplies) }
+    val settings by HomeCatalogSettingsRepository.uiState.collectAsStateWithLifecycle()
+    // Rows publish what they can fill as they draw; a row not on screen falls back to its kind.
+    val supplies = rowSupplies ?: HomeRowSupplies.of(shelfKey) ?: run {
+        val isCollection = settings.items.firstOrNull { it.key == shelfKey }?.isCollection == true
+        if (isCollection) emptySet() else setOf(HomeRowStyleNeed.Titles)
+    }
+    val choices = remember(shelfKey, supplies) { homeRowStyleChoices(shelfKey, supplies) }
     if (choices.isEmpty()) {
         LaunchedEffect(shelfKey) { onDismiss() }
         return
     }
-    val state by HomeCatalogSettingsRepository.uiState.collectAsStateWithLifecycle()
+    val state = settings
     val currentStyle = state.rowStyles[shelfKey] ?: HomeRowStyle.Automatic
+    // "Row style · Editorial description": typed live into the row, saved on Enter or close.
+    var description by remember(shelfKey) { mutableStateOf(state.rowDescriptions[shelfKey].orEmpty()) }
     val rowTitle = title ?: state.items.firstOrNull { it.key == shelfKey }?.let { it.customTitle.ifBlank { it.defaultTitle } }
 
     val visible = remember { MutableTransitionState(false) }
     LaunchedEffect(Unit) { visible.targetState = true }
-    val dismiss = { visible.targetState = false }
+    val dismiss = {
+        if (currentStyle == HomeRowStyle.EditorialBand) HomeCatalogSettingsRepository.setRowDescription(shelfKey, description)
+        RowDescriptionDrafts.clear(shelfKey)
+        visible.targetState = false
+    }
     LaunchedEffect(visible.currentState, visible.targetState) {
         if (!visible.currentState && !visible.targetState && visible.isIdle) onDismiss()
     }
@@ -191,12 +225,21 @@ internal fun HomeRowStylePicker(
                         if (choice == HomeRowStyleChoice.Landscape) {
                             // Stays open: the size switch slides in under the grid.
                             if (!currentStyle.isLandscapeSize) HomeCatalogSettingsRepository.setRowStyle(shelfKey, choice.applied)
+                        } else if (choice == HomeRowStyleChoice.EditorialBand) {
+                            // Stays open: the Row description field slides in under the grid.
+                            HomeCatalogSettingsRepository.setRowStyle(shelfKey, choice.applied)
                         } else {
                             HomeCatalogSettingsRepository.setRowStyle(shelfKey, choice.applied)
                             dismiss()
                         }
                     },
                     onSize = { HomeCatalogSettingsRepository.setRowStyle(shelfKey, it) },
+                    description = description,
+                    onDescription = {
+                        description = it
+                        RowDescriptionDrafts.update(shelfKey, it)
+                    },
+                    onDescriptionDone = dismiss,
                 )
             }
         }
@@ -250,6 +293,9 @@ private fun RowStylePanel(
     currentStyle: HomeRowStyle,
     onPick: (HomeRowStyleChoice) -> Unit,
     onSize: (HomeRowStyle) -> Unit,
+    description: String = "",
+    onDescription: (String) -> Unit = {},
+    onDescriptionDone: () -> Unit = {},
 ) {
     Column(
         Modifier.width(PanelWidth)
@@ -302,6 +348,65 @@ private fun RowStylePanel(
                 onSize = onSize,
             )
         }
+        AnimatedVisibility(
+            visible = currentStyle == HomeRowStyle.EditorialBand && HomeRowStyleChoice.EditorialBand in choices,
+            enter = expandVertically(tween(220, easing = FastOutSlowInEasing), expandFrom = Alignment.Top) + fadeIn(tween(180, delayMillis = 40)),
+            exit = shrinkVertically(tween(180, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) + fadeOut(tween(120)),
+        ) {
+            RowDescriptionField(description, onDescription, onDescriptionDone)
+        }
+    }
+}
+
+/** "Row style · Editorial description": the band's line, focused when it slides in. */
+@Composable
+private fun RowDescriptionField(value: String, onValue: (String) -> Unit, onDone: () -> Unit) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    val shape = RoundedCornerShape(12.dp)
+    Column(Modifier.padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 4.dp).fillMaxWidth()) {
+        Text(
+            stringResource(Res.string.home_row_description).uppercase(),
+            style = redesignText(11.sp, FontWeight.Medium, RedesignColors.textMuted, letterSpacing = 0.1.em),
+            modifier = Modifier.padding(start = 6.dp, bottom = 6.dp),
+        )
+        BasicTextField(
+            value = value,
+            onValueChange = { onValue(it.replace('\n', ' ')) },
+            singleLine = true,
+            textStyle = redesignText(13.sp, FontWeight.Normal, RedesignColors.textPrimary),
+            cursorBrush = SolidColor(RedesignColors.textPrimary),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { onDone() }),
+            modifier = Modifier.fillMaxWidth().focusRequester(focus)
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                        onDone(); true
+                    } else false
+                }
+                .testTag("home_row_description_field"),
+            decorationBox = { inner ->
+                Box(
+                    Modifier.fillMaxWidth().height(38.dp).clip(shape).background(RedesignColors.fill)
+                        .border(1.dp, RedesignColors.hairlineFocused, shape).padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (value.isEmpty()) {
+                        Text(
+                            stringResource(Res.string.home_row_description_placeholder),
+                            style = redesignText(13.sp, FontWeight.Normal, RedesignColors.textMuted),
+                            maxLines = 1,
+                        )
+                    }
+                    inner()
+                }
+            },
+        )
+        Text(
+            stringResource(Res.string.home_row_description_hint),
+            style = redesignText(11.5.sp, FontWeight.Normal, RedesignColors.textMuted),
+            modifier = Modifier.padding(start = 6.dp, top = 6.dp),
+        )
     }
 }
 
@@ -352,6 +457,7 @@ private fun StyleCell(choice: HomeRowStyleChoice, selected: Boolean, onClick: ()
 private val SketchFill = Color.White.copy(alpha = 0.22f)
 private val SketchAccent = Color.White.copy(alpha = 0.34f)
 private val SketchShape = RoundedCornerShape(4.dp)
+private val EditorialSketchTint = Color(0xFFE0B48A).copy(alpha = 0.22f)
 
 @Composable
 private fun Bar(width: Dp, height: Dp, accent: Boolean = false, shape: Shape = SketchShape) {
@@ -398,6 +504,81 @@ private fun StyleSketch(choice: HomeRowStyleChoice) {
         }
         HomeRowStyleChoice.Round -> Row(Modifier.fillMaxHeight(), horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
             repeat(4) { Bar(24.dp, 24.dp, shape = CircleShape) }
+        }
+        HomeRowStyleChoice.CompactList -> Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)) {
+            repeat(3) {
+                Row(horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
+                    Bar(18.dp, 10.dp)
+                    Bar(30.dp, 4.dp, accent = true)
+                    Spacer(Modifier.width(2.dp))
+                    Bar(18.dp, 10.dp)
+                    Bar(30.dp, 4.dp, accent = true)
+                }
+            }
+        }
+        HomeRowStyleChoice.Mosaic -> Row(Modifier.fillMaxHeight(), horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
+            Bar(26.dp, 38.dp)
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                repeat(2) { Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) { repeat(2) { Bar(12.dp, 17.dp) } } }
+            }
+            Bar(26.dp, 38.dp)
+        }
+        HomeRowStyleChoice.Spotlight -> Row(Modifier.fillMaxHeight(), horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
+            Bar(62.dp, 35.dp, accent = true)
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                repeat(2) { Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) { repeat(2) { Bar(22.dp, 12.dp) } } }
+            }
+        }
+        HomeRowStyleChoice.LogoWall -> Row(Modifier.fillMaxHeight(), horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
+            repeat(2) {
+                Box(Modifier.size(44.dp, 25.dp).clip(SketchShape).background(Color.White.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(24.dp, 5.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.6f)))
+                }
+            }
+        }
+        HomeRowStyleChoice.CalendarStrip -> Row(horizontalArrangement = gap, verticalAlignment = Alignment.Bottom) {
+            repeat(2) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Bar(18.dp, 4.dp, accent = true)
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) { repeat(2) { Bar(28.dp, 16.dp) } }
+                }
+            }
+        }
+        HomeRowStyleChoice.InfoCards -> Row(Modifier.fillMaxHeight(), horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
+            repeat(2) {
+                Row(
+                    Modifier.clip(RoundedCornerShape(5.dp)).background(Color.White.copy(alpha = 0.08f)).padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Bar(16.dp, 24.dp)
+                    Column(Modifier.padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Bar(22.dp, 4.dp, accent = true)
+                        Bar(22.dp, 3.dp)
+                        Bar(16.dp, 3.dp)
+                    }
+                }
+            }
+        }
+        HomeRowStyleChoice.EditorialBand -> Row(Modifier.fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.clip(RoundedCornerShape(6.dp)).background(EditorialSketchTint).padding(horizontal = 5.dp, vertical = 4.dp),
+                horizontalArrangement = gap,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Bar(24.dp, 5.dp, accent = true)
+                    Bar(20.dp, 3.dp)
+                }
+                repeat(3) { Bar(14.dp, 22.dp) }
+            }
+        }
+        HomeRowStyleChoice.CollageBanner -> Row(Modifier.fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(110.dp, 32.dp).clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.1f))) {
+                repeat(3) { k ->
+                    Box(Modifier.offset(x = (40 + k * 22).dp, y = 2.dp).graphicsLayer { rotationZ = -12f }) { Bar(18.dp, 28.dp) }
+                }
+                Box(Modifier.offset(x = 6.dp, y = 13.dp)) { Bar(28.dp, 6.dp, accent = true) }
+            }
         }
     }
 }

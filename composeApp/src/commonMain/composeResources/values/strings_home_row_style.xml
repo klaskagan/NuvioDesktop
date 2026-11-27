@@ -11,4 +11,21 @@
     <string name="home_row_style_round">Round</string>
     <string name="home_row_style_numbered_ranking">Numbered ranking</string>
     <string name="home_row_rank">Rank %1$d</string>
+    <string name="home_row_style_compact_list">Compact list</string>
+    <string name="home_row_style_mosaic">Mosaic</string>
+    <string name="home_row_style_spotlight">Spotlight</string>
+    <string name="home_row_style_logo_wall">Logo wall</string>
+    <string name="home_row_style_calendar_strip">Calendar strip</string>
+    <string name="home_row_style_info_cards">Info cards</string>
+    <string name="home_row_style_editorial_band">Editorial band</string>
+    <string name="home_row_style_collage_banner">Collage banner</string>
+    <string name="home_row_description">Row description</string>
+    <string name="home_row_description_hint">Shown under the row\'s name in the band. Enter saves.</string>
+    <string name="home_row_description_placeholder">A line about this row</string>
+    <string name="home_row_curated">Curated</string>
+    <string name="home_row_titles_count">%1$s titles</string>
+    <string name="home_row_tonight">Tonight</string>
+    <string name="home_row_view_details">View Details</string>
+    <string name="home_row_open">Open</string>
+    <string name="home_row_trailer">Trailer</string>
 </resources>
