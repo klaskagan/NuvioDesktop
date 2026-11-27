@@ -1,5 +1,7 @@
 package com.nuvio.app.features.catalog
 
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -112,5 +114,51 @@ internal fun SeasonalCatalogBackControl(pageHorizontalPadding: Dp, onBack: () ->
             contentColor = MaterialTheme.colorScheme.onSurface,
             iconSize = 24.dp,
         )
+    }
+}
+
+/** The theme's warm accent for the seasonal eyebrow (Home design, "Seasonal · Explore collection"). */
+internal val SeasonalEyebrowAccent = androidx.compose.ui.graphics.Color(0xFFE0B48A)
+
+/**
+ * The top of a seasonal page on desktop: Back (round frosted, under the top bar), then the eyebrow in
+ * the theme's accent, the title (44 bold) and its line, at the foot of the theme's artwork. The filter
+ * row follows under it; Back scrolls away with it and comes back in the pinned row.
+ */
+@Composable
+internal fun SeasonalThemeIntro(
+    eyebrow: String,
+    title: String,
+    line: String,
+    minHeight: Dp,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.fillMaxWidth().heightIn(min = minHeight)) {
+        com.nuvio.app.core.ui.RedesignIconButton(
+            "Back",
+            onBack,
+            modifier = Modifier.padding(top = 18.dp).testTag("catalog_back"),
+            vector = androidx.compose.material.icons.Icons.AutoMirrored.Rounded.ArrowBack,
+            size = 44.dp,
+        )
+        Column(Modifier.align(Alignment.BottomStart).padding(top = 84.dp, bottom = 22.dp)) {
+            Text(
+                eyebrow.uppercase(),
+                style = com.nuvio.app.core.ui.redesignText(11.sp, FontWeight.SemiBold, SeasonalEyebrowAccent, letterSpacing = androidx.compose.ui.unit.TextUnit(0.1f, androidx.compose.ui.unit.TextUnitType.Em)),
+            )
+            Text(
+                title,
+                style = com.nuvio.app.core.ui.redesignText(44.sp, FontWeight.Bold, letterSpacing = com.nuvio.app.core.ui.RedesignTightTracking),
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            if (line.isNotBlank()) {
+                Text(
+                    line,
+                    style = com.nuvio.app.core.ui.redesignText(15.5.sp, color = androidx.compose.ui.graphics.Color(0xFFE3E5E8)),
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+        }
     }
 }

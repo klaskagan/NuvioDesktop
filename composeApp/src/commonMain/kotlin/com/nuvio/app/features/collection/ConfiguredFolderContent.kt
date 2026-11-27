@@ -23,6 +23,10 @@ import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.ui.*
 import com.nuvio.app.isDesktop
 import com.nuvio.app.features.catalog.SeasonalCatalogBackControl
+import com.nuvio.app.features.catalog.SeasonalThemeIntro
+import com.nuvio.app.features.home.components.HomePageFilterRow
+import com.nuvio.app.features.home.components.HomePageTopBarHeight
+import com.nuvio.app.features.home.components.bleedHorizontally
 import com.nuvio.app.features.home.*
 import com.nuvio.app.features.home.components.HomeCatalogRowSection
 import com.nuvio.app.features.home.components.HomePosterCard
@@ -86,7 +90,7 @@ internal fun ConfiguredFolderContent(
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).clipToBounds()) {
         val padding = desktopPageHorizontalPaddingForWidth(maxWidth.value)
         val chromeHeight = if (LocalUseNativeNavigation.current) 0.dp else
-            with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toDp() } + if (isDesktop) 92.dp else 104.dp
+            with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toDp() } + if (isDesktop) HomePageTopBarHeight else 104.dp
         val minHeroHeight = (maxHeight * 0.60f).coerceIn(280.dp, 560.dp)
         var heroHeight by remember(folder.id) { mutableIntStateOf(0) }
         var controlsHeight by remember(folder.id) { mutableIntStateOf(0) }
@@ -102,15 +106,14 @@ internal fun ConfiguredFolderContent(
         val pinnedBringIntoView = remember(normalBringIntoView, maximumControlHeight) {
             PinnedFilterBringIntoViewSpec(normalBringIntoView, { pinnedHeight }, maximumControlHeight)
         }
+        val filtersPinned by com.nuvio.app.features.home.components.rememberFilterRowPinned(gridState, "seasonal_filters")
         val style = rememberPosterCardStyleUiState()
         val baseWidth = catalogPosterBaseWidthDp(style.widthDp)
-        val cells = if (rows) GridCells.Fixed(1) else GridCells.FixedSize(
-            landscapePosterWidth(baseWidth),
-        )
+        // Columns fill the width (no empty band on the right), and the sticky filter row spans the page.
+        val cells = if (rows) GridCells.Fixed(1) else GridCells.Adaptive(FolderLandscapeMinCell)
         val keyedMovies = remember(selected?.items) { selected?.items.orEmpty().withDuplicateSafeLazyKeys { it.stableKey() } }
         val columns = if (rows) 1 else {
-            com.nuvio.app.features.home.components.artworkFixedGridColumns(constraints.maxWidth, padding,
-                landscapePosterWidth(baseWidth))
+            with(density) { ((maxWidth - padding * 2 + 12.dp) / (FolderLandscapeMinCell + 12.dp)).toInt().coerceAtLeast(1) }
         }
         var mediaRowHeight by remember(folder.id, baseWidth, density, queryIdentity) { mutableIntStateOf(0) }
         val mediaRowCount = (keyedMovies.size + columns - 1) / columns
@@ -145,16 +148,49 @@ internal fun ConfiguredFolderContent(
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             item(key = "intro", span = { GridItemSpan(maxLineSpan) }) {
-                CollectionIntroduction(folder, (minHeroHeight - chromeHeight).coerceAtLeast(0.dp),
-                    Modifier.onSizeChanged { heroHeight = it.height }.padding(horizontal = if (rows) padding else 0.dp),
-                    subtitle = SeasonalCollection.theme(folder)?.let { stringResource(it.description) }.orEmpty())
+                val theme = SeasonalCollection.theme(folder)
+                val introModifier = Modifier.onSizeChanged { heroHeight = it.height }.padding(horizontal = if (rows) padding else 0.dp)
+                if (theme != null) {
+                    // Back, the accent eyebrow, the title and its line over the theme's artwork.
+                    SeasonalThemeIntro(
+                        eyebrow = stringResource(Res.string.seasonal_spotlight_label),
+                        title = folder.title,
+                        line = stringResource(theme.description),
+                        minHeight = (minHeroHeight - chromeHeight).coerceAtLeast(0.dp),
+                        onBack = onBack,
+                        modifier = introModifier.testTag("collection_intro_${folder.id}"),
+                    )
+                } else {
+                    CollectionIntroduction(folder, (minHeroHeight - chromeHeight).coerceAtLeast(0.dp), introModifier)
+                }
             }
-            if (!rows && seasonalGrid != null) {
+            if (seasonalGrid != null) {
+                // The shared filter row under the title, pinned like Details' tabs row (Back and the name slide in).
                 stickyHeader(key = "seasonal_filters") {
-                    Box(Modifier.fillMaxWidth().testTag("seasonal_filters").onSizeChanged { controlsHeight = it.height }.background(MaterialTheme.colorScheme.background).padding(vertical = 12.dp)) {
+                    Box(Modifier.fillMaxWidth().testTag("seasonal_filters").onSizeChanged { controlsHeight = it.height }) {
                         // Popup menus keep their own ordinary keyboard/scroll behavior.
                         CompositionLocalProvider(LocalBringIntoViewSpec provides normalBringIntoView) {
-                            SeasonalGridControls(uiState)
+                            HomePageFilterRow(
+                                pinned = filtersPinned,
+                                name = folder.title,
+                                logoUrl = null,
+                                onBack = onBack,
+                                horizontalPadding = padding,
+                                modifier = if (rows) Modifier else Modifier.bleedHorizontally(padding),
+                                menus = if (rows) null else { { SeasonalGridMenus(uiState) } },
+                                trailing = {
+                                    if (!rows && seasonalGrid.query.isFiltered()) {
+                                        RedesignPillButton(stringResource(Res.string.action_clear), onClick = { FolderDetailRepository.setSeasonalQuery(SeasonalGridQuery()) })
+                                    }
+                                    RedesignPillGroup(
+                                        options = listOf(false, true),
+                                        selected = rows,
+                                        label = { stringResource(if (it) Res.string.page_bar_rows else Res.string.page_bar_grid) },
+                                        onSelect = { if (it != rows) toggleMode() },
+                                        optionTag = { if (it) "seasonal_rows" else "seasonal_grid" },
+                                    )
+                                },
+                            )
                         }
                     }
                 }
@@ -187,7 +223,7 @@ internal fun ConfiguredFolderContent(
             } else {
                 items(keyedMovies, key = { it.lazyKey }) { keyed ->
                     val movie = keyed.value
-                        HomePosterCard(item = movie, modifier = Modifier.onSizeChanged {
+                        HomePosterCard(item = movie, fillWidth = true, modifier = Modifier.onSizeChanged {
                             if (mediaRowHeight == 0 || it.height < mediaRowHeight) mediaRowHeight = it.height
                         }, allowPortraitFallback = false, useLandscapeBackdropMode = true,
                             isWatched = WatchingState.isPosterWatched(watchedKeys, movie), onClick = { onPosterClick(movie) },
@@ -216,16 +252,8 @@ internal fun ConfiguredFolderContent(
         }
         }
         NuvioDesktopVerticalScrollbar(gridState, Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(4.dp))
-        SeasonalCatalogBackControl(padding, onBack)
-        if (seasonalGrid != null) {
-            IconButton(onClick = toggleMode,
-                modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.statusBars).padding(top = 32.dp, end = padding)
-                    .size(48.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.CircleShape)) {
-                Icon(if (rows) Icons.Rounded.GridView else Icons.Rounded.ViewAgenda,
-                    contentDescription = stringResource(if (rows) Res.string.seasonal_show_grid else Res.string.seasonal_show_rows),
-                    tint = MaterialTheme.colorScheme.onBackground)
-            }
-        }
+        if (seasonalGrid == null) SeasonalCatalogBackControl(padding, onBack)
+        // Grid / Rows lives in the filter row now (the old round toggle in the corner is gone).
     }
 }
 

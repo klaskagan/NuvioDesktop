@@ -129,6 +129,22 @@ fun FolderDetailScreen(
         HomeCatalogSettingsRepository.uiState
     }.collectAsState()
 
+    // Every folder but Seasonal Explore opens on Home's hero tile with the shared pinned bar.
+    val seasonalTheme = uiState.seasonalGrid != null || uiState.artworkFolder?.let { SeasonalCollection.theme(it) } != null
+    if (!seasonalTheme && !useNativeNavigation) {
+        HomeFolderPage(
+            uiState = uiState,
+            sections = FolderDetailRepository.getCatalogSectionsForRows(),
+            watchedKeys = watchedUiState.watchedKeys,
+            rowStyles = rowStyles.rowStyles,
+            onBack = onBack,
+            onCatalogClick = onCatalogClick,
+            onPosterClick = onPosterClick,
+            onCatalogPosterLongClick = onCatalogPosterLongClick,
+        )
+        return
+    }
+
     if (uiState.artworkFolder != null) {
         ConfiguredFolderContent(
             uiState = uiState,

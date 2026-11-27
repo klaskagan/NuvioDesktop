@@ -64,7 +64,7 @@ class SeasonalCollectionNavigationTest {
             waitForIdle()
             val rowTitleTop = onNodeWithText(collection.folders.first().title).fetchSemanticsNode().boundsInRoot.top
             mainClock.autoAdvance = false
-            onNodeWithContentDescription("Show combined grid").performClick()
+            onNodeWithTag("seasonal_grid").performClick()
             repeat(12) {
                 mainClock.advanceTimeByFrame()
                 val titles = onAllNodesWithText(collection.folders.first().title).fetchSemanticsNodes()
@@ -78,9 +78,9 @@ class SeasonalCollectionNavigationTest {
             assertEquals(FolderViewMode.TABBED_GRID, CollectionRepository.getCollection(collection.id)?.folderViewMode)
             assertEquals(rowTitleTop, onNodeWithText(collection.folders.first().title).fetchSemanticsNode().boundsInRoot.top, 1f,
                 "Switching layout must preserve a partially scrolled introduction")
-            onNodeWithText("Source order").assertIsDisplayed()
-            val originalFilterTop = onNodeWithText("Source order").fetchSemanticsNode().boundsInRoot.top
-            onNodeWithText("Source order").performClick()
+            onNodeWithText("Sort").assertIsDisplayed()
+            val originalFilterTop = onNodeWithText("Sort").fetchSemanticsNode().boundsInRoot.top
+            onNodeWithText("Sort").performClick()
             onNodeWithText("Shuffled").performClick()
             waitUntil(timeoutMillis = 15_000) {
                 FolderDetailRepository.uiState.value.seasonalGrid?.let {
@@ -91,19 +91,20 @@ class SeasonalCollectionNavigationTest {
                 mainClock.advanceTimeBy(500)
                 waitForIdle()
                 save("grid-delayed-result-$it")
-                val top = onNodeWithText("Shuffled").fetchSemanticsNode().boundsInRoot.top
+                val top = onNodeWithText("Sort").fetchSemanticsNode().boundsInRoot.top
                 assertEquals(originalFilterTop, top, 1f, "Changing a visible filter must not collapse the hero")
             }
-            onNodeWithText("Shuffled").performClick()
+            onNodeWithText("Sort").performClick()
             onNodeWithText("Source order").performClick()
             waitUntil(timeoutMillis = 15_000) { FolderDetailRepository.uiState.value.seasonalGrid?.isLoading == false }
             onNodeWithTag("collection_grid").performScrollToIndex(1)
             mainClock.advanceTimeBy(500)
             waitForIdle()
             save("grid-before-short-filter")
-            val pinnedTop = onNodeWithText("All years").fetchSemanticsNode().boundsInRoot.top
+            // The redesigned filter row: pills keep their names ("Year"), values live in the open menu.
+            val pinnedTop = onNodeWithText("Year").fetchSemanticsNode().boundsInRoot.top
             val pinnedBarTop = onNodeWithTag("seasonal_filters").fetchSemanticsNode().boundsInRoot.top
-            onNodeWithText("All years").performClick()
+            onNodeWithText("Year").performClick()
             assertEquals(pinnedBarTop, onNodeWithTag("seasonal_filters").fetchSemanticsNode().boundsInRoot.top, 1f,
                 "Opening a dropdown inside the pinned header must not scroll its parent")
             onNodeWithText("2021").performClick()
@@ -115,40 +116,41 @@ class SeasonalCollectionNavigationTest {
             repeat(4) {
                 mainClock.advanceTimeBy(500); waitForIdle()
                 save("grid-short-results-$it")
-                assertEquals(pinnedTop, onNodeWithText("2021").fetchSemanticsNode().boundsInRoot.top, 1f,
+                assertEquals(pinnedTop, onNodeWithText("Year").fetchSemanticsNode().boundsInRoot.top, 1f,
                     "Short results must not pull the hero back into view")
             }
-            onNodeWithContentDescription("Show catalog rows").performClick()
+            onNodeWithTag("seasonal_rows").performClick()
             waitForIdle()
             val introductionTag = "collection_intro_${collection.folders.single().id}"
             if (onAllNodesWithTag(introductionTag).fetchSemanticsNodes().isNotEmpty()) {
                 onNodeWithTag(introductionTag).assertIsNotDisplayed()
             }
             save("rows-collapsed-after-short-grid")
-            onNodeWithContentDescription("Show combined grid").performClick()
+            onNodeWithTag("seasonal_grid").performClick()
             waitForIdle()
-            assertEquals(pinnedTop, onNodeWithText("2021").fetchSemanticsNode().boundsInRoot.top, 1f,
+            assertEquals(pinnedTop, onNodeWithText("Year").fetchSemanticsNode().boundsInRoot.top, 1f,
                 "Switching back to a short grid must keep the introduction collapsed")
-            onNodeWithText("2021").performClick()
+            onNodeWithText("Year").performClick()
             onNodeWithText("All years").performClick()
             waitUntil(timeoutMillis = 15_000) { FolderDetailRepository.uiState.value.seasonalGrid?.isLoading == false }
-            onNodeWithText("Source order").assertIsDisplayed()
+            onNodeWithText("Sort").assertIsDisplayed()
             save("grid")
-            onNodeWithText("Source order").performClick()
+            onNodeWithText("Sort").performClick()
             onNodeWithText("Highest rated").performClick()
-            onNodeWithText("Highest rated").assertIsDisplayed()
-            val backBottom = onNodeWithTag("catalog_back").fetchSemanticsNode().boundsInRoot.bottom
-            val filtersTop = onNodeWithText("Highest rated").fetchSemanticsNode().boundsInRoot.top
-            assertTrue(filtersTop >= backBottom, "Sticky filters must stay below navigation")
-            assertTrue(filtersTop - backBottom < 60, "No blank hero-sized gap above pinned filters: top=$filtersTop back=$backBottom")
+            onNodeWithText("Sort").assertIsDisplayed()
+            // Pinned, the row sits flush at the top of the page with Back slid in beside the menus.
+            onNodeWithTag("page_back").assertIsDisplayed()
+            val gridTop = onNodeWithTag("collection_grid").fetchSemanticsNode().boundsInRoot.top
+            val rowTop = onNodeWithTag("seasonal_filters").fetchSemanticsNode().boundsInRoot.top
+            assertEquals(gridTop, rowTop, 2f, "The pinned filter row sits flush under the top bar")
             save("grid-sort-keeps-controls")
             waitUntil(timeoutMillis = 10_000) { FolderDetailRepository.uiState.value.seasonalGrid?.error != null }
             onNodeWithText("This selection includes a catalog without server-side sorting. Choose a supported catalog or Source order.").assertExists()
-            onNodeWithText("Highest rated").performClick()
+            onNodeWithText("Sort").performClick()
             onNodeWithText("Source order").performClick()
             waitUntil(timeoutMillis = 15_000) { FolderDetailRepository.uiState.value.seasonalGrid?.items?.isNotEmpty() == true }
             onNodeWithTag("collection_grid").performScrollToIndex(12)
-            onNodeWithTag("catalog_back").performClick()
+            onNodeWithTag("page_back").performClick()
             waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("Explore collection").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(initialCards.take(3), visibleHomeMovies().take(3))
             save("home-restored")
@@ -191,7 +193,7 @@ class SeasonalCollectionNavigationTest {
         } finally { server.stop(0) }
     }
 
-    @Test fun christmasFolderUsesItsOwnArtworkAndWrapsFiltersInNarrowWindow() = runDesktopComposeUiTest(width = 640, height = 900) {
+    @Test fun christmasFolderUsesItsOwnArtworkAndFilterRowInNarrowWindow() = runDesktopComposeUiTest(width = 640, height = 900) {
         requireIsolation()
         val server = server()
         try {
@@ -207,11 +209,15 @@ class SeasonalCollectionNavigationTest {
             onNodeWithText("Christmas Together").assertIsDisplayed()
             onNodeWithTag("collection_background_seasonal-christmas").assertIsDisplayed()
             save("christmas-narrow-rows")
-            onNodeWithContentDescription("Show combined grid").performClick()
+            onNodeWithTag("seasonal_grid").performClick()
             waitUntil(timeoutMillis = 15_000) { FolderDetailRepository.uiState.value.seasonalGrid?.items?.isNotEmpty() == true }
             onNodeWithTag("collection_grid").performScrollToIndex(1)
-            onNodeWithText("Source order").assertIsDisplayed()
-            onNodeWithText("All types").assertIsDisplayed()
+            // Narrow: the pills scroll inside the row, and Grid / Rows stays on screen.
+            save("christmas-narrow-grid-pinned")
+            onNodeWithTag("seasonal_catalog_picker").assertIsDisplayed()
+            onNodeWithText("Type").assertExists()
+            onNodeWithText("Sort").assertExists()
+            onNodeWithTag("seasonal_rows").assertIsDisplayed()
             save("christmas-narrow-grid")
         } finally { FolderDetailRepository.clear(); server.stop(0) }
     }

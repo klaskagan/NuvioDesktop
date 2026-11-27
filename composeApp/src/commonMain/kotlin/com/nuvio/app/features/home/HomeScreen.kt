@@ -148,6 +148,7 @@ import com.nuvio.app.features.home.components.continueWatchingHeroViewportReserv
 import com.nuvio.app.features.home.components.homeCatalogPreviewLimitForWidth
 import com.nuvio.app.features.home.components.homeSectionHorizontalPaddingForWidth
 import com.nuvio.app.features.home.components.rememberContinueWatchingLayout
+import com.nuvio.app.features.home.components.isInProgressForContinueWatchingRow
 import kotlinx.coroutines.CancellationException
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -1134,7 +1135,8 @@ fun HomeScreen(
             )
         }
         val rowContinueWatchingItems = remember(continueWatchingItems, tabContinueWatchingItems, boardResumeItems) {
-            if (isDesktop) tabContinueWatchingItems.drop(boardResumeItems.size) else continueWatchingItems
+            // Desktop: the row shows titles partway through only; next episodes and new seasons are the board's Up next.
+            if (isDesktop) tabContinueWatchingItems.drop(boardResumeItems.size).filter { it.isInProgressForContinueWatchingRow() } else continueWatchingItems
         }
         val rowUpcomingItems = if (isDesktop) tabUpcomingItems else upcomingItems
         // When the board's set changes, a title can move from the board to the head of the row. A lazy

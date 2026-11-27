@@ -312,6 +312,12 @@ side pane) describe the design being replaced. Update those tests to the new des
 old layout just to satisfy them. Part 3 of the Search redesign first kept the old Person side pane
 for that reason, and the user rejected it.
 
+- **No item fade-out in a grid that scrolls itself on the same change.** Folders and See all re-pin
+  the filter row (`scrollToItem`) when a filter changes. With `animateItem(fadeOutSpec = …)` the
+  removed posters stayed stuck on screen behind the "Nothing matches" card (Watch status → Watched,
+  first try only). Use `fadeOutSpec = null` there and let the new items fade in. Reference:
+  `HomeSeeAllPage.kt`; check by picking a filter that empties the grid while the row is pinned.
+
 ## Stable layout through state changes
 
 - Loading must not move controls, resize content, or change a scroll anchor.

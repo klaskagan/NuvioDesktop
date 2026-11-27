@@ -37,7 +37,8 @@ class ConfiguredCollectionNavigationTest {
             waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("2020s Movies").fetchSemanticsNodes().isNotEmpty() }
             onNodeWithText("2020s Movies").performScrollTo().performClick()
             waitUntil(timeoutMillis = 15_000) { FolderDetailRepository.uiState.value.selectedTab?.items?.isNotEmpty() == true }
-            onNodeWithTag("collection_background_decade").assertIsDisplayed()
+            // Hero off (prepare): the folder opens on its grid with the filter row shown.
+            onNodeWithTag("home_page_filter_row").assertIsDisplayed()
             save("real-decade-after")
             // Capture the pre-change cover treatment using the unchanged ordinary folder renderer.
             val state = FolderDetailRepository.uiState.value
@@ -47,7 +48,7 @@ class ConfiguredCollectionNavigationTest {
             onNodeWithTag("collection_grid").performScrollToIndex(57)
             waitUntil(timeoutMillis = 15_000) { FolderDetailRepository.uiState.value.selectedTab!!.items.size >= 120 }
             onNodeWithTag("collection_grid").performScrollToIndex(20)
-            onNodeWithTag("collection_background_decade").assertIsNotDisplayed()
+            onNodeWithTag("home_page_filter_row").assertIsDisplayed()
             val before = onNodeWithTag("collection_grid").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
             // Each card loads its own artwork; wait for a visible title rather than relying on prefetch.
             waitUntil(timeoutMillis = 15_000) { onAllNodes(hasText("Dune") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
@@ -55,11 +56,11 @@ class ConfiguredCollectionNavigationTest {
             waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("Collection navigation movie details").fetchSemanticsNodes().isNotEmpty() }
             onAllNodesWithContentDescription("Back").onLast().performClick()
             waitUntil(timeoutMillis = 15_000) { onAllNodesWithTag("collection_grid").fetchSemanticsNodes().isNotEmpty() }
-            onNodeWithTag("collection_background_decade").assertIsNotDisplayed()
+            onNodeWithTag("home_page_filter_row").assertIsDisplayed()
             val after = onNodeWithTag("collection_grid").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
             assertEquals(before, after, 0.01f)
             save("real-decade-restored")
-            onNodeWithTag("catalog_back").performClick()
+            onNodeWithTag("page_back").performClick()
             onNodeWithText("2020s Movies").assertExists()
         } finally { FolderDetailRepository.clear(); server.stop(0) }
     }
@@ -79,9 +80,10 @@ class ConfiguredCollectionNavigationTest {
             onNodeWithText("Prime Video").performScrollTo().performClick()
             waitUntil(timeoutMillis = 15_000) { FolderDetailRepository.getCatalogSectionsForRows().isNotEmpty() }
             onNodeWithText("Prime Video", useUnmergedTree = true).assertExists()
-            onNodeWithTag("collection_background_prime").assertIsDisplayed()
+            onNodeWithTag("home_folder_page").assertIsDisplayed()
             save("real-streaming-rows")
-            onNodeWithTag("collection_grid").performScrollToIndex(1)
+            // Hero off: the folder's single row is the grid's first item (no intro above it any more).
+            onNodeWithTag("collection_grid").performScrollToIndex(0)
             val shelfKey = FolderDetailRepository.getCatalogSectionsForRows().single().key
             onAllNodesWithContentDescription("Dune", useUnmergedTree = true).onFirst()
                 .performMouseInput { click(center, button = MouseButton.Secondary) }
@@ -94,10 +96,10 @@ class ConfiguredCollectionNavigationTest {
             )
             onNodeWithText("Popular movies - Movies").performClick()
             waitUntil(timeoutMillis = 15_000) { onAllNodesWithTag("catalog_grid").fetchSemanticsNodes().isNotEmpty() }
-            onNodeWithTag("collection_background_prime").assertIsDisplayed()
+            onNodeWithTag("home_see_all_page").assertIsDisplayed()
             onNodeWithTag("catalog_grid").performScrollToIndex(57)
             waitUntil(timeoutMillis = 15_000) { CatalogRepository.uiState.value.items.size >= 120 }
-            onNodeWithTag("catalog_back").performClick()
+            onNodeWithTag("page_back").performClick()
             onNodeWithTag("collection_grid").assertExists()
             onNodeWithContentDescription("Rank 1", useUnmergedTree = true).assertExists()
         } finally {

@@ -52,12 +52,22 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.core.ui.RedesignColors
+import com.nuvio.app.core.ui.RedesignDanger
 import com.nuvio.app.core.ui.RedesignMenuSurface
 import com.nuvio.app.core.ui.redesignText
 import kotlin.math.roundToInt
 
 /** One action row of a [BoardContextMenu]. */
-internal class BoardMenuAction(val label: String, val icon: ImageVector, val tag: String, val onClick: () -> Unit)
+internal class BoardMenuAction(
+    val label: String,
+    val icon: ImageVector,
+    val tag: String,
+    /** Red ink (Remove from Continue Watching). */
+    val destructive: Boolean = false,
+    /** A hairline above this row. */
+    val separatorBefore: Boolean = false,
+    val onClick: () -> Unit,
+)
 
 /**
  * The board's frosted context menu for an episode card or a season pill (right-click or
@@ -97,39 +107,62 @@ internal fun BoardContextMenu(
             enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = TransformOrigin(0f, 0f)),
             exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = TransformOrigin(0f, 0f)),
         ) {
-            val shape = RoundedCornerShape(16.dp)
-            Column(
-                Modifier.widthIn(min = 260.dp, max = 520.dp).clip(shape).background(RedesignMenuSurface)
-                    .border(1.dp, RedesignColors.hairline, shape).padding(6.dp).testTag("detail_board_context_menu"),
-            ) {
-                Text(
-                    title.uppercase(),
-                    style = redesignText(11.sp, FontWeight.Medium, RedesignColors.textMuted, letterSpacing = 0.1.em),
-                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
-                )
-                actions.forEach { action ->
-                    val interaction = remember { MutableInteractionSource() }
-                    val hovered by interaction.collectIsHoveredAsState()
-                    val fill by animateColorAsState(if (hovered) Color.White.copy(alpha = 0.08f) else Color.Transparent, tween(140), label = "context_row")
-                    val ink = if (hovered) RedesignColors.textPrimary else RedesignColors.textSecondary
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(fill)
-                            .hoverable(interaction)
-                            .clickable(interactionSource = interaction, indication = null, role = Role.Button) { dismiss(); action.onClick() }
-                            .testTag(action.tag)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Icon(action.icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))
-                        Text(action.label, style = redesignText(13.sp, FontWeight.Medium, ink))
-                    }
-                }
-                if (footer != null) {
-                    Box(Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
-                    Box(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) { footer() }
-                }
+            BoardMenuPanel(title, actions, onPick = { dismiss(); it.onClick() }, footer = footer)
+        }
+    }
+}
+
+/**
+ * The frosted panel of [BoardContextMenu]: the small-caps title, the rows, then an optional footer.
+ * Home's card menus reuse it inside their own dimmed layer.
+ */
+@Composable
+internal fun BoardMenuPanel(
+    title: String,
+    actions: List<BoardMenuAction>,
+    onPick: (BoardMenuAction) -> Unit,
+    modifier: Modifier = Modifier,
+    footer: (@Composable () -> Unit)? = null,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier.widthIn(min = 260.dp, max = 520.dp).clip(shape).background(RedesignMenuSurface)
+            .border(1.dp, RedesignColors.hairline, shape).padding(6.dp).testTag("detail_board_context_menu"),
+    ) {
+        Text(
+            title.uppercase(),
+            style = redesignText(11.sp, FontWeight.Medium, RedesignColors.textMuted, letterSpacing = 0.1.em),
+            maxLines = 1,
+            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+        )
+        actions.forEach { action ->
+            if (action.separatorBefore) {
+                Box(Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
             }
+            val interaction = remember { MutableInteractionSource() }
+            val hovered by interaction.collectIsHoveredAsState()
+            val fill by animateColorAsState(if (hovered) Color.White.copy(alpha = 0.08f) else Color.Transparent, tween(140), label = "context_row")
+            val ink = when {
+                action.destructive -> RedesignDanger
+                hovered -> RedesignColors.textPrimary
+                else -> RedesignColors.textSecondary
+            }
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(fill)
+                    .hoverable(interaction)
+                    .clickable(interactionSource = interaction, indication = null, role = Role.Button) { onPick(action) }
+                    .testTag(action.tag)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(action.icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))
+                Text(action.label, style = redesignText(13.sp, FontWeight.Medium, ink))
+            }
+        }
+        if (footer != null) {
+            Box(Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
+            Box(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) { footer() }
         }
     }
 }

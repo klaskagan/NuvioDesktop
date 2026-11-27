@@ -37,6 +37,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -420,12 +421,14 @@ private fun <T> RedesignMenuPanel(
                     style = redesignText(13.sp, if (isSelected) FontWeight.SemiBold else FontWeight.Medium, if (isSelected || hovered) RedesignColors.textPrimary else RedesignColors.textSecondary),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    // Only the label shrinks, and only once the panel is at its widest; a weighted spacer
+                    // beside it split the width in two and cut "Top Rated Movies" short.
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 option.count?.let {
                     Text(it.toString(), style = redesignText(12.sp, FontWeight.Medium, RedesignColors.textMuted), modifier = Modifier.padding(start = 8.dp))
                 }
-                Box(Modifier.weight(1f).height(1.dp))
+                Spacer(Modifier.weight(0.0001f, fill = true))
                 Icon(
                     Icons.Rounded.Check,
                     contentDescription = null,

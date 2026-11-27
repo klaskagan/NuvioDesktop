@@ -98,7 +98,11 @@ internal fun continueWatchingSectionHeightEstimate(
 ): Dp {
     val headerHeight = NuvioTokens.Space.s40
     val headerToRowGap = NuvioTokens.Space.s8 + NuvioTokens.Space.s2
-    val rowHeight = when (style) {
+    val rowHeight = if (isDesktop) when (style) {
+        ContinueWatchingSectionStyle.Card -> CwCardStillHeight + CwTextBlockHeight
+        ContinueWatchingSectionStyle.Wide -> CwWideHeight
+        ContinueWatchingSectionStyle.Poster -> layout.posterCardWidth * (216f / 146f) + CwTextBlockHeight
+    } else when (style) {
         ContinueWatchingSectionStyle.Card -> continueWatchingLandscapeCardHeight(basePosterWidthDp)
         ContinueWatchingSectionStyle.Wide -> layout.wideCardHeight
         ContinueWatchingSectionStyle.Poster -> layout.posterCardHeight + layout.posterTitleBlockHeight
@@ -140,7 +144,7 @@ private fun localizedContinueWatchingMetaLine(item: ContinueWatchingItem): Strin
 private fun ContinueWatchingItem.isCloudLibraryItem(): Boolean =
     parentMetaType.equals(CloudLibraryContentType, ignoreCase = true)
 
-private fun ContinueWatchingItem.continueWatchingArtworkUrl(
+internal fun ContinueWatchingItem.continueWatchingArtworkUrl(
     useEpisodeThumbnails: Boolean,
 ): String? = when {
     isNextUp && useEpisodeThumbnails -> firstNonBlank(
@@ -169,7 +173,7 @@ private fun ContinueWatchingItem.continueWatchingArtworkUrl(
     )
 }
 
-private fun ContinueWatchingItem.continueWatchingPosterArtworkUrl(
+internal fun ContinueWatchingItem.continueWatchingPosterArtworkUrl(
     useEpisodeThumbnails: Boolean,
 ): String? {
     if (seasonNumber == null || episodeNumber == null) {
@@ -190,7 +194,7 @@ private fun ContinueWatchingItem.continueWatchingPosterArtworkUrl(
     )
 }
 
-private fun ContinueWatchingItem.continueWatchingCardArtworkUrl(
+internal fun ContinueWatchingItem.continueWatchingCardArtworkUrl(
     useEpisodeThumbnails: Boolean,
     preferBackdropForNextUp: Boolean,
 ): String? = when {
@@ -229,7 +233,7 @@ private fun ContinueWatchingItem.continueWatchingCardArtworkUrl(
 private fun firstNonBlank(vararg values: String?): String? =
     values.firstOrNull { value -> !value.isNullOrBlank() }?.trim()
 
-private fun ContinueWatchingItem.fallbackUrlForArtwork(artworkUrl: String?): String? {
+internal fun ContinueWatchingItem.fallbackUrlForArtwork(artworkUrl: String?): String? {
     if (artworkUrl.isNullOrBlank()) return null
     val trimmed = artworkUrl.trim()
     if (trimmed == poster?.trim() && !rawPosterUrl.isNullOrBlank() && rawPosterUrl != poster) return rawPosterUrl
@@ -238,7 +242,7 @@ private fun ContinueWatchingItem.fallbackUrlForArtwork(artworkUrl: String?): Str
 }
 
 @Composable
-private fun continuewatchingImageModel(
+internal fun continuewatchingImageModel(
     imageUrl: String?,
     fallbackUrl: String?,
 ): Any? {
@@ -355,7 +359,7 @@ private fun HomeContinueWatchingSectionContent(
             modifier = modifier,
             headerHorizontalPadding = sectionPadding,
             rowContentPadding = PaddingValues(horizontal = sectionPadding),
-            itemSpacing = layout.itemGap,
+            itemSpacing = if (isDesktop) CwRowGap else layout.itemGap,
             key = { entry -> entry.key },
             animatePlacement = true,
             state = listState,
@@ -367,7 +371,9 @@ private fun HomeContinueWatchingSectionContent(
                 disintegrating = entry.exiting,
                 onDisintegrated = { disintegration.onDisintegrated(entry.key) },
             ) {
-                when (style) {
+                if (isDesktop) {
+                    DesktopContinueWatchingEntry(item, style, layout, useEpisodeThumbnails, blurNextUp, onClick, onLongClick)
+                } else when (style) {
                     ContinueWatchingSectionStyle.Card -> ContinueWatchingCard(
                         item = item,
                         useEpisodeThumbnails = useEpisodeThumbnails,
@@ -394,6 +400,38 @@ private fun HomeContinueWatchingSectionContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DesktopContinueWatchingEntry(
+    item: ContinueWatchingItem,
+    style: ContinueWatchingSectionStyle,
+    layout: ContinueWatchingLayout,
+    useEpisodeThumbnails: Boolean,
+    blurNextUp: Boolean,
+    onClick: (() -> Unit)?,
+    onLongClick: (() -> Unit)?,
+) {
+    val artwork = when (style) {
+        ContinueWatchingSectionStyle.Poster -> item.continueWatchingPosterArtworkUrl(useEpisodeThumbnails)
+        ContinueWatchingSectionStyle.Wide -> item.continueWatchingCardArtworkUrl(useEpisodeThumbnails, preferBackdropForNextUp = false)
+        ContinueWatchingSectionStyle.Card -> item.continueWatchingCardArtworkUrl(useEpisodeThumbnails, preferBackdropForNextUp = false)
+    }
+    val blurred = item.shouldBlurContinueWatchingArtwork(blurNextUp, useEpisodeThumbnails, artwork)
+    val fallback = item.fallbackUrlForArtwork(artwork)
+    when (style) {
+        ContinueWatchingSectionStyle.Wide -> DesktopContinueWatchingWideCard(item, artwork, fallback, blurred, onClick, onLongClick)
+        else -> DesktopContinueWatchingCard(
+            item = item,
+            poster = style == ContinueWatchingSectionStyle.Poster,
+            posterWidth = layout.posterCardWidth,
+            artworkUrl = artwork,
+            fallbackUrl = fallback,
+            blurred = blurred,
+            onClick = onClick,
+            onLongClick = onLongClick,
+        )
     }
 }
 

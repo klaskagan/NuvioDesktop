@@ -92,6 +92,7 @@ import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.core.ui.NuvioToastHost
 import com.nuvio.app.core.ui.PosterZoomAnchor
 import com.nuvio.app.core.ui.PosterZoomAnchorHolder
+import com.nuvio.app.core.ui.PosterZoomOverlayCoordinator
 import com.nuvio.app.core.ui.PosterZoomOverlayAction
 import com.nuvio.app.core.ui.PosterZoomOverlayExitAnimation
 import com.nuvio.app.core.ui.TrackingListPickerDialog
@@ -128,6 +129,8 @@ import com.nuvio.app.features.home.HomeRepository
 import com.nuvio.app.features.home.buildAddonCatalogRefreshSignature
 import com.nuvio.app.features.home.opensDetails
 import com.nuvio.app.features.home.components.shouldBlurContinueWatchingArtwork
+import com.nuvio.app.features.home.components.HomeCardContextMenu
+import com.nuvio.app.features.details.components.BoardMenuAction
 import com.nuvio.app.features.library.LibraryItem
 import com.nuvio.app.features.library.LibraryRepository
 import com.nuvio.app.features.library.LibrarySection
@@ -2117,7 +2120,8 @@ internal fun MainAppContent(
                         )
                     }
                     val launch = CatalogLaunchStore.get(route.launchId)
-                    if (launch?.fromCollectionFolder == true ||
+                    // Desktop See all keeps Home's top bar (Home design, "See all · catalog grid").
+                    if (isDesktop || launch?.fromCollectionFolder == true ||
                         launch?.target is CatalogTarget.CollectionSource || launch?.target is CatalogTarget.Seasonal
                     ) {
                         CollectionNavigationFrame(route, content)
@@ -2476,7 +2480,55 @@ internal fun MainAppContent(
                 }
             }
 
-            selectedContinueWatchingForActions?.let { item ->
+            if (isDesktop) selectedContinueWatchingForActions?.let { item ->
+                // Desktop: the Details board's frosted menu beside the card, lifted in place over a dim.
+                key(item.videoId, selectedContinueWatchingZoomAnchor) {
+                    val showManualPlayOption = streamAutoPlayEnabled && canSelectContinueWatchingStreams(item)
+                    val episodeCode = if (item.seasonNumber != null && item.episodeNumber != null) {
+                        stringResource(Res.string.streams_episode_badge, item.seasonNumber, item.episodeNumber)
+                    } else null
+                    HomeCardContextMenu(
+                        title = listOfNotNull(item.title, episodeCode).joinToString(" · "),
+                        anchor = selectedContinueWatchingZoomAnchor,
+                        actions = buildList {
+                            if (!item.isCloudLibraryContinueWatchingItem()) {
+                                add(BoardMenuAction(stringResource(Res.string.cw_action_go_to_details), Icons.Default.Info, "cw_menu_details") {
+                                    onContinueWatchingDetails(item)
+                                })
+                            }
+                            if (showManualPlayOption) {
+                                add(BoardMenuAction(stringResource(Res.string.play_manually), Icons.Default.PlayArrow, "cw_menu_play_manually") {
+                                    onContinueWatchingPlayManually(item)
+                                })
+                            }
+                            if (!item.isNextUp && item.progressFraction > 0f && canPlayContinueWatching(item)) {
+                                add(BoardMenuAction(stringResource(Res.string.cw_action_start_from_beginning), Icons.Default.Replay, "cw_menu_restart") {
+                                    onContinueWatchingStartFromBeginning(item)
+                                })
+                            }
+                            if (item.canMarkWatched()) {
+                                add(BoardMenuAction(stringResource(Res.string.hero_mark_watched), Icons.Default.CheckCircle, "cw_menu_watched") {
+                                    onContinueWatchingMarkWatched(item)
+                                })
+                            }
+                            add(BoardMenuAction(
+                                stringResource(Res.string.cw_action_remove_from_continue_watching),
+                                Icons.Default.DeleteOutline,
+                                "cw_menu_remove",
+                                destructive = true,
+                                separatorBefore = true,
+                            ) { onContinueWatchingRemove(item) })
+                        },
+                        onDismiss = {
+                            selectedContinueWatchingForActions = null
+                            selectedContinueWatchingZoomAnchor = null
+                            PosterZoomOverlayCoordinator.hide()
+                        },
+                    )
+                }
+            }
+
+            if (!isDesktop) selectedContinueWatchingForActions?.let { item ->
                 selectedContinueWatchingZoomAnchor?.let { anchor ->
                     key(item.videoId, anchor) {
                         val showManualPlayOption = streamAutoPlayEnabled && canSelectContinueWatchingStreams(item)
@@ -2557,7 +2609,7 @@ internal fun MainAppContent(
             }
 
             NuvioContinueWatchingActionSheet(
-                item = selectedContinueWatchingForActions.takeIf { selectedContinueWatchingZoomAnchor == null },
+                item = selectedContinueWatchingForActions.takeIf { !isDesktop && selectedContinueWatchingZoomAnchor == null },
                 showManualPlayOption = streamAutoPlayEnabled &&
                     selectedContinueWatchingForActions?.let(::canSelectContinueWatchingStreams) == true,
                 showDetailsOption = selectedContinueWatchingForActions?.isCloudLibraryContinueWatchingItem() != true,

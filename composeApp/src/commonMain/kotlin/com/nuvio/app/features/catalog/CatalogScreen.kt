@@ -174,6 +174,29 @@ fun CatalogScreen(
         }
     }
 
+    // Desktop See all: Home's hero tile (a seasonal catalog: its theme's artwork) and the shared filter row.
+    if (isDesktop && !LocalUseNativeNavigation.current) {
+        HomeSeeAllPage(
+            title = title,
+            target = target,
+            uiState = uiState,
+            gridState = gridState,
+            watchedKeys = watchedUiState.watchedKeys,
+            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+            networkCondition = networkStatusUiState.condition,
+            onBack = onBack,
+            onRetry = {
+                NetworkStatusRepository.requestRefresh(force = true)
+                CatalogRepository.load(target = target, force = true)
+            },
+            onLoadMore = CatalogRepository::loadMore,
+            onPosterClick = onPosterClick,
+            onPosterLongClick = onPosterLongClick,
+            subtitle = subtitle,
+        )
+        return
+    }
+
     CatalogContent(
         title = title,
         subtitle = subtitle,
