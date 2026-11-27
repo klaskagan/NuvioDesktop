@@ -1,6 +1,9 @@
 package com.nuvio.app
 
 import androidx.compose.animation.ExperimentalSharedTransitionApi
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
+import com.nuvio.app.core.ui.LocalShellMenuSurfaceHolder
+import com.nuvio.app.core.ui.ShellMenuSurfaceHolder
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -355,6 +358,7 @@ internal fun MainAppContent(
         var showExitConfirmation by rememberSaveable { mutableStateOf(false) }
         var selectedPosterActionTarget by remember { mutableStateOf<PosterActionTarget?>(null) }
         var selectedPosterAnchor by remember { mutableStateOf<PosterZoomAnchor?>(null) }
+        val shellMenuSurface = remember { ShellMenuSurfaceHolder() }
         val posterOverlayHazeState = rememberHazeState()
         val featurePosterOverlay = remember { PosterZoomOverlayHostState() }
         var selectedContinueWatchingForActions by remember { mutableStateOf<ContinueWatchingItem?>(null) }
@@ -1706,6 +1710,7 @@ internal fun MainAppContent(
                         com.nuvio.app.core.ui.LocalNavLayerScope provides LocalNavAnimatedContentScope.current,
                         com.nuvio.app.core.ui.LocalNavTransitionStyle provides pageTransitionStyle,
                         com.nuvio.app.core.ui.LocalShellBackdropMode provides shellBackdropMode,
+                        LocalShellMenuSurfaceHolder provides shellMenuSurface,
                     ) {
                     MainTabsDestination(
                         selectedTab = selectedTab,
@@ -2307,7 +2312,10 @@ internal fun MainAppContent(
             }
 
             rowStyleShelfKey?.let { shelfKey ->
-                HomeRowStylePicker(shelfKey, onDismiss = { rowStyleShelfKey = null }, anchor = rowStyleAnchor)
+                // Drawn here, outside the tabs: take Home's backdrop colour like the ⋯ picker.
+                CompositionLocalProvider(LocalRedesignMenuSurface provides shellMenuSurface.color) {
+                    HomeRowStylePicker(shelfKey, onDismiss = { rowStyleShelfKey = null }, anchor = rowStyleAnchor)
+                }
             }
 
             featurePosterOverlay.content?.invoke(posterOverlayHazeState)
@@ -2493,6 +2501,7 @@ internal fun MainAppContent(
                     val episodeCode = if (item.seasonNumber != null && item.episodeNumber != null) {
                         stringResource(Res.string.streams_episode_badge, item.seasonNumber, item.episodeNumber)
                     } else null
+                    CompositionLocalProvider(LocalRedesignMenuSurface provides shellMenuSurface.color) {
                     HomeCardContextMenu(
                         title = listOfNotNull(item.title, episodeCode).joinToString(" · "),
                         anchor = selectedContinueWatchingZoomAnchor,
@@ -2531,6 +2540,7 @@ internal fun MainAppContent(
                             PosterZoomOverlayCoordinator.hide()
                         },
                     )
+                    }
                 }
             }
 

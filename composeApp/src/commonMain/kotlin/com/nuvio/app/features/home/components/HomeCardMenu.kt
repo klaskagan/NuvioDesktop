@@ -97,7 +97,13 @@ internal fun HomeCardContextMenu(
     val density = LocalDensity.current
     val bounds = anchor?.boundsInRoot
     val ringRadius = with(density) { (anchor?.cornerRadius ?: 12.dp).toPx() }
-    Popup(popupPositionProvider = fullWindow, onDismissRequest = { close(null) }, properties = PopupProperties(focusable = true)) {
+    // usePlatformInsets = false: by default the popup lays its content out under the title-bar inset
+    // (28 dp on macOS), so the lifted card and its ring, drawn at root coordinates, sat 28 dp low.
+    Popup(
+        popupPositionProvider = fullWindow,
+        onDismissRequest = { close(null) },
+        properties = PopupProperties(focusable = true, usePlatformInsets = false),
+    ) {
         Box(Modifier.fillMaxSize().testTag("home_card_menu")) {
             Canvas(
                 Modifier.fillMaxSize()

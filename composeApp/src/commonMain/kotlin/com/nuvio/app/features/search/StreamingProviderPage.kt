@@ -1,6 +1,9 @@
 package com.nuvio.app.features.search
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.selection.toggleable
+import com.nuvio.app.core.ui.RedesignSwitch
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
@@ -738,7 +741,7 @@ private fun TagRowsPanel(layout: StreamingRowLayout) {
         Modifier.width(340.dp)
             .shadow(18.dp, shape)
             .clip(shape)
-            .background(Color(0xFF17181C))
+            .background(LocalRedesignMenuSurface.current)
             .border(1.dp, RedesignColors.hairline, shape)
             .padding(vertical = 12.dp)
             .testTag("tag_rows_panel"),
@@ -790,19 +793,15 @@ private fun TagRowsPanel(layout: StreamingRowLayout) {
                                 )
                             }
                         }
-                        Switch(
-                            checked = visible,
-                            onCheckedChange = { StreamingRowLayoutRepository.setHidden(id, !it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color(0xFF0E0F12),
-                                checkedTrackColor = RedesignColors.textPrimary,
-                                uncheckedThumbColor = RedesignColors.textMuted,
-                                uncheckedTrackColor = RedesignColors.fill,
-                                uncheckedBorderColor = RedesignColors.hairline,
-                            ),
-                            // Material's switch is sized for touch; the panel is a dense pointer list.
-                            modifier = Modifier.height(36.dp).scale(0.72f).semantics { contentDescription = name },
-                        )
+                        // The design's switch (green when on), as in the Details and Streams panels.
+                        Box(
+                            Modifier.height(36.dp).padding(horizontal = 2.dp)
+                                .toggleable(value = visible, role = Role.Switch) { StreamingRowLayoutRepository.setHidden(id, !it) }
+                                .semantics { contentDescription = name },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            RedesignSwitch(checked = visible)
+                        }
                     }
                 }
             }

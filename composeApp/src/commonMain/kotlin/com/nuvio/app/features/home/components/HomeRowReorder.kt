@@ -21,6 +21,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -327,9 +332,11 @@ internal fun homeRowHeader(
                     size = RowButtonSize,
                     title = title,
                 )
-            }
-            if (pickerOpen) {
-                HomeRowStylePicker(key, onDismiss = { pickerOpen = false }, anchor = anchor, title = title)
+                // Inside the button's box: as a sibling in the actions row the popup took a slot, and the
+                // row's 8 dp spacing pushed ⋯ left while the picker was open.
+                if (pickerOpen) {
+                    HomeRowStylePicker(key, onDismiss = { pickerOpen = false }, anchor = anchor, title = title)
+                }
             }
         },
     )
@@ -367,7 +374,26 @@ internal fun HomeRowLift(
                     .border(2.dp, Color.White.copy(alpha = 0.85f), shape),
             )
         }
-        Box(Modifier.padding(top = topInset, bottom = topInset * 0.3f)) { content() }
+        // The row scrolls sideways under the panel: clip it inside the ring, or posters past the
+        // panel's edge drew over it.
+        Box(
+            Modifier
+                .then(
+                    if (progress > 0f) {
+                        Modifier.drawWithContent {
+                            val inset = ((sidePadding - 16.dp).coerceAtLeast(0.dp) + 2.dp).toPx()
+                            val radius = 16.dp.toPx()
+                            val path = Path().apply {
+                                addRoundRect(RoundRect(inset, 0f, size.width - inset, size.height, CornerRadius(radius)))
+                            }
+                            clipPath(path) { this@drawWithContent.drawContent() }
+                        }
+                    } else {
+                        Modifier
+                    },
+                )
+                .padding(top = topInset, bottom = topInset * 0.3f),
+        ) { content() }
     }
 }
 

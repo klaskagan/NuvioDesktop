@@ -1,6 +1,7 @@
 package com.nuvio.app.features.details
 
 import androidx.compose.animation.AnimatedVisibilityScope
+import com.nuvio.app.core.ui.ProvideRedesignMenuSurface
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
@@ -240,6 +241,7 @@ fun PersonDetailScreen(
         }
         val slide = Modifier.navTransitionLayer(NavLayer.Content, NavSide.Above)
         Box(Modifier.fillMaxSize().then(slide).padding(start = LocalBackdropContentStartInset.current)) {
+        ProvideRedesignMenuSurface(backdrop) {
         RedesignTypography(enabled = isDesktop) {
         AnimatedContent(
             targetState = uiState,
@@ -301,6 +303,7 @@ fun PersonDetailScreen(
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
+        }
         }
         }
         }

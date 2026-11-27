@@ -1,6 +1,17 @@
 package com.nuvio.app.core.ui
 
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.em
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 
@@ -56,6 +67,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -353,7 +366,8 @@ internal fun <T> RedesignMenuButton(
 ) {
     val menu = remember { MutableTransitionState(false) }
     val clear = onClear?.takeIf { active }
-    Box(modifier) {
+    val pill = remember { PillBounds() }
+    Box(modifier.trackPillBounds(pill)) {
         RedesignPillButton(
             label = label,
             onClick = { if (clear != null) clear() else menu.targetState = !menu.targetState },
@@ -362,25 +376,86 @@ internal fun <T> RedesignMenuButton(
             prefix = prefix,
             active = active || menu.targetState,
         )
-        if (menu.currentState || menu.targetState) {
-            val dismiss = { menu.targetState = false }
-            OverlayEscapeHandler { dismiss() }
-            val offsetY = with(LocalDensity.current) { (PillHeight + 6.dp).roundToPx() }
-            val origin = TransformOrigin(if (alignEnd) 1f else 0f, 0f)
-            Popup(
-                alignment = if (alignEnd) Alignment.TopEnd else Alignment.TopStart,
-                offset = IntOffset(0, offsetY),
-                onDismissRequest = dismiss,
-                properties = PopupProperties(focusable = true),
-            ) {
-                AnimatedVisibility(
-                    visibleState = menu,
-                    enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = origin),
-                    exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = origin),
-                ) {
-                    RedesignMenuPanel(options, selected, onSelect = { onSelect(it); dismiss() }, tag = tag)
-                }
+        RedesignPillDropdown(menu, pill, options, selected, onSelect, alignEnd = alignEnd, tag = tag)
+    }
+}
+
+/** Where a pill sits, for the dropdown under it: its size and its bottom edge in the window. */
+@Stable
+internal class PillBounds {
+    var widthPx by mutableIntStateOf(0)
+    var heightPx by mutableIntStateOf(0)
+    var bottomInWindowPx by mutableStateOf(0f)
+}
+
+/** Put on the Box that holds a pill and its [RedesignPillDropdown]. */
+internal fun Modifier.trackPillBounds(bounds: PillBounds): Modifier = onGloballyPositioned { coordinates ->
+    bounds.widthPx = coordinates.size.width
+    bounds.heightPx = coordinates.size.height
+    bounds.bottomInWindowPx = coordinates.boundsInWindow().bottom
+}
+
+private val PillMenuGap = 6.dp
+private val PillMenuWindowMargin = 16.dp
+
+/**
+ * A pill's dropdown ("Dropdown · spec"): 6 dp under the pill, at least as wide as it, and never over
+ * it. When the list doesn't fit below, it opens 6 dp above the pill instead if there is more room
+ * there; either way it stops at the window's margin and scrolls. Esc closes it, not the page. Place
+ * it in the same Box as the pill ([trackPillBounds]).
+ */
+@Composable
+internal fun <T> RedesignPillDropdown(
+    menu: MutableTransitionState<Boolean>,
+    pill: PillBounds,
+    options: List<RedesignMenuOption<T>>,
+    selected: T?,
+    onSelect: (T) -> Unit,
+    alignEnd: Boolean = false,
+    tag: String? = null,
+    maxWidth: Dp = RedesignPillMenuMaxWidth,
+) {
+    if (!(menu.currentState || menu.targetState)) return
+    val dismiss = { menu.targetState = false }
+    OverlayEscapeHandler { dismiss() }
+    val density = LocalDensity.current
+    val windowHeightPx = LocalWindowInfo.current.containerSize.height
+    val gapPx = with(density) { PillMenuGap.roundToPx() }
+    val marginPx = with(density) { PillMenuWindowMargin.roundToPx() }
+    // The taller of the two sides; an unknown window height (0) leaves the menu its full height.
+    val maxHeight = if (windowHeightPx <= 0) RedesignPillMenuMaxHeight else {
+        val below = windowHeightPx - pill.bottomInWindowPx - gapPx - marginPx
+        val above = pill.bottomInWindowPx - pill.heightPx - gapPx - marginPx
+        with(density) { maxOf(below, above).toDp() }.coerceIn(120.dp, RedesignPillMenuMaxHeight)
+    }
+    var opensAbove by remember { mutableStateOf(false) }
+    val provider = remember(alignEnd, gapPx, marginPx) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+                val x = (if (alignEnd) anchorBounds.right - popupContentSize.width else anchorBounds.left)
+                    .coerceIn(marginPx, (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx))
+                val below = anchorBounds.bottom + gapPx
+                val fitsBelow = below + popupContentSize.height <= windowSize.height - marginPx
+                val roomAbove = anchorBounds.top - gapPx - marginPx
+                val roomBelow = windowSize.height - marginPx - below
+                val above = !fitsBelow && roomAbove > roomBelow
+                opensAbove = above
+                return IntOffset(x, if (above) (anchorBounds.top - gapPx - popupContentSize.height).coerceAtLeast(marginPx) else below)
             }
+        }
+    }
+    val origin = TransformOrigin(if (alignEnd) 1f else 0f, if (opensAbove) 1f else 0f)
+    Popup(popupPositionProvider = provider, onDismissRequest = dismiss, properties = PopupProperties(focusable = true)) {
+        AnimatedVisibility(
+            visibleState = menu,
+            enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = origin),
+            exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = origin),
+        ) {
+            val pillWidth = with(density) { pill.widthPx.toDp() }
+            RedesignMenuPanel(
+                options, selected, onSelect = { onSelect(it); dismiss() }, tag = tag,
+                minWidth = pillWidth, maxWidth = maxWidth, maxHeight = maxHeight,
+            )
         }
     }
 }
@@ -391,11 +466,14 @@ private fun <T> RedesignMenuPanel(
     selected: T?,
     onSelect: (T) -> Unit,
     tag: String?,
+    minWidth: Dp = 0.dp,
+    maxWidth: Dp = RedesignPillMenuMaxWidth,
+    maxHeight: Dp = RedesignPillMenuMaxHeight,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RedesignPillMenuShape
     Column(
-        Modifier.widthIn(min = 200.dp, max = 320.dp).heightIn(max = 380.dp)
-            .clip(shape).background(RedesignMenuSurface).border(1.dp, RedesignColors.hairline, shape)
+        Modifier.widthIn(min = minWidth.coerceIn(RedesignPillMenuMinWidth, maxWidth), max = maxWidth).heightIn(max = maxHeight)
+            .clip(shape).background(LocalRedesignMenuSurface.current).border(1.dp, RedesignColors.hairline, shape)
             .verticalScroll(rememberScrollState()).padding(6.dp)
             .then(tag?.let { Modifier.testTag("$it-menu") } ?: Modifier),
     ) {
@@ -515,7 +593,7 @@ private fun RedesignActionMenuPopup(
         ) {
             val shape = RoundedCornerShape(16.dp)
             Column(
-                Modifier.widthIn(min = 200.dp, max = 300.dp).clip(shape).background(RedesignMenuSurface)
+                Modifier.widthIn(min = 200.dp, max = 300.dp).clip(shape).background(LocalRedesignMenuSurface.current)
                     .border(1.dp, RedesignColors.hairline, shape).padding(6.dp),
             ) {
                 if (title != null) {
@@ -567,6 +645,45 @@ internal val RedesignDanger = Color(0xFFFF8A80)
 
 /** Opaque enough that menu rows stay legible over posters (no blur source under a popup). */
 internal val RedesignMenuSurface = Color(0xFF1C1E22).copy(alpha = 0.97f)
+
+/** A pill's dropdown: 18 dp corners to echo the round pill, 200–320 dp wide ("Dropdown · spec"). */
+internal val RedesignPillMenuShape = RoundedCornerShape(18.dp)
+internal val RedesignPillMenuMinWidth = 200.dp
+internal val RedesignPillMenuMaxWidth = 320.dp
+internal val RedesignPillMenuMaxHeight = 420.dp
+
+/** The menu surface with no artwork behind the page (Mesh or Solid background, or no backdrop). */
+internal val RedesignMenuSurfaceFallback = Color(0xFF1C1E22)
+
+/**
+ * The surface every dropdown and menu draws ("Dropdown · spec" in the Home design): the colour of
+ * the backdrop behind the pill that opened it, opaque. Screens with a backdrop provide it through
+ * [ProvideRedesignMenuSurface]; popups inherit it from where they are called.
+ */
+internal val LocalRedesignMenuSurface = compositionLocalOf { RedesignMenuSurfaceFallback }
+
+/** [controller]'s menu colour, crossfading over 400 ms when the backdrop changes; grey without artwork. */
+@Composable
+internal fun rememberRedesignMenuSurface(controller: BackdropFocusController?): Color {
+    val target = controller?.menuTint ?: RedesignMenuSurfaceFallback
+    return animateColorAsState(target, tween(400), label = "menu_surface").value
+}
+
+/**
+ * The shell's menu surface, for menus the app draws above the tabs (Home's card menus live in
+ * MainAppContent, outside the tabs' composition): the tabs write it, those menus read it.
+ */
+@Stable
+internal class ShellMenuSurfaceHolder {
+    var color by mutableStateOf(RedesignMenuSurfaceFallback)
+}
+
+internal val LocalShellMenuSurfaceHolder = staticCompositionLocalOf<ShellMenuSurfaceHolder?> { null }
+
+@Composable
+internal fun ProvideRedesignMenuSurface(controller: BackdropFocusController?, content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalRedesignMenuSurface provides rememberRedesignMenuSurface(controller), content = content)
+}
 
 /** Frosted board tile shape shared with Home's board. */
 internal val RedesignTileShape = RoundedCornerShape(18.dp)

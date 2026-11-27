@@ -182,6 +182,8 @@ internal fun HomePageFilterRow(
     modifier: Modifier = Modifier,
     menus: (@Composable RowScope.() -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
+    /** The page's backdrop colour, for the Tinted top-bar setting (as Details' tabs row). */
+    tint: Color? = null,
 ) {
     val pinnedNow by rememberUpdatedState(pinned)
     Box(
@@ -189,7 +191,7 @@ internal fun HomePageFilterRow(
             .keepListStillWhilePinned { pinnedNow }
             .testTag("home_page_filter_row"),
     ) {
-        PinnedBarBackground(scrolled = pinned, hazeState = null)
+        PinnedBarBackground(scrolled = pinned, hazeState = null, tint = tint)
         val hairline by animateColorAsState(if (pinned) Color.Transparent else RedesignColors.hairline, tween(220), label = "page_row_hairline")
         Box(Modifier.align(Alignment.BottomStart).padding(horizontal = horizontalPadding).fillMaxWidth().height(1.dp).background(hairline))
         Row(Modifier.fillMaxSize().padding(horizontal = horizontalPadding), verticalAlignment = Alignment.CenterVertically) {

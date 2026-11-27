@@ -1,6 +1,7 @@
 package com.nuvio.app.features.streams
 
 import nuvio.composeapp.generated.resources.streams_sheet_download_quality_size
+import com.nuvio.app.core.ui.ProvideRedesignMenuSurface
 import nuvio.composeapp.generated.resources.streams_sheet_download_folder_line_no_space
 import nuvio.composeapp.generated.resources.streams_sheet_download_folder_line
 import nuvio.composeapp.generated.resources.streams_sheet_download_count
@@ -244,6 +245,7 @@ internal fun StreamsSheetLayout(
     // Esc closes an open row first (frame "Sources · row clicked"), then the sheet.
     com.nuvio.app.OverlayEscapeHandler(enabled = expandedKey != null) { expandedKey = null }
 
+    ProvideRedesignMenuSurface(backdrop) {
     RedesignTypography {
         Box(modifier.fillMaxSize()) {
             if (backdrop != null) ShellBackdrop(backdrop, showArtwork = backdropMode == ShellBackdropMode.Ambient)
@@ -353,6 +355,7 @@ internal fun StreamsSheetLayout(
                 }
             }
         }
+    }
     }
 }
 

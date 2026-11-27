@@ -73,6 +73,12 @@ class BackdropFocusController(initialBase: String? = null) {
     /** The colour behind the top bar on the shown artwork, for [TopBarBackground.Tinted]; null without artwork. */
     var tint by mutableStateOf<Color?>(null)
 
+    /**
+     * The opaque surface for menus opened over this backdrop ([menuSurfaceFromAverage]), whatever
+     * the top bar setting; null without artwork, so menus keep [RedesignMenuSurfaceFallback]'s grey.
+     */
+    var menuTint by mutableStateOf<Color?>(null)
+
     val target: String? get() = base
 }
 
@@ -170,11 +176,14 @@ fun ShellBackdrop(
     // The Tinted top bar takes the colour actually behind it: the top strip of the shown artwork.
     // (The image's dominant colour came out darker and of another hue than the backdrop.)
     val tintEnabled = ThemeSettingsRepository.topBarBackground.collectAsStateWithLifecycle().value == TopBarBackground.Tinted
+    // Menus take the same strip, as an opaque surface (see "Dropdown · spec" in the Home design).
     LaunchedEffect(shown, tintEnabled) {
         val bitmap = shown
-        controller.tint = if (!tintEnabled || bitmap == null) null else withContext(Dispatchers.Default) {
-            runCatching { backdropTopTint(bitmap) }.getOrNull()
+        val average = if (bitmap == null) null else withContext(Dispatchers.Default) {
+            runCatching { backdropTopAverage(bitmap) }.getOrNull()
         }
+        controller.tint = average?.takeIf { tintEnabled }?.let(::pinnedTintFromAverage)
+        controller.menuTint = average?.let(::menuSurfaceFromAverage)
     }
 
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -209,11 +218,10 @@ fun ShellBackdrop(
 }
 
 /**
- * The Tinted top bar's colour for [bitmap]: the average of its top strip (where the bar sits),
- * under the backdrop's own top scrim (black at 40%), darkened further only if white bar text
- * would no longer stand out.
+ * The average colour of [bitmap]'s top 22 % strip, where the top bar sits. The Tinted top bar
+ * ([pinnedTintFromAverage]) and the menu surface ([menuSurfaceFromAverage]) are both made from it.
  */
-internal fun backdropTopTint(bitmap: ImageBitmap): Color {
+internal fun backdropTopAverage(bitmap: ImageBitmap): Color {
     val width = bitmap.width
     val height = (bitmap.height * 0.22f).toInt().coerceAtLeast(1)
     val pixels = IntArray(width * height)
@@ -227,16 +235,29 @@ internal fun backdropTopTint(bitmap: ImageBitmap): Color {
         b += argb and 0xFF
     }
     val n = pixels.size.coerceAtLeast(1) * 255f
-    return pinnedTintFromAverage(Color(r / n, g / n, b / n))
+    return Color(r / n, g / n, b / n)
 }
 
 /** [average] under the backdrop's 40% top scrim, capped so white bar text keeps its contrast. */
-internal fun pinnedTintFromAverage(average: Color): Color {
-    val scrimmed = Color(average.red * 0.6f, average.green * 0.6f, average.blue * 0.6f)
-    val luminance = scrimmed.luminance()
-    val cap = 0.12f
-    if (luminance <= cap) return scrimmed
-    // Scale towards black until the luminance is at the cap, keeping the hue.
+internal fun pinnedTintFromAverage(average: Color): Color = scaledToLuminance(average, scrim = 0.6f, cap = 0.12f)
+
+/**
+ * The menu surface over a backdrop whose top strip averages [average]: the colour under the page's
+ * scrim (x0.45), darkened until its luminance is at most 0.03 so grey rows keep at least 5.5:1, then
+ * the pill's 7 % white mixed in. Opaque, because nothing blurred sits behind a popup.
+ */
+internal fun menuSurfaceFromAverage(average: Color): Color {
+    val base = scaledToLuminance(average, scrim = 0.45f, cap = 0.03f)
+    fun mix(c: Float) = c + (1f - c) * MenuPillWhite
+    return Color(mix(base.red), mix(base.green), mix(base.blue))
+}
+
+private const val MenuPillWhite = 0.07f
+
+/** [color] times [scrim], then scaled towards black (keeping the hue) until its luminance is at most [cap]. */
+private fun scaledToLuminance(color: Color, scrim: Float, cap: Float): Color {
+    val scrimmed = Color(color.red * scrim, color.green * scrim, color.blue * scrim)
+    if (scrimmed.luminance() <= cap) return scrimmed
     var lo = 0f
     var hi = 1f
     repeat(16) {

@@ -821,3 +821,9 @@ and checks its selected filter and results.
   press-and-hold the shared zoomed options menu (`NuvioPosterZoomActionOverlay`); without its anchor
   the app falls back to the plain bottom sheet. Trigger: board Continue Watching cards ignored right
   click, then opened the bottom sheet instead of the zoomed menu. Check: `HomeBoardResumeTileTest`.
+- A full-window `Popup` that draws or places things at an anchor's root/window coordinates (the
+  lifted card and ring of `HomeCardContextMenu`) passes `PopupProperties(usePlatformInsets = false)`.
+  By default desktop popups lay their content out under the 28 dp macOS title-bar inset, so
+  everything drawn at the anchor landed 28 dp low. Trigger: right-clicking a Continue Watching card
+  dropped the card; the Up next ring sat under its thumbnail. Check: right-click a CW card and an
+  Up next row in the running app; card and ring stay exactly in place.

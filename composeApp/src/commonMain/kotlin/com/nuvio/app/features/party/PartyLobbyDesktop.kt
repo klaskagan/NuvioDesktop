@@ -1,6 +1,7 @@
 package com.nuvio.app.features.party
 
 import androidx.compose.foundation.layout.statusBars
+import com.nuvio.app.core.ui.ProvideRedesignMenuSurface
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import com.nuvio.app.core.ui.ShellBackdropMode
@@ -160,6 +161,7 @@ internal fun PartyLobbyDesktopContent(
     val topBar = LocalDetailTopBarState.current
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
         if (topBar != null) DesktopMergedTopBarHeight + DesktopTopBarContentGap else 24.dp
+    ProvideRedesignMenuSurface(backdrop) {
     Box(Modifier.fillMaxSize().testTag("party_lobby")) {
         if (backdrop != null) ShellBackdrop(backdrop, showArtwork = backdropMode == ShellBackdropMode.Ambient)
         Box(Modifier.fillMaxSize().padding(start = LocalBackdropContentStartInset.current)) {
@@ -200,6 +202,7 @@ internal fun PartyLobbyDesktopContent(
             }
         }
         }
+    }
     }
 }
 

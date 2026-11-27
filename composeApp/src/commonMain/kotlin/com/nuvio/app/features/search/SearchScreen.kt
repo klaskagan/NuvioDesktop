@@ -1,6 +1,8 @@
 package com.nuvio.app.features.search
 
 import com.nuvio.app.core.ui.RedesignTypography
+import com.nuvio.app.core.ui.rememberRedesignMenuSurface
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.background
@@ -454,7 +456,10 @@ fun SearchScreen(
         val screenMaxHeight = maxHeight
         // When a detail page opens over Search, its content leaves like the hero's outgoing slide.
         Box(Modifier.fillMaxSize().navTransitionLayer(NavLayer.Content, NavSide.Underneath)) {
-        CompositionLocalProvider(LocalBackdropFocusController provides backdropController) {
+        CompositionLocalProvider(
+            LocalBackdropFocusController provides backdropController,
+            LocalRedesignMenuSurface provides rememberRedesignMenuSurface(backdropController),
+        ) {
         RedesignTypography(enabled = isDesktop) {
         // Desktop: one centred column, at most ~1240dp of content, never closer than 40dp to the edges.
         val gutter = if (isDesktop) maxOf(40.dp, (screenMaxWidth - 1240.dp) / 2) else 16.dp

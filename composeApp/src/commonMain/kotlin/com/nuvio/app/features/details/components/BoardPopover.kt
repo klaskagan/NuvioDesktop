@@ -50,7 +50,7 @@ import androidx.compose.ui.window.PopupProperties
 import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignIconButton
-import com.nuvio.app.core.ui.RedesignMenuSurface
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import com.nuvio.app.core.ui.RedesignTightTracking
 import com.nuvio.app.core.ui.redesignText
 import androidx.compose.runtime.CompositionLocalProvider
@@ -227,13 +227,12 @@ internal val LocalPopoverNub = staticCompositionLocalOf<PopoverNub?> { null }
 
 private val PopoverNubSize = 16.dp
 private val PopoverEdge = Color.White.copy(alpha = 0.16f)
-private val PopoverNubFill = Color(0xFF1C1E22)
 
 /**
  * The design's arrow (`.pop:before`): a 16 dp square turned 45° on the panel's edge, in the panel's
  * colour with the panel's edge on its two outer sides, drawn over the panel's own edge.
  */
-private fun DrawScope.drawPopoverNub(edge: PopoverNubEdge, along: Float, fill: Color = PopoverNubFill) {
+private fun DrawScope.drawPopoverNub(edge: PopoverNubEdge, along: Float, fill: Color) {
     val half = PopoverNubSize.toPx() * 0.7071f
     val (center, a, tip, b) = when (edge) {
         PopoverNubEdge.Top -> Offset(along, 0f).let { c -> listOf(c, Offset(c.x - half, c.y), Offset(c.x, c.y - half), Offset(c.x + half, c.y)) }
@@ -280,18 +279,20 @@ internal fun BoardPopoverPanel(
 ) {
     val shape = RoundedCornerShape(22.dp)
     val nub = LocalPopoverNub.current
+    // The backdrop's colour, like every board menu ("Dropdown · spec" in the Home design).
+    val surface = LocalRedesignMenuSurface.current
     Column(
         // The arrow is drawn outside the caller's modifier: animateContentSize clips to the panel.
         Modifier
             .drawWithContent {
                 drawContent()
                 val edge = nub?.edge
-                if (edge != null) drawPopoverNub(edge, nub.along)
+                if (edge != null) drawPopoverNub(edge, nub.along, surface)
             }
             .then(modifier)
             .width(width)
             .shadow(30.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
-            .clip(shape).background(RedesignMenuSurface).border(1.dp, PopoverEdge, shape)
+            .clip(shape).background(surface).border(1.dp, PopoverEdge, shape)
             .padding(16.dp).testTag(tag),
     ) {
         Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.Top) {

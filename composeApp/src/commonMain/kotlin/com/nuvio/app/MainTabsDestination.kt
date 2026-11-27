@@ -1,6 +1,10 @@
 package com.nuvio.app
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.runtime.SideEffect
+import com.nuvio.app.core.ui.LocalShellMenuSurfaceHolder
+import com.nuvio.app.core.ui.rememberRedesignMenuSurface
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import com.nuvio.app.core.ui.BackdropFocusController
@@ -299,8 +303,13 @@ internal fun MainTabsDestination(
                         )
                     }
                 }
+                val shellMenuSurface = rememberRedesignMenuSurface(shellBackdropController.takeIf { shellBackdropEnabled })
+                // Home's card menus are drawn above the tabs (MainAppContent); hand them the same colour.
+                val shellMenuSurfaceHolder = LocalShellMenuSurfaceHolder.current
+                SideEffect { shellMenuSurfaceHolder?.color = shellMenuSurface }
                 CompositionLocalProvider(
                     LocalBackdropFocusController provides shellBackdropController.takeIf { shellBackdropEnabled },
+                    LocalRedesignMenuSurface provides shellMenuSurface,
                     LocalHomeTabsHostedInNavigation provides useDesktopTopBar,
                     LocalNuvioBottomNavigationOverlayPadding provides if (useNativeBottomTabs) 49.dp else if (!isDesktop && !isTabletLayout && navBarStyleSetting != NavBarStyle.CLASSIC) 72.dp else 0.dp,
                     LocalNuvioNavBarScrollState provides navBarScrollState,

@@ -1,6 +1,7 @@
 package com.nuvio.app.features.downloads
 
 import androidx.compose.animation.AnimatedContent
+import com.nuvio.app.core.ui.ProvideRedesignMenuSurface
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -200,6 +201,7 @@ internal fun DownloadsDesktopScreen(
                 ShellBackdrop(backdrop, showArtwork = backdropMode == ShellBackdropMode.Ambient)
             }
         }
+        ProvideRedesignMenuSurface(backdrop) {
         RedesignTypography(enabled = true) {
             BoxWithConstraints(
                 Modifier.fillMaxSize().navTransitionLayer(NavLayer.Content, NavSide.Above)
@@ -245,6 +247,7 @@ internal fun DownloadsDesktopScreen(
                     }
                 }
             }
+        }
         }
     }
 

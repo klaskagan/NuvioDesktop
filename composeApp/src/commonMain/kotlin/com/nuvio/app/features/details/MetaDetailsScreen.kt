@@ -1,6 +1,8 @@
 package com.nuvio.app.features.details
 
 import androidx.compose.animation.AnimatedContent
+import com.nuvio.app.core.ui.rememberRedesignMenuSurface
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -600,6 +602,8 @@ fun MetaDetailsScreen(
                 LaunchedEffect(boardBackdrop, boardArt) { boardBackdrop.base = boardArt }
                 ShellBackdrop(boardBackdrop, showArtwork = boardBackdropMode == ShellBackdropMode.Ambient)
             }
+            // Menus on the board take the backdrop's colour (Home design, "Dropdown · spec").
+            val boardMenuSurface = rememberRedesignMenuSurface(boardBackdrop)
             val detailTopBarState = LocalDetailTopBarState.current
             // With the merged top bar the board starts under it; the sidebar layout has no bar to clear.
             val boardTopGap = if (detailTopBarState != null) DesktopTopBarContentGap else 16.dp
@@ -2094,6 +2098,8 @@ fun MetaDetailsScreen(
                         }
                         CompositionLocalProvider(
                             LocalOnBackdrop provides (backgroundMode.usesBackdropBackground || (useBoard && boardBackdrop != null)),
+                            // Watch it your way popovers and the board's other menus take the backdrop's colour.
+                            LocalRedesignMenuSurface provides boardMenuSurface,
                         ) {
                             RedesignTypography(enabled = useBoard) {
                             LazyColumn(
@@ -2218,6 +2224,8 @@ fun MetaDetailsScreen(
                             }
                         }
                         if (useBoard && (openQuickPick != null && openPrimarySources != null || episodePick != null)) {
+                            // Quick pick takes the board's backdrop colour, like Watch it your way's popovers.
+                            CompositionLocalProvider(LocalRedesignMenuSurface provides boardMenuSurface) {
                             RedesignTypography {
                                 val episodeOpen = episodePick
                                 DetailQuickPickOverlay(
@@ -2246,6 +2254,7 @@ fun MetaDetailsScreen(
                                     },
                                     modifier = Modifier.zIndex(3f),
                                 )
+                            }
                             }
                         }
                         NuvioDesktopVerticalScrollbar(
@@ -2383,6 +2392,7 @@ fun MetaDetailsScreen(
                                 val episodeRatingMedia = remember(meta, selectedEpisode) { meta.ratingReference(selectedEpisode) }
                                 val episodeRating by rememberRatingState(episodeRatingMedia)
                                 val code = listOfNotNull(selectedEpisode.season?.let { "S$it" }, selectedEpisode.episode?.let { "E$it" }).joinToString(" ")
+                                CompositionLocalProvider(LocalRedesignMenuSurface provides boardMenuSurface) {
                                 BoardContextMenu(
                                     title = listOf(code, selectedEpisode.title).filter { it.isNotBlank() }.joinToString(" · "),
                                     anchor = episodeMenuAnchor,
@@ -2431,6 +2441,7 @@ fun MetaDetailsScreen(
                                         }
                                     } else null,
                                 )
+                                }
                             } else EpisodeWatchedActionSheet(
                                 episode = selectedEpisode,
                                 seasonLabel = selectedEpisode.season?.let {
@@ -2508,6 +2519,7 @@ fun MetaDetailsScreen(
                                 // The menu ends with that season's Rate strip when the rating source rates seasons.
                                 val seasonRatingMedia = remember(meta, selectedSeason) { meta.seasonRatingReference(selectedSeason) }
                                 val seasonRating by rememberRatingState(seasonRatingMedia)
+                                CompositionLocalProvider(LocalRedesignMenuSurface provides boardMenuSurface) {
                                 BoardContextMenu(
                                     title = seasonLabel,
                                     anchor = null,
@@ -2545,6 +2557,7 @@ fun MetaDetailsScreen(
                                         }
                                     } else null,
                                 )
+                                }
                             } else SeasonWatchedActionSheet(
                                 seasonLabel = seasonLabel,
                                 isSeasonWatched = isSeasonWatched,

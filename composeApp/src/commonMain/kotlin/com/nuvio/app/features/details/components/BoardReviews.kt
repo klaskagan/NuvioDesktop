@@ -1,5 +1,6 @@
 package com.nuvio.app.features.details.components
 
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -500,7 +501,7 @@ private fun ReviewReader(
                 val comment = comments.getOrNull(index) ?: return@Box
                 val shape = RoundedCornerShape(22.dp)
                 Column(
-                    Modifier.width(720.dp).heightIn(max = 620.dp).clip(shape).background(RedesignMenuSurface).border(1.dp, RedesignColors.hairline, shape)
+                    Modifier.width(720.dp).heightIn(max = 620.dp).clip(shape).background(LocalRedesignMenuSurface.current).border(1.dp, RedesignColors.hairline, shape)
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                         .padding(22.dp).testTag("detail_review_reader"),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -592,7 +593,7 @@ private fun ReviewComposer(
             Box(Modifier.fillMaxSize().background(Color(0x8C050607)), contentAlignment = Alignment.Center) {
                 val shape = RoundedCornerShape(22.dp)
                 Column(
-                    Modifier.width(660.dp).clip(shape).background(RedesignMenuSurface).border(1.dp, RedesignColors.hairline, shape)
+                    Modifier.width(660.dp).clip(shape).background(LocalRedesignMenuSurface.current).border(1.dp, RedesignColors.hairline, shape)
                         .padding(22.dp).testTag("detail_review_composer"),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {

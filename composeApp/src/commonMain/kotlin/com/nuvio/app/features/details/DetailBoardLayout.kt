@@ -1,5 +1,6 @@
 package com.nuvio.app.features.details
 
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import androidx.compose.ui.layout.LocalPinnableContainer
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -683,7 +684,7 @@ internal fun BoxScope.DetailQuickPickOverlay(
                     .popoverNub(
                         edge = { quickPickPlacement(anchor, origin, container, panel, marginPx, gapPx, insetPx).edge },
                         along = { quickPickPlacement(anchor, origin, container, panel, marginPx, gapPx, insetPx).along },
-                        fill = Color(0xFF16171B),
+                        fill = LocalRedesignMenuSurface.current,
                     )
                     .onSizeChanged { panel = it },
             )

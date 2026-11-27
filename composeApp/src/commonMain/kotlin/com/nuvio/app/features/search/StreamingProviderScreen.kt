@@ -1,6 +1,8 @@
 package com.nuvio.app.features.search
 
 import androidx.compose.animation.AnimatedVisibility
+import com.nuvio.app.core.ui.rememberRedesignMenuSurface
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
@@ -303,6 +305,7 @@ internal fun StreamingProviderScreen(
                 }
                 CompositionLocalProvider(
                     LocalBackdropFocusController provides backdrop,
+                    LocalRedesignMenuSurface provides rememberRedesignMenuSurface(backdrop),
                     LocalNuvioShelfHeaderStyle provides NuvioShelfHeaderStyle.Editorial,
                 ) {
                 RedesignTypography(enabled = true) {

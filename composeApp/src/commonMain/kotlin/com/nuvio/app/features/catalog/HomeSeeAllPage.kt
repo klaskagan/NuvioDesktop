@@ -1,6 +1,12 @@
 package com.nuvio.app.features.catalog
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import com.nuvio.app.features.settings.ThemeSettingsRepository
+import com.nuvio.app.features.collection.rememberPageBackdrop
+import com.nuvio.app.features.collection.PageTopBarSurfaceEffect
+import com.nuvio.app.core.ui.ShellBackdropMode
+import com.nuvio.app.core.ui.ShellBackdrop
+import com.nuvio.app.core.ui.ProvideRedesignMenuSurface
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -123,6 +129,12 @@ internal fun HomeSeeAllPage(
     val heroEnabled by com.nuvio.app.features.home.HomeCatalogSettingsRepository.uiState.collectAsState()
     val hasHero = heroSource.isNotEmpty() && heroEnabled.heroEnabled
     val enhanceArtwork = !preservesOriginalLandscapeArtwork(title, target)
+    // A seasonal catalog draws its theme's artwork instead.
+    val backdropMode by ThemeSettingsRepository.shellBackdrop.collectAsState()
+    val backdrop = rememberPageBackdrop(
+        if (seasonalTheme != null) ShellBackdropMode.Solid else backdropMode,
+        heroSource.firstOrNull()?.let { it.banner ?: it.poster },
+    )
 
     LoadMoreOnScrollEffect(
         state = gridState,
@@ -135,6 +147,8 @@ internal fun HomeSeeAllPage(
     val showHero = seasonalTheme == null && (hasHero || loading)
     val rowIndex = if (seasonalTheme != null) 1 else if (showHero) 2 else 1
     val rowPinned by rememberFilterRowPinned(gridState, SeeAllFilterRowKey)
+    // The seasonal page keeps its own backdrop running under a clear bar.
+    if (seasonalTheme == null) PageTopBarSurfaceEffect(gridState, backdrop)
     // A filter picked while the row is pinned keeps it pinned, restored once the new grid is composed.
     var keepPinned by remember { mutableStateOf(false) }
     LaunchedEffect(filters) {
@@ -148,8 +162,14 @@ internal fun HomeSeeAllPage(
         filters = next
     }
 
+    ProvideRedesignMenuSurface(backdrop) {
     RedesignTypography(enabled = true) {
-    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("home_see_all_page")) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize()
+            .then(if (backdrop == null) Modifier.background(MaterialTheme.colorScheme.background) else Modifier)
+            .testTag("home_see_all_page"),
+    ) {
+        if (backdrop != null) ShellBackdrop(backdrop, showArtwork = backdropMode == ShellBackdropMode.Ambient)
         val padding = desktopPageHorizontalPaddingForWidth(maxWidth.value)
         val density = LocalDensity.current
         val windowHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() }
@@ -209,6 +229,7 @@ internal fun HomeSeeAllPage(
             stickyHeader(key = SeeAllFilterRowKey) {
                 HomePageFilterRow(
                     pinned = rowPinned,
+                    tint = backdrop?.tint,
                     name = title,
                     logoUrl = null,
                     onBack = onBack,
@@ -290,6 +311,7 @@ internal fun HomeSeeAllPage(
             }
         }
         NuvioDesktopVerticalScrollbar(gridState, Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(4.dp))
+    }
     }
     }
 }

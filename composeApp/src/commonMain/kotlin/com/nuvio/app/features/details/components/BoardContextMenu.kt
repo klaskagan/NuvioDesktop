@@ -53,7 +53,7 @@ import androidx.compose.ui.window.PopupProperties
 import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignDanger
-import com.nuvio.app.core.ui.RedesignMenuSurface
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import com.nuvio.app.core.ui.redesignText
 import kotlin.math.roundToInt
 
@@ -126,7 +126,7 @@ internal fun BoardMenuPanel(
 ) {
     val shape = RoundedCornerShape(16.dp)
     Column(
-        modifier.widthIn(min = 260.dp, max = 520.dp).clip(shape).background(RedesignMenuSurface)
+        modifier.widthIn(min = 260.dp, max = 520.dp).clip(shape).background(LocalRedesignMenuSurface.current)
             .border(1.dp, RedesignColors.hairline, shape).padding(6.dp).testTag("detail_board_context_menu"),
     ) {
         Text(

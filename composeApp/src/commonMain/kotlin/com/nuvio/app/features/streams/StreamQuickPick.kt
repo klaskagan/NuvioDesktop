@@ -1,5 +1,6 @@
 package com.nuvio.app.features.streams
 
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -118,7 +119,7 @@ internal fun StreamQuickPickPanel(
     val shape = RoundedCornerShape(22.dp)
 
     Column(
-        modifier.width(StreamQuickPickWidth).clip(shape).background(Color(0xF216171B)).border(1.dp, Color.White.copy(alpha = 0.16f), shape)
+        modifier.width(StreamQuickPickWidth).clip(shape).background(LocalRedesignMenuSurface.current).border(1.dp, Color.White.copy(alpha = 0.16f), shape)
             .padding(18.dp).testTag("stream_quick_pick"),
     ) {
         Row(verticalAlignment = Alignment.Top) {

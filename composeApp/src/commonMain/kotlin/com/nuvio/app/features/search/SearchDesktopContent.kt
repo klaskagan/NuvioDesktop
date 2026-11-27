@@ -1,6 +1,11 @@
 package com.nuvio.app.features.search
 
 import androidx.compose.ui.unit.coerceAtLeast
+import androidx.compose.animation.core.MutableTransitionState
+import com.nuvio.app.core.ui.RedesignMenuOption
+import com.nuvio.app.core.ui.RedesignPillDropdown
+import com.nuvio.app.core.ui.trackPillBounds
+import com.nuvio.app.core.ui.PillBounds
 import com.nuvio.app.core.ui.DesktopTopBarContentGap
 import com.nuvio.app.core.ui.PinnedBarBackground
 import com.nuvio.app.core.ui.RedesignColors
@@ -39,13 +44,9 @@ import nuvio.composeapp.generated.resources.search_discovery_date_window
 import nuvio.composeapp.generated.resources.search_discovery_retry
 import nuvio.composeapp.generated.resources.search_remove_filter
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -1006,7 +1007,8 @@ internal fun SearchDropdownChip(
     onSelected: (NuvioDropdownOption) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    val menu = remember { MutableTransitionState(false) }
+    val expanded = menu.targetState
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val shape = RoundedCornerShape(999.dp)
@@ -1020,12 +1022,14 @@ internal fun SearchDropdownChip(
         label = "dropdown_fill",
     )
     val chevronTurn by animateFloatAsState(if (expanded) 180f else 0f, tween(180), label = "dropdown_chevron")
-    Box(modifier) {
+    // The pill's dropdown ("Dropdown · spec" in the Home design): under the pill, never over it.
+    val pill = remember { PillBounds() }
+    Box(modifier.trackPillBounds(pill)) {
         Row(
             Modifier.clip(shape).background(fill)
                 .border(1.dp, if (expanded) RedesignColors.hairlineFocused.copy(alpha = 0.35f) else RedesignColors.hairline, shape)
                 .hoverable(interaction)
-                .clickable(enabled = enabled, interactionSource = interaction, indication = null) { expanded = true }
+                .clickable(enabled = enabled, interactionSource = interaction, indication = null) { menu.targetState = !menu.targetState }
                 .padding(start = 14.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1044,38 +1048,14 @@ internal fun SearchDropdownChip(
                 modifier = Modifier.size(18.dp).rotate(chevronTurn),
             )
         }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            offset = DpOffset(0.dp, 6.dp),
-            containerColor = Color(0xFF17181C),
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, RedesignColors.hairline),
-            modifier = Modifier.widthIn(min = 200.dp, max = 340.dp).heightIn(max = 420.dp),
-        ) {
-            options.forEach { option ->
-                val isSelected = option.key == selectedKey
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            option.label,
-                            style = redesignText(14.sp, if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                                if (isSelected) RedesignColors.textPrimary else RedesignColors.textSecondary),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    trailingIcon = if (isSelected) {
-                        { Icon(Icons.Rounded.Check, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(18.dp)) }
-                    } else null,
-                    onClick = {
-                        expanded = false
-                        onSelected(option)
-                    },
-                    modifier = Modifier.padding(horizontal = 6.dp).clip(RoundedCornerShape(10.dp)).height(40.dp),
-                )
-            }
-        }
+        RedesignPillDropdown(
+            menu = menu,
+            pill = pill,
+            options = remember(options) { options.map { RedesignMenuOption(it.key, it.label) } },
+            selected = selectedKey,
+            onSelect = { key -> options.firstOrNull { it.key == key }?.let(onSelected) },
+            maxWidth = 340.dp,
+        )
     }
 }
 

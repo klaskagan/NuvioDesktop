@@ -1,6 +1,14 @@
 package com.nuvio.app.features.collection
 
 import androidx.compose.animation.AnimatedContent
+import com.nuvio.app.features.settings.ThemeSettingsRepository
+import com.nuvio.app.core.ui.BackdropFocusController
+import com.nuvio.app.LocalDetailTopBarState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.runtime.snapshotFlow
+import com.nuvio.app.core.ui.ShellBackdropMode
+import com.nuvio.app.core.ui.ShellBackdrop
+import com.nuvio.app.core.ui.ProvideRedesignMenuSurface
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -115,6 +123,38 @@ internal fun folderHeroItems(items: List<MetaPreview>): List<MetaPreview> {
 }
 
 /**
+ * The ambient backdrop behind a folder or See all page, as on Home and the streaming service page:
+ * the hero's first title's artwork, kept while the carousel cycles (the backdrop never follows focus).
+ * Null with the Solid background setting.
+ */
+@Composable
+internal fun rememberPageBackdrop(mode: ShellBackdropMode, artwork: String?): BackdropFocusController? {
+    val backdrop = remember(mode == ShellBackdropMode.Solid) {
+        if (mode != ShellBackdropMode.Solid) BackdropFocusController(artwork) else null
+    }
+    LaunchedEffect(backdrop, artwork) { if (artwork != null) backdrop?.base = artwork }
+    return backdrop
+}
+
+/**
+ * Tells the frame's top bar when the page has scrolled under it and the backdrop's colour, so it
+ * takes the same pinned surface (Tinted: the artwork's colour) as Details and the service page.
+ */
+@Composable
+internal fun PageTopBarSurfaceEffect(gridState: LazyGridState, backdrop: BackdropFocusController?) {
+    val topBarState = LocalDetailTopBarState.current ?: return
+    // Observed, not read in composition: the page doesn't recompose while the grid scrolls.
+    LaunchedEffect(topBarState, gridState, backdrop) {
+        snapshotFlow {
+            (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0) to backdrop?.tint
+        }.collect { (scrolled, tint) ->
+            topBarState.scrolled = scrolled
+            topBarState.tint = tint
+        }
+    }
+}
+
+/**
  * Desktop folder page (Home design, "Folder · grid / rows / scrolled / user collection"): every
  * folder opens on Home's hero tile cycling its titles, with only Back on it, then the grid or rows.
  * The name, catalog picker and filters live only in the shared pinned bar that slides in once the
@@ -157,8 +197,11 @@ internal fun HomeFolderPage(
     // The hero follows Home's Hero setting: with it off, the page opens on the grid with the bar shown.
     val heroEnabled by com.nuvio.app.features.home.HomeCatalogSettingsRepository.uiState.collectAsState()
     val hasHero = heroSource.isNotEmpty() && heroEnabled.heroEnabled
+    val backdropMode by ThemeSettingsRepository.shellBackdrop.collectAsState()
+    val backdrop = rememberPageBackdrop(backdropMode, heroSource.firstOrNull()?.let { it.banner ?: it.poster })
 
     val gridState = rememberLazyGridState()
+    PageTopBarSurfaceEffect(gridState, backdrop)
     LoadMoreOnScrollEffect(
         state = gridState,
         canLoadMore = uiState.selectedTabCanLoadMore,
@@ -185,9 +228,15 @@ internal fun HomeFolderPage(
         change()
     }
 
+    ProvideRedesignMenuSurface(backdrop) {
     RedesignTypography(enabled = true) {
     CompositionLocalProvider(LocalNuvioShelfHeaderStyle provides NuvioShelfHeaderStyle.Editorial) {
-    BoxWithConstraints(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background).testTag("home_folder_page")) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize()
+            .then(if (backdrop == null) Modifier.background(androidx.compose.material3.MaterialTheme.colorScheme.background) else Modifier)
+            .testTag("home_folder_page"),
+    ) {
+        if (backdrop != null) ShellBackdrop(backdrop, showArtwork = backdropMode == ShellBackdropMode.Ambient)
         val padding = desktopPageHorizontalPaddingForWidth(maxWidth.value)
         val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
         var heroExpanded by rememberSaveable { mutableStateOf(false) }
@@ -231,6 +280,7 @@ internal fun HomeFolderPage(
             stickyHeader(key = FolderFilterRowKey) {
                 HomePageFilterRow(
                     pinned = rowPinned,
+                    tint = backdrop?.tint,
                     name = name,
                     logoUrl = folder?.titleLogoUrl,
                     onBack = onBack,
@@ -341,6 +391,7 @@ internal fun HomeFolderPage(
             }
         }
         NuvioDesktopVerticalScrollbar(gridState, Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(4.dp))
+    }
     }
     }
     }

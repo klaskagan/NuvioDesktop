@@ -77,7 +77,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.core.ui.RedesignColors
-import com.nuvio.app.core.ui.RedesignMenuSurface
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
 import com.nuvio.app.core.ui.redesignText
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
 import com.nuvio.app.features.home.HomeRowStyle
@@ -130,8 +130,6 @@ private val PanelShape = RoundedCornerShape(16.dp)
 private val CellShape = RoundedCornerShape(12.dp)
 private val ScreenMargin = 16.dp
 private const val SCRIM_ALPHA = 0.38f
-// RedesignMenuSurface's colour, opaque: over the dimmed page the .97 surface let row titles show through.
-private val PanelSurface = RedesignMenuSurface.copy(alpha = 1f)
 
 /**
  * The Row style panel ("Row style · picker"): a frosted grid of sketches opened beside [anchor]
@@ -254,7 +252,7 @@ private fun RowStylePanel(
     Column(
         Modifier.width(PanelWidth)
             .shadow(24.dp, PanelShape, ambientColor = Color.Black, spotColor = Color.Black)
-            .clip(PanelShape).background(PanelSurface)
+            .clip(PanelShape).background(LocalRedesignMenuSurface.current)
             .border(1.dp, RedesignColors.hairline, PanelShape)
             // Clicks inside the panel stay in it rather than reaching the scrim.
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {})

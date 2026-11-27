@@ -1,6 +1,9 @@
 package com.nuvio.app.features.search
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -57,7 +60,9 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.nuvio.app.OverlayEscapeHandler
 import com.nuvio.app.core.ui.RedesignColors
-import com.nuvio.app.core.ui.RedesignMenuSurface
+import com.nuvio.app.core.ui.LocalRedesignMenuSurface
+import com.nuvio.app.core.ui.RedesignPillMenuShape
+import com.nuvio.app.core.ui.RedesignPillMenuMinWidth
 import com.nuvio.app.core.ui.redesignText
 import com.nuvio.app.features.home.MetaPreview
 import nuvio.composeapp.generated.resources.Res
@@ -230,7 +235,9 @@ internal fun GridFilterMenu(
         label = "grid_menu_fill",
     )
     val outline by animateColorAsState(if (active) Color.White.copy(alpha = 0.30f) else RedesignColors.hairline, tween(140), label = "grid_menu_outline")
-    Box {
+    // The menu is never narrower than its pill ("Dropdown · spec" in the Home design).
+    var pillWidthPx by remember { mutableIntStateOf(0) }
+    Box(Modifier.onSizeChanged { pillWidthPx = it.width }) {
         Row(
             Modifier.height(36.dp).clip(shape).background(fill).border(1.dp, outline, shape)
                 .hoverable(interaction)
@@ -262,9 +269,10 @@ internal fun GridFilterMenu(
                     enter = fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = TransformOrigin(0f, 0f)),
                     exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.97f, transformOrigin = TransformOrigin(0f, 0f)),
                 ) {
-                    val panel = RoundedCornerShape(16.dp)
+                    val panel = RedesignPillMenuShape
+                    val minWidth = with(LocalDensity.current) { pillWidthPx.toDp() }.coerceIn(RedesignPillMenuMinWidth, 280.dp)
                     Column(
-                        Modifier.widthIn(min = 200.dp, max = 280.dp).heightIn(max = 380.dp).clip(panel).background(RedesignMenuSurface)
+                        Modifier.widthIn(min = minWidth, max = 280.dp).heightIn(max = 380.dp).clip(panel).background(LocalRedesignMenuSurface.current)
                             .border(1.dp, RedesignColors.hairline, panel).verticalScroll(rememberScrollState()).padding(6.dp)
                             .testTag("${tag}_menu"),
                     ) {
@@ -280,7 +288,15 @@ internal fun GridFilterMenu(
 private fun GridMenuRow(option: GridMenuOption, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val fill by animateColorAsState(if (hovered) Color.White.copy(alpha = 0.08f) else Color.Transparent, tween(140), label = "grid_menu_row")
+    val fill by animateColorAsState(
+        when {
+            option.selected -> Color.White.copy(alpha = 0.10f)
+            hovered -> Color.White.copy(alpha = 0.06f)
+            else -> Color.Transparent
+        },
+        tween(140),
+        label = "grid_menu_row",
+    )
     val ink = if (option.selected || hovered) RedesignColors.textPrimary else RedesignColors.textSecondary
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(fill)
@@ -289,7 +305,7 @@ private fun GridMenuRow(option: GridMenuOption, onClick: () -> Unit) {
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(option.label, style = redesignText(13.sp, FontWeight.Medium, ink), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(option.label, style = redesignText(13.sp, if (option.selected) FontWeight.SemiBold else FontWeight.Medium, ink), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(10.dp))
         Box(Modifier.size(16.dp)) {
             if (option.selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = RedesignColors.textPrimary, modifier = Modifier.size(16.dp))
