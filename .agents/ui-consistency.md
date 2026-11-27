@@ -442,6 +442,12 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   lets the page scroll (`SeriesAudienceDetailsUiTest`). A grid's scroll-into-view follows
   the keyboard cursor or selection, never hover: revealing the hovered cell made the
   wheel fight the resting pointer.
+- A layer that takes clicks away from what's under it (Home's dimmed rows while a row is being
+  moved, the lifted row's drag surface) swallows the whole press, release included, in
+  `PointerEventPass.Initial`, and acts only after the release. Consuming just the press and then
+  removing the layer let the release reach the poster underneath, which opened Details
+  (`HomeScreen` reorder dim, `HomeRowReorder.kt`). Draw such a layer as an overlay sibling on top
+  rather than intercepting inside the items, so drag handles under it still work.
 
 ## Styling, meaning, and settings
 

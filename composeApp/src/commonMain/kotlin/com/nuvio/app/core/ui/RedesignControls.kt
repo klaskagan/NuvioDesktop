@@ -1,5 +1,9 @@
 package com.nuvio.app.core.ui
 
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.unit.em
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+
 import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.animation.animateColorAsState
@@ -443,6 +447,10 @@ internal class RedesignAction(
     val icon: ImageVector,
     val destructive: Boolean = false,
     val tag: String? = null,
+    /** Muted value at the row's end with a › (a row's current style beside "Row style"). */
+    val trailing: String? = null,
+    /** Draws a hairline above this row. */
+    val separatorBefore: Boolean = false,
     val onClick: () -> Unit,
 )
 
@@ -459,13 +467,15 @@ internal fun RedesignOverflowButton(
     vector: ImageVector = Icons.Rounded.MoreHoriz,
     // Hoisted so the surface that owns the button can open the same menu on right-click / hold.
     menu: MutableTransitionState<Boolean> = remember { MutableTransitionState(false) },
+    /** Small-caps line over the rows (a Home row's name). */
+    title: String? = null,
 ) {
     Box(modifier) {
         RedesignIconButton(contentDescription, { menu.targetState = !menu.targetState }, size = size, active = menu.targetState) { tint ->
             Icon(vector, contentDescription = null, tint = tint, modifier = Modifier.size(if (size < PillHeight) 18.dp else 20.dp))
         }
         val offsetY = with(LocalDensity.current) { (size + 6.dp).roundToPx() }
-        RedesignActionMenuPopup(menu, actions, Alignment.TopEnd, IntOffset(0, offsetY), TransformOrigin(1f, 0f))
+        RedesignActionMenuPopup(menu, actions, Alignment.TopEnd, IntOffset(0, offsetY), TransformOrigin(1f, 0f), title)
     }
 }
 
@@ -489,6 +499,7 @@ private fun RedesignActionMenuPopup(
     alignment: Alignment,
     offset: IntOffset,
     origin: TransformOrigin,
+    title: String? = null,
 ) {
     if (!(menu.currentState || menu.targetState) || actions.isEmpty()) return
     val dismiss = { menu.targetState = false }
@@ -504,7 +515,19 @@ private fun RedesignActionMenuPopup(
                 Modifier.widthIn(min = 200.dp, max = 300.dp).clip(shape).background(RedesignMenuSurface)
                     .border(1.dp, RedesignColors.hairline, shape).padding(6.dp),
             ) {
+                if (title != null) {
+                    Text(
+                        title.uppercase(),
+                        style = redesignText(11.sp, FontWeight.Medium, RedesignColors.textMuted, letterSpacing = 0.1.em),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+                    )
+                }
                 actions.forEach { action ->
+                    if (action.separatorBefore) {
+                        Box(Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
+                    }
                     val interaction = remember { MutableInteractionSource() }
                     val hovered by interaction.collectIsHoveredAsState()
                     val fill by animateColorAsState(if (hovered) Color.White.copy(alpha = 0.08f) else Color.Transparent, tween(140), label = "action_row_fill")
@@ -524,6 +547,11 @@ private fun RedesignActionMenuPopup(
                     ) {
                         Icon(action.icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))
                         Text(action.label, style = redesignText(13.sp, FontWeight.Medium, ink), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (action.trailing != null) {
+                            Spacer(Modifier.weight(1f).widthIn(min = 16.dp))
+                            Text(action.trailing, style = redesignText(12.sp, FontWeight.Normal, RedesignColors.textMuted), maxLines = 1)
+                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = RedesignColors.textMuted, modifier = Modifier.size(14.dp))
+                        }
                     }
                 }
             }
