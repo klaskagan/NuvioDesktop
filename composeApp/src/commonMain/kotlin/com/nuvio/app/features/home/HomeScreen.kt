@@ -1,5 +1,34 @@
 package com.nuvio.app.features.home
 
+import com.nuvio.app.core.ui.LocalPosterHoverSuspended
+
+
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+
+import com.nuvio.app.features.home.components.HomeRowReorderState
+import com.nuvio.app.features.home.components.HomeRowHideState
+import com.nuvio.app.features.home.components.HomeRowBottomPill
+import com.nuvio.app.features.home.components.HomeRowLift
+import com.nuvio.app.features.home.components.LocalHomeRowHeader
+import com.nuvio.app.features.home.components.homeRowHeader
+import com.nuvio.app.MediaKeysHandler
+import com.nuvio.app.OverlayEscapeHandler
+import androidx.compose.ui.input.key.Key
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.zIndex
+import androidx.compose.runtime.DisposableEffect
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.ReorderableLazyListState
+import sh.calvin.reorderable.rememberReorderableLazyListState
+import androidx.compose.ui.Alignment
+
 import com.nuvio.app.features.settings.ThemeSettingsRepository
 import com.nuvio.app.core.ui.topBarSurfaceColor
 import androidx.compose.animation.Crossfade
@@ -85,7 +114,8 @@ import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 import com.nuvio.app.features.home.components.SeasonalSpotlightSection
 import com.nuvio.app.features.home.components.HomeCatalogRowSection
 import com.nuvio.app.features.home.components.HomeContinueWatchingSection
-import com.nuvio.app.features.home.components.HomeEmptyStateCard
+import com.nuvio.app.features.home.components.HomeStateCard
+import com.nuvio.app.features.home.components.HomeStateKind
 import com.nuvio.app.features.home.components.HomeHeroReservedSpace
 import com.nuvio.app.features.home.components.HomeHeroSection
 import com.nuvio.app.features.home.components.HomeSkeletonHero
@@ -170,6 +200,7 @@ fun HomeScreen(
     continueWatchingDisintegrationRequest: DisintegrationRequest<String>? = null,
     onFolderClick: ((collectionId: String, folderId: String) -> Unit)? = null,
     onFirstCatalogRendered: (() -> Unit)? = null,
+    onOpenAddons: (() -> Unit)? = null,
 ) {
     TraktCalendarHomeBinding()
     LaunchedEffect(Unit) {
@@ -1025,6 +1056,77 @@ fun HomeScreen(
     val tabUpcomingItems = remember(upcomingItems, homeTab) {
         if (isDesktop) upcomingItems.filter { it.belongsTo(homeTab) } else upcomingItems
     }
+    // Home design "Row header · ⋯" and "Row · reorder": a row is picked up and moved, or hidden,
+    // right on Home. Only rows the selected tab shows take part; the rest keep their places.
+    val rowReorder = remember { HomeRowReorderState() }
+    val rowHide = remember { HomeRowHideState() }
+    LaunchedEffect(homeSettingsUiState.items) { rowReorder.settled() }
+    val settingsItemsByKey = remember(homeSettingsUiState.items) { homeSettingsUiState.items.associateBy { it.key } }
+    // The Seasonal band is a step on the way (↑ / ↓ pass it like a row) but is never picked up itself.
+    val seasonalShown = isDesktop && visibleSeasonalSection != null && homeTab.showsSeasonalSpotlight()
+    val visibleRowKeys = remember(keyedEnabledHomeItems, collectionsMap, sectionsMap, homeTab, seasonalShown) {
+        if (!isDesktop) return@remember emptyList()
+        keyedEnabledHomeItems.mapNotNull { keyed ->
+            val item = keyed.value
+            when {
+                item.key == com.nuvio.app.features.collection.SeasonalCollection.HOME_KEY -> item.key.takeIf { seasonalShown }
+                item.isCollection -> item.key.takeIf { collectionsMap[item.key] != null && homeTab.showsCollections() }
+                else -> sectionsMap[item.key]
+                    ?.takeIf { it.belongsTo(homeTab) && (it.items.isNotEmpty() || it.calendarState != null) }
+                    ?.let { item.key }
+            }
+        }
+    }
+    // A collection pinned to the top stays first; rows move only below it.
+    val movableRowKeys = remember(visibleRowKeys, settingsItemsByKey) {
+        visibleRowKeys.filter { settingsItemsByKey[it]?.isPinnedToTop != true }
+    }
+    val displayedHomeItems = rowReorder.arrange(keyedEnabledHomeItems) { it.value.key }
+    val rowLazyKeys = remember(keyedEnabledHomeItems, seasonalTheme) {
+        keyedEnabledHomeItems.associate { it.value.key to it.lazyKey } +
+            (com.nuvio.app.features.collection.SeasonalCollection.HOME_KEY to "seasonal_spotlight_${seasonalTheme.id}")
+    }
+    val rowKeysByLazyKey = remember(keyedEnabledHomeItems) { keyedEnabledHomeItems.associate { it.lazyKey to it.value.key } }
+    // Switching tab or leaving Home saves a move in progress.
+    LaunchedEffect(homeTab) { rowReorder.finish(save = true) }
+    ScreenActivityEffect(rowReorder) { active -> if (!active) rowReorder.finish(save = true) }
+    DisposableEffect(rowReorder) { onDispose { rowReorder.finish(save = true) } }
+    MediaKeysHandler(enabled = isDesktop && rowReorder.active) { key ->
+        when (key) {
+            Key.DirectionUp -> { rowReorder.step(-1); true }
+            Key.DirectionDown -> { rowReorder.step(1); true }
+            Key.Enter -> { rowReorder.finish(save = true); true }
+            else -> false
+        }
+    }
+    OverlayEscapeHandler(enabled = isDesktop && rowReorder.active) { rowReorder.finish(save = false) }
+    // The picked-up row sits in the middle of the window; ↑ / ↓ slide the rows around it past while it
+    // stays put (the scroll eases with the rows' own placement, so the two cancel out for the row).
+    val movingRowSize = remember { intArrayOf(0) }
+    LaunchedEffect(rowReorder.movingKey, rowReorder.keyboardSteps) {
+        val lazyKey = rowReorder.movingKey?.let(rowLazyKeys::get) ?: return@LaunchedEffect
+        withFrameNanos { }
+        val layout = homeListState.layoutInfo
+        val centre = (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+        val info = layout.visibleItemsInfo.firstOrNull { it.key == lazyKey }
+        // The list keeps its first visible row in place, so a row stepping past that row lands outside
+        // the visible items: place it from the row it just passed, which is still on screen.
+        val rowCentre = if (info != null) {
+            movingRowSize[0] = info.size
+            info.offset + info.size / 2
+        } else {
+            val passed = rowReorder.lastPassedKey?.let(rowLazyKeys::get)
+                ?.let { key -> layout.visibleItemsInfo.firstOrNull { it.key == key } } ?: return@LaunchedEffect
+            val gap = layout.mainAxisItemSpacing
+            if (rowReorder.lastDirection < 0) passed.offset - gap - movingRowSize[0] / 2
+            else passed.offset + passed.size + gap + movingRowSize[0] / 2
+        }
+        val delta = rowCentre - centre
+        if (delta != 0) homeListState.animateScrollBy(delta.toFloat(), tween(260, easing = FastOutSlowInEasing))
+    }
+    val rowDragState = rememberReorderableLazyListState(homeListState) { _, to ->
+        rowKeysByLazyKey[to.key]?.let(rowReorder::moveOnto)
+    }
     val homeTabsIndex = 0
     val homeTabsPinned by remember(homeListState, homeTabsIndex) {
         derivedStateOf {
@@ -1111,7 +1213,7 @@ fun HomeScreen(
 
         // Rows fade/slide when a tab changes them. They are deliberately not blur sources for the pinned
         // tabs: a haze source per Home row nearly doubled render time, so the bar uses an opaque dim.
-        val homeItemModifier: LazyItemScope.() -> Modifier = {
+        val homeItemAnimation: LazyItemScope.() -> Modifier = {
             if (isDesktop) {
                 Modifier
                     .animateItem(fadeInSpec = tween(220), placementSpec = tween(260, easing = FastOutSlowInEasing), fadeOutSpec = tween(160))
@@ -1119,6 +1221,31 @@ fun HomeScreen(
                 Modifier
             }
         }
+        // While a row is picked up everything else dims, and a click on it ends the move (and saves).
+        val rowDimAlpha by animateFloatAsState(if (rowReorder.active) 0.4f else 1f, tween(200), label = "home_reorder_dim")
+        val reorderDimModifier = Modifier.graphicsLayer { alpha = rowDimAlpha }.then(
+            if (rowReorder.active) {
+                // The whole press is swallowed, release included, so the poster under it isn't opened.
+                Modifier.pointerInput(rowReorder) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            if (event.type != PointerEventType.Press) continue
+                            event.changes.forEach { it.consume() }
+                            while (true) {
+                                val next = awaitPointerEvent(PointerEventPass.Initial)
+                                next.changes.forEach { it.consume() }
+                                if (next.changes.none { it.pressed }) break
+                            }
+                            rowReorder.finish(save = true)
+                        }
+                    }
+                }
+            } else {
+                Modifier
+            },
+        )
+        val homeItemModifier: LazyItemScope.() -> Modifier = { homeItemAnimation().then(reorderDimModifier) }
         val screenMaxHeight = maxHeight
         // The board: featured title beside Resume and Up next. Its resume items leave the Continue Watching row.
         // Expanding the featured tile gives it the whole board and most of the window for its trailer.
@@ -1156,6 +1283,8 @@ fun HomeScreen(
         CompositionLocalProvider(
             LocalNuvioShelfHeaderStyle provides if (isDesktop) NuvioShelfHeaderStyle.Editorial else NuvioShelfHeaderStyle.Standard,
             LocalHomeHeroHeightCap provides if (isDesktop) boardHeight else null,
+            // While a row is picked up, hovering posters does nothing (the row is being moved, not browsed).
+            LocalPosterHoverSuspended provides rowReorder.active,
         ) {
         NuvioScreen(
             modifier = Modifier.fillMaxSize().then(heroStretchModifier)
@@ -1235,7 +1364,9 @@ fun HomeScreen(
                             onResumeDetails = onContinueWatchingDetails?.takeIf {
                                 boardResumeItems.firstOrNull()?.isCloudLibraryContinueWatchingItem() != true
                             },
-                            modifier = Modifier.padding(horizontal = homeSectionPadding).padding(top = 4.dp, bottom = 18.dp),
+                            modifier = Modifier.padding(horizontal = homeSectionPadding).padding(top = 4.dp, bottom = 18.dp)
+                                .then(reorderDimModifier),
+                            sideLoading = showHeroSkeleton && boardHasSideColumn && continueWatchingPreferences.isVisible,
                             featured = featured,
                         )
                     } else {
@@ -1265,12 +1396,16 @@ fun HomeScreen(
                         contentType = { "skeleton" },
                     ) {
                         HomeSkeletonRow(
+                            modifier = homeItemModifier().padding(bottom = 12.dp),
                             horizontalPadding = if (isDesktop) homeSectionPadding else 16.dp,
                         )
                     }
                 }
 
-                !hasActiveAddons && !hasServerLibraries && !hasRenderableCollectionRows && visibleSeasonalSection == null -> {
+                // A seasonal spotlight with no titles doesn't count: with no sources Home asks for one
+                // (Home design "For you · empty") instead of showing a band that reads "No titles available".
+                !hasActiveAddons && !hasServerLibraries && !hasRenderableCollectionRows &&
+                    visibleSeasonalSection?.items.isNullOrEmpty() -> {
                     homeContinueWatchingSections(
                         preferences = continueWatchingPreferences,
                         continueWatchingItems = rowContinueWatchingItems,
@@ -1285,45 +1420,23 @@ fun HomeScreen(
                         disintegrationRequest = continueWatchingDisintegrationRequest,
                     )
                     item(key = "home_empty", contentType = "empty") {
-                        when {
-                            networkStatusUiState.isOfflineLike && addonManifestErrorMessage != null -> {
-                                NuvioNetworkOfflineCard(
-                                    condition = networkStatusUiState.condition,
-                                    modifier = Modifier.padding(
-                                        horizontal = if (isDesktop) homeSectionPadding else 16.dp,
-                                    ),
-                                    onRetry = {
-                                        NetworkStatusRepository.requestRefresh(force = true)
-                                        AddonRepository.refreshAll()
-                                    },
-                                )
-                            }
-
-                            addonManifestErrorMessage != null -> {
-                                HomeEmptyStateCard(
-                                    modifier = Modifier.padding(
-                                        horizontal = if (isDesktop) homeSectionPadding else 16.dp,
-                                    ),
-                                    title = stringResource(Res.string.home_load_failed_title),
-                                    message = addonManifestErrorMessage,
-                                    actionLabel = stringResource(Res.string.action_retry),
-                                    onActionClick = {
-                                        NetworkStatusRepository.requestRefresh(force = true)
-                                        AddonRepository.refreshAll()
-                                    },
-                                )
-                            }
-
-                            else -> {
-                                HomeEmptyStateCard(
-                                    modifier = Modifier.padding(
-                                        horizontal = if (isDesktop) homeSectionPadding else 16.dp,
-                                    ),
-                                    title = stringResource(Res.string.home_empty_no_sources_title),
-                                    message = stringResource(Res.string.home_empty_no_sources_message),
-                                )
-                            }
+                        val retryAddons = {
+                            NetworkStatusRepository.requestRefresh(force = true)
+                            AddonRepository.refreshAll()
                         }
+                        HomeStateCard(
+                            kind = when {
+                                networkStatusUiState.isOfflineLike && addonManifestErrorMessage != null -> HomeStateKind.Offline
+                                addonManifestErrorMessage != null -> HomeStateKind.LoadFailed
+                                else -> HomeStateKind.NoSources
+                            },
+                            horizontalPadding = if (isDesktop) homeSectionPadding else 16.dp,
+                            modifier = homeItemModifier().then(homeStateAreaModifier()),
+                            errorMessage = addonManifestErrorMessage,
+                            offlineCondition = networkStatusUiState.condition,
+                            onRetry = retryAddons,
+                            onOpenAddons = onOpenAddons,
+                        )
                     }
                 }
 
@@ -1332,42 +1445,22 @@ fun HomeScreen(
                     !hasRenderableCollectionRows && visibleSeasonalSection == null -> {
                     item(key = "home_empty", contentType = "empty") {
                         val loadFailed = !homeUiState.errorMessage.isNullOrBlank()
-                        if (networkStatusUiState.isOfflineLike && loadFailed) {
-                            NuvioNetworkOfflineCard(
-                                condition = networkStatusUiState.condition,
-                                modifier = Modifier.padding(
-                                    horizontal = if (isDesktop) homeSectionPadding else 16.dp,
-                                ),
-                                onRetry = {
-                                    NetworkStatusRepository.requestRefresh(force = true)
-                                    HomeRepository.refresh(AddonRepository.uiState.value.addons.enabledAddons(), force = true)
-                                },
-                            )
-                        } else {
-                            HomeEmptyStateCard(
-                                modifier = Modifier.padding(
-                                    horizontal = if (isDesktop) homeSectionPadding else 16.dp,
-                                ),
-                                title = stringResource(
-                                    if (loadFailed) {
-                                        Res.string.home_load_failed_title
-                                    } else {
-                                        Res.string.home_empty_no_rows_title
-                                    },
-                                ),
-                                message = homeUiState.errorMessage
-                                    ?: stringResource(Res.string.home_empty_no_rows_message),
-                                actionLabel = if (loadFailed) stringResource(Res.string.action_retry) else null,
-                                onActionClick = if (loadFailed) {
-                                    {
-                                        NetworkStatusRepository.requestRefresh(force = true)
-                                        HomeRepository.refresh(AddonRepository.uiState.value.addons.enabledAddons(), force = true)
-                                    }
-                                } else {
-                                    null
-                                },
-                            )
-                        }
+                        HomeStateCard(
+                            kind = when {
+                                networkStatusUiState.isOfflineLike && loadFailed -> HomeStateKind.Offline
+                                loadFailed -> HomeStateKind.LoadFailed
+                                else -> HomeStateKind.NoRows
+                            },
+                            horizontalPadding = if (isDesktop) homeSectionPadding else 16.dp,
+                            modifier = homeItemModifier().then(homeStateAreaModifier()),
+                            errorMessage = homeUiState.errorMessage,
+                            offlineCondition = networkStatusUiState.condition,
+                            onRetry = {
+                                NetworkStatusRepository.requestRefresh(force = true)
+                                HomeRepository.refresh(AddonRepository.uiState.value.addons.enabledAddons(), force = true)
+                            },
+                            onOpenAddons = onOpenAddons,
+                        )
                     }
                 }
 
@@ -1392,7 +1485,7 @@ fun HomeScreen(
                         disintegrationRequest = continueWatchingDisintegrationRequest,
                     )
 
-                    keyedEnabledHomeItems.forEach { keyedSettingsItem ->
+                    displayedHomeItems.forEach { keyedSettingsItem ->
                         val settingsItem = keyedSettingsItem.value
                         if (settingsItem.key == com.nuvio.app.features.collection.SeasonalCollection.HOME_KEY) {
                             visibleSeasonalSection?.takeIf { !isDesktop || homeTab.showsSeasonalSpotlight() }?.let { section ->
@@ -1420,24 +1513,62 @@ fun HomeScreen(
                             if (collection != null && (!isDesktop || homeTab.showsCollections())) {
                                 renderedRows++
                                 item(key = keyedSettingsItem.lazyKey, contentType = "collection") {
-                                    HomeCollectionRowSection(
-                                        collection = collection,
-                                        rowStyleKey = settingsItem.key.takeIf { isDesktop },
-                                        rowStyle = rowStyles[settingsItem.key] ?: HomeRowStyle.Automatic,
-                                        modifier = homeItemModifier().padding(bottom = 12.dp),
-                                        sectionPadding = homeSectionPadding,
-                                        animateGifs = animateCollectionGifs,
-                                        onFolderClick = onFolderClick,
-                                    )
+                                    val collectionRow: @Composable (Modifier) -> Unit = { rowModifier ->
+                                        HomeCollectionRowSection(
+                                            collection = collection,
+                                            rowStyleKey = settingsItem.key.takeIf { isDesktop },
+                                            rowStyle = rowStyles[settingsItem.key] ?: HomeRowStyle.Automatic,
+                                            modifier = rowModifier.padding(bottom = 12.dp),
+                                            sectionPadding = homeSectionPadding,
+                                            animateGifs = animateCollectionGifs,
+                                            onFolderClick = onFolderClick,
+                                        )
+                                    }
+                                    if (isDesktop) {
+                                        HomeReorderableRow(
+                                            dragState = rowDragState,
+                                            lazyKey = keyedSettingsItem.lazyKey,
+                                            settingsKey = settingsItem.key,
+                                            title = collection.title,
+                                            reorder = rowReorder,
+                                            hide = rowHide,
+                                            movableKeys = movableRowKeys,
+                                            rowStyle = (rowStyles[settingsItem.key] ?: HomeRowStyle.Automatic)
+                                                .takeIf { supportsHomeRowStyle(settingsItem.key) },
+                                            sidePadding = homeSectionPadding,
+                                            animation = homeItemAnimation(),
+                                            dimModifier = reorderDimModifier,
+                                        ) { collectionRow(Modifier) }
+                                    } else {
+                                        collectionRow(homeItemModifier())
+                                    }
                                 }
                             }
                         } else {
                             val section = sectionsMap[settingsItem.key]
                             if (section != null && isDesktop && !section.belongsTo(homeTab)) {
                                 // Filtered out by the selected tab.
-                            } else if (section != null && (section.items.isNotEmpty() || section.calendarState != null)) {
-                                renderedRows++
+                            } else if (
+                                (section != null && (section.items.isNotEmpty() || section.calendarState != null)) ||
+                                (homeUiState.isLoading && !settingsItem.key.contains("airing-next", ignoreCase = true))
+                            ) {
+                                if (section != null && (section.items.isNotEmpty() || section.calendarState != null)) renderedRows++
                                 item(key = keyedSettingsItem.lazyKey, contentType = "catalog") {
+                                    // A pending row is its placeholder until the catalog arrives, then crossfades
+                                    // into it in the same slot (Home design "For you · loading").
+                                    val loadedSection = sectionsMap[settingsItem.key]
+                                        ?.takeIf { it.items.isNotEmpty() || it.calendarState != null }
+                                    val catalogRow: @Composable (Modifier) -> Unit = { rowModifier ->
+                                    Crossfade(
+                                        targetState = loadedSection != null,
+                                        modifier = rowModifier,
+                                        animationSpec = tween(320),
+                                        label = "home_row_loading",
+                                    ) { loaded ->
+                                    val section = loadedSection?.takeIf { loaded } ?: run {
+                                        HomeSkeletonRow(modifier = Modifier.padding(bottom = 12.dp), horizontalPadding = homeSectionPadding)
+                                        return@Crossfade
+                                    }
                                     HomeCatalogRowSection(
                                         section = section,
                                         eyebrow = section.addonName.takeIf { isDesktop },
@@ -1450,7 +1581,7 @@ fun HomeScreen(
                                         } else {
                                             section.items.take(homeCatalogPreviewLimit)
                                         },
-                                        modifier = homeItemModifier().padding(bottom = 12.dp),
+                                        modifier = Modifier.padding(bottom = 12.dp),
                                         sectionPadding = homeSectionPadding,
                                         onViewAllClick = if (section.canOpenCatalog(homeCatalogPreviewLimit)) {
                                             onCatalogClick?.let { { it(section) } }
@@ -1465,30 +1596,109 @@ fun HomeScreen(
                                             ?.let { open -> { item -> open(section.key, item) } }
                                             ?: onPosterLongClick,
                                     )
-                                }
-                            } else if (homeUiState.isLoading && !settingsItem.key.contains("airing-next", ignoreCase = true)) {
-                                item(key = keyedSettingsItem.lazyKey, contentType = "catalog") {
-                                    HomeSkeletonRow(modifier = Modifier.padding(bottom = 12.dp), horizontalPadding = homeSectionPadding)
+                                    }
+                                    }
+                                    if (isDesktop) {
+                                        HomeReorderableRow(
+                                            dragState = rowDragState,
+                                            lazyKey = keyedSettingsItem.lazyKey,
+                                            settingsKey = settingsItem.key,
+                                            title = loadedSection?.title ?: settingsItem.displayTitle,
+                                            reorder = rowReorder,
+                                            hide = rowHide,
+                                            movableKeys = movableRowKeys,
+                                            rowStyle = (rowStyles[settingsItem.key] ?: HomeRowStyle.Automatic).takeIf {
+                                                loadedSection?.calendarState == null && supportsHomeRowStyle(settingsItem.key)
+                                            },
+                                            sidePadding = homeSectionPadding,
+                                            animation = homeItemAnimation(),
+                                            dimModifier = reorderDimModifier,
+                                        ) { catalogRow(Modifier) }
+                                    } else {
+                                        catalogRow(homeItemModifier())
+                                    }
                                 }
                             }
                         }
                     }
+                    if (isDesktop && rowReorder.active) {
+                        // Room under the last row while one is picked up, so even the last row can sit centred.
+                        item(key = "home_reorder_tail", contentType = "spacer") {
+                            Spacer(Modifier.height(screenMaxHeight / 2))
+                        }
+                    }
                     if (isDesktop && renderedRows == 0) {
                         item(key = "home_tab_empty", contentType = "empty") {
-                            HomeEmptyStateCard(
-                                modifier = homeItemModifier().padding(horizontal = homeSectionPadding),
-                                title = stringResource(Res.string.home_tab_empty_title),
-                                message = stringResource(Res.string.home_tab_empty_message),
+                            HomeStateCard(
+                                kind = HomeStateKind.TabEmpty,
+                                horizontalPadding = homeSectionPadding,
+                                modifier = homeItemModifier().padding(top = 24.dp, bottom = 48.dp),
                             )
                         }
                     }
                 }
             }
         }
+        if (isDesktop) {
+            HomeRowBottomPill(
+                reorder = rowReorder,
+                hide = rowHide,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp),
+            )
+        }
         }
         }
     }
 }
+
+/** Home's empty / error / offline card sits centred in the space the rows would take (Home design). */
+/**
+ * A catalog or collection row on desktop Home: its header carries the row menu (⋯), and while it is
+ * the row being moved it lifts and its header becomes the drag handle with ↑ ↓ Done. Other rows dim.
+ */
+@Composable
+private fun LazyItemScope.HomeReorderableRow(
+    dragState: ReorderableLazyListState,
+    lazyKey: Any,
+    settingsKey: String,
+    title: String,
+    reorder: HomeRowReorderState,
+    hide: HomeRowHideState,
+    movableKeys: List<String>,
+    rowStyle: HomeRowStyle?,
+    sidePadding: Dp,
+    animation: Modifier,
+    dimModifier: Modifier,
+    content: @Composable () -> Unit,
+) {
+    val moving = reorder.movingKey == settingsKey
+    ReorderableItem(
+        state = dragState,
+        key = lazyKey,
+        modifier = if (moving) Modifier.zIndex(1f) else Modifier,
+        enabled = reorder.active && settingsKey in movableKeys,
+        animateItemModifier = animation,
+    ) {
+        val header = homeRowHeader(
+            key = settingsKey,
+            title = title,
+            reorder = reorder,
+            hide = hide,
+            canReorder = settingsKey in movableKeys && movableKeys.size > 1,
+            rowStyle = rowStyle,
+            onReorder = { reorder.start(settingsKey, movableKeys) },
+            dragHandle = if (moving) Modifier.draggableHandle() else Modifier,
+        )
+        CompositionLocalProvider(LocalHomeRowHeader provides header) {
+            HomeRowLift(lifted = moving, sidePadding = sidePadding, modifier = if (moving) Modifier else dimModifier) {
+                content()
+            }
+        }
+    }
+}
+
+private fun LazyItemScope.homeStateAreaModifier(): Modifier =
+    if (isDesktop) Modifier.fillParentMaxHeight(0.8f) else Modifier
 
 /** Desktop redesign: the board takes this share of the window so the first row shows without scrolling. */
 private const val HOME_BOARD_VIEWPORT_FRACTION = 0.56f

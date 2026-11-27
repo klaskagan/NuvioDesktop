@@ -4,6 +4,10 @@ import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -68,7 +72,11 @@ class StreamingProviderNavigationTest {
             waitUntil(timeoutMillis = 15_000) { onAllNodesWithTag("streaming_provider_Netflix").fetchSemanticsNodes().isNotEmpty() }
             assertNull(FolderDetailRepository.uiState.value.folder)
             // The page's own filter, beside the top bar's Movies tab (the bar no longer hides).
-            onNodeWithTag("tag_scope_pills").assertIsDisplayed()
+            // Home-style text tabs, not pills: picking Movies selects it in place.
+            onNodeWithTag("tag_scope_tabs").assertIsDisplayed()
+            onNode(hasText("Movies") and hasAnyAncestor(hasTestTag("tag_scope_tabs"))).performClick()
+            onNode(hasText("Movies") and hasAnyAncestor(hasTestTag("tag_scope_tabs"))).assertIsSelected()
+            onNode(hasText("All") and hasAnyAncestor(hasTestTag("tag_scope_tabs"))).performClick()
             onNodeWithTag("tag_rows_customize").assertIsDisplayed()
             save("service-page")
 

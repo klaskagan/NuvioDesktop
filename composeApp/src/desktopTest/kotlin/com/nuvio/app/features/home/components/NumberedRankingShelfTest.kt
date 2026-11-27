@@ -49,7 +49,7 @@ class NumberedRankingShelfTest {
                 }
             }
             onNodeWithText("Numbered ranking").performClick()
-            onNodeWithText("Row style").assertDoesNotExist()
+            onNodeWithTag("home_row_style_picker").assertDoesNotExist()
 
             runOnIdle {
                 assertEquals(HomeRowStyle.NumberedRanking, style(firstKey))
@@ -65,17 +65,16 @@ class NumberedRankingShelfTest {
 
             runOnIdle { pickerOpen = true }
             onNodeWithText("Numbered ranking").assertIsSelected()
+            // Landscape applies Medium and keeps the panel open with the inline size switch.
             onNodeWithText("Landscape").performClick()
-            onNodeWithText("Medium").assertIsSelected()
-            onNodeWithText("Large").performClick()
-            runOnIdle {
-                assertEquals(HomeRowStyle.LandscapeLarge, style(firstKey))
-                pickerOpen = true
-            }
-            onNodeWithText("Landscape").assertIsSelected().performClick()
-            onNodeWithText("Large").assertIsSelected()
-            onNodeWithText("Back").performClick()
+            onNodeWithTag("home_row_style_size_landscape-medium").assertIsSelected()
+            onNodeWithTag("home_row_style_size_landscape-large").performClick()
+            runOnIdle { assertEquals(HomeRowStyle.LandscapeLarge, style(firstKey)) }
+            onNodeWithTag("home_row_style_picker").assertExists()
+            onNodeWithText("Landscape").assertIsSelected()
+            onNodeWithTag("home_row_style_size_landscape-large").assertIsSelected()
             onNodeWithText("Automatic").performClick()
+            onNodeWithTag("home_row_style_picker").assertDoesNotExist()
             runOnIdle { assertEquals(HomeRowStyle.Automatic, style(firstKey)) }
         } finally {
             repository.setRowStyle(firstKey, HomeRowStyle.Automatic)

@@ -44,13 +44,19 @@ private val nativePlayerShortcutKeys = setOf(
     KeyEvent.VK_SPACE, KeyEvent.VK_ENTER,
 )
 
-/** Keys an in-page player can claim through [AppKeyboardShortcuts.handleMediaKey]. */
+/**
+ * Keys an in-page layer can claim through [AppKeyboardShortcuts.handleMediaKey]: a player's playback
+ * keys, and ↑ ↓ Enter for Home's row reorder (Home design "Row · reorder").
+ */
 private val trailerPlaybackKeys = mapOf(
     KeyEvent.VK_SPACE to Key.Spacebar,
     KeyEvent.VK_K to Key.K,
     KeyEvent.VK_M to Key.M,
     KeyEvent.VK_LEFT to Key.DirectionLeft,
     KeyEvent.VK_RIGHT to Key.DirectionRight,
+    KeyEvent.VK_UP to Key.DirectionUp,
+    KeyEvent.VK_DOWN to Key.DirectionDown,
+    KeyEvent.VK_ENTER to Key.Enter,
 )
 
 /** Seeds the incoming screen exactly once per route change and moves focus as requested. */

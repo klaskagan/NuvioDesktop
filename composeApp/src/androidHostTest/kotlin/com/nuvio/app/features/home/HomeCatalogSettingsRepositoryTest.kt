@@ -228,6 +228,42 @@ class HomeCatalogSettingsRepositoryTest {
         assertEquals(settings, HomeCatalogSettingsRepository.uiState.value)
     }
 
+    @Test
+    fun applyVisibleOrderKeepsRowsTheTabDidNotShowInTheirSlots() {
+        HomeCatalogSettingsRepository.syncCatalogs(listOf(addon("a", "b", "c", "d")))
+        val keys = { HomeCatalogSettingsRepository.uiState.value.items.map { it.key.substringAfterLast(':') } }
+        assertEquals(listOf("a", "b", "c", "d"), keys())
+
+        // The tab showed a, c and d; "b" belongs to another tab and must stay second.
+        HomeCatalogSettingsRepository.applyVisibleOrder(listOf("d", "a", "c").map { "test:movie:$it" })
+
+        assertEquals(listOf("d", "b", "a", "c"), keys())
+    }
+
+    @Test
+    fun applyVisibleOrderWithTheSameOrderDoesNotSave() {
+        HomeCatalogSettingsRepository.syncCatalogs(listOf(addon("a", "b", "c")))
+        val editCount = preferences.editCount
+
+        HomeCatalogSettingsRepository.applyVisibleOrder(listOf("a", "c").map { "test:movie:$it" })
+
+        assertEquals(editCount, preferences.editCount)
+    }
+
+    private fun addon(vararg catalogIds: String) = ManagedAddon(
+        manifestUrl = "https://example.com/manifest.json",
+        manifest = AddonManifest(
+            id = "test",
+            name = "Catalogs",
+            description = "",
+            version = "1",
+            resources = emptyList(),
+            types = listOf("movie"),
+            catalogs = catalogIds.map { AddonCatalog(type = "movie", id = it, name = it.uppercase()) },
+            transportUrl = "https://example.com",
+        ),
+    )
+
     private fun addon() = ManagedAddon(
         manifestUrl = "https://example.com/manifest.json",
         manifest = AddonManifest(

@@ -77,6 +77,14 @@ Person Details opening with no transition). Apply these to every redesigned scre
   with `HomeRowLeadCard`; rows with a chosen style, rankings and calendar rows are left alone. The
   lead card is present from the first frame and loads its landscape art in place: showing it only
   once a banner was known made the row jump when hero metadata arrived after the posters.
+- **Home's loading and empty states are the board and rows with blank data** (Home design "For you ·
+  loading" / "empty, error and offline"). While the featured tile loads, the board keeps its side
+  column as two placeholders (`HomeBoard(sideLoading)`), so it doesn't reshape when Resume arrives. A
+  pending catalog row is the same lazy item as its loaded row and crossfades into it
+  (`HomeSkeletonRow`'s Editorial branch uses the real shelf header and the lead card's size); swapping
+  two composables in one item popped. Empty, failed and offline Home use `HomeStateCard` (the shared
+  tile, centred, 440 dp, design copy; desktop never shows a raw manifest error; offline has no button
+  and retries when the connection returns). Regression: `HomeStatesTest`, `HomeStatesCaptureTest`.
 - **Home's hero tile expands; it does not toggle the window.** On the board the hero's corner
   control used to be the window-fullscreen button, which read as "expand this card". It now expands
   the tile over the whole board and plays the current title's trailer with sound
@@ -164,7 +172,8 @@ Person Details opening with no transition). Apply these to every redesigned scre
   header shape with Pause all and the folder button, active transfers as one frosted list, finished
   titles as landscape cards, and a show's episodes in place (Esc returns). Actions are a frosted ⋯
   menu (`RedesignOverflowButton`), not the mobile bottom sheet. Empty and error tiles everywhere use
-  `RedesignMessageTile` (core/ui). `DownloadsDesktopUiTest` covers the lists, the show view and the menu.
+  `RedesignMessageTile` (core/ui), sized to the Home design's state card: 48 dp round badge, 18 dp
+  title, 14 dp text (changed 26 Nov 2026 for Home, Library and Downloads together). `DownloadsDesktopUiTest` covers the lists, the show view and the menu.
   The kicker carries counts only; repeating "Downloads" above the "Downloads" title read as a
   duplicate. The folder button is a menu (Open / Change folder… / Use default), mirrored in
   Settings → Playback → Downloads (`DownloadsFolder`, desktop only). A new folder applies to new
@@ -439,6 +448,12 @@ documented in `CALENDAR.md`, not a requirement for every grid in the app.
   lets the page scroll (`SeriesAudienceDetailsUiTest`). A grid's scroll-into-view follows
   the keyboard cursor or selection, never hover: revealing the hovered cell made the
   wheel fight the resting pointer.
+- A layer that takes clicks away from what's under it (Home's dimmed rows while a row is being
+  moved, the lifted row's drag surface) swallows the whole press, release included, in
+  `PointerEventPass.Initial`, and acts only after the release. Consuming just the press and then
+  removing the layer let the release reach the poster underneath, which opened Details
+  (`HomeScreen` reorder dim, `HomeRowReorder.kt`). Draw such a layer as an overlay sibling on top
+  rather than intercepting inside the items, so drag handles under it still work.
 
 ## Styling, meaning, and settings
 

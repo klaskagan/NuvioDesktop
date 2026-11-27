@@ -1,0 +1,8 @@
+<resources>
+    <string name="home_state_no_sources_title">Add a catalog to start</string>
+    <string name="home_state_no_sources_message">Home shows rows from your addons and services. Add an addon or connect a service to fill it.</string>
+    <string name="home_state_open_addons">Open Addons</string>
+    <string name="home_state_load_failed_message">Something went wrong while loading your rows.</string>
+    <string name="home_state_offline_title">You’re offline</string>
+    <string name="home_state_offline_message">Rows you’ve opened before still work. New rows load when you’re back online.</string>
+</resources>

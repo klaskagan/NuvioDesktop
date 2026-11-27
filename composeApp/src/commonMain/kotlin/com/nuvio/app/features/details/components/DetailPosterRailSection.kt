@@ -40,6 +40,8 @@ fun DetailPosterRailSection(
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
     onViewAllClick: (() -> Unit)? = null,
     viewAllPillSize: com.nuvio.app.core.ui.NuvioViewAllPillSize = com.nuvio.app.core.ui.NuvioViewAllPillSize.Default,
+    /** Small label over the title; drawn only under the editorial header style. */
+    eyebrow: String? = null,
 ) {
     if (items.isEmpty()) return
     val posterCardStyle = rememberPosterCardStyleUiState()
@@ -66,6 +68,7 @@ fun DetailPosterRailSection(
             key = { item -> item.stableKey() },
             onViewAllClick = onViewAllClick,
             viewAllPillSize = viewAllPillSize,
+            eyebrow = eyebrow,
             onTitleClick = onViewAllClick?.takeIf { isDesktop },
         ) { item ->
             val landscape = posterCardStyle.catalogLandscapeModeEnabled || item.posterShape == PosterShape.Landscape

@@ -391,6 +391,33 @@ object HomeCatalogSettingsRepository {
         HomeCatalogSettingsSyncService.triggerPush()
     }
 
+    /**
+     * Saves an order picked on Home (Home design "Row · reorder"). [visibleKeys] are the rows a Home tab
+     * showed, in their new order; they take over the slots they held among all rows, so hidden rows and
+     * rows of other tabs keep their places. One save and one sync push however far the row moved.
+     */
+    fun applyVisibleOrder(visibleKeys: List<String>) {
+        ensureLoaded()
+        val allKeys = allOrderedKeys()
+        val visible = visibleKeys.filter { it in allKeys }.distinct()
+        if (visible.size < 2) return
+        val visibleSet = visible.toSet()
+        val queue = ArrayDeque(visible)
+        val reordered = allKeys.map { key -> if (key in visibleSet) queue.removeFirst() else key }
+        if (reordered == allKeys) return
+        val updatedPreferences = preferences.toMutableMap()
+        reordered.forEachIndexed { index, itemKey ->
+            val current = updatedPreferences[itemKey] ?: return@forEachIndexed
+            updatedPreferences[itemKey] = current.copy(order = index)
+        }
+        preferences = updatedPreferences
+        enforcePinnedCollectionsAtTop()
+        publish()
+        persist()
+        HomeRepository.applyCurrentSettings()
+        HomeCatalogSettingsSyncService.triggerPush()
+    }
+
     /** Reorder collection slots while retaining the user's regular-catalog interleaving. */
     fun reorderCollections(collections: List<Collection>) {
         ensureLoaded()

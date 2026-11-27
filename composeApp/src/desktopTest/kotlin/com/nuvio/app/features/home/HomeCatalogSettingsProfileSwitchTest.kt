@@ -99,6 +99,25 @@ class HomeCatalogSettingsProfileSwitchTest {
         assertEquals(setOf("mine:movie:c"), heroSources())
     }
 
+    @Test
+    fun anOrderPickedOnHomeKeepsRowsTheTabDidNotShowInTheirSlots() = runBlocking {
+        assumeTrue(System.getProperty("nuvio.test.isolatedHome") == "true")
+        CollectionRepository.clearLocalState()
+        HomeCatalogSettingsStorage.savePayload("{}", profileId = 41)
+        switchTo(41, listOf(addon("mine", "Mine", "a", "b", "c", "d")))
+        val order = { HomeCatalogSettingsRepository.uiState.value.items.map { it.key.substringAfterLast(':') } }
+        assertEquals(listOf("a", "b", "c", "d"), order())
+
+        // The tab showed a, c and d; "b" belongs to another tab and stays second.
+        HomeCatalogSettingsRepository.applyVisibleOrder(listOf("d", "a", "c").map { "mine:movie:$it" })
+        assertEquals(listOf("d", "b", "a", "c"), order())
+
+        // The same order again changes nothing.
+        val before = HomeCatalogSettingsRepository.uiState.value
+        HomeCatalogSettingsRepository.applyVisibleOrder(listOf("d", "a", "c").map { "mine:movie:$it" })
+        assertEquals(before, HomeCatalogSettingsRepository.uiState.value)
+    }
+
     private fun pickHeroCatalogs(vararg keys: String) {
         val items = HomeCatalogSettingsRepository.uiState.value.items
         items.filter { it.key !in keys }.forEach { HomeCatalogSettingsRepository.setHeroSourceEnabled(it.key, false) }

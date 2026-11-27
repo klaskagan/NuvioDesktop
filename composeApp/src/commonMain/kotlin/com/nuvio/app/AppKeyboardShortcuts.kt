@@ -66,7 +66,9 @@ object AppKeyboardShortcuts {
      * focus; true when an open player layer took it.
      */
     fun handleMediaKey(key: Key): Boolean =
-        typingFields == 0 && mediaKeys.lastOrNull()?.invoke(key) == true
+        // Innermost claim first; a key it doesn't use goes on to the next one out (a hovered poster
+        // ignores ↑ ↓ while Home's row reorder, claimed earlier, needs them).
+        typingFields == 0 && mediaKeys.asReversed().any { it(key) }
 
     // Text fields that have focus. While one does, Space and the letters are typing, so no layer
     // may claim them (Space over a hovered poster opened Quick look from Library's search field).

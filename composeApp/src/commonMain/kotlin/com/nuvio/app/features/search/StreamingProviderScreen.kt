@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -52,6 +53,9 @@ import com.nuvio.app.core.ui.PinnedBarBackground
 import com.nuvio.app.core.ui.DesktopMergedTopBarHeight
 import com.nuvio.app.core.ui.LocalBackdropContentStartInset
 import com.nuvio.app.core.ui.LocalBackdropFocusController
+import com.nuvio.app.core.ui.LocalNuvioShelfHeaderStyle
+import com.nuvio.app.core.ui.NuvioShelfHeaderStyle
+import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.LocalScreenActive
 import com.nuvio.app.core.ui.LocalShellBackdropMode
 import com.nuvio.app.core.ui.NavLayer
@@ -242,7 +246,12 @@ internal fun StreamingProviderScreen(
                 // Under the bar the header's surface starts below it (no doubled dim); without a bar
                 // it runs from the window's top, so nothing scrolls past bare above it.
                 val surfaceTop = if (topBarLayout) headerTop else 0.dp
-                CompositionLocalProvider(LocalBackdropFocusController provides backdrop) {
+                // Rows draw Home's editorial header (the service as the eyebrow), as on Home.
+                val serviceName = title.ifBlank { selection.name }
+                CompositionLocalProvider(
+                    LocalBackdropFocusController provides backdrop,
+                    LocalNuvioShelfHeaderStyle provides NuvioShelfHeaderStyle.Editorial,
+                ) {
                 RedesignTypography(enabled = true) {
                 NuvioScreen(
                     horizontalPadding = 0.dp,
@@ -280,6 +289,7 @@ internal fun StreamingProviderScreen(
                                 listState.requestScrollToItem(0)
                             },
                             onCollectionRowViewAll = onCatalogClick,
+                            eyebrow = serviceName,
                         )
                     } else {
                         searchDesktopDiscoveryResults(
@@ -297,8 +307,9 @@ internal fun StreamingProviderScreen(
                         )
                     }
                 }
-                // The header: back, the service, its filter and Customize rows, in one row, on the same
-                // surface as the bar (Settings → Layout → Top bar background).
+                // The service's own bar, a small Home top bar: back, the service's logo, a hairline,
+                // All / Movies / Shows as Home's text tabs (underline on the bar's edge) and Customize
+                // rows, on the same surface as the top bar (Settings → Layout → Top bar background).
                 Box(
                     Modifier.padding(top = surfaceTop).fillMaxWidth()
                         .height(headerTop - surfaceTop + StreamingHeaderHeight)
@@ -336,7 +347,7 @@ internal fun StreamingProviderScreen(
                             )
                         } else {
                             Text(
-                                title.ifBlank { selection.name },
+                                serviceName,
                                 style = redesignText(22.sp, FontWeight.Bold, letterSpacing = RedesignTightTracking),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -344,7 +355,15 @@ internal fun StreamingProviderScreen(
                         }
                         // The grid has no tabs; its controls fade out rather than vanish.
                         AnimatedVisibility(shelfView == null, enter = fadeIn(tween(200)), exit = fadeOut(tween(140))) {
-                            TagScopePills(scope, { scope = it }, Modifier.padding(start = 20.dp))
+                            Box(Modifier.padding(start = 16.dp).width(1.dp).height(24.dp).background(RedesignColors.hairline))
+                        }
+                        AnimatedVisibility(
+                            shelfView == null,
+                            modifier = Modifier.align(Alignment.Bottom),
+                            enter = fadeIn(tween(200)),
+                            exit = fadeOut(tween(140)),
+                        ) {
+                            TagScopeTabs(scope, { scope = it }, Modifier.padding(start = 16.dp))
                         }
                         Spacer(Modifier.weight(1f))
                         AnimatedVisibility(shelfView == null, enter = fadeIn(tween(200)), exit = fadeOut(tween(140))) {
@@ -362,4 +381,4 @@ internal fun StreamingProviderScreen(
     }
 }
 
-private val StreamingHeaderHeight = 60.dp
+private val StreamingHeaderHeight = 64.dp

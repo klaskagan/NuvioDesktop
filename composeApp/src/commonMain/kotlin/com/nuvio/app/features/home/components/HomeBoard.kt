@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.nuvio.app.core.ui.NuvioAsyncImage
+import com.nuvio.app.core.ui.skeleton
 import com.nuvio.app.core.ui.RedesignColors
 import com.nuvio.app.core.ui.RedesignTightTracking
 import com.nuvio.app.core.ui.redesignText
@@ -116,6 +117,7 @@ internal fun HomeBoard(
     onResumeLongPress: ((ContinueWatchingItem) -> Unit)?,
     modifier: Modifier = Modifier,
     onResumeDetails: ((ContinueWatchingItem) -> Unit)? = null,
+    sideLoading: Boolean = false,
     featured: @Composable () -> Unit,
 ) {
     Row(modifier.fillMaxWidth().height(height).testTag("home_board")) {
@@ -125,31 +127,41 @@ internal fun HomeBoard(
         ) { featured() }
         val resume = resumeItems.firstOrNull()
         // While the featured tile is expanded it takes the whole board and the side column folds away.
+        // While Continue Watching is still loading the column holds its place as two placeholders
+        // (Home design "For you · loading") and crossfades into Resume / Up next, or folds away.
         AnimatedVisibility(
-            visible = resume != null && !expanded,
+            visible = (resume != null || sideLoading) && !expanded,
             enter = fadeIn(tween(240, delayMillis = 120)) + expandHorizontally(tween(360, easing = FastOutSlowInEasing), expandFrom = Alignment.Start),
             exit = fadeOut(tween(160)) + shrinkHorizontally(tween(360, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Start),
         ) {
-            val shown = resume ?: return@AnimatedVisibility
-            val upNext = resumeItems.drop(1)
-            Column(
-                Modifier.padding(start = BoardGap).width(BoardSideColumnWidth).fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(BoardGap),
-            ) {
-                HomeResumeTile(
-                    item = shown,
-                    onClick = onResumeClick,
-                    onLongPress = onResumeLongPress,
-                    onDetails = onResumeDetails,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                )
-                if (upNext.isNotEmpty()) {
-                    HomeUpNextCard(
-                        items = upNext,
-                        onClick = onResumeClick,
-                        onLongPress = onResumeLongPress,
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                    )
+            Crossfade(targetState = resume != null, animationSpec = tween(320), label = "home_board_side") { loaded ->
+                Column(
+                    Modifier.padding(start = BoardGap).width(BoardSideColumnWidth).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(BoardGap),
+                ) {
+                    val shown = resumeItems.firstOrNull()
+                    if (!loaded || shown == null) {
+                        repeat(2) {
+                            Box(Modifier.weight(1f).fillMaxWidth().skeleton(BoardTileShape).testTag("home_board_side_skeleton"))
+                        }
+                    } else {
+                        val upNext = resumeItems.drop(1)
+                        HomeResumeTile(
+                            item = shown,
+                            onClick = onResumeClick,
+                            onLongPress = onResumeLongPress,
+                            onDetails = onResumeDetails,
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                        )
+                        if (upNext.isNotEmpty()) {
+                            HomeUpNextCard(
+                                items = upNext,
+                                onClick = onResumeClick,
+                                onLongPress = onResumeLongPress,
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                            )
+                        }
+                    }
                 }
             }
         }

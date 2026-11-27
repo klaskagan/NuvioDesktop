@@ -1,0 +1,13 @@
+<resources>
+    <string name="home_row_more">Row options for %1$s</string>
+    <string name="home_row_reorder">Reorder row</string>
+    <string name="home_row_hide">Hide from Home</string>
+    <string name="home_row_hidden">%1$s hidden</string>
+    <string name="home_row_undo">Undo</string>
+    <string name="home_row_move_up">Move up</string>
+    <string name="home_row_move_down">Move down</string>
+    <string name="home_row_drag">Drag to reorder</string>
+    <string name="home_row_hint_move">move or drag</string>
+    <string name="home_row_hint_done">done</string>
+    <string name="home_row_hint_cancel">cancel</string>
+</resources>

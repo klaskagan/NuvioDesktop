@@ -121,6 +121,7 @@ private fun HomeCatalogRowSectionContent(
             item.stableKey() to (item.catalogRank?.takeIf { it > 0 } ?: index + 1)
         }.toMap()
     }
+    val rowHeader = LocalHomeRowHeader.current
     NuvioShelfSection(
         title = section.title,
         state = rowState,
@@ -137,6 +138,11 @@ private fun HomeCatalogRowSectionContent(
         viewAllPillSize = NuvioViewAllPillSize.Compact,
         eyebrow = eyebrow,
         key = { item -> item.stableKey() },
+        headerModifier = rowHeader?.modifier ?: Modifier,
+        rowOverlay = rowHeader?.rowOverlay,
+        headerLeading = rowHeader?.leading,
+        headerActions = rowHeader?.actions,
+        showViewAll = rowHeader?.showViewAll ?: true,
     ) { item ->
         val watched = WatchingState.isPosterWatched(watchedKeys, item, fullyWatchedSeriesKeys)
         val openItem = onPosterClick?.let { { it(item) } }

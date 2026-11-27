@@ -20,6 +20,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -98,7 +102,9 @@ private fun HomeCollectionRowSectionContent(
     rankingLayout: NumberedRankingLayout? = null,
 ) {
     var pickerOpen by remember(rowStyleKey) { mutableStateOf(false) }
+    var pickerAnchor by remember(rowStyleKey) { mutableStateOf<Rect?>(null) }
     val shelfInset = rankingLayout?.inset ?: sectionPadding
+    val rowHeader = LocalHomeRowHeader.current
     NuvioShelfSection(
         title = collection.title,
         entries = collection.folders,
@@ -107,19 +113,32 @@ private fun HomeCollectionRowSectionContent(
         rowContentPadding = PaddingValues(horizontal = shelfInset),
         itemSpacing = rankingLayout?.gap ?: 10.dp,
         key = { folder -> "collection_${collection.id}_folder_${folder.id}" },
+        headerModifier = rowHeader?.modifier ?: Modifier,
+        rowOverlay = rowHeader?.rowOverlay,
+        headerLeading = rowHeader?.leading,
+        headerActions = rowHeader?.actions,
+        showViewAll = rowHeader?.showViewAll ?: true,
     ) { folder ->
+        // Read on press-and-hold so the Row style panel opens under the pressed tile.
+        val cardCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
         CollectionFolderCard(
             folder = folder,
+            modifier = Modifier.onGloballyPositioned { cardCoordinates[0] = it },
             shape = rowStyle.posterShape ?: if (collection.usesConfiguredArtwork()) PosterShape.Landscape else folder.posterShape,
             rowStyle = rowStyle,
             rankingLayout = rankingLayout,
-            onLongClick = rowStyleKey?.let { { pickerOpen = true } },
+            onLongClick = rowStyleKey?.let {
+                {
+                    pickerAnchor = cardCoordinates[0]?.takeIf { it.isAttached }?.boundsInRoot()
+                    pickerOpen = true
+                }
+            },
             animateGifs = animateGifs,
             onClick = onFolderClick?.let { { it(collection.id, folder.id) } },
         )
     }
     if (pickerOpen && rowStyleKey != null) {
-        HomeRowStylePicker(rowStyleKey, onDismiss = { pickerOpen = false })
+        HomeRowStylePicker(rowStyleKey, onDismiss = { pickerOpen = false }, anchor = pickerAnchor, title = collection.title)
     }
 }
 

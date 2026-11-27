@@ -1,5 +1,7 @@
 package com.nuvio.app.core.ui
 
+import androidx.compose.foundation.layout.BoxScope
+
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -111,6 +114,12 @@ fun <T> NuvioShelfSection(
     animatePlacement: Boolean = false,
     state: LazyListState = rememberLazyListState(),
     trailingContent: (@Composable () -> Unit)? = null,
+    headerModifier: Modifier = Modifier,
+    headerLeading: (@Composable () -> Unit)? = null,
+    headerActions: (@Composable RowScope.() -> Unit)? = null,
+    showViewAll: Boolean = true,
+    /** Drawn over the row's items, same size (Home's reorder uses it as a drag surface). */
+    rowOverlay: (@Composable BoxScope.() -> Unit)? = null,
     itemContent: @Composable (T) -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
@@ -133,48 +142,54 @@ fun <T> NuvioShelfSection(
                 if (title.isNotBlank()) {
                     NuvioShelfSectionHeader(
                         title = title,
-                        modifier = Modifier.padding(horizontal = headerHorizontalPadding),
+                        modifier = headerModifier.padding(horizontal = headerHorizontalPadding),
                         onViewAllClick = onViewAllClick,
                         onTitleClick = onTitleClick,
                         viewAllPillSize = viewAllPillSize,
                         eyebrow = eyebrow,
+                        leading = headerLeading,
+                        actions = headerActions,
+                        showViewAll = showViewAll,
                     )
                 }
-                LazyRow(
-                    state = state,
-                    modifier = rowModifier
-                        .nuvioHorizontalScrollBleed(LocalVerticalBarPadding.current)
-                        .nuvioDesktopDragScroll(state),
-                    contentPadding = rowContentPadding.withVerticalBar(),
-                    horizontalArrangement = Arrangement.spacedBy(itemSpacing),
-                ) {
-                    if (duplicateSafeEntries != null) {
-                        itemsIndexed(
-                            items = duplicateSafeEntries,
-                            key = { _, entry -> entry.lazyKey },
-                            contentType = { _, _ -> "poster" },
-                        ) { _, keyedEntry ->
-                            if (animatePlacement) {
-                                Box(modifier = Modifier.animateItem()) { itemContent(keyedEntry.value) }
-                            } else {
-                                itemContent(keyedEntry.value)
+                Box {
+                    LazyRow(
+                        state = state,
+                        modifier = rowModifier
+                            .nuvioHorizontalScrollBleed(LocalVerticalBarPadding.current)
+                            .nuvioDesktopDragScroll(state),
+                        contentPadding = rowContentPadding.withVerticalBar(),
+                        horizontalArrangement = Arrangement.spacedBy(itemSpacing),
+                    ) {
+                        if (duplicateSafeEntries != null) {
+                            itemsIndexed(
+                                items = duplicateSafeEntries,
+                                key = { _, entry -> entry.lazyKey },
+                                contentType = { _, _ -> "poster" },
+                            ) { _, keyedEntry ->
+                                if (animatePlacement) {
+                                    Box(modifier = Modifier.animateItem()) { itemContent(keyedEntry.value) }
+                                } else {
+                                    itemContent(keyedEntry.value)
+                                }
+                            }
+                        } else {
+                            itemsIndexed(
+                                items = entries,
+                                contentType = { _, _ -> "poster" },
+                            ) { _, entry ->
+                                if (animatePlacement) {
+                                    Box(modifier = Modifier.animateItem()) { itemContent(entry) }
+                                } else {
+                                    itemContent(entry)
+                                }
                             }
                         }
-                    } else {
-                        itemsIndexed(
-                            items = entries,
-                            contentType = { _, _ -> "poster" },
-                        ) { _, entry ->
-                            if (animatePlacement) {
-                                Box(modifier = Modifier.animateItem()) { itemContent(entry) }
-                            } else {
-                                itemContent(entry)
-                            }
+                        if (trailingContent != null) {
+                            item(contentType = "shelf-action") { trailingContent() }
                         }
                     }
-                    if (trailingContent != null) {
-                        item(contentType = "shelf-action") { trailingContent() }
-                    }
+                    rowOverlay?.let { overlay -> Box(Modifier.matchParentSize()) { overlay() } }
                 }
             }
         }
@@ -506,6 +521,9 @@ internal fun NuvioShelfSectionHeader(
     onTitleClick: (() -> Unit)? = null,
     viewAllPillSize: NuvioViewAllPillSize = NuvioViewAllPillSize.Default,
     eyebrow: String? = null,
+    leading: (@Composable () -> Unit)? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    showViewAll: Boolean = true,
 ) {
     val tokens = MaterialTheme.nuvio
     val editorial = LocalNuvioShelfHeaderStyle.current == NuvioShelfHeaderStyle.Editorial
@@ -517,6 +535,7 @@ internal fun NuvioShelfSectionHeader(
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap),
             verticalAlignment = if (editorial) Alignment.Bottom else Alignment.CenterVertically,
         ) {
+            leading?.invoke()
             Column(modifier = Modifier.weight(1f)) {
             if (editorial && !eyebrow.isNullOrBlank()) {
                 Text(
@@ -544,18 +563,24 @@ internal fun NuvioShelfSectionHeader(
                 overflow = TextOverflow.Ellipsis,
             )
             }
-            val viewAllPlaceholderModifier = if (onViewAllClick == null) {
-                Modifier
-                    .alpha(0f)
-                    .clearAndSetSemantics { }
-            } else {
-                Modifier
+            // Row actions (Home's ⋯, or ↑ ↓ Done while reordering) sit just before the ›.
+            if (actions != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
             }
-            NuvioViewAllPill(
-                onClick = onViewAllClick,
-                size = viewAllPillSize,
-                modifier = viewAllPlaceholderModifier,
-            )
+            if (showViewAll && (actions == null || onViewAllClick != null)) {
+                val viewAllPlaceholderModifier = if (onViewAllClick == null) {
+                    Modifier
+                        .alpha(0f)
+                        .clearAndSetSemantics { }
+                } else {
+                    Modifier
+                }
+                NuvioViewAllPill(
+                    onClick = onViewAllClick,
+                    size = viewAllPillSize,
+                    modifier = viewAllPlaceholderModifier,
+                )
+            }
         }
     }
 }
@@ -592,6 +617,12 @@ private fun NuvioViewAllPill(
 
 internal const val NuvioDesktopCatalogShelfPosterScale = 1.4f
 private const val DesktopPosterHoverScale = 1.045f
+
+/**
+ * True while hover must leave posters alone, such as while a Home row is picked up to be moved
+ * (Home design "Row · reorder"): no zoom, ring, strip, Quick look or inline expand.
+ */
+internal val LocalPosterHoverSuspended = androidx.compose.runtime.compositionLocalOf { false }
 
 internal fun desktopCatalogShelfPosterBaseWidthDp(
     basePosterWidthDp: Int,
@@ -689,7 +720,7 @@ internal fun Modifier.desktopPosterHoverScale(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     liftSource: PosterLiftSource? = null,
 ): Modifier {
-    if (!enabled || !isDesktop) return this
+    if (!enabled || !isDesktop || LocalPosterHoverSuspended.current) return this
 
     val hovered by interactionSource.collectIsHoveredAsState()
     if (liftSource != null) {

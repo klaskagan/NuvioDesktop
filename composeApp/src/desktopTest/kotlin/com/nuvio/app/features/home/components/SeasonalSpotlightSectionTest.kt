@@ -17,6 +17,7 @@ import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.SeasonalTheme
 import org.junit.Rule
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class SeasonalSpotlightSectionTest {
@@ -29,6 +30,12 @@ class SeasonalSpotlightSectionTest {
         val shelf = compose.onNodeWithTag("continue_watching").fetchSemanticsNode().boundsInRoot
         val banner = compose.onNodeWithTag("seasonal").fetchSemanticsNode().boundsInRoot
         assertTrue(banner.top >= shelf.bottom + 12f, "Seasonal art must stay below the complete shelf")
+        val band = compose.onNodeWithTag("seasonal_band").fetchSemanticsNode().boundsInRoot
+        assertTrue(band.left >= 24f && band.right <= 1200f - 24f, "The band is a tile at the page inset, not full bleed")
+        assertEquals(322f, band.height, 1f)
+        val eyebrow = compose.onNodeWithTag("seasonal_eyebrow").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
+        assertTrue(eyebrow.startsWith("SEASONAL SPOTLIGHT · UNTIL "), "Eyebrow carries the end date: $eyebrow")
         savePreview("desktop")
         compose.onNodeWithText("Explore collection").performClick()
         compose.runOnIdle { assertTrue(explored) }
