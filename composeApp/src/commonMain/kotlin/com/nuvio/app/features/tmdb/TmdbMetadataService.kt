@@ -694,6 +694,7 @@ object TmdbMetadataService {
             popularity = result.popularity,
             sortRating = result.voteAverage,
             voteCount = result.voteCount,
+            tmdbGenreIds = result.genreIds,
         )
     }
 
@@ -2390,6 +2391,7 @@ internal data class TmdbDiscoverResult(
     @SerialName("first_air_date") val firstAirDate: String? = null,
     @SerialName("vote_average") val voteAverage: Double? = null,
     @SerialName("vote_count") val voteCount: Int? = null,
+    @SerialName("genre_ids") val genreIds: List<Int> = emptyList(),
 )
 
 internal data class TmdbLandscapeArtwork(val backdrop: String?, val logo: String?, val cleanBackdrop: String? = null)

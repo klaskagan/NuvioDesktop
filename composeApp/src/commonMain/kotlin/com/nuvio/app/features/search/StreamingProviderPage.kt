@@ -15,7 +15,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +57,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import com.nuvio.app.core.ui.NuvioBackButton
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -194,6 +198,23 @@ internal fun tagHeroItems(topTen: SearchTopTenUi, shelves: SearchDiscoveryShelve
 
 private const val TAG_HERO_SIZE = 8
 
+/** The key of the service page's tabs row, which pins once the hero scrolls away. */
+internal const val TAG_TABS_KEY = "tag-tabs"
+
+/** Back in the hero's top-left corner: the Details board's button, mirroring the expand control top-right. */
+@Composable
+private fun BoxScope.TagHeroBackButton(onBack: () -> Unit) {
+    NuvioBackButton(
+        onClick = onBack,
+        modifier = Modifier.align(Alignment.TopStart).padding(14.dp).testTag("tag_hero_back"),
+        containerColor = Color.Black.copy(alpha = 0.34f),
+        showContainerOnDesktop = true,
+        contentColor = RedesignColors.textPrimary,
+        buttonSize = 48.dp,
+        iconSize = 24.dp,
+    )
+}
+
 /** One row of a tag page, resolved from the layout: what [streamingProviderPage] draws, in order. */
 internal sealed interface TagPageRow {
     val key: String
@@ -238,6 +259,7 @@ internal fun tagPageRows(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 internal fun LazyListScope.streamingProviderPage(
     selection: SearchDiscovery,
     shelves: SearchDiscoveryShelvesUi,
@@ -256,6 +278,16 @@ internal fun LazyListScope.streamingProviderPage(
     onCollectionRowViewAll: ((HomeCatalogSection) -> Unit)? = null,
     /** The service's name over every row title, in Home's editorial header (only drawn where that style is provided). */
     eyebrow: String? = null,
+    /** Space above the hero; the service page puts its logo there instead. */
+    heroTopPadding: Dp = 22.dp,
+    /** Back in the hero's top-left corner, as on the Details board and folders; null draws none. */
+    onHeroBack: (() -> Unit)? = null,
+    /** A row under the hero that pins under the top bar once the hero scrolls away (Details' tabs row). */
+    tabsBar: (@Composable () -> Unit)? = null,
+    /** With [tabsBar]: the page's list, for the filler that keeps the row pinned under a short tab. */
+    listState: androidx.compose.foundation.lazy.LazyListState? = null,
+    /** True while a tab picked from the pinned row settles; the filler then holds a window's room. */
+    tabsSettling: () -> Boolean = { false },
 ) {
     val heroItems = tagHeroItems(topTen, shelves, scope)
     if (heroItems.isNotEmpty() || shelves.loading || topTen.loading) {
@@ -291,7 +323,7 @@ internal fun LazyListScope.streamingProviderPage(
                     androidx.compose.runtime.SideEffect { if (TagHeroResize.active != resizing) TagHeroResize.active = resizing }
                     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { TagHeroResize.active = false } }
                     Box(
-                        itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth().height(heroHeight)
+                        itemModifier().padding(horizontal = gutter).padding(top = heroTopPadding).fillMaxWidth().height(heroHeight)
                             .clip(RoundedCornerShape(18.dp)).testTag("tag-hero"),
                     ) {
                         androidx.compose.runtime.CompositionLocalProvider(
@@ -308,9 +340,10 @@ internal fun LazyListScope.streamingProviderPage(
                                 onToggleExpanded = { heroExpanded = !heroExpanded },
                             )
                         }
+                        if (onHeroBack != null) TagHeroBackButton(onHeroBack)
                     }
                 } else {
-                    Box(itemModifier().padding(horizontal = gutter).padding(top = 22.dp).fillMaxWidth()) {
+                    Box(itemModifier().padding(horizontal = gutter).padding(top = heroTopPadding).fillMaxWidth()) {
                         val height = com.nuvio.app.features.home.homeBoardHeroHeight(
                             with(LocalDensity.current) { androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height.toDp() },
                             expanded = false,
@@ -319,10 +352,16 @@ internal fun LazyListScope.streamingProviderPage(
                             Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(18.dp))
                                 .background(RedesignColors.fill).testTag("tag-skeleton-spotlight"),
                         )
+                        // Back is there while the hero loads too, at the same spot.
+                        if (onHeroBack != null) TagHeroBackButton(onHeroBack)
                     }
                 }
             }
         }
+    }
+    if (tabsBar != null) {
+        stickyHeader(key = TAG_TABS_KEY, contentType = "tag-tabs") { tabsBar() }
+        item(key = "tag-tabs-gap") { Spacer(Modifier.height(12.dp)) }
     }
     tagPageRows(layout, shelves, topTen, collectionRows, scope).forEach { row ->
         item(key = row.key) {
@@ -390,6 +429,107 @@ internal fun LazyListScope.streamingProviderPage(
                 }
             }
         }
+    }
+    if (tabsBar != null && listState != null) tagTabsFillItem(listState, tabsSettling)
+}
+
+private const val TAG_FILL_KEY = "tag-tabs-fill"
+
+/**
+ * Whether the service page's tabs row is pinned, as on the Details board: once the first visible
+ * item is the row (a sticky header) or below it. A tab picked from the pinned row [holding]s it at
+ * the top while the new rows lay out, with the filler at a window's room ([tagTabsFillItem]), until
+ * their heights stop changing; otherwise a short tab (a service's few movies) let the list scroll
+ * back and the row lost its frosted surface, Back and logo.
+ */
+@androidx.compose.runtime.Stable
+internal class TagTabsPinState(private val listState: androidx.compose.foundation.lazy.LazyListState) {
+    var holding by mutableStateOf(false)
+        private set
+    private var holdIndex = -1
+
+    private val scrolledPinned = derivedStateOf {
+        val tabs = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == TAG_TABS_KEY }
+        tabs != null && listState.firstVisibleItemIndex >= tabs.index
+    }
+
+    val pinned: Boolean get() = scrolledPinned.value || holding
+
+    /** Call before switching tabs; holds the row only when it is pinned now. */
+    fun beforeTabChange() {
+        if (!pinned) return
+        listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == TAG_TABS_KEY }?.let {
+            holdIndex = it.index
+            holding = true
+        }
+    }
+
+    internal suspend fun settle() {
+        if (holdIndex < 0) {
+            holding = false
+            return
+        }
+        var lastSizes: List<Int>? = null
+        var stableFrames = 0
+        var frames = 0
+        while (stableFrames < 2 && frames < 60) {
+            listState.scrollToItem(holdIndex)
+            androidx.compose.runtime.withFrameNanos { }
+            val sizes = listState.layoutInfo.visibleItemsInfo.filter { it.index > holdIndex }.map { it.size }
+            if (sizes == lastSizes) stableFrames++ else stableFrames = 0
+            lastSizes = sizes
+            frames++
+        }
+        listState.scrollToItem(holdIndex)
+        holding = false
+    }
+}
+
+@Composable
+internal fun rememberTagTabsPinState(listState: androidx.compose.foundation.lazy.LazyListState, key: Any?): TagTabsPinState =
+    remember(listState, key) { TagTabsPinState(listState) }
+
+/** Runs the hold after each tab switch ([tab] is the selected tab). */
+@Composable
+internal fun TagTabsSettleEffect(state: TagTabsPinState, tab: Any) {
+    androidx.compose.runtime.LaunchedEffect(state, tab, state.holding) {
+        if (state.holding) state.settle()
+    }
+}
+
+/**
+ * The filler under the rows, as on the Details board: when a tab's rows are shorter than the window
+ * (a service with few movies) the list could not stay scrolled to the tabs row, so picking that tab
+ * from the pinned row dropped the row back down and its frosted surface, Back and logo went away.
+ * Never zero high: a zero-height last item never counts as visible, so the filler could not grow.
+ */
+private fun LazyListScope.tagTabsFillItem(listState: androidx.compose.foundation.lazy.LazyListState, settling: () -> Boolean) {
+    item(key = TAG_FILL_KEY, contentType = "tag-fill") {
+        val density = LocalDensity.current
+        val defaultTabsPx = with(density) { com.nuvio.app.features.details.components.DetailBoardTabsHeight.roundToPx() }
+        val fillPx by remember(listState, defaultTabsPx) {
+            derivedStateOf {
+                val info = listState.layoutInfo
+                val viewportPx = info.viewportEndOffset - info.viewportStartOffset
+                val tabs = info.visibleItemsInfo.firstOrNull { it.key == TAG_TABS_KEY }
+                // The row's own measured height, so the filler is exact whatever the row draws.
+                val tabsPx = tabs?.size ?: defaultTabsPx
+                com.nuvio.app.features.details.detailBoardSettlingFillPx(
+                    measuredPx = if (tabs == null) 0 else com.nuvio.app.features.details.detailBoardFillPx(
+                        visible = info.visibleItemsInfo.map {
+                            com.nuvio.app.features.details.DetailBoardVisibleItem(it.index, it.size, it.key == TAG_FILL_KEY)
+                        },
+                        viewportPx = viewportPx,
+                        tabsPx = tabsPx,
+                        firstContentIndex = tabs.index + 1,
+                    ),
+                    viewportPx = viewportPx,
+                    tabsPx = tabsPx,
+                    settling = settling(),
+                )
+            }
+        }
+        Spacer(Modifier.height(with(density) { fillPx.toDp() }.coerceAtLeast(1.dp)).testTag("tag-tabs-fill"))
     }
 }
 

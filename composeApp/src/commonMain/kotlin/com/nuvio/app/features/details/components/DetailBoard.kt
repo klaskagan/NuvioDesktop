@@ -1312,7 +1312,7 @@ private fun CreditHoverCard(person: MetaPerson, isSeries: Boolean, opens: Boolea
  * and drags the row (and the page) off the top. The row is always on screen while pinned, so its
  * requests stop here; unpinned, they pass on as usual.
  */
-private fun Modifier.keepListStillWhilePinned(pinned: () -> Boolean): Modifier = this then KeepListStillElement(pinned)
+internal fun Modifier.keepListStillWhilePinned(pinned: () -> Boolean): Modifier = this then KeepListStillElement(pinned)
 
 private data class KeepListStillElement(val pinned: () -> Boolean) : ModifierNodeElement<KeepListStillNode>() {
     override fun create() = KeepListStillNode(pinned)

@@ -3076,6 +3076,7 @@
     <string name="seasonal_any_watch_state">Any watch status</string>
     <string name="seasonal_watched">Watched</string>
     <string name="seasonal_unwatched">Unwatched</string>
+    <string name="streaming_grid_in_progress">In progress</string>
     <string name="seasonal_show_grid">Show combined grid</string>
     <string name="seasonal_show_rows">Show catalog rows</string>
     <string name="seasonal_end_results">All matching titles loaded</string>

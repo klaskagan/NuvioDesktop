@@ -32,6 +32,8 @@ data class MetaPreview(
     val externalRatings: List<MetaExternalRating> = emptyList(),
     val catalogRank: Int? = null,
     val alternateIds: Set<String> = emptySet(),
+    /** TMDB genre ids from a discover result (names via [tmdbGenreName]); empty elsewhere. */
+    val tmdbGenreIds: List<Int> = emptyList(),
 )
 
 fun MetaPreview.stableKey(): String = calendarCard?.key ?: "$type:$id"
