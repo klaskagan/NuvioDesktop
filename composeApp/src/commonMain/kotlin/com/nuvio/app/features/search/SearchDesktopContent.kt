@@ -1137,18 +1137,22 @@ internal fun LazyListScope.searchDesktopDiscoveryResults(
     fullyWatchedSeriesKeys: Set<String>,
     onPosterClick: ((MetaPreview) -> Unit)?,
     onPosterLongClick: ((MetaPreview) -> Unit)?,
+    /** False where a pinned bar already carries Back, the row's name and its count (a service's row grid). */
+    showHeader: Boolean = true,
 ) {
-    item(key = "discovery-back") {
-        Box(itemModifier().padding(horizontal = gutter)) {
-            SearchBackLink(stringResource(Res.string.search_shelf_back, discoveryChipLabel(selection)), onClick = onBack)
+    if (showHeader) {
+        item(key = "discovery-back") {
+            Box(itemModifier().padding(horizontal = gutter)) {
+                SearchBackLink(stringResource(Res.string.search_shelf_back, discoveryChipLabel(selection)), onClick = onBack)
+            }
         }
-    }
-    item(key = "discovery-header") {
-        SearchSectionHeader(
-            title = shelfTitle(SearchShelfKey(view.sort, view.television ?: true), selection),
-            count = state.items.takeIf { it.isNotEmpty() }?.let { stringResource(Res.string.search_titles_count, it.size) },
-            modifier = itemModifier().padding(horizontal = gutter).padding(top = 8.dp),
-        )
+        item(key = "discovery-header") {
+            SearchSectionHeader(
+                title = shelfTitle(SearchShelfKey(view.sort, view.television ?: true), selection),
+                count = state.items.takeIf { it.isNotEmpty() }?.let { stringResource(Res.string.search_titles_count, it.size) },
+                modifier = itemModifier().padding(horizontal = gutter).padding(top = 8.dp),
+            )
+        }
     }
     if (state.loading && state.items.isEmpty()) {
         items(2, key = { "discovery-skeleton:$it" }) {

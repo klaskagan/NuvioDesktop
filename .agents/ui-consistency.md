@@ -226,6 +226,12 @@ Person Details opening with no transition). Apply these to every redesigned scre
     (Episodes → Your stats lost the logo); the row drops its own bring-into-view requests while
     pinned (`keepListStillWhilePinned` in `DetailBoard.kt`). A frame-count retry is not enough.
     `DetailBoardPinnedTabsUiTest` checks every frame of each switch, flush under the bar.
+  - Any other page with a Details-style pinned tabs row needs both pieces too, not only the sticky
+    header. The streaming service page shipped without them: on Crunchyroll, Movies (a few titles)
+    picked from the pinned row let the list scroll back, and the row lost its frosted surface, Back
+    and logo. It now reuses the filler (`tagTabsFillItem`) and the hold (`TagTabsPinState`) in
+    `StreamingProviderPage.kt`; regression:
+    `TagHeroExpandUiTest.aShortTabPickedFromThePinnedRowKeepsItPinned`.
   - The board item pins itself in the list (`LocalPinnableContainer`), so it stays composed while
     scrolled away under the pinned row. Unpinned, the list dropped it and rebuilt the whole board on
     the way back up, which froze scrolling from the pinned row to the top. The same test checks it
