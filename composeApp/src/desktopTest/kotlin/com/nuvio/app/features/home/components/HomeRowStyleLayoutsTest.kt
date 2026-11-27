@@ -13,6 +13,8 @@ import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.HomeRowStyle
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.PosterShape
+import com.nuvio.app.features.home.nextEpisodeLine
+import com.nuvio.app.features.home.upcomingDate
 import com.nuvio.app.features.watchprogress.CurrentDateProvider
 import java.io.File
 import javax.imageio.ImageIO
@@ -60,6 +62,23 @@ class HomeRowStyleLayoutsTest {
         assertEquals(listOf("fixture-1", "fixture-2", "fixture-4", "fixture-5"), groups[0].drop(1).map { it.id })
         // No ranks: the group's first title.
         assertEquals("fixture-6", groups[1].first().id)
+    }
+
+    @Test
+    fun airingNextDescriptionsGiveTheNextAirDateAndEpisode() {
+        val show = MetaPreview(
+            id = "tt1", type = "series", name = "Dexter: Resurrection", rawReleaseDate = "2025-07-11",
+            description = "Next Episode: S02E05 — Out Of The Past · Airs ${plusDays(3)}",
+        )
+        assertEquals(plusDays(3), show.upcomingDate(today))
+        assertEquals("S2 E5 · Out Of The Past", show.nextEpisodeLine())
+        // A past premiere alone is not upcoming; a passed air date neither.
+        assertEquals(null, show.copy(description = null).upcomingDate(today))
+        assertEquals(null, show.copy(description = "Next Episode: S02E05 · Airs ${plusDays(-2)}").upcomingDate(today))
+        assertEquals("S2 E5", show.copy(description = "Next Episode: S02E05 · Airs 2030-01-01").nextEpisodeLine())
+        // Mostly upcoming rows can pick Calendar strip.
+        val row = (1..5).map { show.copy(id = "tt$it") }
+        assertEquals(true, com.nuvio.app.features.home.HomeRowStyleNeed.AirDates in com.nuvio.app.features.home.homeRowStyleSupplies(row, today))
     }
 
     @Test
@@ -115,6 +134,25 @@ class HomeRowStyleLayoutsTest {
         onNodeWithTag("home_collage_open").performClick()
         runOnIdle { assertEquals(1, seeAll) }
         onNodeWithText("Styled fixture row").assertIsDisplayed()
+    }
+
+    @Test
+    fun infoCardLibraryButtonTogglesTheTitle() = runDesktopComposeUiTest(width = 1360, height = 850) {
+        check(System.getProperty("nuvio.test.isolatedHome") == "true")
+        com.nuvio.app.features.library.LibraryRepository.ensureLoaded()
+        val titles = entries.mapIndexed { i, item -> item.copy(id = "tt90000${i + 10}") }
+        val first = titles.first()
+        // The button shows (and flips) the list its toggle writes to.
+        fun saved() = com.nuvio.app.features.library.LibraryRepository.isSavedByDefault(first.id, first.type)
+        val before = saved()
+        setContent {
+            AppEnvironment { HomeCatalogRowSection(section = section.copy(items = titles), entries = titles, rowStyle = HomeRowStyle.InfoCards, onPosterClick = {}) }
+        }
+        val button = hasTestTag("home_info_card_library") and hasContentDescription(first.name)
+        onNode(button, useUnmergedTree = true).performClick()
+        waitUntil(timeoutMillis = 5_000) { saved() != before }
+        onNode(button, useUnmergedTree = true).performClick()
+        waitUntil(timeoutMillis = 5_000) { saved() == before }
     }
 
     @Test

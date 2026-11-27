@@ -69,6 +69,7 @@ import com.nuvio.app.core.ui.RedesignIconButton
 import com.nuvio.app.core.ui.RedesignPillButton
 import com.nuvio.app.core.ui.displayRatingText
 import com.nuvio.app.core.ui.posterCardClickable
+import com.nuvio.app.core.ui.nuvioDesktopDragScroll
 import com.nuvio.app.core.ui.redesignText
 import com.nuvio.app.features.calendar.CalendarPlatform
 import com.nuvio.app.features.collection.CollectionFolder
@@ -78,6 +79,7 @@ import com.nuvio.app.features.home.HomeRowStyleNeed
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.stableKey
 import com.nuvio.app.features.home.upcomingDate
+import com.nuvio.app.features.home.nextEpisodeLine
 import com.nuvio.app.features.watching.application.WatchingState
 import com.nuvio.app.features.watchprogress.CurrentDateProvider
 import com.nuvio.app.isDesktop
@@ -573,7 +575,7 @@ private fun CalendarStripLayout(header: RowHeaderSpec, entries: List<MetaPreview
                         }
                         Text(item.name, style = redesignText(14.sp, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
                         Text(
-                            item.calendarCard?.episodeLabel ?: titleMetaLine(item, withGenre = false),
+                            item.calendarCard?.episodeLabel ?: item.nextEpisodeLine() ?: titleMetaLine(item, withGenre = false),
                             style = redesignText(12.5.sp, color = MetaInk),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -705,7 +707,8 @@ private fun <T> EditorialBandLayout(
         val state = rememberLazyListState()
         LazyRow(
             state = state,
-            modifier = Modifier.padding(start = 350.dp, top = 32.dp).fillMaxWidth(),
+            // Excluded from the back swipe like every shelf: scrolling the posters must not go back.
+            modifier = Modifier.padding(start = 350.dp, top = 32.dp).fillMaxWidth().nuvioDesktopDragScroll(state),
             contentPadding = PaddingValues(start = 4.dp, end = 26.dp, top = 4.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {

@@ -123,8 +123,20 @@ internal fun collectionRowStyleSupplies(folders: List<com.nuvio.app.features.col
 
 /** The title's release or air date when it is [today] or later (ISO yyyy-MM-dd), else null. */
 internal fun MetaPreview.upcomingDate(today: String): String? {
-    val date = calendarCard?.localDate ?: rawReleaseDate?.take(10)?.takeIf { ISO_DATE.matches(it) } ?: return null
+    // "Airing Next" catalogs carry the show's premiere as its release date and the next episode's
+    // air date only in the description ("Next Episode: S02E05 — Title · Airs 2026-11-30").
+    val airs = description?.let { AIRS_DATE.find(it)?.groupValues?.get(1) }
+    val date = calendarCard?.localDate ?: airs ?: rawReleaseDate?.take(10)?.takeIf { ISO_DATE.matches(it) } ?: return null
     return date.takeIf { it >= today }
 }
 
+/** "S2 E5 · Out Of The Past" from an Airing Next description, else null. */
+internal fun MetaPreview.nextEpisodeLine(): String? {
+    val match = description?.let { NEXT_EPISODE.find(it) } ?: return null
+    val (season, episode, title) = match.destructured
+    return "S${season.toInt()} E${episode.toInt()}" + title.trim().takeIf { it.isNotEmpty() }?.let { " · $it" }.orEmpty()
+}
+
 private val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}""")
+private val AIRS_DATE = Regex("""\bAirs:?\s+(\d{4}-\d{2}-\d{2})""", RegexOption.IGNORE_CASE)
+private val NEXT_EPISODE = Regex("""S(\d{1,2})\s*E(\d{1,3})\s*(?:[—–-]\s*([^·\n]*))?""", RegexOption.IGNORE_CASE)
