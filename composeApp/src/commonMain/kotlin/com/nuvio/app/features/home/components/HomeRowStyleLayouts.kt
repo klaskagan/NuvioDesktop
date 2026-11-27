@@ -12,6 +12,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -60,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.nuvio.app.core.ui.NuvioAsyncImage
+import com.nuvio.app.core.format.formatLocalTime
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.NuvioPosterCard
 import com.nuvio.app.core.ui.NuvioPosterShape
 import com.nuvio.app.core.ui.NuvioShelfSection
@@ -544,34 +547,78 @@ internal fun calendarDays(entries: List<MetaPreview>, today: String): List<Calen
         .map { (date, items) -> CalendarDay(date, items) }
         .sortedBy { it.date }
 
+/**
+ * The day header: "Tonight" (with "Wed 25" beside it) for today, the weekday and date within the
+ * coming week ("Thu 26"), and the month too beyond it ("Fri 25 Dec"), so a later date never reads
+ * as this week.
+ */
+internal fun calendarDayLabel(date: String, today: String, weekday: (String) -> String, month: (String) -> String): String {
+    val base = "${weekday(date)} ${date.takeLast(2).toInt()}"
+    val daysAway = isoDaysBetween(today, date)
+    return if (daysAway in 0..6) base else "$base ${month(date)}"
+}
+
+private fun isoDaysBetween(from: String, to: String): Long =
+    com.nuvio.app.core.time.isoEpochDay(to) - com.nuvio.app.core.time.isoEpochDay(from)
+
+/**
+ * The air time of [item] on [date], from its own calendar card or the Trakt calendar (matched by
+ * IMDb / TMDB / Trakt id); null when no source knows it.
+ */
+internal fun calendarAirTime(item: MetaPreview, date: String, cards: List<com.nuvio.app.features.trakt.CalendarCard>): Long? {
+    item.calendarCard?.releaseEpochMs?.let { return it }
+    val ids = (setOf(item.id) + item.alternateIds).map { it.lowercase() }.toSet()
+    return cards.firstOrNull { card ->
+        card.localDate == date && card.media.let { media ->
+            media.id.lowercase() in ids ||
+                media.imdbId?.lowercase() in ids ||
+                media.tmdbId?.let { "tmdb:$it" } in ids ||
+                media.traktId?.let { "trakt:$it" } in ids
+        }
+    }?.releaseEpochMs
+}
+
 @Composable
 private fun CalendarStripLayout(header: RowHeaderSpec, entries: List<MetaPreview>, actions: StyledRowActions) {
     val today = remember { CurrentDateProvider.todayIsoDate() }
     val days = remember(entries, today) { calendarDays(entries, today) }
+    val traktCalendar by com.nuvio.app.features.trakt.TraktCalendarRepository.uiState.collectAsStateWithLifecycle()
     val tonight = stringResource(Res.string.home_row_tonight)
+    val todayLabel = stringResource(Res.string.calendar_today)
+    val tomorrowLabel = stringResource(Res.string.calendar_tomorrow)
+    val movieLabel = stringResource(Res.string.calendar_movie)
     StyledShelf(header, days, key = { it.date }, spacing = 26.dp) { day ->
-        val dayLabel = "${CalendarPlatform.weekdayLabel(day.date)} ${day.date.takeLast(2).toInt()}"
-        Column(Modifier.testTag("home_calendar_day")) {
+        val dayLabel = calendarDayLabel(day.date, today, CalendarPlatform::weekdayLabel, CalendarPlatform::shortMonthLabel)
+        val daysAway = isoDaysBetween(today, day.date).toInt()
+        val inDays = stringResource(Res.string.calendar_in_days, daysAway)
+        // The header's hairline spans the day's cards.
+        Column(Modifier.width(IntrinsicSize.Max).testTag("home_calendar_day")) {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (day.date == today) tonight else dayLabel, style = redesignText(15.sp, FontWeight.Bold), maxLines = 1)
                 if (day.date == today) Text(dayLabel, style = redesignText(12.5.sp, color = MetaInk), maxLines = 1)
             }
-            Box(Modifier.padding(top = 8.dp, bottom = 10.dp).fillMaxWidth().height(1.dp).background(RedesignColors.hairline))
+            Box(Modifier.padding(top = 8.dp, bottom = 10.dp).fillMaxWidth().height(1.dp).background(RedesignColors.hairline).testTag("home_calendar_day_rule"))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 day.items.forEach { item ->
                     Column(Modifier.width(240.dp)) {
                         Box {
                             TitleTile(item, TileSpec(240.dp, 135.dp, landscape = true), actions)
-                            // No air time is known, so only films carry a chip on the still.
-                            val chip = mediaTypeLabel(item.type).takeIf { item.type.equals("movie", ignoreCase = true) }
-                            if (chip != null) {
-                                Text(
-                                    chip,
-                                    style = redesignText(12.sp, FontWeight.Bold),
-                                    modifier = Modifier.padding(8.dp).clip(RoundedCornerShape(999.dp))
-                                        .background(Color(0xB80A0A0B)).padding(horizontal = 9.dp, vertical = 3.dp),
-                                )
-                            }
+                            // The air time when known; otherwise "Movie", or how far away the day is.
+                            val chip = calendarAirTime(item, day.date, traktCalendar.cards)?.let(::formatLocalTime)
+                                ?: movieLabel.takeIf { item.type.equals("movie", ignoreCase = true) }
+                                ?: when (daysAway) {
+                                    0 -> todayLabel
+                                    1 -> tomorrowLabel
+                                    else -> inDays
+                                }
+                            Text(
+                                chip,
+                                style = redesignText(12.sp, FontWeight.Bold),
+                                maxLines = 1,
+                                modifier = Modifier.padding(8.dp).clip(RoundedCornerShape(999.dp))
+                                    .background(Color(0xB80A0A0B)).padding(horizontal = 9.dp, vertical = 3.dp)
+                                    .testTag("home_calendar_chip"),
+                            )
                         }
                         Text(item.name, style = redesignText(14.sp, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
                         Text(

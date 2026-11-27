@@ -82,6 +82,27 @@ class HomeRowStyleLayoutsTest {
     }
 
     @Test
+    fun dayHeadersNameTheMonthBeyondTheComingWeek() {
+        val weekday = { _: String -> "Day" }
+        val month = { date: String -> "M" + date.substring(5, 7) }
+        assertEquals("Day 30", calendarDayLabel("2026-11-30", "2026-11-27", weekday, month))
+        assertEquals("Day 3", calendarDayLabel("2026-12-03", "2026-11-27", weekday, month))
+        assertEquals("Day 4 M12", calendarDayLabel("2026-12-04", "2026-11-27", weekday, month))
+        assertEquals("Day 25 M12", calendarDayLabel("2026-12-25", "2026-11-27", weekday, month))
+    }
+
+    @Test
+    fun airTimeComesFromTheTraktCalendarByIdAndDay() {
+        val media = com.nuvio.app.features.trakt.CalendarMedia(id = "tt777", type = "series", title = "Dexter", imdbId = "tt777", tmdbId = 42)
+        val card = com.nuvio.app.features.trakt.CalendarCard("c", media, "2026-11-30", releaseEpochMs = 1_000L, daysAway = 3)
+        val item = MetaPreview(id = "tmdb:42", type = "series", name = "Dexter")
+        assertEquals(1_000L, calendarAirTime(item, "2026-11-30", listOf(card)))
+        assertEquals(null, calendarAirTime(item, "2026-12-01", listOf(card)))
+        assertEquals(1_000L, calendarAirTime(item.copy(id = "tt777"), "2026-11-30", listOf(card)))
+        assertEquals(null, calendarAirTime(item.copy(id = "tt1"), "2026-11-30", listOf(card)))
+    }
+
+    @Test
     fun calendarStripGroupsByDayAndSkipsPastAndUndatedTitles() {
         val dated = entries.take(6) + MetaPreview(id = "old", type = "movie", name = "Old", rawReleaseDate = plusDays(-3)) +
             MetaPreview(id = "undated", type = "movie", name = "Undated")
@@ -113,7 +134,7 @@ class HomeRowStyleLayoutsTest {
             HomeRowStyle.Mosaic to "home_mosaic_group",
             HomeRowStyle.Spotlight to "home_row_spotlight",
             HomeRowStyle.LogoWall to "home_row_styled_logo-wall",
-            HomeRowStyle.CalendarStrip to "home_calendar_day",
+            HomeRowStyle.CalendarStrip to "home_calendar_chip",
             HomeRowStyle.InfoCards to "home_info_card",
             HomeRowStyle.EditorialBand to "home_editorial_band",
             HomeRowStyle.CollageBanner to "home_collage_banner",
@@ -124,6 +145,11 @@ class HomeRowStyleLayoutsTest {
             onNodeWithTag("home_row_styled_${rowStyle.id}").assertExists()
             ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", report.resolve("${rowStyle.id}.png"))
         }
+        // Calendar strip: the rule under each day header spans its cards.
+        runOnIdle { style = HomeRowStyle.CalendarStrip }
+        val rule = onAllNodesWithTag("home_calendar_day_rule", useUnmergedTree = true).onFirst().fetchSemanticsNode().boundsInRoot
+        val dayBox = onAllNodesWithTag("home_calendar_day", useUnmergedTree = true).onFirst().fetchSemanticsNode().boundsInRoot
+        kotlin.test.assertTrue(rule.width > 200f && kotlin.math.abs(rule.width - dayBox.width) < 2f, "rule $rule should span $dayBox")
         // Compact list: columns of three.
         runOnIdle { style = HomeRowStyle.CompactList }
         onAllNodesWithTag("home_row_styled_compact-list").assertCountEquals(1)
